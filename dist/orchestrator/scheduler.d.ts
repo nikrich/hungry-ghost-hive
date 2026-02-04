@@ -27,5 +27,6 @@ export declare class Scheduler {
     private spawnSenior;
     private spawnIntermediate;
     private spawnJunior;
+    private getTeamStories;
 }
 //# sourceMappingURL=scheduler.d.ts.map

@@ -2,9 +2,9 @@ import type { Database } from 'sql.js';
 import { getPlannedStories, updateStory, getStoryPointsByTeam, type StoryRow } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
-import { queryOne } from '../db/client.js';
+import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
-import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning } from '../tmux/manager.js';
+import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession } from '../tmux/manager.js';
 import type { ScalingConfig } from '../config/schema.js';
 
 export interface SchedulerConfig {
@@ -190,6 +190,13 @@ export class Scheduler {
         workDir,
         command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
       });
+
+      // Wait for Claude to start, then send prompt
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const team = getTeamById(this.db, teamId);
+      const stories = this.getTeamStories(teamId);
+      const prompt = generateSeniorPrompt(teamName, team?.repo_url || '', repoPath, stories);
+      await sendToTmuxSession(sessionName, prompt);
     }
 
     updateAgent(this.db, agent.id, {
@@ -218,6 +225,12 @@ export class Scheduler {
         workDir,
         command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
       });
+
+      // Wait for Claude to start, then send prompt
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const team = getTeamById(this.db, teamId);
+      const prompt = generateIntermediatePrompt(teamName, team?.repo_url || '', repoPath);
+      await sendToTmuxSession(sessionName, prompt);
     }
 
     updateAgent(this.db, agent.id, {
@@ -246,6 +259,12 @@ export class Scheduler {
         workDir,
         command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
       });
+
+      // Wait for Claude to start, then send prompt
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const team = getTeamById(this.db, teamId);
+      const prompt = generateJuniorPrompt(teamName, team?.repo_url || '', repoPath);
+      await sendToTmuxSession(sessionName, prompt);
     }
 
     updateAgent(this.db, agent.id, {
@@ -255,4 +274,109 @@ export class Scheduler {
 
     return agent;
   }
+
+  private getTeamStories(teamId: string): StoryRow[] {
+    return queryAll<StoryRow>(this.db, `
+      SELECT * FROM stories
+      WHERE team_id = ? AND status IN ('planned', 'estimated')
+      ORDER BY complexity_score DESC
+    `, [teamId]);
+  }
+}
+
+// Prompt generation functions
+
+function generateSeniorPrompt(teamName: string, repoUrl: string, repoPath: string, stories: StoryRow[]): string {
+  const storyList = stories.map(s =>
+    `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'})\n  ${s.description}`
+  ).join('\n\n');
+
+  return `You are a Senior Developer on Team ${teamName}.
+
+## Your Repository
+- Local path: ${repoPath}
+- Remote: ${repoUrl}
+
+## Your Responsibilities
+1. Implement assigned stories
+2. Review code quality
+3. Delegate simpler tasks to Intermediate/Junior developers
+4. Ensure tests pass and code meets standards
+
+## Pending Stories for Your Team
+${storyList || 'No stories assigned yet.'}
+
+## Workflow
+1. Pick the highest priority story from the list above
+2. Create a feature branch: \`git checkout -b feature/<story-id>-<short-description>\`
+3. Implement the changes
+4. Run tests and linting
+5. Commit with a clear message referencing the story ID
+6. Create a PR using \`gh pr create\`
+
+## Guidelines
+- Follow existing code patterns in the repository
+- Write tests for new functionality
+- Keep commits atomic and well-documented
+- If blocked, escalate to the Tech Lead
+
+Start by exploring the codebase to understand its structure, then begin working on the highest priority story.`;
+}
+
+function generateIntermediatePrompt(teamName: string, repoUrl: string, repoPath: string): string {
+  return `You are an Intermediate Developer on Team ${teamName}.
+
+## Your Repository
+- Local path: ${repoPath}
+- Remote: ${repoUrl}
+
+## Your Responsibilities
+1. Implement assigned stories (moderate complexity)
+2. Write clean, tested code
+3. Follow team coding standards
+4. Ask Senior for help if stuck
+
+## Workflow
+1. Check for assigned stories in the Hive database
+2. Create a feature branch for your work
+3. Implement the changes
+4. Run tests and linting
+5. Commit and create a PR
+
+## Guidelines
+- Follow existing code patterns
+- Write tests for your changes
+- Keep commits focused and clear
+- Escalate blockers to your Senior
+
+Start by exploring the codebase, then check the stories table for your assignments.`;
+}
+
+function generateJuniorPrompt(teamName: string, repoUrl: string, repoPath: string): string {
+  return `You are a Junior Developer on Team ${teamName}.
+
+## Your Repository
+- Local path: ${repoPath}
+- Remote: ${repoUrl}
+
+## Your Responsibilities
+1. Implement simple, well-defined stories
+2. Learn the codebase patterns
+3. Write tests for your changes
+4. Ask for help when needed
+
+## Workflow
+1. Check for assigned stories in the Hive database
+2. Create a feature branch for your work
+3. Implement the changes carefully
+4. Run tests before committing
+5. Create a PR for review
+
+## Guidelines
+- Follow existing patterns exactly
+- Ask questions if requirements are unclear
+- Test thoroughly before submitting
+- Keep changes small and focused
+
+Start by exploring the codebase to understand how things work, then check for your assigned stories.`;
 }
