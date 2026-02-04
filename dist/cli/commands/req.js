@@ -71,7 +71,7 @@ export const reqCommand = new Command('req')
         spinner.text = 'Spawning Tech Lead...';
         let techLead = getTechLead(db.db);
         if (!techLead) {
-            techLead = createAgent(db.db, { type: 'tech_lead' });
+            techLead = createAgent(db.db, { type: 'tech_lead', model: 'opus' });
         }
         // Update Tech Lead status
         updateAgent(db.db, techLead.id, { status: 'working' });

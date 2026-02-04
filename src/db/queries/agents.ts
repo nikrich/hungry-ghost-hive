@@ -11,6 +11,7 @@ export interface CreateAgentInput {
   type: AgentType;
   teamId?: string | null;
   tmuxSession?: string | null;
+  model?: string | null;
 }
 
 export interface UpdateAgentInput {
@@ -27,9 +28,9 @@ export function createAgent(db: Database, input: CreateAgentInput): AgentRow {
   const now = new Date().toISOString();
 
   run(db, `
-    INSERT INTO agents (id, type, team_id, tmux_session, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'idle', ?, ?)
-  `, [id, input.type, input.teamId || null, input.tmuxSession || null, now, now]);
+    INSERT INTO agents (id, type, team_id, tmux_session, model, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'idle', ?, ?)
+  `, [id, input.type, input.teamId || null, input.tmuxSession || null, input.model || null, now, now]);
 
   return getAgentById(db, id)!;
 }

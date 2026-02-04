@@ -7,6 +7,7 @@ export interface CreateAgentInput {
     type: AgentType;
     teamId?: string | null;
     tmuxSession?: string | null;
+    model?: string | null;
 }
 export interface UpdateAgentInput {
     status?: AgentStatus;

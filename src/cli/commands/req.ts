@@ -80,7 +80,7 @@ export const reqCommand = new Command('req')
       let techLead = getTechLead(db.db);
 
       if (!techLead) {
-        techLead = createAgent(db.db, { type: 'tech_lead' });
+        techLead = createAgent(db.db, { type: 'tech_lead', model: 'opus' });
       }
 
       // Update Tech Lead status

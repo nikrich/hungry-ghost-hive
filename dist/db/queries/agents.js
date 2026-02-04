@@ -6,9 +6,9 @@ export function createAgent(db, input) {
         : `${input.type}-${nanoid(8)}`;
     const now = new Date().toISOString();
     run(db, `
-    INSERT INTO agents (id, type, team_id, tmux_session, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'idle', ?, ?)
-  `, [id, input.type, input.teamId || null, input.tmuxSession || null, now, now]);
+    INSERT INTO agents (id, type, team_id, tmux_session, model, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'idle', ?, ?)
+  `, [id, input.type, input.teamId || null, input.tmuxSession || null, input.model || null, now, now]);
     return getAgentById(db, id);
 }
 export function getAgentById(db, id) {

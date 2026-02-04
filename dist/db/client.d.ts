@@ -22,6 +22,7 @@ export interface AgentRow {
     type: 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa';
     team_id: string | null;
     tmux_session: string | null;
+    model: string | null;
     status: 'idle' | 'working' | 'blocked' | 'terminated';
     current_story_id: string | null;
     memory_state: string | null;

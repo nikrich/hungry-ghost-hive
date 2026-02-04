@@ -32,12 +32,13 @@ agentsCommand
         }
         console.log(chalk.bold('\nAgents:\n'));
         // Header
-        console.log(chalk.gray(`${'ID'.padEnd(25)} ${'Type'.padEnd(12)} ${'Team'.padEnd(15)} ${'Status'.padEnd(12)} ${'Current Story'}`));
-        console.log(chalk.gray('─'.repeat(90)));
+        console.log(chalk.gray(`${'ID'.padEnd(25)} ${'Type'.padEnd(12)} ${'Model'.padEnd(10)} ${'Team'.padEnd(15)} ${'Status'.padEnd(12)} ${'Current Story'}`));
+        console.log(chalk.gray('─'.repeat(100)));
         for (const agent of agents) {
             const team = agent.team_id || '-';
             const story = agent.current_story_id || '-';
-            console.log(`${chalk.cyan(agent.id.padEnd(25))} ${agent.type.padEnd(12)} ${team.padEnd(15)} ${statusColor(agent.status).padEnd(12)} ${story}`);
+            const model = agent.model || '-';
+            console.log(`${chalk.cyan(agent.id.padEnd(25))} ${agent.type.padEnd(12)} ${model.padEnd(10)} ${team.padEnd(15)} ${statusColor(agent.status).padEnd(12)} ${story}`);
         }
         console.log();
     }
@@ -114,6 +115,7 @@ agentsCommand
         }
         console.log(chalk.bold(`\nAgent: ${agent.id}\n`));
         console.log(chalk.gray(`Type:          ${agent.type}`));
+        console.log(chalk.gray(`Model:         ${agent.model || '-'}`));
         console.log(chalk.gray(`Team:          ${agent.team_id || '-'}`));
         console.log(chalk.gray(`Status:        ${statusColor(agent.status)}`));
         console.log(chalk.gray(`Tmux Session:  ${agent.tmux_session || '-'}`));

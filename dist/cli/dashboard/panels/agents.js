@@ -32,14 +32,15 @@ export function createAgentsPanel(screen, db) {
 export function updateAgentsPanel(table, db) {
     const agents = getActiveAgents(db);
     debugLog(`updateAgentsPanel called, found ${agents.length} agents`);
-    const headers = ['Type', 'Status', 'Story', 'Tmux Session'];
+    const headers = ['Type', 'Model', 'Status', 'Story', 'Tmux Session'];
     if (agents.length === 0) {
         debugLog('Setting empty data');
-        table.setData([headers, ['(no active agents)', '', '', '']]);
+        table.setData([headers, ['(no active agents)', '', '', '', '']]);
         return;
     }
     const rows = agents.map((agent) => [
         agent.type.toUpperCase(),
+        agent.model || '-',
         formatStatus(agent.status),
         agent.current_story_id || '-',
         agent.tmux_session || '-',

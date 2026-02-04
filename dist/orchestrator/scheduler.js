@@ -158,6 +158,7 @@ export class Scheduler {
         const agent = createAgent(this.db, {
             type: 'senior',
             teamId,
+            model: 'sonnet',
         });
         const sessionName = generateSessionName('senior', teamName, index);
         const workDir = `${this.config.rootDir}/${repoPath}`;
@@ -186,6 +187,7 @@ export class Scheduler {
         const agent = createAgent(this.db, {
             type: 'intermediate',
             teamId,
+            model: 'haiku',
         });
         const sessionName = generateSessionName('intermediate', teamName, index);
         const workDir = `${this.config.rootDir}/${repoPath}`;
@@ -213,6 +215,7 @@ export class Scheduler {
         const agent = createAgent(this.db, {
             type: 'junior',
             teamId,
+            model: 'haiku',
         });
         const sessionName = generateSessionName('junior', teamName, index);
         const workDir = `${this.config.rootDir}/${repoPath}`;

@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS agents (
     type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa')),
     team_id TEXT REFERENCES teams(id),
     tmux_session TEXT,
+    model TEXT,
     status TEXT DEFAULT 'idle' CHECK (status IN ('idle', 'working', 'blocked', 'terminated')),
     current_story_id TEXT,
     memory_state TEXT,
@@ -256,6 +257,7 @@ export interface AgentRow {
   type: 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa';
   team_id: string | null;
   tmux_session: string | null;
+  model: string | null;
   status: 'idle' | 'working' | 'blocked' | 'terminated';
   current_story_id: string | null;
   memory_state: string | null;
