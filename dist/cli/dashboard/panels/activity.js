@@ -3,10 +3,10 @@ import { getRecentLogs } from '../../../db/queries/logs.js';
 export function createActivityPanel(screen, db) {
     const box = blessed.box({
         parent: screen,
-        top: '30%+6',
+        top: '55%+5',
         left: 0,
         width: '70%',
-        height: '40%',
+        height: '35%',
         border: { type: 'line' },
         label: ' Recent Activity ',
         scrollable: true,

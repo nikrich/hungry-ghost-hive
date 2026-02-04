@@ -3,7 +3,7 @@ import { getStoryCounts } from '../../../db/queries/stories.js';
 export function createPipelinePanel(screen, db) {
     const box = blessed.box({
         parent: screen,
-        top: '30%+1',
+        top: '55%',
         left: 0,
         width: '100%',
         height: 5,

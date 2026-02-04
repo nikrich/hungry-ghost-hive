@@ -6,7 +6,7 @@ export function createPipelinePanel(screen: Widgets.Screen, db: Database): Widge
 
   const box = blessed.box({
     parent: screen,
-    top: '30%+1',
+    top: '55%',
     left: 0,
     width: '100%',
     height: 5,

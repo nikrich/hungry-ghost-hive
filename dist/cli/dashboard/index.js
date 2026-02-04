@@ -6,6 +6,7 @@ function debugLog(msg) {
     appendFileSync('/tmp/hive-dashboard-debug.log', `${new Date().toISOString()} ${msg}\n`);
 }
 import { createAgentsPanel, updateAgentsPanel } from './panels/agents.js';
+import { createStoriesPanel, updateStoriesPanel } from './panels/stories.js';
 import { createPipelinePanel, updatePipelinePanel } from './panels/pipeline.js';
 import { createActivityPanel, updateActivityPanel } from './panels/activity.js';
 import { createEscalationsPanel, updateEscalationsPanel } from './panels/escalations.js';
@@ -40,6 +41,7 @@ export async function startDashboard(options = {}) {
     });
     // Create panels
     const agentsPanel = createAgentsPanel(screen, db.db);
+    const storiesPanel = createStoriesPanel(screen, db.db);
     const pipelinePanel = createPipelinePanel(screen, db.db);
     const activityPanel = createActivityPanel(screen, db.db);
     const escalationsPanel = createEscalationsPanel(screen, db.db);
@@ -57,7 +59,7 @@ export async function startDashboard(options = {}) {
         },
     });
     // Focus management
-    const panels = [agentsPanel, activityPanel, escalationsPanel];
+    const panels = [agentsPanel, storiesPanel, activityPanel, escalationsPanel];
     let focusIndex = 0;
     panels[focusIndex].focus();
     // Refresh function - reloads database from disk to see changes from other processes
@@ -72,6 +74,7 @@ export async function startDashboard(options = {}) {
             catch { /* ignore close errors */ }
             db = newDb;
             updateAgentsPanel(agentsPanel, db.db);
+            updateStoriesPanel(storiesPanel, db.db);
             updatePipelinePanel(pipelinePanel, db.db);
             updateActivityPanel(activityPanel, db.db);
             updateEscalationsPanel(escalationsPanel, db.db);

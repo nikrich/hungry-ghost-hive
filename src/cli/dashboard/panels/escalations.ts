@@ -6,10 +6,10 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Wi
 
   const list = blessed.list({
     parent: screen,
-    top: '30%+6',
+    top: '55%+5',
     left: '70%',
     width: '30%',
-    height: '40%',
+    height: '35%',
     border: { type: 'line' },
     label: ' Escalations ',
     keys: true,

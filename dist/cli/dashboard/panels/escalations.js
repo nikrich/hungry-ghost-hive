@@ -3,10 +3,10 @@ import { getPendingEscalations } from '../../../db/queries/escalations.js';
 export function createEscalationsPanel(screen, db) {
     const list = blessed.list({
         parent: screen,
-        top: '30%+6',
+        top: '55%+5',
         left: '70%',
         width: '30%',
-        height: '40%',
+        height: '35%',
         border: { type: 'line' },
         label: ' Escalations ',
         keys: true,
