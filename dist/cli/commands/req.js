@@ -96,6 +96,8 @@ export const reqCommand = new Command('req')
             // Wait for Claude to fully start, then send the planning prompt
             await new Promise(resolve => setTimeout(resolve, 5000));
             await sendToTmuxSession(sessionName, techLeadPrompt);
+            // Send explicit Enter to submit the prompt
+            await sendToTmuxSession(sessionName, '');
             updateAgent(db.db, techLead.id, { tmuxSession: sessionName });
             createLog(db.db, {
                 agentId: techLead.id,
