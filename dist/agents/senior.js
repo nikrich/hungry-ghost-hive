@@ -1,7 +1,7 @@
 import { BaseAgent } from './base-agent.js';
 import { getTeamById } from '../db/queries/teams.js';
 import { getStoriesByTeam, updateStory } from '../db/queries/stories.js';
-import { createAgent, updateAgent } from '../db/queries/agents.js';
+import { createAgent, updateAgent, getTechLead } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
 import { spawnTmuxSession, generateSessionName } from '../tmux/manager.js';
 export class SeniorAgent extends BaseAgent {
@@ -233,7 +233,7 @@ If issues found, describe them. If approved, confirm.`;
         }
     }
     async escalateToTechLead(reason) {
-        const techLead = this.db.prepare(`SELECT id FROM agents WHERE type = 'tech_lead'`).get();
+        const techLead = getTechLead(this.db);
         const escalation = createEscalation(this.db, {
             storyId: this.memoryState.currentTask?.storyId,
             fromAgentId: this.agentId,

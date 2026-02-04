@@ -7,21 +7,21 @@ import { getAllAgents, getActiveAgents } from '../../db/queries/agents.js';
 import { getStoryCounts, getStoryById, getStoriesByTeam, getStoryDependencies } from '../../db/queries/stories.js';
 import { getPendingRequirements } from '../../db/queries/requirements.js';
 import { getPendingEscalations } from '../../db/queries/escalations.js';
-import { getRecentLogs } from '../../db/queries/logs.js';
+import { getRecentLogs, getLogsByStory } from '../../db/queries/logs.js';
 import { statusColor } from '../../utils/logger.js';
 export const statusCommand = new Command('status')
     .description('Show Hive status')
     .option('--team <name>', 'Show status for a specific team')
     .option('--story <id>', 'Show status for a specific story')
     .option('--json', 'Output as JSON')
-    .action((options) => {
+    .action(async (options) => {
     const root = findHiveRoot();
     if (!root) {
         console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     try {
         if (options.story) {
             showStoryStatus(db.db, options.story, options.json);
@@ -184,9 +184,7 @@ function showStoryStatus(db, storyId, json) {
         process.exit(1);
     }
     const dependencies = getStoryDependencies(db, story.id);
-    const logs = db.prepare(`
-    SELECT * FROM agent_logs WHERE story_id = ? ORDER BY timestamp DESC LIMIT 10
-  `).all(story.id);
+    const logs = getLogsByStory(db, story.id).slice(0, 10);
     const status = {
         story: {
             id: story.id,

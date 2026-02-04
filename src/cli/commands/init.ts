@@ -37,7 +37,7 @@ export const initCommand = new Command('init')
 
       // Initialize database
       spinner.text = 'Initializing database...';
-      const db = createDatabase(paths.dbPath);
+      const db = await createDatabase(paths.dbPath);
       db.runMigrations();
       db.close();
 

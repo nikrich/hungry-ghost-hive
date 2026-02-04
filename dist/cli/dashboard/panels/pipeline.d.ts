@@ -1,5 +1,5 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import type { Widgets } from 'blessed';
-export declare function createPipelinePanel(screen: Widgets.Screen, db: Database.Database): Widgets.BoxElement;
-export declare function updatePipelinePanel(box: Widgets.BoxElement, db: Database.Database): void;
+export declare function createPipelinePanel(screen: Widgets.Screen, db: Database): Widgets.BoxElement;
+export declare function updatePipelinePanel(box: Widgets.BoxElement, db: Database): void;
 //# sourceMappingURL=pipeline.d.ts.map

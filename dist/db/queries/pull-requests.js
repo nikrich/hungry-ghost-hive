@@ -1,42 +1,43 @@
 import { nanoid } from 'nanoid';
+import { queryAll, queryOne, run } from '../client.js';
 export function createPullRequest(db, input) {
     const id = `PR-${nanoid(8)}`;
-    const stmt = db.prepare(`
-    INSERT INTO pull_requests (id, story_id, github_pr_number, github_pr_url)
-    VALUES (?, ?, ?, ?)
-  `);
-    stmt.run(id, input.storyId, input.githubPrNumber || null, input.githubPrUrl || null);
+    const now = new Date().toISOString();
+    run(db, `
+    INSERT INTO pull_requests (id, story_id, github_pr_number, github_pr_url, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [id, input.storyId, input.githubPrNumber || null, input.githubPrUrl || null, now, now]);
     return getPullRequestById(db, id);
 }
 export function getPullRequestById(db, id) {
-    return db.prepare('SELECT * FROM pull_requests WHERE id = ?').get(id);
+    return queryOne(db, 'SELECT * FROM pull_requests WHERE id = ?', [id]);
 }
 export function getPullRequestByStory(db, storyId) {
-    return db.prepare('SELECT * FROM pull_requests WHERE story_id = ?').get(storyId);
+    return queryOne(db, 'SELECT * FROM pull_requests WHERE story_id = ?', [storyId]);
 }
 export function getPullRequestByGithubNumber(db, prNumber) {
-    return db.prepare('SELECT * FROM pull_requests WHERE github_pr_number = ?').get(prNumber);
+    return queryOne(db, 'SELECT * FROM pull_requests WHERE github_pr_number = ?', [prNumber]);
 }
 export function getPullRequestsByStatus(db, status) {
-    return db.prepare(`
+    return queryAll(db, `
     SELECT * FROM pull_requests
     WHERE status = ?
     ORDER BY created_at DESC
-  `).all(status);
+  `, [status]);
 }
 export function getOpenPullRequests(db) {
-    return db.prepare(`
+    return queryAll(db, `
     SELECT * FROM pull_requests
     WHERE status IN ('open', 'review')
     ORDER BY created_at
-  `).all();
+  `);
 }
 export function getAllPullRequests(db) {
-    return db.prepare('SELECT * FROM pull_requests ORDER BY created_at DESC').all();
+    return queryAll(db, 'SELECT * FROM pull_requests ORDER BY created_at DESC');
 }
 export function updatePullRequest(db, id, input) {
-    const updates = ['updated_at = CURRENT_TIMESTAMP'];
-    const values = [];
+    const updates = ['updated_at = ?'];
+    const values = [new Date().toISOString()];
     if (input.githubPrNumber !== undefined) {
         updates.push('github_pr_number = ?');
         values.push(input.githubPrNumber);
@@ -57,10 +58,10 @@ export function updatePullRequest(db, id, input) {
         return getPullRequestById(db, id);
     }
     values.push(id);
-    db.prepare(`UPDATE pull_requests SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    run(db, `UPDATE pull_requests SET ${updates.join(', ')} WHERE id = ?`, values);
     return getPullRequestById(db, id);
 }
 export function deletePullRequest(db, id) {
-    db.prepare('DELETE FROM pull_requests WHERE id = ?').run(id);
+    run(db, 'DELETE FROM pull_requests WHERE id = ?', [id]);
 }
 //# sourceMappingURL=pull-requests.js.map

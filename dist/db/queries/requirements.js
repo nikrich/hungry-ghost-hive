@@ -1,28 +1,29 @@
 import { nanoid } from 'nanoid';
+import { queryAll, queryOne, run } from '../client.js';
 export function createRequirement(db, input) {
     const id = `REQ-${nanoid(8).toUpperCase()}`;
-    const stmt = db.prepare(`
-    INSERT INTO requirements (id, title, description, submitted_by)
-    VALUES (?, ?, ?, ?)
-  `);
-    stmt.run(id, input.title, input.description, input.submittedBy || 'human');
+    const now = new Date().toISOString();
+    run(db, `
+    INSERT INTO requirements (id, title, description, submitted_by, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `, [id, input.title, input.description, input.submittedBy || 'human', now]);
     return getRequirementById(db, id);
 }
 export function getRequirementById(db, id) {
-    return db.prepare('SELECT * FROM requirements WHERE id = ?').get(id);
+    return queryOne(db, 'SELECT * FROM requirements WHERE id = ?', [id]);
 }
 export function getAllRequirements(db) {
-    return db.prepare('SELECT * FROM requirements ORDER BY created_at DESC').all();
+    return queryAll(db, 'SELECT * FROM requirements ORDER BY created_at DESC');
 }
 export function getRequirementsByStatus(db, status) {
-    return db.prepare('SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC').all(status);
+    return queryAll(db, 'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC', [status]);
 }
 export function getPendingRequirements(db) {
-    return db.prepare(`
+    return queryAll(db, `
     SELECT * FROM requirements
     WHERE status IN ('pending', 'planning', 'in_progress')
     ORDER BY created_at
-  `).all();
+  `);
 }
 export function updateRequirement(db, id, input) {
     const updates = [];
@@ -43,10 +44,10 @@ export function updateRequirement(db, id, input) {
         return getRequirementById(db, id);
     }
     values.push(id);
-    db.prepare(`UPDATE requirements SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    run(db, `UPDATE requirements SET ${updates.join(', ')} WHERE id = ?`, values);
     return getRequirementById(db, id);
 }
 export function deleteRequirement(db, id) {
-    db.prepare('DELETE FROM requirements WHERE id = ?').run(id);
+    run(db, 'DELETE FROM requirements WHERE id = ?', [id]);
 }
 //# sourceMappingURL=requirements.js.map

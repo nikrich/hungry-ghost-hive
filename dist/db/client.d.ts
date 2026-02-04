@@ -1,11 +1,15 @@
-import Database from 'better-sqlite3';
+import { Database as SqlJsDatabase } from 'sql.js';
 export interface DatabaseClient {
-    db: Database.Database;
+    db: SqlJsDatabase;
     close: () => void;
+    save: () => void;
     runMigrations: () => void;
 }
-export declare function createDatabase(dbPath: string): DatabaseClient;
-export declare function getDatabase(hiveDir: string): DatabaseClient;
+export declare function createDatabase(dbPath: string): Promise<DatabaseClient>;
+export declare function getDatabase(hiveDir: string): Promise<DatabaseClient>;
+export declare function queryAll<T>(db: SqlJsDatabase, sql: string, params?: unknown[]): T[];
+export declare function queryOne<T>(db: SqlJsDatabase, sql: string, params?: unknown[]): T | undefined;
+export declare function run(db: SqlJsDatabase, sql: string, params?: unknown[]): void;
 export interface TeamRow {
     id: string;
     repo_url: string;

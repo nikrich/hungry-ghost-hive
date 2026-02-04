@@ -11,14 +11,14 @@ escalationsCommand
     .description('List escalations')
     .option('--all', 'Show all escalations (including resolved)')
     .option('--json', 'Output as JSON')
-    .action((options) => {
+    .action(async (options) => {
     const root = findHiveRoot();
     if (!root) {
         console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     try {
         const escalations = options.all ? getAllEscalations(db.db) : getPendingEscalations(db.db);
         if (options.json) {
@@ -53,14 +53,14 @@ escalationsCommand
 escalationsCommand
     .command('show <id>')
     .description('Show escalation details')
-    .action((id) => {
+    .action(async (id) => {
     const root = findHiveRoot();
     if (!root) {
         console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     try {
         const escalation = getEscalationById(db.db, id);
         if (!escalation) {
@@ -90,14 +90,14 @@ escalationsCommand
     .command('resolve <id>')
     .description('Resolve an escalation')
     .requiredOption('-m, --message <message>', 'Resolution message/guidance')
-    .action((id, options) => {
+    .action(async (id, options) => {
     const root = findHiveRoot();
     if (!root) {
         console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     try {
         const escalation = getEscalationById(db.db, id);
         if (!escalation) {
@@ -129,14 +129,14 @@ escalationsCommand
 escalationsCommand
     .command('acknowledge <id>')
     .description('Acknowledge an escalation (mark as being worked on)')
-    .action((id) => {
+    .action(async (id) => {
     const root = findHiveRoot();
     if (!root) {
         console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     try {
         const escalation = getEscalationById(db.db, id);
         if (!escalation) {

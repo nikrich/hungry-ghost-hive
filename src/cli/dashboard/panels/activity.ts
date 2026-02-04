@@ -1,8 +1,8 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import type { Widgets } from 'blessed';
 import { getRecentLogs } from '../../../db/queries/logs.js';
 
-export function createActivityPanel(screen: Widgets.Screen, db: Database.Database): Widgets.BoxElement {
+export function createActivityPanel(screen: Widgets.Screen, db: Database): Widgets.BoxElement {
   const blessed = require('blessed');
 
   const box = blessed.box({
@@ -34,7 +34,7 @@ export function createActivityPanel(screen: Widgets.Screen, db: Database.Databas
   return box;
 }
 
-export function updateActivityPanel(box: Widgets.BoxElement, db: Database.Database): void {
+export function updateActivityPanel(box: Widgets.BoxElement, db: Database): void {
   const logs = getRecentLogs(db, 50);
 
   const lines: string[] = [];

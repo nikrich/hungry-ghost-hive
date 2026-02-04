@@ -1,6 +1,7 @@
 import { getPlannedStories, updateStory, getStoryPointsByTeam } from '../db/queries/stories.js';
-import { getAgentsByTeam, createAgent, updateAgent } from '../db/queries/agents.js';
+import { getAgentsByTeam, getAgentById, createAgent, updateAgent } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
+import { queryOne } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning } from '../tmux/manager.js';
 export class Scheduler {
@@ -107,18 +108,18 @@ export class Scheduler {
      * Get the next story to work on for a specific agent
      */
     getNextStoryForAgent(agentId) {
-        const agent = this.db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId);
+        const agent = getAgentById(this.db, agentId);
         if (!agent || !agent.team_id)
             return null;
         // Find an unassigned planned story for this team
-        const story = this.db.prepare(`
+        const story = queryOne(this.db, `
       SELECT * FROM stories
       WHERE team_id = ?
         AND status = 'planned'
         AND assigned_agent_id IS NULL
       ORDER BY story_points DESC, created_at
       LIMIT 1
-    `).get(agent.team_id);
+    `, [agent.team_id]);
         return story || null;
     }
     /**

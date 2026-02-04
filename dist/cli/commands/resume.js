@@ -3,7 +3,8 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
-import { getAllAgents, updateAgent } from '../../db/queries/agents.js';
+import { getAllAgents, getAgentById, updateAgent } from '../../db/queries/agents.js';
+import { getTeamById } from '../../db/queries/teams.js';
 import { createLog } from '../../db/queries/logs.js';
 import { spawnTmuxSession, isTmuxAvailable, isTmuxSessionRunning } from '../../tmux/manager.js';
 export const resumeCommand = new Command('resume')
@@ -21,11 +22,11 @@ export const resumeCommand = new Command('resume')
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     try {
         let agentsToResume;
         if (options.agent) {
-            const agent = db.db.prepare('SELECT * FROM agents WHERE id = ?').get(options.agent);
+            const agent = getAgentById(db.db, options.agent);
             if (!agent) {
                 console.error(chalk.red(`Agent not found: ${options.agent}`));
                 process.exit(1);
@@ -60,7 +61,7 @@ export const resumeCommand = new Command('resume')
                 // Determine work directory
                 let workDir = root;
                 if (agent.team_id) {
-                    const team = db.db.prepare('SELECT * FROM teams WHERE id = ?').get(agent.team_id);
+                    const team = getTeamById(db.db, agent.team_id);
                     if (team) {
                         workDir = `${root}/${team.repo_path}`;
                     }

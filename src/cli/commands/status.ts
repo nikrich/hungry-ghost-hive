@@ -7,7 +7,7 @@ import { getAllAgents, getActiveAgents } from '../../db/queries/agents.js';
 import { getStoryCounts, getStoryById, getStoriesByTeam, getStoryDependencies } from '../../db/queries/stories.js';
 import { getPendingRequirements } from '../../db/queries/requirements.js';
 import { getPendingEscalations } from '../../db/queries/escalations.js';
-import { getRecentLogs } from '../../db/queries/logs.js';
+import { getRecentLogs, getLogsByStory } from '../../db/queries/logs.js';
 import { statusColor } from '../../utils/logger.js';
 
 export const statusCommand = new Command('status')
@@ -15,7 +15,7 @@ export const statusCommand = new Command('status')
   .option('--team <name>', 'Show status for a specific team')
   .option('--story <id>', 'Show status for a specific story')
   .option('--json', 'Output as JSON')
-  .action((options: { team?: string; story?: string; json?: boolean }) => {
+  .action(async (options: { team?: string; story?: string; json?: boolean }) => {
     const root = findHiveRoot();
     if (!root) {
       console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
@@ -23,7 +23,7 @@ export const statusCommand = new Command('status')
     }
 
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
 
     try {
       if (options.story) {
@@ -38,7 +38,7 @@ export const statusCommand = new Command('status')
     }
   });
 
-function showOverallStatus(db: import('better-sqlite3').Database, json?: boolean): void {
+function showOverallStatus(db: import('sql.js').Database, json?: boolean): void {
   const teams = getAllTeams(db);
   const agents = getAllAgents(db);
   const activeAgents = getActiveAgents(db);
@@ -134,7 +134,7 @@ function showOverallStatus(db: import('better-sqlite3').Database, json?: boolean
   }
 }
 
-function showTeamStatus(db: import('better-sqlite3').Database, teamName: string, json?: boolean): void {
+function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: boolean): void {
   const team = getTeamByName(db, teamName);
   if (!team) {
     console.error(chalk.red(`Team not found: ${teamName}`));
@@ -195,7 +195,7 @@ function showTeamStatus(db: import('better-sqlite3').Database, teamName: string,
   }
 }
 
-function showStoryStatus(db: import('better-sqlite3').Database, storyId: string, json?: boolean): void {
+function showStoryStatus(db: import('sql.js').Database, storyId: string, json?: boolean): void {
   const story = getStoryById(db, storyId);
   if (!story) {
     console.error(chalk.red(`Story not found: ${storyId}`));
@@ -203,9 +203,7 @@ function showStoryStatus(db: import('better-sqlite3').Database, storyId: string,
   }
 
   const dependencies = getStoryDependencies(db, story.id);
-  const logs = db.prepare(`
-    SELECT * FROM agent_logs WHERE story_id = ? ORDER BY timestamp DESC LIMIT 10
-  `).all(story.id) as { timestamp: string; agent_id: string; event_type: string; message: string | null }[];
+  const logs = getLogsByStory(db, story.id).slice(0, 10);
 
   const status = {
     story: {

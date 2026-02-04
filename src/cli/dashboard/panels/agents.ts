@@ -1,8 +1,8 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import type { Widgets } from 'blessed';
 import { getActiveAgents, type AgentRow } from '../../../db/queries/agents.js';
 
-export function createAgentsPanel(screen: Widgets.Screen, db: Database.Database): Widgets.ListTableElement {
+export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets.ListTableElement {
   const blessed = require('blessed');
 
   const table = blessed.listtable({
@@ -32,7 +32,7 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database.Database)
   return table;
 }
 
-export function updateAgentsPanel(table: Widgets.ListTableElement, db: Database.Database): void {
+export function updateAgentsPanel(table: Widgets.ListTableElement, db: Database): void {
   const agents = getActiveAgents(db);
 
   const headers = ['ID', 'Type', 'Team', 'Status', 'Current Story'];

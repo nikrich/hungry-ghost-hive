@@ -1,8 +1,8 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import type { Widgets } from 'blessed';
 import { getPendingEscalations, type EscalationRow } from '../../../db/queries/escalations.js';
 
-export function createEscalationsPanel(screen: Widgets.Screen, db: Database.Database): Widgets.ListElement {
+export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
   const blessed = require('blessed');
 
   const list = blessed.list({
@@ -33,7 +33,7 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database.Data
   return list;
 }
 
-export function updateEscalationsPanel(list: Widgets.ListElement, db: Database.Database): void {
+export function updateEscalationsPanel(list: Widgets.ListElement, db: Database): void {
   const escalations = getPendingEscalations(db);
 
   if (escalations.length === 0) {

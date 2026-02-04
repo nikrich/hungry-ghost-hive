@@ -1,7 +1,7 @@
 import { BaseAgent, type AgentContext } from './base-agent.js';
 import { getTeamById, type TeamRow } from '../db/queries/teams.js';
 import { getStoriesByTeam, updateStory, type StoryRow } from '../db/queries/stories.js';
-import { createAgent, updateAgent } from '../db/queries/agents.js';
+import { createAgent, updateAgent, getTechLead } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
 import { spawnTmuxSession, generateSessionName } from '../tmux/manager.js';
 
@@ -269,7 +269,7 @@ If issues found, describe them. If approved, confirm.`;
   }
 
   async escalateToTechLead(reason: string): Promise<void> {
-    const techLead = this.db.prepare(`SELECT id FROM agents WHERE type = 'tech_lead'`).get() as { id: string } | undefined;
+    const techLead = getTechLead(this.db);
 
     const escalation = createEscalation(this.db, {
       storyId: this.memoryState.currentTask?.storyId,

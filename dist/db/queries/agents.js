@@ -1,43 +1,44 @@
 import { nanoid } from 'nanoid';
+import { queryAll, queryOne, run } from '../client.js';
 export function createAgent(db, input) {
     const id = input.type === 'tech_lead'
         ? 'tech-lead'
         : `${input.type}-${nanoid(8)}`;
-    const stmt = db.prepare(`
-    INSERT INTO agents (id, type, team_id, tmux_session, status)
-    VALUES (?, ?, ?, ?, 'idle')
-  `);
-    stmt.run(id, input.type, input.teamId || null, input.tmuxSession || null);
+    const now = new Date().toISOString();
+    run(db, `
+    INSERT INTO agents (id, type, team_id, tmux_session, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'idle', ?, ?)
+  `, [id, input.type, input.teamId || null, input.tmuxSession || null, now, now]);
     return getAgentById(db, id);
 }
 export function getAgentById(db, id) {
-    return db.prepare('SELECT * FROM agents WHERE id = ?').get(id);
+    return queryOne(db, 'SELECT * FROM agents WHERE id = ?', [id]);
 }
 export function getAgentsByTeam(db, teamId) {
-    return db.prepare('SELECT * FROM agents WHERE team_id = ?').all(teamId);
+    return queryAll(db, 'SELECT * FROM agents WHERE team_id = ?', [teamId]);
 }
 export function getAgentsByType(db, type) {
-    return db.prepare('SELECT * FROM agents WHERE type = ?').all(type);
+    return queryAll(db, 'SELECT * FROM agents WHERE type = ?', [type]);
 }
 export function getAgentsByStatus(db, status) {
-    return db.prepare('SELECT * FROM agents WHERE status = ?').all(status);
+    return queryAll(db, 'SELECT * FROM agents WHERE status = ?', [status]);
 }
 export function getAllAgents(db) {
-    return db.prepare('SELECT * FROM agents ORDER BY type, team_id').all();
+    return queryAll(db, 'SELECT * FROM agents ORDER BY type, team_id');
 }
 export function getActiveAgents(db) {
-    return db.prepare(`
+    return queryAll(db, `
     SELECT * FROM agents
     WHERE status IN ('idle', 'working', 'blocked')
     ORDER BY type, team_id
-  `).all();
+  `);
 }
 export function getTechLead(db) {
-    return db.prepare(`SELECT * FROM agents WHERE type = 'tech_lead'`).get();
+    return queryOne(db, `SELECT * FROM agents WHERE type = 'tech_lead'`);
 }
 export function updateAgent(db, id, input) {
-    const updates = ['updated_at = CURRENT_TIMESTAMP'];
-    const values = [];
+    const updates = ['updated_at = ?'];
+    const values = [new Date().toISOString()];
     if (input.status !== undefined) {
         updates.push('status = ?');
         values.push(input.status);
@@ -59,11 +60,11 @@ export function updateAgent(db, id, input) {
         return getAgentById(db, id);
     }
     values.push(id);
-    db.prepare(`UPDATE agents SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    run(db, `UPDATE agents SET ${updates.join(', ')} WHERE id = ?`, values);
     return getAgentById(db, id);
 }
 export function deleteAgent(db, id) {
-    db.prepare('DELETE FROM agents WHERE id = ?').run(id);
+    run(db, 'DELETE FROM agents WHERE id = ?', [id]);
 }
 export function terminateAgent(db, id) {
     updateAgent(db, id, { status: 'terminated', tmuxSession: null });

@@ -1,3 +1,4 @@
+import { queryAll, queryOne } from '../db/client.js';
 // Valid story status transitions
 const STORY_TRANSITIONS = {
     draft: ['estimated'],
@@ -33,12 +34,12 @@ export function getWorkflowState(db, requirementId) {
         whereClause = 'WHERE requirement_id = ?';
         params.push(requirementId);
     }
-    const stories = db.prepare(`
+    const stories = queryAll(db, `
     SELECT status, COUNT(*) as count
     FROM stories
     ${whereClause}
     GROUP BY status
-  `).all(...params);
+  `, params);
     const counts = {};
     for (const row of stories) {
         counts[row.status] = row.count;
@@ -77,7 +78,7 @@ export function getWorkflowState(db, requirementId) {
     }
     else if (requirementId) {
         // Check requirement status
-        const req = db.prepare('SELECT status FROM requirements WHERE id = ?').get(requirementId);
+        const req = queryOne(db, 'SELECT status FROM requirements WHERE id = ?', [requirementId]);
         if (req) {
             if (req.status === 'planning')
                 phase = 'planning';

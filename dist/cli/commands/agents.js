@@ -12,14 +12,14 @@ agentsCommand
     .description('List all agents')
     .option('--active', 'Show only active agents')
     .option('--json', 'Output as JSON')
-    .action((options) => {
+    .action(async (options) => {
     const root = findHiveRoot();
     if (!root) {
         console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     try {
         const agents = options.active ? getActiveAgents(db.db) : getAllAgents(db.db);
         if (options.json) {
@@ -50,14 +50,14 @@ agentsCommand
     .description('View agent logs')
     .option('-n, --limit <number>', 'Number of logs to show', '50')
     .option('--json', 'Output as JSON')
-    .action((agentId, options) => {
+    .action(async (agentId, options) => {
     const root = findHiveRoot();
     if (!root) {
         console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     try {
         const agent = getAgentById(db.db, agentId);
         if (!agent) {
@@ -98,14 +98,14 @@ agentsCommand
 agentsCommand
     .command('inspect <agent-id>')
     .description('View detailed agent state')
-    .action((agentId) => {
+    .action(async (agentId) => {
     const root = findHiveRoot();
     if (!root) {
         console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     try {
         const agent = getAgentById(db.db, agentId);
         if (!agent) {

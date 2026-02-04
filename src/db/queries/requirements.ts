@@ -1,9 +1,8 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
+import { queryAll, queryOne, run, type RequirementRow } from '../client.js';
 
-// Re-export RequirementRow for convenience
-export type { RequirementRow } from '../client.js';
-import type { RequirementRow } from '../client.js';
+export type { RequirementRow };
 
 export type RequirementStatus = 'pending' | 'planning' | 'planned' | 'in_progress' | 'completed';
 
@@ -19,37 +18,39 @@ export interface UpdateRequirementInput {
   status?: RequirementStatus;
 }
 
-export function createRequirement(db: Database.Database, input: CreateRequirementInput): RequirementRow {
+export function createRequirement(db: Database, input: CreateRequirementInput): RequirementRow {
   const id = `REQ-${nanoid(8).toUpperCase()}`;
-  const stmt = db.prepare(`
-    INSERT INTO requirements (id, title, description, submitted_by)
-    VALUES (?, ?, ?, ?)
-  `);
-  stmt.run(id, input.title, input.description, input.submittedBy || 'human');
+  const now = new Date().toISOString();
+
+  run(db, `
+    INSERT INTO requirements (id, title, description, submitted_by, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `, [id, input.title, input.description, input.submittedBy || 'human', now]);
+
   return getRequirementById(db, id)!;
 }
 
-export function getRequirementById(db: Database.Database, id: string): RequirementRow | undefined {
-  return db.prepare('SELECT * FROM requirements WHERE id = ?').get(id) as RequirementRow | undefined;
+export function getRequirementById(db: Database, id: string): RequirementRow | undefined {
+  return queryOne<RequirementRow>(db, 'SELECT * FROM requirements WHERE id = ?', [id]);
 }
 
-export function getAllRequirements(db: Database.Database): RequirementRow[] {
-  return db.prepare('SELECT * FROM requirements ORDER BY created_at DESC').all() as RequirementRow[];
+export function getAllRequirements(db: Database): RequirementRow[] {
+  return queryAll<RequirementRow>(db, 'SELECT * FROM requirements ORDER BY created_at DESC');
 }
 
-export function getRequirementsByStatus(db: Database.Database, status: RequirementStatus): RequirementRow[] {
-  return db.prepare('SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC').all(status) as RequirementRow[];
+export function getRequirementsByStatus(db: Database, status: RequirementStatus): RequirementRow[] {
+  return queryAll<RequirementRow>(db, 'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC', [status]);
 }
 
-export function getPendingRequirements(db: Database.Database): RequirementRow[] {
-  return db.prepare(`
+export function getPendingRequirements(db: Database): RequirementRow[] {
+  return queryAll<RequirementRow>(db, `
     SELECT * FROM requirements
     WHERE status IN ('pending', 'planning', 'in_progress')
     ORDER BY created_at
-  `).all() as RequirementRow[];
+  `);
 }
 
-export function updateRequirement(db: Database.Database, id: string, input: UpdateRequirementInput): RequirementRow | undefined {
+export function updateRequirement(db: Database, id: string, input: UpdateRequirementInput): RequirementRow | undefined {
   const updates: string[] = [];
   const values: string[] = [];
 
@@ -71,10 +72,10 @@ export function updateRequirement(db: Database.Database, id: string, input: Upda
   }
 
   values.push(id);
-  db.prepare(`UPDATE requirements SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  run(db, `UPDATE requirements SET ${updates.join(', ')} WHERE id = ?`, values);
   return getRequirementById(db, id);
 }
 
-export function deleteRequirement(db: Database.Database, id: string): void {
-  db.prepare('DELETE FROM requirements WHERE id = ?').run(id);
+export function deleteRequirement(db: Database, id: string): void {
+  run(db, 'DELETE FROM requirements WHERE id = ?', [id]);
 }

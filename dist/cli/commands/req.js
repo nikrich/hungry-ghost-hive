@@ -42,7 +42,7 @@ export const reqCommand = new Command('req')
     const lines = reqText.split('\n');
     const title = options.title || lines[0].replace(/^#\s*/, '').substring(0, 100);
     const description = reqText;
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     const spinner = ora('Processing requirement...').start();
     try {
         // Check if there are any teams

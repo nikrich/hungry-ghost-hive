@@ -5,14 +5,14 @@ import { createAgentsPanel, updateAgentsPanel } from './panels/agents.js';
 import { createPipelinePanel, updatePipelinePanel } from './panels/pipeline.js';
 import { createActivityPanel, updateActivityPanel } from './panels/activity.js';
 import { createEscalationsPanel, updateEscalationsPanel } from './panels/escalations.js';
-export function startDashboard(options = {}) {
+export async function startDashboard(options = {}) {
     const root = findHiveRoot();
     if (!root) {
         console.error('Not in a Hive workspace. Run "hive init" first.');
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     const refreshInterval = options.refreshInterval || 5000;
     // Create screen
     const screen = blessed.screen({

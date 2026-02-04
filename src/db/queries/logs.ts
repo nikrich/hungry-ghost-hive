@@ -1,8 +1,7 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
+import { queryAll, queryOne, run, type AgentLogRow } from '../client.js';
 
-// Re-export AgentLogRow for convenience
-export type { AgentLogRow } from '../client.js';
-import type { AgentLogRow } from '../client.js';
+export type { AgentLogRow };
 
 export type EventType =
   | 'AGENT_SPAWNED'
@@ -46,75 +45,85 @@ export interface CreateLogInput {
   metadata?: Record<string, unknown> | null;
 }
 
-export function createLog(db: Database.Database, input: CreateLogInput): AgentLogRow {
+export function createLog(db: Database, input: CreateLogInput): AgentLogRow {
   const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
+  const now = new Date().toISOString();
 
-  const stmt = db.prepare(`
-    INSERT INTO agent_logs (agent_id, story_id, event_type, status, message, metadata)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
-  const result = stmt.run(
+  run(db, `
+    INSERT INTO agent_logs (agent_id, story_id, event_type, status, message, metadata, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [
     input.agentId,
     input.storyId || null,
     input.eventType,
     input.status || null,
     input.message || null,
-    metadata
-  );
+    metadata,
+    now
+  ]);
 
-  return getLogById(db, Number(result.lastInsertRowid))!;
+  // Get the last inserted row
+  const result = queryOne<{ id: number }>(db, 'SELECT last_insert_rowid() as id');
+  return getLogById(db, result?.id || 0)!;
 }
 
-export function getLogById(db: Database.Database, id: number): AgentLogRow | undefined {
-  return db.prepare('SELECT * FROM agent_logs WHERE id = ?').get(id) as AgentLogRow | undefined;
+export function getLogById(db: Database, id: number): AgentLogRow | undefined {
+  return queryOne<AgentLogRow>(db, 'SELECT * FROM agent_logs WHERE id = ?', [id]);
 }
 
-export function getLogsByAgent(db: Database.Database, agentId: string, limit = 100): AgentLogRow[] {
-  return db.prepare(`
+export function getLogsByAgent(db: Database, agentId: string, limit = 100): AgentLogRow[] {
+  return queryAll<AgentLogRow>(db, `
     SELECT * FROM agent_logs
     WHERE agent_id = ?
     ORDER BY timestamp DESC
     LIMIT ?
-  `).all(agentId, limit) as AgentLogRow[];
+  `, [agentId, limit]);
 }
 
-export function getLogsByStory(db: Database.Database, storyId: string): AgentLogRow[] {
-  return db.prepare(`
+export function getLogsByStory(db: Database, storyId: string): AgentLogRow[] {
+  return queryAll<AgentLogRow>(db, `
     SELECT * FROM agent_logs
     WHERE story_id = ?
     ORDER BY timestamp DESC
-  `).all(storyId) as AgentLogRow[];
+  `, [storyId]);
 }
 
-export function getLogsByEventType(db: Database.Database, eventType: EventType, limit = 100): AgentLogRow[] {
-  return db.prepare(`
+export function getLogsByEventType(db: Database, eventType: EventType, limit = 100): AgentLogRow[] {
+  return queryAll<AgentLogRow>(db, `
     SELECT * FROM agent_logs
     WHERE event_type = ?
     ORDER BY timestamp DESC
     LIMIT ?
-  `).all(eventType, limit) as AgentLogRow[];
+  `, [eventType, limit]);
 }
 
-export function getRecentLogs(db: Database.Database, limit = 50): AgentLogRow[] {
-  return db.prepare(`
+export function getRecentLogs(db: Database, limit = 50): AgentLogRow[] {
+  return queryAll<AgentLogRow>(db, `
     SELECT * FROM agent_logs
     ORDER BY timestamp DESC
     LIMIT ?
-  `).all(limit) as AgentLogRow[];
+  `, [limit]);
 }
 
-export function getLogsSince(db: Database.Database, since: string): AgentLogRow[] {
-  return db.prepare(`
+export function getLogsSince(db: Database, since: string): AgentLogRow[] {
+  return queryAll<AgentLogRow>(db, `
     SELECT * FROM agent_logs
     WHERE timestamp > ?
     ORDER BY timestamp ASC
-  `).all(since) as AgentLogRow[];
+  `, [since]);
 }
 
-export function pruneOldLogs(db: Database.Database, retentionDays: number): number {
-  const result = db.prepare(`
-    DELETE FROM agent_logs
-    WHERE timestamp < datetime('now', '-' || ? || ' days')
-  `).run(retentionDays);
-  return result.changes;
+export function pruneOldLogs(db: Database, retentionDays: number): number {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+  const cutoff = cutoffDate.toISOString();
+
+  // Get count before delete
+  const before = queryOne<{ count: number }>(db, `
+    SELECT COUNT(*) as count FROM agent_logs WHERE timestamp < ?
+  `, [cutoff]);
+
+  run(db, `DELETE FROM agent_logs WHERE timestamp < ?`, [cutoff]);
+
+  return before?.count || 0;
 }

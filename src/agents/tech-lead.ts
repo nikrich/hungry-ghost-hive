@@ -1,10 +1,12 @@
 import { BaseAgent, type AgentContext } from './base-agent.js';
 import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
 import { getRequirementById, updateRequirement, type RequirementRow } from '../db/queries/requirements.js';
-import { createStory, updateStory } from '../db/queries/stories.js';
+import { createStory, updateStory, getStoryById } from '../db/queries/stories.js';
 import { createAgent, getAgentsByType, updateAgent } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
 import { spawnTmuxSession, generateSessionName } from '../tmux/manager.js';
+import { queryAll } from '../db/client.js';
+import { addStoryDependency } from '../db/queries/stories.js';
 
 export interface TechLeadContext extends AgentContext {
   requirementId?: string;
@@ -208,10 +210,7 @@ Respond in JSON format:
         for (const depTitle of story.dependencies) {
           const depId = storyIdMap[depTitle];
           if (depId) {
-            this.db.prepare(`
-              INSERT OR IGNORE INTO story_dependencies (story_id, depends_on_story_id)
-              VALUES (?, ?)
-            `).run(storyId, depId);
+            addStoryDependency(this.db, storyId, depId);
           }
         }
       }
@@ -224,7 +223,7 @@ Respond in JSON format:
     // Get unique teams from stories
     const teamIds = new Set<string>();
     for (const storyId of storyIds) {
-      const story = this.db.prepare('SELECT team_id FROM stories WHERE id = ?').get(storyId) as { team_id: string | null };
+      const story = getStoryById(this.db, storyId);
       if (story?.team_id) {
         teamIds.add(story.team_id);
       }
@@ -274,9 +273,9 @@ Respond in JSON format:
       }
 
       // Assign stories to the Senior
-      const teamStories = this.db.prepare(`
+      const teamStories = queryAll<{ id: string }>(this.db, `
         SELECT id FROM stories WHERE team_id = ? AND status = 'estimated'
-      `).all(teamId) as { id: string }[];
+      `, [teamId]);
 
       for (const story of teamStories) {
         updateStory(this.db, story.id, { status: 'planned' });

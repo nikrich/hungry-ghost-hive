@@ -26,7 +26,7 @@ export const addRepoCommand = new Command('add-repo')
     const relativeRepoPath = `repos/${repoName}`;
     try {
         // Check if team already exists
-        const db = getDatabase(paths.hiveDir);
+        const db = await getDatabase(paths.hiveDir);
         const existingTeam = getTeamByName(db.db, options.team);
         if (existingTeam) {
             spinner.fail(chalk.red(`Team "${options.team}" already exists`));

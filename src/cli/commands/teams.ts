@@ -13,7 +13,7 @@ teamsCommand
   .command('list')
   .description('List all teams')
   .option('--json', 'Output as JSON')
-  .action((options: { json?: boolean }) => {
+  .action(async (options: { json?: boolean }) => {
     const root = findHiveRoot();
     if (!root) {
       console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
@@ -21,7 +21,7 @@ teamsCommand
     }
 
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
 
     try {
       const teams = getAllTeams(db.db);
@@ -61,7 +61,7 @@ teamsCommand
 teamsCommand
   .command('show <name>')
   .description('Show team details')
-  .action((name: string) => {
+  .action(async (name: string) => {
     const root = findHiveRoot();
     if (!root) {
       console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
@@ -69,7 +69,7 @@ teamsCommand
     }
 
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
 
     try {
       const team = getTeamByName(db.db, name);
@@ -121,7 +121,7 @@ teamsCommand
   .command('remove <name>')
   .description('Remove a team')
   .option('--force', 'Force removal even if team has active stories')
-  .action((name: string, options: { force?: boolean }) => {
+  .action(async (name: string, options: { force?: boolean }) => {
     const root = findHiveRoot();
     if (!root) {
       console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
@@ -129,7 +129,7 @@ teamsCommand
     }
 
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
 
     try {
       const team = getTeamByName(db.db, name);

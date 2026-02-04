@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import type { LLMProvider, Message } from '../llm/provider.js';
 import { createLog, type EventType } from '../db/queries/logs.js';
 import { updateAgent, type AgentRow, type AgentType, type AgentStatus } from '../db/queries/agents.js';
@@ -20,7 +20,7 @@ export interface MemoryState {
 }
 
 export interface AgentContext {
-  db: Database.Database;
+  db: Database;
   provider: LLMProvider;
   agentRow: AgentRow;
   workDir: string;
@@ -32,7 +32,7 @@ export interface AgentContext {
 }
 
 export abstract class BaseAgent {
-  protected db: Database.Database;
+  protected db: Database;
   protected provider: LLMProvider;
   protected agentId: string;
   protected agentType: AgentType;

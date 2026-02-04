@@ -11,14 +11,14 @@ storiesCommand
     .description('List all stories')
     .option('--status <status>', 'Filter by status')
     .option('--json', 'Output as JSON')
-    .action((options) => {
+    .action(async (options) => {
     const root = findHiveRoot();
     if (!root) {
         console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     try {
         let stories;
         if (options.status) {
@@ -54,14 +54,14 @@ storiesCommand
 storiesCommand
     .command('show <story-id>')
     .description('Show story details')
-    .action((storyId) => {
+    .action(async (storyId) => {
     const root = findHiveRoot();
     if (!root) {
         console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = getDatabase(paths.hiveDir);
+    const db = await getDatabase(paths.hiveDir);
     try {
         const story = getStoryById(db.db, storyId);
         if (!story) {

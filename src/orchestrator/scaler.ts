@@ -1,6 +1,6 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import { getStoryPointsByTeam } from '../db/queries/stories.js';
-import { getAgentsByTeam, terminateAgent, type AgentRow } from '../db/queries/agents.js';
+import { getAgentsByTeam, getTechLead, terminateAgent, type AgentRow } from '../db/queries/agents.js';
 import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
 import { createLog } from '../db/queries/logs.js';
 import { killTmuxSession } from '../tmux/manager.js';
@@ -20,10 +20,10 @@ export interface ScalingRecommendation {
 }
 
 export class Scaler {
-  private db: Database.Database;
+  private db: Database;
   private config: ScalerConfig;
 
-  constructor(db: Database.Database, config: ScalerConfig) {
+  constructor(db: Database, config: ScalerConfig) {
     this.db = db;
     this.config = config;
   }
@@ -166,7 +166,7 @@ export class Scaler {
     }
 
     // Add Tech Lead
-    const techLead = this.db.prepare(`SELECT * FROM agents WHERE type = 'tech_lead'`).get() as AgentRow | undefined;
+    const techLead = getTechLead(this.db);
     if (techLead && techLead.status !== 'terminated') {
       totalAgents++;
       agentsByType['tech_lead'] = 1;

@@ -10,7 +10,7 @@ export interface DashboardOptions {
   refreshInterval?: number;
 }
 
-export function startDashboard(options: DashboardOptions = {}): void {
+export async function startDashboard(options: DashboardOptions = {}): Promise<void> {
   const root = findHiveRoot();
   if (!root) {
     console.error('Not in a Hive workspace. Run "hive init" first.');
@@ -18,7 +18,7 @@ export function startDashboard(options: DashboardOptions = {}): void {
   }
 
   const paths = getHivePaths(root);
-  const db = getDatabase(paths.hiveDir);
+  const db = await getDatabase(paths.hiveDir);
   const refreshInterval = options.refreshInterval || 5000;
 
   // Create screen

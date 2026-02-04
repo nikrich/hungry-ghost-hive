@@ -1,5 +1,6 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import type { StoryStatus } from '../db/queries/stories.js';
+import { queryAll, queryOne } from '../db/client.js';
 
 // Valid story status transitions
 const STORY_TRANSITIONS: Record<StoryStatus, StoryStatus[]> = {
@@ -56,7 +57,7 @@ export interface WorkflowState {
   blockedStories: number;
 }
 
-export function getWorkflowState(db: Database.Database, requirementId?: string): WorkflowState {
+export function getWorkflowState(db: Database, requirementId?: string): WorkflowState {
   let whereClause = '';
   const params: string[] = [];
 
@@ -65,12 +66,12 @@ export function getWorkflowState(db: Database.Database, requirementId?: string):
     params.push(requirementId);
   }
 
-  const stories = db.prepare(`
+  const stories = queryAll<{ status: StoryStatus; count: number }>(db, `
     SELECT status, COUNT(*) as count
     FROM stories
     ${whereClause}
     GROUP BY status
-  `).all(...params) as { status: StoryStatus; count: number }[];
+  `, params);
 
   const counts: Record<string, number> = {};
   for (const row of stories) {
@@ -109,7 +110,7 @@ export function getWorkflowState(db: Database.Database, requirementId?: string):
     phase = 'planning';
   } else if (requirementId) {
     // Check requirement status
-    const req = db.prepare('SELECT status FROM requirements WHERE id = ?').get(requirementId) as { status: string } | undefined;
+    const req = queryOne<{ status: string }>(db, 'SELECT status FROM requirements WHERE id = ?', [requirementId]);
     if (req) {
       if (req.status === 'planning') phase = 'planning';
       else if (req.status === 'pending') phase = 'requirement_intake';

@@ -1,7 +1,8 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import { getPlannedStories, updateStory, getStoryPointsByTeam, type StoryRow } from '../db/queries/stories.js';
-import { getAgentsByTeam, createAgent, updateAgent, type AgentRow } from '../db/queries/agents.js';
+import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
+import { queryOne } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning } from '../tmux/manager.js';
 import type { ScalingConfig } from '../config/schema.js';
@@ -12,10 +13,10 @@ export interface SchedulerConfig {
 }
 
 export class Scheduler {
-  private db: Database.Database;
+  private db: Database;
   private config: SchedulerConfig;
 
-  constructor(db: Database.Database, config: SchedulerConfig) {
+  constructor(db: Database, config: SchedulerConfig) {
     this.db = db;
     this.config = config;
   }
@@ -123,18 +124,18 @@ export class Scheduler {
    * Get the next story to work on for a specific agent
    */
   getNextStoryForAgent(agentId: string): StoryRow | null {
-    const agent = this.db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId) as AgentRow | undefined;
+    const agent = getAgentById(this.db, agentId);
     if (!agent || !agent.team_id) return null;
 
     // Find an unassigned planned story for this team
-    const story = this.db.prepare(`
+    const story = queryOne<StoryRow>(this.db, `
       SELECT * FROM stories
       WHERE team_id = ?
         AND status = 'planned'
         AND assigned_agent_id IS NULL
       ORDER BY story_points DESC, created_at
       LIMIT 1
-    `).get(agent.team_id) as StoryRow | undefined;
+    `, [agent.team_id]);
 
     return story || null;
   }

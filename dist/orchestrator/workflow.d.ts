@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import type { StoryStatus } from '../db/queries/stories.js';
 export declare function canTransitionStory(from: StoryStatus, to: StoryStatus): boolean;
 export declare function getNextStatuses(status: StoryStatus): StoryStatus[];
@@ -12,7 +12,7 @@ export interface WorkflowState {
     completedStories: number;
     blockedStories: number;
 }
-export declare function getWorkflowState(db: Database.Database, requirementId?: string): WorkflowState;
+export declare function getWorkflowState(db: Database, requirementId?: string): WorkflowState;
 export declare function isWorkflowBlocked(state: WorkflowState): boolean;
 export declare function getWorkflowProgress(state: WorkflowState): number;
 //# sourceMappingURL=workflow.d.ts.map

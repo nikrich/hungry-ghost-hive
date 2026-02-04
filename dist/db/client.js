@@ -1,4 +1,5 @@
-import Database from 'better-sqlite3';
+import initSqlJs from 'sql.js';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 // Embedded initial migration SQL
 const INITIAL_MIGRATION = `
@@ -120,22 +121,50 @@ CREATE TABLE IF NOT EXISTS migrations (
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 `;
-export function createDatabase(dbPath) {
-    const db = new Database(dbPath);
+let SQL = null;
+async function getSqlJs() {
+    if (!SQL) {
+        SQL = await initSqlJs();
+    }
+    return SQL;
+}
+export async function createDatabase(dbPath) {
+    const SqlJs = await getSqlJs();
+    if (!SqlJs)
+        throw new Error('Failed to initialize sql.js');
+    let db;
+    // Load existing database or create new one
+    if (existsSync(dbPath)) {
+        const buffer = readFileSync(dbPath);
+        db = new SqlJs.Database(buffer);
+    }
+    else {
+        db = new SqlJs.Database();
+    }
     // Enable foreign keys
-    db.pragma('foreign_keys = ON');
-    // Enable WAL mode for better concurrent access
-    db.pragma('journal_mode = WAL');
+    db.run('PRAGMA foreign_keys = ON');
+    const save = () => {
+        const data = db.export();
+        const buffer = Buffer.from(data);
+        writeFileSync(dbPath, buffer);
+    };
     const client = {
         db,
-        close: () => db.close(),
-        runMigrations: () => runMigrations(db),
+        close: () => {
+            save();
+            db.close();
+        },
+        save,
+        runMigrations: () => {
+            runMigrations(db);
+            save();
+        },
     };
     return client;
 }
 function runMigrations(db) {
     // Create migrations table if it doesn't exist
-    db.exec(`
+    db.run(`
     CREATE TABLE IF NOT EXISTS migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -143,19 +172,37 @@ function runMigrations(db) {
     )
   `);
     // Check if initial migration was applied
-    const initialMigration = db
-        .prepare("SELECT name FROM migrations WHERE name = '001-initial.sql'")
-        .get();
+    const result = db.exec("SELECT name FROM migrations WHERE name = '001-initial.sql'");
+    const initialMigration = result.length > 0 && result[0].values.length > 0;
     if (!initialMigration) {
         // Apply initial migration
-        db.transaction(() => {
-            db.exec(INITIAL_MIGRATION);
-            db.prepare("INSERT INTO migrations (name) VALUES ('001-initial.sql')").run();
-        })();
+        db.run(INITIAL_MIGRATION);
+        db.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
     }
 }
-export function getDatabase(hiveDir) {
+export async function getDatabase(hiveDir) {
     const dbPath = join(hiveDir, 'hive.db');
     return createDatabase(dbPath);
+}
+// Helper function to run a query and get results as objects
+export function queryAll(db, sql, params = []) {
+    const stmt = db.prepare(sql);
+    stmt.bind(params);
+    const results = [];
+    while (stmt.step()) {
+        const row = stmt.getAsObject();
+        results.push(row);
+    }
+    stmt.free();
+    return results;
+}
+// Helper function to run a query and get a single result
+export function queryOne(db, sql, params = []) {
+    const results = queryAll(db, sql, params);
+    return results[0];
+}
+// Helper function to run a statement (INSERT, UPDATE, DELETE)
+export function run(db, sql, params = []) {
+    db.run(sql, params);
 }
 //# sourceMappingURL=client.js.map

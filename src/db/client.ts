@@ -1,9 +1,11 @@
-import Database from 'better-sqlite3';
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 export interface DatabaseClient {
-  db: Database.Database;
+  db: SqlJsDatabase;
   close: () => void;
+  save: () => void;
   runMigrations: () => void;
 }
 
@@ -128,27 +130,57 @@ CREATE TABLE IF NOT EXISTS migrations (
 );
 `;
 
-export function createDatabase(dbPath: string): DatabaseClient {
-  const db = new Database(dbPath);
+let SQL: Awaited<ReturnType<typeof initSqlJs>> | null = null;
+
+async function getSqlJs(): Promise<typeof SQL> {
+  if (!SQL) {
+    SQL = await initSqlJs();
+  }
+  return SQL;
+}
+
+export async function createDatabase(dbPath: string): Promise<DatabaseClient> {
+  const SqlJs = await getSqlJs();
+  if (!SqlJs) throw new Error('Failed to initialize sql.js');
+
+  let db: SqlJsDatabase;
+
+  // Load existing database or create new one
+  if (existsSync(dbPath)) {
+    const buffer = readFileSync(dbPath);
+    db = new SqlJs.Database(buffer);
+  } else {
+    db = new SqlJs.Database();
+  }
 
   // Enable foreign keys
-  db.pragma('foreign_keys = ON');
+  db.run('PRAGMA foreign_keys = ON');
 
-  // Enable WAL mode for better concurrent access
-  db.pragma('journal_mode = WAL');
+  const save = () => {
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    writeFileSync(dbPath, buffer);
+  };
 
   const client: DatabaseClient = {
     db,
-    close: () => db.close(),
-    runMigrations: () => runMigrations(db),
+    close: () => {
+      save();
+      db.close();
+    },
+    save,
+    runMigrations: () => {
+      runMigrations(db);
+      save();
+    },
   };
 
   return client;
 }
 
-function runMigrations(db: Database.Database): void {
+function runMigrations(db: SqlJsDatabase): void {
   // Create migrations table if it doesn't exist
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -157,22 +189,44 @@ function runMigrations(db: Database.Database): void {
   `);
 
   // Check if initial migration was applied
-  const initialMigration = db
-    .prepare("SELECT name FROM migrations WHERE name = '001-initial.sql'")
-    .get() as { name: string } | undefined;
+  const result = db.exec("SELECT name FROM migrations WHERE name = '001-initial.sql'");
+  const initialMigration = result.length > 0 && result[0].values.length > 0;
 
   if (!initialMigration) {
     // Apply initial migration
-    db.transaction(() => {
-      db.exec(INITIAL_MIGRATION);
-      db.prepare("INSERT INTO migrations (name) VALUES ('001-initial.sql')").run();
-    })();
+    db.run(INITIAL_MIGRATION);
+    db.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
   }
 }
 
-export function getDatabase(hiveDir: string): DatabaseClient {
+export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
   const dbPath = join(hiveDir, 'hive.db');
   return createDatabase(dbPath);
+}
+
+// Helper function to run a query and get results as objects
+export function queryAll<T>(db: SqlJsDatabase, sql: string, params: unknown[] = []): T[] {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+
+  const results: T[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    results.push(row as T);
+  }
+  stmt.free();
+  return results;
+}
+
+// Helper function to run a query and get a single result
+export function queryOne<T>(db: SqlJsDatabase, sql: string, params: unknown[] = []): T | undefined {
+  const results = queryAll<T>(db, sql, params);
+  return results[0];
+}
+
+// Helper function to run a statement (INSERT, UPDATE, DELETE)
+export function run(db: SqlJsDatabase, sql: string, params: unknown[] = []): void {
+  db.run(sql, params);
 }
 
 // Type definitions for database rows

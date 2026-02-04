@@ -1,8 +1,8 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import type { Widgets } from 'blessed';
 import { getStoryCounts } from '../../../db/queries/stories.js';
 
-export function createPipelinePanel(screen: Widgets.Screen, db: Database.Database): Widgets.BoxElement {
+export function createPipelinePanel(screen: Widgets.Screen, db: Database): Widgets.BoxElement {
   const blessed = require('blessed');
 
   const box = blessed.box({
@@ -24,7 +24,7 @@ export function createPipelinePanel(screen: Widgets.Screen, db: Database.Databas
   return box;
 }
 
-export function updatePipelinePanel(box: Widgets.BoxElement, db: Database.Database): void {
+export function updatePipelinePanel(box: Widgets.BoxElement, db: Database): void {
   const counts = getStoryCounts(db);
 
   const stages = [

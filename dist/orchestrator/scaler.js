@@ -1,5 +1,5 @@
 import { getStoryPointsByTeam } from '../db/queries/stories.js';
-import { getAgentsByTeam, terminateAgent } from '../db/queries/agents.js';
+import { getAgentsByTeam, getTechLead, terminateAgent } from '../db/queries/agents.js';
 import { getAllTeams } from '../db/queries/teams.js';
 import { createLog } from '../db/queries/logs.js';
 import { killTmuxSession } from '../tmux/manager.js';
@@ -120,7 +120,7 @@ export class Scaler {
             }
         }
         // Add Tech Lead
-        const techLead = this.db.prepare(`SELECT * FROM agents WHERE type = 'tech_lead'`).get();
+        const techLead = getTechLead(this.db);
         if (techLead && techLead.status !== 'terminated') {
             totalAgents++;
             agentsByType['tech_lead'] = 1;

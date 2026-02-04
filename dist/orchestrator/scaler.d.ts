@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import type { ScalingConfig } from '../config/schema.js';
 export interface ScalerConfig {
     scaling: ScalingConfig;
@@ -14,7 +14,7 @@ export interface ScalingRecommendation {
 export declare class Scaler {
     private db;
     private config;
-    constructor(db: Database.Database, config: ScalerConfig);
+    constructor(db: Database, config: ScalerConfig);
     /**
      * Analyze current workload and recommend scaling actions
      */

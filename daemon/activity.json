@@ -1,1 +1,1 @@
-{"last_command":"bd --no-daemon --allow-stale list --json --status=in_progress --assignee=mayor","actor":"mayor","timestamp":"2026-02-04T07:44:34Z"}
+{"last_command":"bd sync --flush-only","actor":"mayor","timestamp":"2026-02-04T08:21:59Z"}
