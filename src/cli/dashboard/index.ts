@@ -1,5 +1,5 @@
 import blessed from 'blessed';
-import { getDatabase } from '../../db/client.js';
+import { getDatabase, type DatabaseClient } from '../../db/client.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { createAgentsPanel, updateAgentsPanel } from './panels/agents.js';
 import { createPipelinePanel, updatePipelinePanel } from './panels/pipeline.js';
@@ -18,7 +18,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   }
 
   const paths = getHivePaths(root);
-  const db = await getDatabase(paths.hiveDir);
+  let db: DatabaseClient = await getDatabase(paths.hiveDir);
   const refreshInterval = options.refreshInterval || 5000;
 
   // Create screen
@@ -67,8 +67,12 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   let focusIndex = 0;
   panels[focusIndex].focus();
 
-  // Refresh function
-  const refresh = () => {
+  // Refresh function - reloads database from disk to see changes from other processes
+  const refresh = async () => {
+    // Close old connection and reload from disk
+    db.db.close();
+    db = await getDatabase(paths.hiveDir);
+
     updateAgentsPanel(agentsPanel, db.db);
     updatePipelinePanel(pipelinePanel, db.db);
     updateActivityPanel(activityPanel, db.db);
@@ -82,7 +86,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   // Key bindings
   screen.key(['q', 'C-c'], () => {
     clearInterval(timer);
-    db.close();
+    db.db.close();
     screen.destroy();
     process.exit(0);
   });

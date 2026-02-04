@@ -12,7 +12,7 @@ export async function startDashboard(options = {}) {
         process.exit(1);
     }
     const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
+    let db = await getDatabase(paths.hiveDir);
     const refreshInterval = options.refreshInterval || 5000;
     // Create screen
     const screen = blessed.screen({
@@ -55,8 +55,11 @@ export async function startDashboard(options = {}) {
     const panels = [agentsPanel, activityPanel, escalationsPanel];
     let focusIndex = 0;
     panels[focusIndex].focus();
-    // Refresh function
-    const refresh = () => {
+    // Refresh function - reloads database from disk to see changes from other processes
+    const refresh = async () => {
+        // Close old connection and reload from disk
+        db.db.close();
+        db = await getDatabase(paths.hiveDir);
         updateAgentsPanel(agentsPanel, db.db);
         updatePipelinePanel(pipelinePanel, db.db);
         updateActivityPanel(activityPanel, db.db);
@@ -68,7 +71,7 @@ export async function startDashboard(options = {}) {
     // Key bindings
     screen.key(['q', 'C-c'], () => {
         clearInterval(timer);
-        db.close();
+        db.db.close();
         screen.destroy();
         process.exit(0);
     });
