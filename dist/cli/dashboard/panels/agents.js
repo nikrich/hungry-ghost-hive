@@ -28,6 +28,10 @@ export function createAgentsPanel(screen, db) {
 export function updateAgentsPanel(table, db) {
     const agents = getActiveAgents(db);
     const headers = ['ID', 'Type', 'Team', 'Status', 'Current Story'];
+    if (agents.length === 0) {
+        table.setData([headers, ['(no active agents)', '', '', '', '']]);
+        return;
+    }
     const rows = agents.map((agent) => [
         agent.id.substring(0, 20),
         agent.type.toUpperCase(),

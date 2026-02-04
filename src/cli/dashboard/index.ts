@@ -69,24 +69,28 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
 
   // Refresh function - reloads database from disk to see changes from other processes
   const refresh = async () => {
-    // Close old connection and reload from disk
-    db.db.close();
-    db = await getDatabase(paths.hiveDir);
+    try {
+      // Close old connection and reload from disk
+      db.db.close();
+      db = await getDatabase(paths.hiveDir);
 
-    updateAgentsPanel(agentsPanel, db.db);
-    updatePipelinePanel(pipelinePanel, db.db);
-    updateActivityPanel(activityPanel, db.db);
-    updateEscalationsPanel(escalationsPanel, db.db);
-    screen.render();
+      updateAgentsPanel(agentsPanel, db.db);
+      updatePipelinePanel(pipelinePanel, db.db);
+      updateActivityPanel(activityPanel, db.db);
+      updateEscalationsPanel(escalationsPanel, db.db);
+      screen.render();
+    } catch (err) {
+      // Silently continue - database might be temporarily locked
+    }
   };
 
-  // Auto-refresh
-  const timer = setInterval(refresh, refreshInterval);
+  // Auto-refresh - wrap in arrow function to handle async properly
+  const timer = setInterval(() => { refresh(); }, refreshInterval);
 
   // Key bindings
   screen.key(['q', 'C-c'], () => {
     clearInterval(timer);
-    db.db.close();
+    try { db.db.close(); } catch { /* ignore */ }
     screen.destroy();
     process.exit(0);
   });
