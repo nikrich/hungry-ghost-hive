@@ -9,4 +9,5 @@ export { storiesCommand } from './stories.js';
 export { escalationsCommand } from './escalations.js';
 export { resumeCommand } from './resume.js';
 export { assignCommand } from './assign.js';
+export { nukeCommand } from './nuke.js';
 //# sourceMappingURL=index.d.ts.map

@@ -14,6 +14,7 @@ import {
   escalationsCommand,
   resumeCommand,
   assignCommand,
+  nukeCommand,
 } from './cli/commands/index.js';
 
 const program = new Command();
@@ -41,6 +42,9 @@ program.addCommand(assignCommand);
 program.addCommand(agentsCommand);
 program.addCommand(storiesCommand);
 program.addCommand(escalationsCommand);
+
+// Destructive operations
+program.addCommand(nukeCommand);
 
 // Dashboard command
 program
