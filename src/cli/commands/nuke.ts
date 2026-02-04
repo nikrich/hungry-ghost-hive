@@ -58,6 +58,8 @@ export const nukeCommand = new Command('nuke')
           }
 
           // Delete in order to respect foreign keys
+          run(db.db, 'DELETE FROM pull_requests');
+          run(db.db, 'UPDATE escalations SET story_id = NULL');
           run(db.db, 'DELETE FROM story_dependencies');
           run(db.db, 'DELETE FROM stories');
           db.save();
@@ -138,7 +140,9 @@ export const nukeCommand = new Command('nuke')
             return;
           }
 
-          console.log(chalk.yellow(`\nThis will delete ${reqCount} requirements.`));
+          const storyCount = queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM stories')?.count || 0;
+
+          console.log(chalk.yellow(`\nThis will delete ${reqCount} requirements and ${storyCount} related stories.`));
           console.log(chalk.red('This action cannot be undone.\n'));
 
           if (!options.force) {
@@ -149,10 +153,15 @@ export const nukeCommand = new Command('nuke')
             }
           }
 
+          // Delete stories first (they reference requirements)
+          run(db.db, 'DELETE FROM pull_requests');
+          run(db.db, 'UPDATE escalations SET story_id = NULL');
+          run(db.db, 'DELETE FROM story_dependencies');
+          run(db.db, 'DELETE FROM stories');
           run(db.db, 'DELETE FROM requirements');
           db.save();
 
-          console.log(chalk.green(`\nDeleted ${reqCount} requirements.`));
+          console.log(chalk.green(`\nDeleted ${reqCount} requirements and ${storyCount} stories.`));
         } finally {
           db.close();
         }
