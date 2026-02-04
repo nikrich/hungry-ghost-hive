@@ -24,6 +24,11 @@ export declare class Scheduler {
      * Check if scaling is needed based on workload
      */
     checkScaling(): Promise<void>;
+    /**
+     * Check merge queue and spawn QA agents if needed
+     */
+    checkMergeQueue(): Promise<void>;
+    private spawnQA;
     private spawnSenior;
     private spawnIntermediate;
     private spawnJunior;

@@ -189,6 +189,8 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
             // Create PR record
             const pr = createPullRequest(this.db, {
                 storyId: story.id,
+                teamId: story.team_id,
+                branchName: story.branch_name || `feature/${story.id}`,
                 githubPrNumber: prNumber,
                 githubPrUrl: prUrl,
             });

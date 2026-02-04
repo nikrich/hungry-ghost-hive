@@ -77,11 +77,16 @@ export interface EscalationRow {
 export interface PullRequestRow {
     id: string;
     story_id: string | null;
+    team_id: string | null;
+    branch_name: string;
     github_pr_number: number | null;
     github_pr_url: string | null;
-    status: 'open' | 'review' | 'approved' | 'merged' | 'closed';
-    review_comments: string | null;
+    submitted_by: string | null;
+    reviewed_by: string | null;
+    status: 'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed';
+    review_notes: string | null;
     created_at: string;
     updated_at: string;
+    reviewed_at: string | null;
 }
 //# sourceMappingURL=client.d.ts.map

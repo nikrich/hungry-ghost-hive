@@ -2,6 +2,7 @@ import type { Database } from 'sql.js';
 import { getPlannedStories, updateStory, getStoryPointsByTeam, type StoryRow } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
+import { getMergeQueue } from '../db/queries/pull-requests.js';
 import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession } from '../tmux/manager.js';
@@ -175,6 +176,69 @@ export class Scheduler {
     }
   }
 
+  /**
+   * Check merge queue and spawn QA agents if needed
+   */
+  async checkMergeQueue(): Promise<void> {
+    const teams = getAllTeams(this.db);
+
+    for (const team of teams) {
+      const queue = getMergeQueue(this.db, team.id);
+      if (queue.length === 0) continue;
+
+      // Check if there's an active QA agent for this team
+      const qaAgents = getAgentsByTeam(this.db, team.id)
+        .filter(a => a.type === 'qa' && a.status !== 'terminated');
+
+      if (qaAgents.length === 0) {
+        // Spawn a QA agent
+        try {
+          await this.spawnQA(team.id, team.name, team.repo_path);
+          createLog(this.db, {
+            agentId: 'scheduler',
+            eventType: 'QA_SPAWNED',
+            message: `Spawned QA agent for team ${team.name} (${queue.length} PRs in queue)`,
+            metadata: { teamId: team.id, queueLength: queue.length },
+          });
+        } catch {
+          // Log error but continue
+        }
+      }
+    }
+  }
+
+  private async spawnQA(teamId: string, teamName: string, repoPath: string): Promise<AgentRow> {
+    const agent = createAgent(this.db, {
+      type: 'qa',
+      teamId,
+      model: 'sonnet',
+    });
+
+    const sessionName = generateSessionName('qa', teamName);
+    const workDir = `${this.config.rootDir}/${repoPath}`;
+
+    if (!await isTmuxSessionRunning(sessionName)) {
+      await spawnTmuxSession({
+        sessionName,
+        workDir,
+        command: `claude --dangerously-skip-permissions --model sonnet`,
+      });
+
+      // Wait for Claude to start, then send prompt
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const team = getTeamById(this.db, teamId);
+      const prompt = generateQAPrompt(teamName, team?.repo_url || '', repoPath, sessionName);
+      await sendToTmuxSession(sessionName, prompt);
+    }
+
+    updateAgent(this.db, agent.id, {
+      tmuxSession: sessionName,
+      status: 'idle',
+    });
+
+    return agent;
+  }
+
   private async spawnSenior(teamId: string, teamName: string, repoPath: string, index?: number): Promise<AgentRow> {
     const agent = createAgent(this.db, {
       type: 'senior',
@@ -340,8 +404,23 @@ hive my-stories complete <story-id>
 3. Implement the changes
 4. Run tests and linting
 5. Commit with a clear message referencing the story ID
-6. Run \`hive my-stories complete <story-id>\` to mark done
-7. Create a PR using \`gh pr create\`
+6. Create a PR using \`gh pr create\`
+7. Submit to merge queue for QA review:
+\`\`\`bash
+hive pr submit -b feature/<story-id>-<description> -s <story-id> --from ${sessionName}
+\`\`\`
+
+## Submitting PRs
+After creating your GitHub PR, submit it to the merge queue:
+\`\`\`bash
+gh pr create --title "Story <story-id>: <title>" --body "..."
+hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
+\`\`\`
+
+Check your PR status:
+\`\`\`bash
+hive pr queue
+\`\`\`
 
 ## Communication with Tech Lead
 If you have questions or need guidance, message the Tech Lead:
@@ -397,11 +476,21 @@ hive my-stories complete <story-id>
 
 ## Workflow
 1. Run \`hive my-stories ${sessionName}\` to see your assigned work
-2. Create a feature branch for your work
+2. Create a feature branch: \`git checkout -b feature/<story-id>-<description>\`
 3. Implement the changes
 4. Run tests and linting
-5. Run \`hive my-stories complete <story-id>\` when done
-6. Commit and create a PR
+5. Commit and create a PR using \`gh pr create\`
+6. Submit to merge queue:
+\`\`\`bash
+hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
+\`\`\`
+
+## Submitting PRs
+After creating your GitHub PR:
+\`\`\`bash
+gh pr create --title "Story <story-id>: <title>" --body "..."
+hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
+\`\`\`
 
 ## Communication
 If you have questions, message your Senior or the Tech Lead:
@@ -421,7 +510,7 @@ hive msg outbox ${sessionName}
 - Keep commits focused and clear
 - Message Senior or Tech Lead if blocked
 
-Start by exploring the codebase, then check the stories table for your assignments.`;
+Start by exploring the codebase, then run \`hive my-stories ${sessionName}\` to see your assignments.`;
 }
 
 function generateJuniorPrompt(teamName: string, repoUrl: string, repoPath: string, sessionName: string): string {
@@ -458,11 +547,21 @@ hive my-stories complete <story-id>
 
 ## Workflow
 1. Run \`hive my-stories ${sessionName}\` to see your assigned work
-2. Create a feature branch for your work
+2. Create a feature branch: \`git checkout -b feature/<story-id>-<description>\`
 3. Implement the changes carefully
 4. Run tests before committing
-5. Run \`hive my-stories complete <story-id>\` when done
-6. Create a PR for review
+5. Commit and create a PR using \`gh pr create\`
+6. Submit to merge queue:
+\`\`\`bash
+hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
+\`\`\`
+
+## Submitting PRs
+After creating your GitHub PR:
+\`\`\`bash
+gh pr create --title "Story <story-id>: <title>" --body "..."
+hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
+\`\`\`
 
 ## Communication
 If you have questions, message your Senior or the Tech Lead:
@@ -483,4 +582,84 @@ hive msg outbox ${sessionName}
 - Keep changes small and focused
 
 Start by exploring the codebase to understand how things work, then run \`hive my-stories ${sessionName}\` to see your assignments.`;
+}
+
+function generateQAPrompt(teamName: string, repoUrl: string, repoPath: string, sessionName: string): string {
+  return `You are a QA Engineer on Team ${teamName}.
+Your tmux session: ${sessionName}
+
+## Your Repository
+- Local path: ${repoPath}
+- Remote: ${repoUrl}
+
+## Your Responsibilities
+1. Review PRs in the merge queue
+2. Check for merge conflicts
+3. Run tests and verify functionality
+4. Check code quality and standards
+5. Approve and merge good PRs
+6. Reject PRs that need fixes
+
+## Merge Queue Workflow
+
+### Check the merge queue:
+\`\`\`bash
+hive pr queue
+\`\`\`
+
+### Claim the next PR for review:
+\`\`\`bash
+hive pr review --from ${sessionName}
+\`\`\`
+
+### View PR details:
+\`\`\`bash
+hive pr show <pr-id>
+\`\`\`
+
+### After reviewing:
+
+**If the PR is good - approve and merge:**
+\`\`\`bash
+# First, merge via GitHub CLI
+gh pr merge <pr-number> --merge
+
+# Then mark as merged in Hive
+hive pr approve <pr-id> --from ${sessionName}
+\`\`\`
+
+**If the PR has issues - reject with feedback:**
+\`\`\`bash
+hive pr reject <pr-id> --reason "Description of issues" --from ${sessionName}
+
+# Notify the developer
+hive msg send <developer-session> "Your PR was rejected: <reason>" --from ${sessionName}
+\`\`\`
+
+## Review Checklist
+For each PR, verify:
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+2. **Tests pass** - Run the project's test suite
+3. **Code quality** - Check for code standards, no obvious bugs
+4. **Functionality** - Test that the changes work as expected
+5. **Story requirements** - Verify acceptance criteria are met
+
+## Communication
+If you need clarification from a developer:
+\`\`\`bash
+hive msg send <developer-session> "Your question" --from ${sessionName}
+\`\`\`
+
+Check for replies:
+\`\`\`bash
+hive msg outbox ${sessionName}
+\`\`\`
+
+## Guidelines
+- Review PRs in queue order (first in, first out)
+- Be thorough but efficient
+- Provide clear feedback when rejecting
+- Ensure main branch stays stable
+
+Start by running \`hive pr queue\` to see PRs waiting for review.`;
 }

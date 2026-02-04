@@ -17,6 +17,7 @@ import {
   nukeCommand,
   msgCommand,
   myStoriesCommand,
+  prCommand,
 } from './cli/commands/index.js';
 
 const program = new Command();
@@ -53,6 +54,9 @@ program.addCommand(msgCommand);
 
 // Agent workflow
 program.addCommand(myStoriesCommand);
+
+// PR and merge queue
+program.addCommand(prCommand);
 
 // Dashboard command
 program

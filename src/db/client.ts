@@ -111,16 +111,21 @@ CREATE TABLE IF NOT EXISTS escalations (
     resolved_at TIMESTAMP
 );
 
--- Pull Requests
+-- Pull Requests / Merge Queue
 CREATE TABLE IF NOT EXISTS pull_requests (
     id TEXT PRIMARY KEY,
     story_id TEXT REFERENCES stories(id),
+    team_id TEXT REFERENCES teams(id),
+    branch_name TEXT NOT NULL,
     github_pr_number INTEGER,
     github_pr_url TEXT,
-    status TEXT DEFAULT 'open' CHECK (status IN ('open', 'review', 'approved', 'merged', 'closed')),
-    review_comments TEXT,
+    submitted_by TEXT,
+    reviewed_by TEXT,
+    status TEXT DEFAULT 'queued' CHECK (status IN ('queued', 'reviewing', 'approved', 'merged', 'rejected', 'closed')),
+    review_notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TIMESTAMP
 );
 
 -- Migrations tracking
@@ -317,10 +322,15 @@ export interface EscalationRow {
 export interface PullRequestRow {
   id: string;
   story_id: string | null;
+  team_id: string | null;
+  branch_name: string;
   github_pr_number: number | null;
   github_pr_url: string | null;
-  status: 'open' | 'review' | 'approved' | 'merged' | 'closed';
-  review_comments: string | null;
+  submitted_by: string | null;
+  reviewed_by: string | null;
+  status: 'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed';
+  review_notes: string | null;
   created_at: string;
   updated_at: string;
+  reviewed_at: string | null;
 }

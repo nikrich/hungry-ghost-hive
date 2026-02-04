@@ -34,7 +34,13 @@ export type EventType =
   | 'ESCALATION_CREATED'
   | 'ESCALATION_RESOLVED'
   | 'TEAM_SCALED_UP'
-  | 'TEAM_SCALED_DOWN';
+  | 'TEAM_SCALED_DOWN'
+  | 'QA_SPAWNED'
+  | 'PR_SUBMITTED'
+  | 'PR_REVIEW_STARTED'
+  | 'PR_APPROVED'
+  | 'PR_MERGED'
+  | 'PR_REJECTED';
 
 export interface CreateLogInput {
   agentId: string;
