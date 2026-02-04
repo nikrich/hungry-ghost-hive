@@ -1,4 +1,4 @@
-# Hive: AI Agent Orchestrator Specification
+# Hive: AI Agent Orchestrator Specification 
 
 ## Overview
 
