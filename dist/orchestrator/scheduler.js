@@ -165,7 +165,7 @@ export class Scheduler {
             await spawnTmuxSession({
                 sessionName,
                 workDir,
-                command: `claude --dangerously-skip-permissions`,
+                command: `claude --dangerously-skip-permissions --model sonnet`,
             });
             // Wait for Claude to start, then send prompt
             await new Promise(resolve => setTimeout(resolve, 5000));
@@ -193,7 +193,7 @@ export class Scheduler {
             await spawnTmuxSession({
                 sessionName,
                 workDir,
-                command: `claude --dangerously-skip-permissions`,
+                command: `claude --dangerously-skip-permissions --model haiku`,
             });
             // Wait for Claude to start, then send prompt
             await new Promise(resolve => setTimeout(resolve, 5000));
@@ -217,10 +217,11 @@ export class Scheduler {
         const sessionName = generateSessionName('junior', teamName, index);
         const workDir = `${this.config.rootDir}/${repoPath}`;
         if (!await isTmuxSessionRunning(sessionName)) {
+            // Note: Spec calls for gpt-4o-mini but using haiku until OpenAI integration is added
             await spawnTmuxSession({
                 sessionName,
                 workDir,
-                command: `claude --dangerously-skip-permissions`,
+                command: `claude --dangerously-skip-permissions --model haiku`,
             });
             // Wait for Claude to start, then send prompt
             await new Promise(resolve => setTimeout(resolve, 5000));

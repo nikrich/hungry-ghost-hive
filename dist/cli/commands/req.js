@@ -91,7 +91,7 @@ export const reqCommand = new Command('req')
             await spawnTmuxSession({
                 sessionName,
                 workDir: root,
-                command: `claude --dangerously-skip-permissions`,
+                command: `claude --dangerously-skip-permissions --model opus`,
             });
             // Wait for Claude to fully start, then send the planning prompt
             await new Promise(resolve => setTimeout(resolve, 5000));
