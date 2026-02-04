@@ -4,6 +4,7 @@ import readline from 'readline';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
 import { queryOne, run } from '../../db/client.js';
+import { killAllHiveSessions } from '../../tmux/manager.js';
 
 async function confirm(message: string): Promise<boolean> {
   const rl = readline.createInterface({
@@ -69,7 +70,7 @@ export const nukeCommand = new Command('nuke')
   )
   .addCommand(
     new Command('agents')
-      .description('Delete all agents')
+      .description('Kill all agent tmux sessions and delete from database')
       .option('--force', 'Skip confirmation')
       .action(async (options: { force?: boolean }) => {
         const root = findHiveRoot();
@@ -85,22 +86,22 @@ export const nukeCommand = new Command('nuke')
           const count = queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM agents');
           const agentCount = count?.count || 0;
 
-          if (agentCount === 0) {
-            console.log(chalk.yellow('No agents to delete.'));
-            return;
-          }
-
-          console.log(chalk.yellow(`\nThis will delete ${agentCount} agents and their logs.`));
+          console.log(chalk.yellow(`\nThis will kill all hive tmux sessions and delete ${agentCount} agents.`));
           console.log(chalk.red('This action cannot be undone.\n'));
 
           if (!options.force) {
-            const confirmed = await confirm(chalk.bold('Are you sure you want to delete all agents?'));
+            const confirmed = await confirm(chalk.bold('Are you sure you want to kill all agents?'));
             if (!confirmed) {
               console.log(chalk.gray('Aborted.'));
               return;
             }
           }
 
+          // Kill all hive tmux sessions
+          const killed = await killAllHiveSessions();
+          console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
+
+          // Delete from database
           run(db.db, 'DELETE FROM agent_logs');
           run(db.db, 'DELETE FROM escalations');
           run(db.db, 'DELETE FROM agents');
@@ -113,8 +114,8 @@ export const nukeCommand = new Command('nuke')
       })
   )
   .addCommand(
-    new Command('all')
-      .description('Delete all data (stories, agents, requirements)')
+    new Command('requirements')
+      .description('Delete all requirements')
       .option('--force', 'Skip confirmation')
       .action(async (options: { force?: boolean }) => {
         const root = findHiveRoot();
@@ -127,21 +128,69 @@ export const nukeCommand = new Command('nuke')
         const db = await getDatabase(paths.hiveDir);
 
         try {
-          console.log(chalk.red('\nThis will delete ALL data:'));
-          console.log(chalk.yellow('  - All stories and dependencies'));
-          console.log(chalk.yellow('  - All agents and logs'));
-          console.log(chalk.yellow('  - All requirements'));
-          console.log(chalk.yellow('  - All escalations'));
-          console.log(chalk.yellow('  - All pull requests'));
-          console.log(chalk.red('\nThis action cannot be undone.\n'));
+          const count = queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM requirements');
+          const reqCount = count?.count || 0;
+
+          if (reqCount === 0) {
+            console.log(chalk.yellow('No requirements to delete.'));
+            return;
+          }
+
+          console.log(chalk.yellow(`\nThis will delete ${reqCount} requirements.`));
+          console.log(chalk.red('This action cannot be undone.\n'));
 
           if (!options.force) {
-            const confirmed = await confirm(chalk.bold('Are you sure you want to delete ALL data?'));
+            const confirmed = await confirm(chalk.bold('Are you sure you want to delete all requirements?'));
             if (!confirmed) {
               console.log(chalk.gray('Aborted.'));
               return;
             }
           }
+
+          run(db.db, 'DELETE FROM requirements');
+          db.save();
+
+          console.log(chalk.green(`\nDeleted ${reqCount} requirements.`));
+        } finally {
+          db.close();
+        }
+      })
+  )
+  .addCommand(
+    new Command('all')
+      .description('Kill all agents and delete all data')
+      .option('--force', 'Skip confirmation')
+      .action(async (options: { force?: boolean }) => {
+        const root = findHiveRoot();
+        if (!root) {
+          console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
+          process.exit(1);
+        }
+
+        const paths = getHivePaths(root);
+        const db = await getDatabase(paths.hiveDir);
+
+        try {
+          console.log(chalk.red('\nThis will:'));
+          console.log(chalk.yellow('  - Kill all hive tmux sessions'));
+          console.log(chalk.yellow('  - Delete all stories and dependencies'));
+          console.log(chalk.yellow('  - Delete all agents and logs'));
+          console.log(chalk.yellow('  - Delete all requirements'));
+          console.log(chalk.yellow('  - Delete all escalations'));
+          console.log(chalk.yellow('  - Delete all pull requests'));
+          console.log(chalk.red('\nThis action cannot be undone.\n'));
+
+          if (!options.force) {
+            const confirmed = await confirm(chalk.bold('Are you sure you want to nuke EVERYTHING?'));
+            if (!confirmed) {
+              console.log(chalk.gray('Aborted.'));
+              return;
+            }
+          }
+
+          // Kill all hive tmux sessions first
+          const killed = await killAllHiveSessions();
+          console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
 
           // Delete in order to respect foreign keys
           run(db.db, 'DELETE FROM pull_requests');
