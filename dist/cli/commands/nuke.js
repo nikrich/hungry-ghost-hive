@@ -83,6 +83,8 @@ export const nukeCommand = new Command('nuke')
         // Kill all hive tmux sessions
         const killed = await killAllHiveSessions();
         console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
+        // Clear agent references from stories first
+        run(db.db, 'UPDATE stories SET assigned_agent_id = NULL');
         // Delete from database
         run(db.db, 'DELETE FROM agent_logs');
         run(db.db, 'DELETE FROM escalations');
@@ -159,6 +161,8 @@ export const nukeCommand = new Command('nuke')
         // Kill all hive tmux sessions first
         const killed = await killAllHiveSessions();
         console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
+        // Clear foreign key references first
+        run(db.db, 'UPDATE stories SET assigned_agent_id = NULL');
         // Delete in order to respect foreign keys
         run(db.db, 'DELETE FROM pull_requests');
         run(db.db, 'DELETE FROM escalations');
