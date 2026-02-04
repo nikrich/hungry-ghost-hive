@@ -1,8 +1,8 @@
 # Dependencies
 node_modules/
 
-# Build output
-dist/
+# Build output (dist/ is committed for GitHub install support)
+# dist/
 
 # Environment variables
 .env

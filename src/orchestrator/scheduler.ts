@@ -68,7 +68,7 @@ export class Scheduler {
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnJunior(teamId, team.name, team.repo_path);
-            } catch (err) {
+            } catch {
               // Fall back to Intermediate or Senior
               targetAgent = agents.find(a => a.type === 'intermediate' && a.status === 'idle') || senior;
             }
@@ -79,7 +79,7 @@ export class Scheduler {
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnIntermediate(teamId, team.name, team.repo_path);
-            } catch (err) {
+            } catch {
               // Fall back to Senior
               targetAgent = senior;
             }
@@ -166,7 +166,7 @@ export class Scheduler {
               message: `Spawned additional Senior for team ${team.name}`,
               metadata: { teamId: team.id, totalSeniors: currentSeniors + i + 1 },
             });
-          } catch (err) {
+          } catch {
             // Log error but continue
           }
         }
