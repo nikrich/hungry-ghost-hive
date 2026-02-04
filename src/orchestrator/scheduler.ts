@@ -188,7 +188,7 @@ export class Scheduler {
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --resume ${sessionName}`,
+        command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
       });
     }
 
@@ -216,7 +216,7 @@ export class Scheduler {
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --resume ${sessionName}`,
+        command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
       });
     }
 
@@ -244,7 +244,7 @@ export class Scheduler {
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --resume ${sessionName}`,
+        command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
       });
     }
 

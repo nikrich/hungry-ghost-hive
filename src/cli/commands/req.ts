@@ -191,9 +191,14 @@ The SQLite database is at .hive/hive.db
 
 **IMPORTANT:** Work directly in the team repositories under \`repos/\`. Each team's codebase is a git submodule you can explore, modify, and commit to. Use \`gh\` CLI to interact with GitHub PRs and issues.
 
-When done planning, update the requirement status to 'planned' and each story status to 'estimated' with complexity scores.
+## Workflow
 
-Then coordinate with Senior agents to begin implementation.
+1. **Analyze the requirement** - Explore the affected repos to understand what needs to change
+2. **Create stories in the database** - Insert into the stories table with team_id, complexity_score, and status='estimated'
+3. **Run \`hive assign\`** - This spawns Senior agents for each team and assigns stories to them
+4. **Monitor progress** - Use \`hive status\` and \`hive agents list\` to track work
+
+When done planning, update the requirement status to 'planned' and run \`hive assign\` to spawn Senior developers who will implement the stories.
 `;
 }
 

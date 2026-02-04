@@ -8,3 +8,4 @@ export { agentsCommand } from './agents.js';
 export { storiesCommand } from './stories.js';
 export { escalationsCommand } from './escalations.js';
 export { resumeCommand } from './resume.js';
+export { assignCommand } from './assign.js';

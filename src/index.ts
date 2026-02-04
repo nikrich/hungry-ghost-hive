@@ -13,6 +13,7 @@ import {
   storiesCommand,
   escalationsCommand,
   resumeCommand,
+  assignCommand,
 } from './cli/commands/index.js';
 
 const program = new Command();
@@ -34,6 +35,7 @@ program.addCommand(teamsCommand);
 program.addCommand(reqCommand);
 program.addCommand(statusCommand);
 program.addCommand(resumeCommand);
+program.addCommand(assignCommand);
 
 // Entity management
 program.addCommand(agentsCommand);

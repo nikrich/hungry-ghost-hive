@@ -165,7 +165,7 @@ export class Scheduler {
             await spawnTmuxSession({
                 sessionName,
                 workDir,
-                command: `claude --resume ${sessionName}`,
+                command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
             });
         }
         updateAgent(this.db, agent.id, {
@@ -187,7 +187,7 @@ export class Scheduler {
             await spawnTmuxSession({
                 sessionName,
                 workDir,
-                command: `claude --resume ${sessionName}`,
+                command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
             });
         }
         updateAgent(this.db, agent.id, {
@@ -209,7 +209,7 @@ export class Scheduler {
             await spawnTmuxSession({
                 sessionName,
                 workDir,
-                command: `claude --resume ${sessionName}`,
+                command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
             });
         }
         updateAgent(this.db, agent.id, {
