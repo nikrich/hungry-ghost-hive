@@ -58,9 +58,13 @@ export async function startDashboard(options = {}) {
     // Refresh function - reloads database from disk to see changes from other processes
     const refresh = async () => {
         try {
-            // Close old connection and reload from disk
-            db.db.close();
-            db = await getDatabase(paths.hiveDir);
+            // Get new database connection first, then close old one
+            const newDb = await getDatabase(paths.hiveDir);
+            try {
+                db.db.close();
+            }
+            catch { /* ignore close errors */ }
+            db = newDb;
             updateAgentsPanel(agentsPanel, db.db);
             updatePipelinePanel(pipelinePanel, db.db);
             updateActivityPanel(activityPanel, db.db);
@@ -68,7 +72,8 @@ export async function startDashboard(options = {}) {
             screen.render();
         }
         catch (err) {
-            // Silently continue - database might be temporarily locked
+            // Log error to help debug - will show in terminal after dashboard exits
+            process.stderr.write(`Dashboard refresh error: ${err}\n`);
         }
     };
     // Auto-refresh - wrap in arrow function to handle async properly
@@ -96,7 +101,8 @@ export async function startDashboard(options = {}) {
         panels[focusIndex].focus();
         screen.render();
     });
-    // Initial render
+    // Initial refresh and render
+    await refresh();
     screen.render();
 }
 //# sourceMappingURL=index.js.map
