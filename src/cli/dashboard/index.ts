@@ -1,6 +1,11 @@
 import blessed from 'blessed';
+import { appendFileSync } from 'fs';
 import { getDatabase, type DatabaseClient } from '../../db/client.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+
+function debugLog(msg: string) {
+  appendFileSync('/tmp/hive-dashboard-debug.log', `${new Date().toISOString()} ${msg}\n`);
+}
 import { createAgentsPanel, updateAgentsPanel } from './panels/agents.js';
 import { createPipelinePanel, updatePipelinePanel } from './panels/pipeline.js';
 import { createActivityPanel, updateActivityPanel } from './panels/activity.js';
@@ -18,6 +23,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   }
 
   const paths = getHivePaths(root);
+  debugLog(`Dashboard starting - root: ${root}, hiveDir: ${paths.hiveDir}`);
   let db: DatabaseClient = await getDatabase(paths.hiveDir);
   const refreshInterval = options.refreshInterval || 5000;
 
@@ -69,6 +75,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
 
   // Refresh function - reloads database from disk to see changes from other processes
   const refresh = async () => {
+    debugLog(`Refresh called - reloading from ${paths.hiveDir}`);
     try {
       // Get new database connection first, then close old one
       const newDb = await getDatabase(paths.hiveDir);
@@ -80,8 +87,9 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
       updateActivityPanel(activityPanel, db.db);
       updateEscalationsPanel(escalationsPanel, db.db);
       screen.render();
+      debugLog('Refresh complete');
     } catch (err) {
-      // Log error to help debug - will show in terminal after dashboard exits
+      debugLog(`Refresh error: ${err}`);
       process.stderr.write(`Dashboard refresh error: ${err}\n`);
     }
   };
