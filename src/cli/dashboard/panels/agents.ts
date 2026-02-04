@@ -1,9 +1,8 @@
 import type { Database } from 'sql.js';
-import type { Widgets } from 'blessed';
+import blessed, { type Widgets } from 'blessed';
 import { getActiveAgents, type AgentRow } from '../../../db/queries/agents.js';
 
 export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets.ListTableElement {
-  const blessed = require('blessed');
 
   const table = blessed.listtable({
     parent: screen,

@@ -1,6 +1,6 @@
+import blessed from 'blessed';
 import { getStoryCounts } from '../../../db/queries/stories.js';
 export function createPipelinePanel(screen, db) {
-    const blessed = require('blessed');
     const box = blessed.box({
         parent: screen,
         top: '30%+1',

@@ -1,9 +1,8 @@
 import type { Database } from 'sql.js';
-import type { Widgets } from 'blessed';
+import blessed, { type Widgets } from 'blessed';
 import { getPendingEscalations, type EscalationRow } from '../../../db/queries/escalations.js';
 
 export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
-  const blessed = require('blessed');
 
   const list = blessed.list({
     parent: screen,

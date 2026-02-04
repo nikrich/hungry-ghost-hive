@@ -1,6 +1,6 @@
+import blessed from 'blessed';
 import { getRecentLogs } from '../../../db/queries/logs.js';
 export function createActivityPanel(screen, db) {
-    const blessed = require('blessed');
     const box = blessed.box({
         parent: screen,
         top: '30%+6',

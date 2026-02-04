@@ -1,6 +1,6 @@
+import blessed from 'blessed';
 import { getPendingEscalations } from '../../../db/queries/escalations.js';
 export function createEscalationsPanel(screen, db) {
-    const blessed = require('blessed');
     const list = blessed.list({
         parent: screen,
         top: '30%+6',

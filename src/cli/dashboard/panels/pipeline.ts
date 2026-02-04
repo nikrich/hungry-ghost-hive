@@ -1,9 +1,8 @@
 import type { Database } from 'sql.js';
-import type { Widgets } from 'blessed';
+import blessed, { type Widgets } from 'blessed';
 import { getStoryCounts } from '../../../db/queries/stories.js';
 
 export function createPipelinePanel(screen: Widgets.Screen, db: Database): Widgets.BoxElement {
-  const blessed = require('blessed');
 
   const box = blessed.box({
     parent: screen,

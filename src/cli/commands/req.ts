@@ -8,7 +8,7 @@ import { createRequirement, updateRequirement } from '../../db/queries/requireme
 import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.js';
 import { getAllTeams } from '../../db/queries/teams.js';
 import { createLog } from '../../db/queries/logs.js';
-import { spawnTmuxSession, isTmuxAvailable } from '../../tmux/manager.js';
+import { spawnTmuxSession, isTmuxAvailable, sendToTmuxSession } from '../../tmux/manager.js';
 
 export const reqCommand = new Command('req')
   .description('Submit a requirement')
@@ -105,8 +105,12 @@ export const reqCommand = new Command('req')
         await spawnTmuxSession({
           sessionName,
           workDir: root,
-          command: generateClaudeCommand(sessionName, techLeadPrompt),
+          command: `claude --resume ${sessionName}`,
         });
+
+        // Wait for Claude to start, then send the planning prompt
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await sendToTmuxSession(sessionName, techLeadPrompt);
 
         updateAgent(db.db, techLead.id, { tmuxSession: sessionName });
 
@@ -186,8 +190,3 @@ Then coordinate with Senior agents to begin implementation.
 `;
 }
 
-function generateClaudeCommand(sessionName: string, _prompt: string): string {
-  // For now, we'll use claude code with a resume session
-  // The prompt will be passed via the initial message
-  return `claude --resume ${sessionName}`;
-}

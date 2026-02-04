@@ -1,6 +1,6 @@
+import blessed from 'blessed';
 import { getActiveAgents } from '../../../db/queries/agents.js';
 export function createAgentsPanel(screen, db) {
-    const blessed = require('blessed');
     const table = blessed.listtable({
         parent: screen,
         top: 1,
