@@ -116,7 +116,18 @@ export async function killAllHiveSessions(): Promise<number> {
 }
 
 export async function sendToTmuxSession(sessionName: string, text: string): Promise<void> {
-  await execa('tmux', ['send-keys', '-t', sessionName, text, 'Enter']);
+  if (text.includes('\n')) {
+    // For multi-line text, use tmux buffer to paste correctly
+    // Load text into a tmux buffer
+    await execa('tmux', ['load-buffer', '-'], { input: text });
+    // Paste the buffer into the session
+    await execa('tmux', ['paste-buffer', '-t', sessionName]);
+    // Send Enter to submit
+    await execa('tmux', ['send-keys', '-t', sessionName, 'Enter']);
+  } else {
+    // For single-line text, use send-keys directly
+    await execa('tmux', ['send-keys', '-t', sessionName, text, 'Enter']);
+  }
 }
 
 export async function captureTmuxPane(sessionName: string, lines = 100): Promise<string> {
