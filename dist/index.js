@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { initCommand, configCommand, addRepoCommand, teamsCommand, reqCommand, statusCommand, agentsCommand, storiesCommand, escalationsCommand, resumeCommand, assignCommand, nukeCommand, msgCommand, } from './cli/commands/index.js';
+import { initCommand, configCommand, addRepoCommand, teamsCommand, reqCommand, statusCommand, agentsCommand, storiesCommand, escalationsCommand, resumeCommand, assignCommand, nukeCommand, msgCommand, myStoriesCommand, } from './cli/commands/index.js';
 const program = new Command();
 program
     .name('hive')
@@ -26,6 +26,8 @@ program.addCommand(escalationsCommand);
 program.addCommand(nukeCommand);
 // Communication
 program.addCommand(msgCommand);
+// Agent workflow
+program.addCommand(myStoriesCommand);
 // Dashboard command
 program
     .command('dashboard')

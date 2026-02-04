@@ -310,13 +310,35 @@ Your tmux session: ${sessionName}
 ## Pending Stories for Your Team
 ${storyList || 'No stories assigned yet.'}
 
+## Finding Your Stories
+Check your assigned stories:
+\`\`\`bash
+hive my-stories ${sessionName}
+\`\`\`
+
+See all team stories:
+\`\`\`bash
+hive my-stories ${sessionName} --all
+\`\`\`
+
+Claim a story:
+\`\`\`bash
+hive my-stories claim <story-id> --session ${sessionName}
+\`\`\`
+
+Mark story complete:
+\`\`\`bash
+hive my-stories complete <story-id>
+\`\`\`
+
 ## Workflow
-1. Pick the highest priority story from the list above
+1. Run \`hive my-stories ${sessionName}\` to see your assigned work
 2. Create a feature branch: \`git checkout -b feature/<story-id>-<short-description>\`
 3. Implement the changes
 4. Run tests and linting
 5. Commit with a clear message referencing the story ID
-6. Create a PR using \`gh pr create\`
+6. Run \`hive my-stories complete <story-id>\` to mark done
+7. Create a PR using \`gh pr create\`
 
 ## Communication with Tech Lead
 If you have questions or need guidance, message the Tech Lead:
@@ -354,12 +376,29 @@ Your tmux session: ${sessionName}
 3. Follow team coding standards
 4. Ask Senior for help if stuck
 
+## Finding Your Stories
+Check your assigned stories:
+\`\`\`bash
+hive my-stories ${sessionName}
+\`\`\`
+
+Claim a story:
+\`\`\`bash
+hive my-stories claim <story-id> --session ${sessionName}
+\`\`\`
+
+Mark story complete:
+\`\`\`bash
+hive my-stories complete <story-id>
+\`\`\`
+
 ## Workflow
-1. Check for assigned stories in the Hive database
+1. Run \`hive my-stories ${sessionName}\` to see your assigned work
 2. Create a feature branch for your work
 3. Implement the changes
 4. Run tests and linting
-5. Commit and create a PR
+5. Run \`hive my-stories complete <story-id>\` when done
+6. Commit and create a PR
 
 ## Communication
 If you have questions, message your Senior or the Tech Lead:
@@ -398,6 +437,30 @@ Your tmux session: ${sessionName}
 3. Write tests for your changes
 4. Ask for help when needed
 
+## Finding Your Stories
+Check your assigned stories:
+\`\`\`bash
+hive my-stories ${sessionName}
+\`\`\`
+
+Claim a story:
+\`\`\`bash
+hive my-stories claim <story-id> --session ${sessionName}
+\`\`\`
+
+Mark story complete:
+\`\`\`bash
+hive my-stories complete <story-id>
+\`\`\`
+
+## Workflow
+1. Run \`hive my-stories ${sessionName}\` to see your assigned work
+2. Create a feature branch for your work
+3. Implement the changes carefully
+4. Run tests before committing
+5. Run \`hive my-stories complete <story-id>\` when done
+6. Create a PR for review
+
 ## Communication
 If you have questions, message your Senior or the Tech Lead:
 \`\`\`bash
@@ -410,18 +473,11 @@ Check for replies:
 hive msg outbox ${sessionName}
 \`\`\`
 
-## Workflow
-1. Check for assigned stories in the Hive database
-2. Create a feature branch for your work
-3. Implement the changes carefully
-4. Run tests before committing
-5. Create a PR for review
-
 ## Guidelines
 - Follow existing patterns exactly
 - Ask questions if requirements are unclear
 - Test thoroughly before submitting
 - Keep changes small and focused
 
-Start by exploring the codebase to understand how things work, then check for your assigned stories.`;
+Start by exploring the codebase to understand how things work, then run \`hive my-stories ${sessionName}\` to see your assignments.`;
 }

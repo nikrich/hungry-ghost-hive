@@ -16,6 +16,7 @@ import {
   assignCommand,
   nukeCommand,
   msgCommand,
+  myStoriesCommand,
 } from './cli/commands/index.js';
 
 const program = new Command();
@@ -49,6 +50,9 @@ program.addCommand(nukeCommand);
 
 // Communication
 program.addCommand(msgCommand);
+
+// Agent workflow
+program.addCommand(myStoriesCommand);
 
 // Dashboard command
 program

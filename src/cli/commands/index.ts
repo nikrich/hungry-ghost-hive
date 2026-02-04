@@ -11,3 +11,4 @@ export { resumeCommand } from './resume.js';
 export { assignCommand } from './assign.js';
 export { nukeCommand } from './nuke.js';
 export { msgCommand } from './msg.js';
+export { myStoriesCommand } from './my-stories.js';
