@@ -48,19 +48,24 @@ export async function spawnTmuxSession(options) {
     if (await isTmuxSessionRunning(sessionName)) {
         await killTmuxSession(sessionName);
     }
-    // Create new detached session
+    // Create new detached session with default shell
     const args = [
         'new-session',
         '-d',
         '-s', sessionName,
         '-c', workDir,
-        command,
     ];
     const execaOptions = {};
     if (env) {
         execaOptions.env = { ...process.env, ...env };
     }
     await execa('tmux', args, execaOptions);
+    // Small delay to let shell initialize
+    await new Promise(resolve => setTimeout(resolve, 500));
+    // Send the command to the session
+    if (command) {
+        await execa('tmux', ['send-keys', '-t', sessionName, command, 'Enter']);
+    }
 }
 export async function killTmuxSession(sessionName) {
     try {

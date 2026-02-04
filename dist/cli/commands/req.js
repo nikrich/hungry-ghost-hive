@@ -91,10 +91,10 @@ export const reqCommand = new Command('req')
             await spawnTmuxSession({
                 sessionName,
                 workDir: root,
-                command: `claude --resume ${sessionName}`,
+                command: `claude`,
             });
-            // Wait for Claude to start, then send the planning prompt
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Wait for Claude to fully start, then send the planning prompt
+            await new Promise(resolve => setTimeout(resolve, 5000));
             await sendToTmuxSession(sessionName, techLeadPrompt);
             updateAgent(db.db, techLead.id, { tmuxSession: sessionName });
             createLog(db.db, {
