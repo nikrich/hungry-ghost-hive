@@ -229,7 +229,7 @@ export class Scheduler {
       // Wait for Claude to start, then send prompt
       await new Promise(resolve => setTimeout(resolve, 5000));
       const team = getTeamById(this.db, teamId);
-      const prompt = generateIntermediatePrompt(teamName, team?.repo_url || '', repoPath);
+      const prompt = generateIntermediatePrompt(teamName, team?.repo_url || '', repoPath, sessionName);
       await sendToTmuxSession(sessionName, prompt);
     }
 
@@ -264,7 +264,7 @@ export class Scheduler {
       // Wait for Claude to start, then send prompt
       await new Promise(resolve => setTimeout(resolve, 5000));
       const team = getTeamById(this.db, teamId);
-      const prompt = generateJuniorPrompt(teamName, team?.repo_url || '', repoPath);
+      const prompt = generateJuniorPrompt(teamName, team?.repo_url || '', repoPath, sessionName);
       await sendToTmuxSession(sessionName, prompt);
     }
 
@@ -292,7 +292,10 @@ function generateSeniorPrompt(teamName: string, repoUrl: string, repoPath: strin
     `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'})\n  ${s.description}`
   ).join('\n\n');
 
+  const sessionName = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+
   return `You are a Senior Developer on Team ${teamName}.
+Your tmux session: ${sessionName}
 
 ## Your Repository
 - Local path: ${repoPath}
@@ -315,17 +318,31 @@ ${storyList || 'No stories assigned yet.'}
 5. Commit with a clear message referencing the story ID
 6. Create a PR using \`gh pr create\`
 
+## Communication with Tech Lead
+If you have questions or need guidance, message the Tech Lead:
+\`\`\`bash
+hive msg send hive-tech-lead "Your question here" --from ${sessionName}
+\`\`\`
+
+Check for replies:
+\`\`\`bash
+hive msg outbox ${sessionName}
+\`\`\`
+
 ## Guidelines
 - Follow existing code patterns in the repository
 - Write tests for new functionality
 - Keep commits atomic and well-documented
-- If blocked, escalate to the Tech Lead
+- Message the Tech Lead if blocked or need clarification
 
 Start by exploring the codebase to understand its structure, then begin working on the highest priority story.`;
 }
 
-function generateIntermediatePrompt(teamName: string, repoUrl: string, repoPath: string): string {
+function generateIntermediatePrompt(teamName: string, repoUrl: string, repoPath: string, sessionName: string): string {
+  const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+
   return `You are an Intermediate Developer on Team ${teamName}.
+Your tmux session: ${sessionName}
 
 ## Your Repository
 - Local path: ${repoPath}
@@ -344,17 +361,32 @@ function generateIntermediatePrompt(teamName: string, repoUrl: string, repoPath:
 4. Run tests and linting
 5. Commit and create a PR
 
+## Communication
+If you have questions, message your Senior or the Tech Lead:
+\`\`\`bash
+hive msg send ${seniorSession} "Your question" --from ${sessionName}
+hive msg send hive-tech-lead "Your question" --from ${sessionName}
+\`\`\`
+
+Check for replies:
+\`\`\`bash
+hive msg outbox ${sessionName}
+\`\`\`
+
 ## Guidelines
 - Follow existing code patterns
 - Write tests for your changes
 - Keep commits focused and clear
-- Escalate blockers to your Senior
+- Message Senior or Tech Lead if blocked
 
 Start by exploring the codebase, then check the stories table for your assignments.`;
 }
 
-function generateJuniorPrompt(teamName: string, repoUrl: string, repoPath: string): string {
+function generateJuniorPrompt(teamName: string, repoUrl: string, repoPath: string, sessionName: string): string {
+  const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+
   return `You are a Junior Developer on Team ${teamName}.
+Your tmux session: ${sessionName}
 
 ## Your Repository
 - Local path: ${repoPath}
@@ -365,6 +397,18 @@ function generateJuniorPrompt(teamName: string, repoUrl: string, repoPath: strin
 2. Learn the codebase patterns
 3. Write tests for your changes
 4. Ask for help when needed
+
+## Communication
+If you have questions, message your Senior or the Tech Lead:
+\`\`\`bash
+hive msg send ${seniorSession} "Your question" --from ${sessionName}
+hive msg send hive-tech-lead "Your question" --from ${sessionName}
+\`\`\`
+
+Check for replies:
+\`\`\`bash
+hive msg outbox ${sessionName}
+\`\`\`
 
 ## Workflow
 1. Check for assigned stories in the Hive database

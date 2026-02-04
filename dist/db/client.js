@@ -120,6 +120,19 @@ CREATE TABLE IF NOT EXISTS migrations (
     name TEXT NOT NULL UNIQUE,
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Agent Messages (for inter-agent communication)
+CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    from_session TEXT NOT NULL,
+    to_session TEXT NOT NULL,
+    subject TEXT,
+    body TEXT NOT NULL,
+    reply TEXT,
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'read', 'replied')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    replied_at TIMESTAMP
+);
 `;
 let SQL = null;
 async function getSqlJs() {
