@@ -4,8 +4,8 @@ export function createEscalationsPanel(screen, db) {
     const list = blessed.list({
         parent: screen,
         top: '55%+5',
-        left: '70%',
-        width: '30%',
+        left: '75%',
+        width: '25%',
         height: '35%',
         border: { type: 'line' },
         label: ' Escalations ',

@@ -10,6 +10,7 @@ import { createAgentsPanel, updateAgentsPanel } from './panels/agents.js';
 import { createStoriesPanel, updateStoriesPanel } from './panels/stories.js';
 import { createPipelinePanel, updatePipelinePanel } from './panels/pipeline.js';
 import { createActivityPanel, updateActivityPanel } from './panels/activity.js';
+import { createMergeQueuePanel, updateMergeQueuePanel } from './panels/merge-queue.js';
 import { createEscalationsPanel, updateEscalationsPanel } from './panels/escalations.js';
 
 export interface DashboardOptions {
@@ -54,6 +55,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   const storiesPanel = createStoriesPanel(screen, db.db);
   const pipelinePanel = createPipelinePanel(screen, db.db);
   const activityPanel = createActivityPanel(screen, db.db);
+  const mergeQueuePanel = createMergeQueuePanel(screen, db.db);
   const escalationsPanel = createEscalationsPanel(screen, db.db);
 
   // Footer
@@ -71,7 +73,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   });
 
   // Focus management
-  const panels = [agentsPanel, storiesPanel, activityPanel, escalationsPanel];
+  const panels = [agentsPanel, storiesPanel, activityPanel, mergeQueuePanel, escalationsPanel];
   let focusIndex = 0;
   panels[focusIndex].focus();
 
@@ -88,6 +90,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
       updateStoriesPanel(storiesPanel, db.db);
       updatePipelinePanel(pipelinePanel, db.db);
       updateActivityPanel(activityPanel, db.db);
+      updateMergeQueuePanel(mergeQueuePanel, db.db);
       updateEscalationsPanel(escalationsPanel, db.db);
       screen.render();
       debugLog('Refresh complete');

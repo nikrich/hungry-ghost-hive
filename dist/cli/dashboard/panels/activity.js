@@ -5,7 +5,7 @@ export function createActivityPanel(screen, db) {
         parent: screen,
         top: '55%+5',
         left: 0,
-        width: '70%',
+        width: '50%',
         height: '35%',
         border: { type: 'line' },
         label: ' Recent Activity ',

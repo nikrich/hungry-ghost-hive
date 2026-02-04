@@ -8,7 +8,7 @@ export function createActivityPanel(screen: Widgets.Screen, db: Database): Widge
     parent: screen,
     top: '55%+5',
     left: 0,
-    width: '70%',
+    width: '50%',
     height: '35%',
     border: { type: 'line' },
     label: ' Recent Activity ',
