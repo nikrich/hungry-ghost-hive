@@ -1,0 +1,138 @@
+import { execa } from 'execa';
+
+export interface TmuxSessionOptions {
+  sessionName: string;
+  workDir: string;
+  command: string;
+  env?: Record<string, string>;
+}
+
+export interface TmuxSession {
+  name: string;
+  windows: number;
+  created: string;
+  attached: boolean;
+}
+
+export async function isTmuxAvailable(): Promise<boolean> {
+  try {
+    await execa('which', ['tmux']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function isTmuxSessionRunning(sessionName: string): Promise<boolean> {
+  try {
+    await execa('tmux', ['has-session', '-t', sessionName]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function listTmuxSessions(): Promise<TmuxSession[]> {
+  try {
+    const { stdout } = await execa('tmux', [
+      'list-sessions',
+      '-F',
+      '#{session_name}|#{session_windows}|#{session_created}|#{session_attached}',
+    ]);
+
+    return stdout.split('\n').filter(Boolean).map(line => {
+      const [name, windows, created, attached] = line.split('|');
+      return {
+        name,
+        windows: parseInt(windows, 10),
+        created,
+        attached: attached === '1',
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function getHiveSessions(): Promise<TmuxSession[]> {
+  const sessions = await listTmuxSessions();
+  return sessions.filter(s => s.name.startsWith('hive-'));
+}
+
+export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<void> {
+  const { sessionName, workDir, command, env } = options;
+
+  // Kill existing session if it exists
+  if (await isTmuxSessionRunning(sessionName)) {
+    await killTmuxSession(sessionName);
+  }
+
+  // Create new detached session
+  const args = [
+    'new-session',
+    '-d',
+    '-s', sessionName,
+    '-c', workDir,
+    command,
+  ];
+
+  const execaOptions: { env?: NodeJS.ProcessEnv } = {};
+  if (env) {
+    execaOptions.env = { ...process.env, ...env };
+  }
+
+  await execa('tmux', args, execaOptions);
+}
+
+export async function killTmuxSession(sessionName: string): Promise<void> {
+  try {
+    await execa('tmux', ['kill-session', '-t', sessionName]);
+  } catch {
+    // Session might not exist, ignore error
+  }
+}
+
+export async function killAllHiveSessions(): Promise<number> {
+  const sessions = await getHiveSessions();
+  let killed = 0;
+
+  for (const session of sessions) {
+    try {
+      await killTmuxSession(session.name);
+      killed++;
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  return killed;
+}
+
+export async function sendToTmuxSession(sessionName: string, text: string): Promise<void> {
+  await execa('tmux', ['send-keys', '-t', sessionName, text, 'Enter']);
+}
+
+export async function captureTmuxPane(sessionName: string, lines = 100): Promise<string> {
+  try {
+    const { stdout } = await execa('tmux', [
+      'capture-pane',
+      '-t', sessionName,
+      '-p',
+      '-S', `-${lines}`,
+    ]);
+    return stdout;
+  } catch {
+    return '';
+  }
+}
+
+export function generateSessionName(agentType: string, teamName?: string, index?: number): string {
+  let name = `hive-${agentType}`;
+  if (teamName) {
+    name += `-${teamName}`;
+  }
+  if (index !== undefined && index > 1) {
+    name += `-${index}`;
+  }
+  return name;
+}
