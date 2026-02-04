@@ -1,6 +1,11 @@
 import type { Database } from 'sql.js';
 import blessed, { type Widgets } from 'blessed';
+import { appendFileSync } from 'fs';
 import { getActiveAgents, type AgentRow } from '../../../db/queries/agents.js';
+
+function debugLog(msg: string) {
+  appendFileSync('/tmp/hive-dashboard-debug.log', `${new Date().toISOString()} ${msg}\n`);
+}
 
 export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets.ListTableElement {
 
@@ -33,10 +38,12 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
 
 export function updateAgentsPanel(table: Widgets.ListTableElement, db: Database): void {
   const agents = getActiveAgents(db);
+  debugLog(`updateAgentsPanel called, found ${agents.length} agents`);
 
   const headers = ['ID', 'Type', 'Team', 'Status', 'Current Story'];
 
   if (agents.length === 0) {
+    debugLog('Setting empty data');
     table.setData([headers, ['(no active agents)', '', '', '', '']]);
     return;
   }
@@ -49,6 +56,7 @@ export function updateAgentsPanel(table: Widgets.ListTableElement, db: Database)
     agent.current_story_id || '-',
   ]);
 
+  debugLog(`Setting data with ${rows.length} rows`);
   table.setData([headers, ...rows]);
 }
 
