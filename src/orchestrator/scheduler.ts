@@ -188,7 +188,7 @@ export class Scheduler {
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
+        command: `claude --dangerously-skip-permissions`,
       });
 
       // Wait for Claude to start, then send prompt
@@ -223,7 +223,7 @@ export class Scheduler {
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
+        command: `claude --dangerously-skip-permissions`,
       });
 
       // Wait for Claude to start, then send prompt
@@ -257,7 +257,7 @@ export class Scheduler {
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --dangerously-skip-permissions --resume ${sessionName}`,
+        command: `claude --dangerously-skip-permissions`,
       });
 
       // Wait for Claude to start, then send prompt
