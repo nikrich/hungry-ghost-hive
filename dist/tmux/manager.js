@@ -96,13 +96,19 @@ export async function sendToTmuxSession(sessionName, text) {
         await execa('tmux', ['load-buffer', '-'], { input: text });
         // Paste the buffer into the session
         await execa('tmux', ['paste-buffer', '-t', sessionName]);
+        // Small delay to let paste complete
+        await new Promise(resolve => setTimeout(resolve, 200));
         // Send Enter to submit
-        await execa('tmux', ['send-keys', '-t', sessionName, 'Enter']);
+        await sendEnterToTmuxSession(sessionName);
     }
     else {
         // For single-line text, use send-keys directly
         await execa('tmux', ['send-keys', '-t', sessionName, text, 'Enter']);
     }
+}
+export async function sendEnterToTmuxSession(sessionName) {
+    // C-m is equivalent to Enter/Return
+    await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
 }
 export async function captureTmuxPane(sessionName, lines = 100) {
     try {

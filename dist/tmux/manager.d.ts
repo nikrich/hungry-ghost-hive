@@ -18,6 +18,7 @@ export declare function spawnTmuxSession(options: TmuxSessionOptions): Promise<v
 export declare function killTmuxSession(sessionName: string): Promise<void>;
 export declare function killAllHiveSessions(): Promise<number>;
 export declare function sendToTmuxSession(sessionName: string, text: string): Promise<void>;
+export declare function sendEnterToTmuxSession(sessionName: string): Promise<void>;
 export declare function captureTmuxPane(sessionName: string, lines?: number): Promise<string>;
 export declare function generateSessionName(agentType: string, teamName?: string, index?: number): string;
 //# sourceMappingURL=manager.d.ts.map
