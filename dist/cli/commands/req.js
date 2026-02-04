@@ -91,7 +91,7 @@ export const reqCommand = new Command('req')
             await spawnTmuxSession({
                 sessionName,
                 workDir: root,
-                command: `claude`,
+                command: `claude --dangerously-skip-permissions`,
             });
             // Wait for Claude to fully start, then send the planning prompt
             await new Promise(resolve => setTimeout(resolve, 5000));
@@ -135,7 +135,7 @@ export const reqCommand = new Command('req')
     }
 });
 function generateTechLeadPrompt(reqId, title, description, teams) {
-    const teamList = teams.map(t => `- ${t.name}: ${t.repo_path}`).join('\n');
+    const teamList = teams.map(t => `- ${t.name}: ${t.repo_path} (${t.repo_url})`).join('\n');
     return `You are the Tech Lead of Hive, an AI development team orchestrator.
 
 ## New Requirement: ${reqId}
@@ -148,13 +148,16 @@ ${description}
 ## Available Teams
 ${teamList}
 
+Each team has a local repo_path (relative to the Hive workspace) and a repo_url (GitHub remote).
+
 ## Your Task
 
 1. Analyze this requirement
 2. Identify which teams/repos are affected
-3. Break down the requirement into implementable stories
-4. Consider dependencies between stories
-5. Create a plan for implementation
+3. **Navigate to the actual repo directories** (e.g., \`cd repos/<team-name>\`) to explore the codebase
+4. Break down the requirement into implementable stories
+5. Consider dependencies between stories
+6. Create a plan for implementation
 
 ## Instructions
 
@@ -165,6 +168,8 @@ Use the Hive database to:
 4. Log your progress using agent_logs
 
 The SQLite database is at .hive/hive.db
+
+**IMPORTANT:** Work directly in the team repositories under \`repos/\`. Each team's codebase is a git submodule you can explore, modify, and commit to. Use \`gh\` CLI to interact with GitHub PRs and issues.
 
 When done planning, update the requirement status to 'planned' and each story status to 'estimated' with complexity scores.
 
