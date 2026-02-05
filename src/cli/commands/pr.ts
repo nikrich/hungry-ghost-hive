@@ -12,6 +12,9 @@ import {
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
 import { createLog } from '../../db/queries/logs.js';
+import { loadConfig } from '../../config/loader.js';
+import { Scheduler } from '../../orchestrator/scheduler.js';
+import { sendToTmuxSession, isTmuxSessionRunning } from '../../tmux/manager.js';
 
 export const prCommand = new Command('pr')
   .description('Manage pull requests and merge queue');
@@ -87,6 +90,20 @@ prCommand
           metadata: { pr_id: pr.id, queue_position: position },
         });
         db.save();
+      }
+
+      // Check if QA agents need to be spawned for the merge queue
+      try {
+        const config = loadConfig(paths.hiveDir);
+        const scheduler = new Scheduler(db.db, {
+          scaling: config.scaling,
+          rootDir: root,
+        });
+        await scheduler.checkMergeQueue();
+        db.save();
+        console.log(chalk.gray('  QA agents notified'));
+      } catch {
+        // Non-fatal - QA can be triggered manually
       }
     } finally {
       db.close();
@@ -354,9 +371,22 @@ prCommand
       console.log(chalk.yellow(`PR ${prId} rejected.`));
       console.log(chalk.gray(`Reason: ${options.reason}`));
 
+      // Auto-notify the developer via tmux if their session is running
       if (pr.submitted_by) {
-        console.log(chalk.cyan(`\nNotify the developer:`));
-        console.log(chalk.gray(`  hive msg send ${pr.submitted_by} "PR rejected: ${options.reason}" --from ${options.from || 'qa'}`));
+        try {
+          if (await isTmuxSessionRunning(pr.submitted_by)) {
+            await sendToTmuxSession(pr.submitted_by,
+              `# PR REJECTED: ${prId}\n# Reason: ${options.reason}\n# Please fix the issues and resubmit.`
+            );
+            console.log(chalk.green(`Developer ${pr.submitted_by} notified via tmux`));
+          } else {
+            console.log(chalk.cyan(`\nNotify the developer:`));
+            console.log(chalk.gray(`  hive msg send ${pr.submitted_by} "PR rejected: ${options.reason}" --from ${options.from || 'qa'}`));
+          }
+        } catch {
+          console.log(chalk.cyan(`\nNotify the developer:`));
+          console.log(chalk.gray(`  hive msg send ${pr.submitted_by} "PR rejected: ${options.reason}" --from ${options.from || 'qa'}`));
+        }
       }
 
       if (options.from) {

@@ -25,10 +25,19 @@ export declare class Scheduler {
      */
     checkScaling(): Promise<void>;
     /**
+     * Health check: sync agent status with actual tmux sessions
+     * Returns number of agents whose status was corrected
+     */
+    healthCheck(): Promise<{
+        terminated: number;
+        revived: string[];
+    }>;
+    /**
      * Check merge queue and spawn QA agents if needed
      */
     checkMergeQueue(): Promise<void>;
     private spawnQA;
+    private ensureManagerRunning;
     private spawnSenior;
     private spawnIntermediate;
     private spawnJunior;

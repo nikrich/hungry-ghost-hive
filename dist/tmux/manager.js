@@ -134,4 +134,34 @@ export function generateSessionName(agentType, teamName, index) {
     }
     return name;
 }
+const MANAGER_SESSION = 'hive-manager';
+export async function isManagerRunning() {
+    return isTmuxSessionRunning(MANAGER_SESSION);
+}
+export async function startManager(interval = 60) {
+    if (await isManagerRunning()) {
+        return false; // Already running
+    }
+    // Start the manager in a detached tmux session
+    await execa('tmux', [
+        'new-session',
+        '-d',
+        '-s', MANAGER_SESSION,
+    ]);
+    // Send the manager command
+    await execa('tmux', [
+        'send-keys',
+        '-t', MANAGER_SESSION,
+        `hive manager start -i ${interval}`,
+        'Enter',
+    ]);
+    return true;
+}
+export async function stopManager() {
+    if (!await isManagerRunning()) {
+        return false; // Not running
+    }
+    await killTmuxSession(MANAGER_SESSION);
+    return true;
+}
 //# sourceMappingURL=manager.js.map

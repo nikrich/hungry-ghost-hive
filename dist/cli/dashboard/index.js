@@ -54,7 +54,7 @@ export async function startDashboard(options = {}) {
         left: 0,
         width: '100%',
         height: 1,
-        content: ' Tab: Switch panels | Enter: Expand | /: Search | Arrow keys: Navigate',
+        content: ' Tab: Switch panels | ↑↓: Navigate | Enter: Attach to tmux | Ctrl+B,D: Detach | Q: Quit',
         style: {
             bg: 'blue',
             fg: 'white',
@@ -92,7 +92,7 @@ export async function startDashboard(options = {}) {
     // Auto-refresh - wrap in arrow function to handle async properly
     const timer = setInterval(() => { refresh(); }, refreshInterval);
     // Key bindings
-    screen.key(['q', 'C-c'], () => {
+    screen.key(['q', 'C-c', 'escape'], () => {
         clearInterval(timer);
         try {
             db.db.close();

@@ -5,7 +5,7 @@ import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { getMergeQueue } from '../db/queries/pull-requests.js';
 import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
-import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession } from '../tmux/manager.js';
+import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions } from '../tmux/manager.js';
 import type { ScalingConfig } from '../config/schema.js';
 
 export interface SchedulerConfig {
@@ -177,6 +177,50 @@ export class Scheduler {
   }
 
   /**
+   * Health check: sync agent status with actual tmux sessions
+   * Returns number of agents whose status was corrected
+   */
+  async healthCheck(): Promise<{ terminated: number; revived: string[] }> {
+    const allAgents = queryAll<AgentRow>(this.db, `
+      SELECT * FROM agents WHERE status != 'terminated'
+    `);
+
+    const liveSessions = await getHiveSessions();
+    const liveSessionNames = new Set(liveSessions.map(s => s.name));
+
+    let terminated = 0;
+    const revived: string[] = [];
+
+    for (const agent of allAgents) {
+      if (!agent.tmux_session) continue;
+
+      const sessionAlive = liveSessionNames.has(agent.tmux_session);
+
+      if (!sessionAlive && agent.status !== 'terminated') {
+        // Session died but agent thinks it's alive - mark as terminated
+        updateAgent(this.db, agent.id, { status: 'terminated', currentStoryId: null });
+        createLog(this.db, {
+          agentId: agent.id,
+          eventType: 'AGENT_TERMINATED',
+          message: `Session ${agent.tmux_session} no longer running`,
+        });
+        terminated++;
+
+        // If agent was working on a story, mark it for reassignment
+        if (agent.current_story_id) {
+          updateStory(this.db, agent.current_story_id, {
+            status: 'planned',
+            assignedAgentId: null,
+          });
+          revived.push(agent.current_story_id);
+        }
+      }
+    }
+
+    return { terminated, revived };
+  }
+
+  /**
    * Check merge queue and spawn QA agents if needed
    */
   async checkMergeQueue(): Promise<void> {
@@ -229,14 +273,23 @@ export class Scheduler {
       const team = getTeamById(this.db, teamId);
       const prompt = generateQAPrompt(teamName, team?.repo_url || '', repoPath, sessionName);
       await sendToTmuxSession(sessionName, prompt);
+
+      // Auto-start manager when spawning agents
+      await this.ensureManagerRunning();
     }
 
     updateAgent(this.db, agent.id, {
       tmuxSession: sessionName,
-      status: 'idle',
+      status: 'working',
     });
 
     return agent;
+  }
+
+  private async ensureManagerRunning(): Promise<void> {
+    if (!await isManagerRunning()) {
+      await startManager(60);
+    }
   }
 
   private async spawnSenior(teamId: string, teamName: string, repoPath: string, index?: number): Promise<AgentRow> {
@@ -262,11 +315,14 @@ export class Scheduler {
       const stories = this.getTeamStories(teamId);
       const prompt = generateSeniorPrompt(teamName, team?.repo_url || '', repoPath, stories);
       await sendToTmuxSession(sessionName, prompt);
+
+      // Auto-start manager when spawning agents
+      await this.ensureManagerRunning();
     }
 
     updateAgent(this.db, agent.id, {
       tmuxSession: sessionName,
-      status: 'idle',
+      status: 'working',
     });
 
     return agent;
@@ -297,11 +353,14 @@ export class Scheduler {
       const team = getTeamById(this.db, teamId);
       const prompt = generateIntermediatePrompt(teamName, team?.repo_url || '', repoPath, sessionName);
       await sendToTmuxSession(sessionName, prompt);
+
+      // Auto-start manager when spawning agents
+      await this.ensureManagerRunning();
     }
 
     updateAgent(this.db, agent.id, {
       tmuxSession: sessionName,
-      status: 'idle',
+      status: 'working',
     });
 
     return agent;
@@ -333,11 +392,14 @@ export class Scheduler {
       const team = getTeamById(this.db, teamId);
       const prompt = generateJuniorPrompt(teamName, team?.repo_url || '', repoPath, sessionName);
       await sendToTmuxSession(sessionName, prompt);
+
+      // Auto-start manager when spawning agents
+      await this.ensureManagerRunning();
     }
 
     updateAgent(this.db, agent.id, {
       tmuxSession: sessionName,
-      status: 'idle',
+      status: 'working',
     });
 
     return agent;

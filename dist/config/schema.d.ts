@@ -5,13 +5,13 @@ declare const ModelConfigSchema: z.ZodObject<{
     max_tokens: z.ZodDefault<z.ZodNumber>;
     temperature: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
-    provider: "anthropic" | "openai";
     model: string;
+    provider: "anthropic" | "openai";
     max_tokens: number;
     temperature: number;
 }, {
-    provider: "anthropic" | "openai";
     model: string;
+    provider: "anthropic" | "openai";
     max_tokens?: number | undefined;
     temperature?: number | undefined;
 }>;
@@ -22,13 +22,13 @@ declare const ModelsConfigSchema: z.ZodObject<{
         max_tokens: z.ZodDefault<z.ZodNumber>;
         temperature: z.ZodDefault<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens: number;
         temperature: number;
     }, {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens?: number | undefined;
         temperature?: number | undefined;
     }>>;
@@ -38,13 +38,13 @@ declare const ModelsConfigSchema: z.ZodObject<{
         max_tokens: z.ZodDefault<z.ZodNumber>;
         temperature: z.ZodDefault<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens: number;
         temperature: number;
     }, {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens?: number | undefined;
         temperature?: number | undefined;
     }>>;
@@ -54,13 +54,13 @@ declare const ModelsConfigSchema: z.ZodObject<{
         max_tokens: z.ZodDefault<z.ZodNumber>;
         temperature: z.ZodDefault<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens: number;
         temperature: number;
     }, {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens?: number | undefined;
         temperature?: number | undefined;
     }>>;
@@ -70,13 +70,13 @@ declare const ModelsConfigSchema: z.ZodObject<{
         max_tokens: z.ZodDefault<z.ZodNumber>;
         temperature: z.ZodDefault<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens: number;
         temperature: number;
     }, {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens?: number | undefined;
         temperature?: number | undefined;
     }>>;
@@ -86,75 +86,75 @@ declare const ModelsConfigSchema: z.ZodObject<{
         max_tokens: z.ZodDefault<z.ZodNumber>;
         temperature: z.ZodDefault<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens: number;
         temperature: number;
     }, {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens?: number | undefined;
         temperature?: number | undefined;
     }>>;
 }, "strip", z.ZodTypeAny, {
     tech_lead: {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens: number;
         temperature: number;
     };
     senior: {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens: number;
         temperature: number;
     };
     intermediate: {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens: number;
         temperature: number;
     };
     junior: {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens: number;
         temperature: number;
     };
     qa: {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens: number;
         temperature: number;
     };
 }, {
     tech_lead?: {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens?: number | undefined;
         temperature?: number | undefined;
     } | undefined;
     senior?: {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens?: number | undefined;
         temperature?: number | undefined;
     } | undefined;
     intermediate?: {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens?: number | undefined;
         temperature?: number | undefined;
     } | undefined;
     junior?: {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens?: number | undefined;
         temperature?: number | undefined;
     } | undefined;
     qa?: {
-        provider: "anthropic" | "openai";
         model: string;
+        provider: "anthropic" | "openai";
         max_tokens?: number | undefined;
         temperature?: number | undefined;
     } | undefined;
@@ -227,13 +227,13 @@ export declare const HiveConfigSchema: z.ZodObject<{
             max_tokens: z.ZodDefault<z.ZodNumber>;
             temperature: z.ZodDefault<z.ZodNumber>;
         }, "strip", z.ZodTypeAny, {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         }, {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         }>>;
@@ -243,13 +243,13 @@ export declare const HiveConfigSchema: z.ZodObject<{
             max_tokens: z.ZodDefault<z.ZodNumber>;
             temperature: z.ZodDefault<z.ZodNumber>;
         }, "strip", z.ZodTypeAny, {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         }, {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         }>>;
@@ -259,13 +259,13 @@ export declare const HiveConfigSchema: z.ZodObject<{
             max_tokens: z.ZodDefault<z.ZodNumber>;
             temperature: z.ZodDefault<z.ZodNumber>;
         }, "strip", z.ZodTypeAny, {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         }, {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         }>>;
@@ -275,13 +275,13 @@ export declare const HiveConfigSchema: z.ZodObject<{
             max_tokens: z.ZodDefault<z.ZodNumber>;
             temperature: z.ZodDefault<z.ZodNumber>;
         }, "strip", z.ZodTypeAny, {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         }, {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         }>>;
@@ -291,75 +291,75 @@ export declare const HiveConfigSchema: z.ZodObject<{
             max_tokens: z.ZodDefault<z.ZodNumber>;
             temperature: z.ZodDefault<z.ZodNumber>;
         }, "strip", z.ZodTypeAny, {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         }, {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         }>>;
     }, "strip", z.ZodTypeAny, {
         tech_lead: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         };
         senior: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         };
         intermediate: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         };
         junior: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         };
         qa: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         };
     }, {
         tech_lead?: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         } | undefined;
         senior?: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         } | undefined;
         intermediate?: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         } | undefined;
         junior?: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         } | undefined;
         qa?: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         } | undefined;
@@ -437,32 +437,32 @@ export declare const HiveConfigSchema: z.ZodObject<{
     version: string;
     models: {
         tech_lead: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         };
         senior: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         };
         intermediate: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         };
         junior: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         };
         qa: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens: number;
             temperature: number;
         };
@@ -494,32 +494,32 @@ export declare const HiveConfigSchema: z.ZodObject<{
     version?: string | undefined;
     models?: {
         tech_lead?: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         } | undefined;
         senior?: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         } | undefined;
         intermediate?: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         } | undefined;
         junior?: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         } | undefined;
         qa?: {
-            provider: "anthropic" | "openai";
             model: string;
+            provider: "anthropic" | "openai";
             max_tokens?: number | undefined;
             temperature?: number | undefined;
         } | undefined;

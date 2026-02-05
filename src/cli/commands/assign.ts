@@ -5,6 +5,7 @@ import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
+import { startManager, isManagerRunning } from '../../tmux/manager.js';
 
 export const assignCommand = new Command('assign')
   .description('Assign planned stories to agents (spawns Seniors as needed)')
@@ -38,6 +39,10 @@ export const assignCommand = new Command('assign')
       spinner.text = 'Checking team scaling...';
       await scheduler.checkScaling();
 
+      // Check merge queue (spawns QA agents if needed)
+      spinner.text = 'Checking merge queue...';
+      await scheduler.checkMergeQueue();
+
       // Assign stories to agents
       spinner.text = 'Assigning stories to agents...';
       const result = await scheduler.assignStories();
@@ -51,6 +56,19 @@ export const assignCommand = new Command('assign')
         spinner.info(chalk.gray('No stories to assign'));
       } else {
         spinner.succeed(chalk.green(`Assigned ${result.assigned} stories`));
+      }
+
+      // Auto-start the manager if work was assigned and it's not running
+      if (result.assigned > 0) {
+        if (!await isManagerRunning()) {
+          spinner.start('Starting manager daemon...');
+          const started = await startManager(60);
+          if (started) {
+            spinner.succeed(chalk.green('Manager daemon started (checking every 60s)'));
+          } else {
+            spinner.info(chalk.gray('Manager daemon already running'));
+          }
+        }
       }
 
       console.log();

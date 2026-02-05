@@ -21,4 +21,7 @@ export declare function sendToTmuxSession(sessionName: string, text: string): Pr
 export declare function sendEnterToTmuxSession(sessionName: string): Promise<void>;
 export declare function captureTmuxPane(sessionName: string, lines?: number): Promise<string>;
 export declare function generateSessionName(agentType: string, teamName?: string, index?: number): string;
+export declare function isManagerRunning(): Promise<boolean>;
+export declare function startManager(interval?: number): Promise<boolean>;
+export declare function stopManager(): Promise<boolean>;
 //# sourceMappingURL=manager.d.ts.map

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { initCommand, configCommand, addRepoCommand, teamsCommand, reqCommand, statusCommand, agentsCommand, storiesCommand, escalationsCommand, resumeCommand, assignCommand, nukeCommand, msgCommand, myStoriesCommand, prCommand, } from './cli/commands/index.js';
+import { initCommand, configCommand, addRepoCommand, teamsCommand, reqCommand, statusCommand, agentsCommand, storiesCommand, escalationsCommand, resumeCommand, assignCommand, nukeCommand, msgCommand, myStoriesCommand, prCommand, managerCommand, } from './cli/commands/index.js';
 const program = new Command();
 program
     .name('hive')
@@ -30,6 +30,8 @@ program.addCommand(msgCommand);
 program.addCommand(myStoriesCommand);
 // PR and merge queue
 program.addCommand(prCommand);
+// Manager (micromanager daemon)
+program.addCommand(managerCommand);
 // Dashboard command
 program
     .command('dashboard')

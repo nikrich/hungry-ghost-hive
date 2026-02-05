@@ -18,6 +18,7 @@ import {
   msgCommand,
   myStoriesCommand,
   prCommand,
+  managerCommand,
 } from './cli/commands/index.js';
 
 const program = new Command();
@@ -57,6 +58,9 @@ program.addCommand(myStoriesCommand);
 
 // PR and merge queue
 program.addCommand(prCommand);
+
+// Manager (micromanager daemon)
+program.addCommand(managerCommand);
 
 // Dashboard command
 program
