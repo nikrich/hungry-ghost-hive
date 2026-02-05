@@ -50,11 +50,16 @@ export class AnthropicProvider {
     async *streamComplete(messages, options) {
         const systemMessage = messages.find(m => m.role === 'system');
         const conversationMessages = messages.filter(m => m.role !== 'system');
+        // Capture instance properties to avoid 'this' binding issues in generator
+        const client = this.client;
+        const model = this.model;
+        const defaultMaxTokens = this.defaultMaxTokens;
+        const defaultTemperature = this.defaultTemperature;
         const streamGenerator = async function* () {
-            const stream = this.client.messages.stream({
-                model: this.model,
-                max_tokens: options?.maxTokens ?? this.defaultMaxTokens,
-                temperature: options?.temperature ?? this.defaultTemperature,
+            const stream = client.messages.stream({
+                model: model,
+                max_tokens: options?.maxTokens ?? defaultMaxTokens,
+                temperature: options?.temperature ?? defaultTemperature,
                 system: systemMessage?.content,
                 messages: conversationMessages.map(m => ({
                     role: m.role,
@@ -67,7 +72,7 @@ export class AnthropicProvider {
                     yield event.delta.text;
                 }
             }
-        }.bind(this);
+        };
         // Apply timeout if specified
         if (options?.timeoutMs) {
             const timeoutPromise = new Promise((_, reject) => {

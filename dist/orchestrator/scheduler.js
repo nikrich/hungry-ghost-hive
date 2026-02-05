@@ -46,23 +46,18 @@ export class Scheduler {
         // Kahn's algorithm for topological sort
         const inDegree = new Map();
         const result = [];
-        // Calculate in-degrees
-        for (const storyId of graph.keys()) {
-            inDegree.set(storyId, 0);
+        // Calculate in-degrees: count how many dependencies each story has
+        for (const [storyId, dependencies] of graph.entries()) {
+            inDegree.set(storyId, dependencies.size);
         }
-        for (const dependencies of graph.values()) {
-            for (const depId of dependencies) {
-                inDegree.set(depId, (inDegree.get(depId) || 0) + 1);
-            }
-        }
-        // Find all nodes with in-degree 0
+        // Find all nodes with in-degree 0 (no dependencies)
         const queue = [];
         for (const [storyId, degree] of inDegree.entries()) {
             if (degree === 0) {
                 queue.push(storyId);
             }
         }
-        // Process queue
+        // Process queue using Kahn's algorithm
         while (queue.length > 0) {
             const storyId = queue.shift();
             const story = storyMap.get(storyId);
@@ -70,13 +65,12 @@ export class Scheduler {
                 result.push(story);
             }
             // For each story that depends on this one, reduce in-degree
-            for (const story of stories) {
-                const deps = graph.get(story.id) || new Set();
-                if (deps.has(storyId)) {
-                    const newDegree = (inDegree.get(story.id) || 0) - 1;
-                    inDegree.set(story.id, newDegree);
+            for (const [otherStoryId, dependencies] of graph.entries()) {
+                if (dependencies.has(storyId)) {
+                    const newDegree = (inDegree.get(otherStoryId) || 0) - 1;
+                    inDegree.set(otherStoryId, newDegree);
                     if (newDegree === 0) {
-                        queue.push(story.id);
+                        queue.push(otherStoryId);
                     }
                 }
             }

@@ -26,6 +26,8 @@ export interface AgentContext {
         maxRetries: number;
         checkpointThreshold: number;
         pollInterval: number;
+        llmTimeoutMs: number;
+        llmMaxRetries: number;
     };
 }
 export declare abstract class BaseAgent {

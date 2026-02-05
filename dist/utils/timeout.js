@@ -35,7 +35,7 @@ export function withTimeout(promise, timeoutMs, errorMessage = 'Operation timed 
  */
 export async function withRetry(fn, options) {
     const { maxRetries, initialDelayMs = 1000, maxDelayMs = 60000, backoffMultiplier = 2, onRetry, } = options;
-    let lastError;
+    let lastError = new Error('Retry failed');
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             return await fn();
