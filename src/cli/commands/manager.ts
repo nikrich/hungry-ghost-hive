@@ -14,6 +14,8 @@ import type { StoryRow } from '../../db/client.js';
 import { getAllTeams } from '../../db/queries/teams.js';
 import { execa } from 'execa';
 import { createPullRequest, type PullRequestRow } from '../../db/queries/pull-requests.js';
+import { acquireLock } from '../../db/lock.js';
+import { join } from 'path';
 
 export const managerCommand = new Command('manager')
   .description('Micromanager daemon that keeps agents productive');
@@ -31,6 +33,32 @@ managerCommand
       process.exit(1);
     }
 
+    const paths = getHivePaths(root);
+    const lockPath = join(paths.hiveDir, 'manager.lock');
+
+    // Acquire manager lock to ensure singleton
+    let releaseLock: (() => Promise<void>) | null = null;
+    try {
+      releaseLock = await acquireLock(lockPath, { stale: 120000 }); // 2 min stale threshold
+      console.log(chalk.gray('Manager lock acquired'));
+    } catch (err) {
+      console.error(chalk.red('Failed to acquire manager lock - another manager instance may be running.'));
+      console.error(chalk.gray('If you are sure no other manager is running, remove:'), lockPath + '.lock');
+      process.exit(1);
+    }
+
+    // Release lock on exit
+    const cleanup = async () => {
+      if (releaseLock) {
+        await releaseLock();
+        console.log(chalk.gray('\nManager lock released'));
+      }
+      process.exit(0);
+    };
+
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+
     const interval = parseInt(options.interval, 10) * 1000;
     console.log(chalk.cyan(`Manager started (checking every ${options.interval}s)`));
     console.log(chalk.gray('Press Ctrl+C to stop\n'));
@@ -47,6 +75,9 @@ managerCommand
 
     if (!options.once) {
       setInterval(runCheck, interval);
+    } else if (releaseLock) {
+      // Release lock immediately if running once
+      await releaseLock();
     }
   });
 
