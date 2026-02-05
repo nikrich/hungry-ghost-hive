@@ -42,7 +42,7 @@ managerCommand
       releaseLock = await acquireLock(lockPath, { stale: 120000 }); // 2 min stale threshold
       console.log(chalk.gray('Manager lock acquired'));
     } catch (err) {
-      console.error(chalk.red('Failed to acquire manager lock - another manager instance may be running.'));
+      console.error(chalk.red('Failed to acquire manager lock - another manager instance may be running.'), err);
       console.error(chalk.gray('If you are sure no other manager is running, remove:'), lockPath + '.lock');
       process.exit(1);
     }

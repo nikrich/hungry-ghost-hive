@@ -51,7 +51,7 @@ prCommand
     try {
       // If story ID provided, get team from story
       let teamId = options.team || null;
-      let storyId = options.story || null;
+      const storyId = options.story || null;
 
       if (storyId) {
         const story = getStoryById(db.db, storyId);
@@ -444,7 +444,7 @@ prCommand
         });
         ghPRs = JSON.parse(result.stdout);
       } catch (err) {
-        console.error(chalk.red('Failed to list GitHub PRs. Is gh CLI authenticated?'));
+        console.error(chalk.red('Failed to list GitHub PRs. Is gh CLI authenticated?'), err);
         process.exit(1);
       }
 
