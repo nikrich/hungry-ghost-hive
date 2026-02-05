@@ -263,39 +263,38 @@ async function managerCheck(root: string): Promise<void> {
       const output = await captureTmuxPane(session.name, 50);
       const waitingInfo = detectWaitingState(output);
 
-      if (waitingInfo.isWaiting) {
-        if (waitingInfo.needsHuman && !escalatedSessions.has(session.name)) {
-          // Create escalation for human attention
-          const agent = getAgentById(db.db, session.name.replace('hive-', ''));
-          const storyId = agent?.current_story_id || null;
+      if (waitingInfo.needsHuman && !escalatedSessions.has(session.name)) {
+        // Create escalation for human attention
+        const agent = getAgentById(db.db, session.name.replace('hive-', ''));
+        const storyId = agent?.current_story_id || null;
 
-          createEscalation(db.db, {
-            storyId,
-            fromAgentId: session.name,
-            toAgentId: null, // Escalate to human
-            reason: `Agent waiting for input: ${waitingInfo.reason || 'Unknown question'}`,
-          });
-          db.save();
-          escalationsCreated++;
-          escalatedSessions.add(session.name);
+        createEscalation(db.db, {
+          storyId,
+          fromAgentId: session.name,
+          toAgentId: null, // Escalate to human
+          reason: `Agent waiting for input: ${waitingInfo.reason || 'Unknown question'}`,
+        });
+        db.save();
+        escalationsCreated++;
+        escalatedSessions.add(session.name);
 
-          // Also remind the agent to continue autonomously if they can
-          await sendToTmuxSession(session.name,
-            `# REMINDER: You are an autonomous agent. Don't wait for instructions.
+        // Also remind the agent to continue autonomously if they can
+        await sendToTmuxSession(session.name,
+          `# REMINDER: You are an autonomous agent. Don't wait for instructions.
 # If you completed your task, check for more work:
 hive my-stories ${session.name}
 # If no stories, check available work: hive my-stories ${session.name} --all
 # If you created a PR, make sure to submit it: hive pr submit -b <branch> -s <story-id> --from ${session.name}`
-          );
+        );
 
-          console.log(chalk.red(`  ESCALATION: ${session.name} needs human input`));
-        } else if (!waitingInfo.needsHuman) {
-          // Just nudge them
-          const agentType = getAgentType(session.name);
-          await nudgeAgent(root, session.name, undefined, agentType);
-          nudged++;
-        }
+        console.log(chalk.red(`  ESCALATION: ${session.name} needs human input`));
+      } else if (waitingInfo.isWaiting) {
+        // Agent is idle/waiting but doesn't need human - nudge them to continue
+        const agentType = getAgentType(session.name);
+        await nudgeAgent(root, session.name, undefined, agentType, waitingInfo.reason);
+        nudged++;
       }
+      // If not waiting (actively working), do nothing - let them work
     }
 
     // Check for PRs needing QA attention
@@ -385,12 +384,12 @@ interface WaitingState {
 function detectWaitingState(output: string): WaitingState {
   // Claude Code UI detection - check status line indicators
   const hasEscToInterrupt = /esc to interrupt/i.test(output);
-  const hasBypassPermissions = /bypass permissions/i.test(output);
   const hasThinkingIndicator = /\(thinking\)|Concocting|Twisting|Sautéed|Cooked|Crunched|Brewed/i.test(output);
+  const hasToolRunning = /Running|Executing|Reading|Writing|Searching/i.test(output);
 
-  // If agent is actively working (has interrupt option or thinking indicator), not waiting
-  if (hasEscToInterrupt || hasThinkingIndicator) {
-    return { isWaiting: false, needsHuman: false };
+  // If agent is actively working (has interrupt option, thinking indicator, or tool running), not waiting
+  if (hasEscToInterrupt || hasThinkingIndicator || hasToolRunning) {
+    return { isWaiting: false, needsHuman: false, reason: 'actively working' };
   }
 
   // Patterns that indicate agent needs human input (escalate)
@@ -402,11 +401,14 @@ function detectWaitingState(output: string): WaitingState {
     { pattern: /Would you like to proceed\?/i, reason: 'Agent waiting for plan approval' },
     { pattern: /Yes, clear context and bypass/i, reason: 'Agent waiting for plan approval' },
     { pattern: /Yes, manually approve edits/i, reason: 'Agent waiting for plan approval' },
+    { pattern: /Do you want to/i, reason: 'Agent waiting for confirmation' },
     // Conversational questions
     { pattern: /Could you clarify/i, reason: 'Agent needs clarification' },
     { pattern: /Which option would you prefer/i, reason: 'Agent needs decision' },
     { pattern: /I need.*to proceed/i, reason: 'Agent blocked, needs input' },
     { pattern: /User declined to answer/i, reason: 'Agent was declined, needs guidance' },
+    { pattern: /What would you like/i, reason: 'Agent asking for direction' },
+    { pattern: /How should I/i, reason: 'Agent asking for guidance' },
   ];
 
   // Check for human-input-needed patterns first
@@ -416,35 +418,36 @@ function detectWaitingState(output: string): WaitingState {
     }
   }
 
-  // If at prompt (has bypass permissions line but no activity), agent is idle and can be nudged
-  if (hasBypassPermissions) {
-    // Check if there's a prompt with text waiting (❯ followed by non-empty content)
-    const promptWithInput = /❯\s+[^\n]+\S/m.test(output);
-    if (promptWithInput) {
-      // There's input at the prompt but no processing - might need Enter or be confused
-      return { isWaiting: true, needsHuman: false };
-    }
+  // Check if at Claude Code prompt (idle state) - can be nudged
+  const atPrompt = /❯\s*$/m.test(output) || /bypass permissions/i.test(output);
 
-    // Check if agent just finished work
-    const finishedPatterns = [
-      /work is complete/i,
-      /implementation is complete/i,
-      /successfully/i,
-      /all.*tests pass/i,
-      /PR.*created/i,
-      /committed/i,
-      /is there anything else/i,
-      /anything else you'd like/i,
-    ];
+  if (atPrompt) {
+    // Agent is at prompt, likely idle - should be nudged to continue
+    return { isWaiting: true, needsHuman: false, reason: 'idle at prompt' };
+  }
 
-    for (const pattern of finishedPatterns) {
-      if (pattern.test(output)) {
-        return { isWaiting: true, needsHuman: false };
-      }
+  // If output shows completion messages, agent finished and needs new work
+  const finishedPatterns = [
+    /work is complete/i,
+    /implementation is complete/i,
+    /task.*complete/i,
+    /successfully/i,
+    /all.*tests pass/i,
+    /PR.*created/i,
+    /committed/i,
+    /is there anything else/i,
+    /anything else you'd like/i,
+    /let me know if/i,
+  ];
+
+  for (const pattern of finishedPatterns) {
+    if (pattern.test(output)) {
+      return { isWaiting: true, needsHuman: false, reason: 'task completed' };
     }
   }
 
-  return { isWaiting: false, needsHuman: false };
+  // Default: assume idle if no active indicators found
+  return { isWaiting: true, needsHuman: false, reason: 'no activity detected' };
 }
 
 function getAgentType(sessionName: string): 'senior' | 'intermediate' | 'junior' | 'qa' | 'unknown' {
@@ -459,37 +462,51 @@ async function nudgeAgent(
   _root: string,
   sessionName: string,
   customMessage?: string,
-  agentType?: string
+  agentType?: string,
+  reason?: string
 ): Promise<void> {
   if (customMessage) {
     await sendToTmuxSession(sessionName, customMessage);
     return;
   }
 
-  // For idle agents at empty prompts, just send Enter to trigger continuation
-  // Claude Code interprets empty Enter as "continue with your current task"
-  // This is more reliable than sending complex multi-line commands
-  await sendEnterToTmuxSession(sessionName);
-  return;
-
-  // Default nudge based on agent type (kept for reference but not used)
   const type = agentType || getAgentType(sessionName);
 
+  // Build contextual nudge message based on agent type and reason
   let nudge: string;
   switch (type) {
     case 'qa':
-      nudge = `hive pr queue`;
+      nudge = `# You are a QA agent. Check for PRs to review:
+hive pr queue
+# If there are PRs, review them with: hive pr review <pr-id>`;
       break;
     case 'senior':
+      nudge = `# You are a Senior developer. Continue with your assigned stories.
+# Check your work: hive my-stories ${sessionName}
+# If no active stories, check for available work: hive stories list --status planned`;
+      break;
     case 'intermediate':
     case 'junior':
-      nudge = `hive my-stories ${sessionName}`;
+      nudge = `# Continue with your assigned story. Check status:
+hive my-stories ${sessionName}
+# If stuck, ask your Senior for help via: hive msg send hive-senior-<team> "your question"
+# If done, submit PR: hive pr submit -b <branch> -s <story-id> --from ${sessionName}`;
       break;
     default:
-      nudge = `hive status`;
+      nudge = `# Check current status and continue working:
+hive status`;
+  }
+
+  // Add reason context if provided
+  if (reason) {
+    nudge = `# Manager detected: ${reason}\n${nudge}`;
   }
 
   await sendToTmuxSession(sessionName, nudge);
+
+  // Also send Enter to ensure prompt is activated
+  await new Promise(resolve => setTimeout(resolve, 100));
+  await sendEnterToTmuxSession(sessionName);
 }
 
 async function forwardMessages(sessionName: string, messages: MessageRow[]): Promise<void> {
