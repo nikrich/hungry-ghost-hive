@@ -1,0 +1,117 @@
+HUNGRY GHOST HIVE RESTRICTIVE LICENSE
+
+Copyright (c) 2026 Hungry Ghost. All Rights Reserved.
+
+TERMS AND CONDITIONS
+
+1. DEFINITIONS
+
+"Software" refers to the Hive system, including all source code, documentation,
+and associated files in this repository.
+
+"Contribution" means any work of authorship submitted to the project for
+inclusion in the Software.
+
+"Contributor" means any individual or entity that submits a Contribution.
+
+2. GRANT OF LIMITED RIGHTS
+
+Subject to the terms of this License, you are granted the following limited rights:
+
+a) VIEW: You may view and read the source code for educational and reference
+   purposes only.
+
+b) CONTRIBUTE: You may submit Contributions to the official repository. By
+   submitting a Contribution, you grant Hungry Ghost a perpetual, worldwide,
+   non-exclusive, royalty-free, irrevocable license to use, reproduce, modify,
+   distribute, and sublicense your Contribution as part of the Software.
+
+c) INTERNAL EVALUATION: You may run the Software solely for the purpose of
+   evaluating whether to contribute to the project.
+
+3. RESTRICTIONS
+
+The following actions are expressly PROHIBITED without prior written permission
+from Hungry Ghost:
+
+a) FORKING: You may not fork, copy, or create derivative works of the Software
+   for any purpose other than submitting Contributions to the official repository.
+
+b) MODIFICATION: You may not modify, adapt, or alter the Software for your own
+   use or for distribution to others.
+
+c) DISTRIBUTION: You may not distribute, sublicense, sell, lease, or otherwise
+   transfer the Software or any portion thereof to any third party.
+
+d) COMMERCIAL USE: You may not use the Software or any derivative works for
+   commercial purposes.
+
+e) COMPETING PRODUCTS: You may not use the Software, in whole or in part, to
+   create competing products or services.
+
+f) REVERSE ENGINEERING: You may not reverse engineer, decompile, or disassemble
+   the Software except to the extent required by applicable law.
+
+4. CONTRIBUTIONS
+
+a) All Contributions must be submitted through official channels (pull requests
+   to the official repository).
+
+b) By submitting a Contribution, you represent that you have the right to grant
+   the license in Section 2(b) and that your Contribution does not violate any
+   third-party rights.
+
+c) Hungry Ghost reserves the right to accept or reject any Contribution at its
+   sole discretion.
+
+d) Accepted Contributions become part of the Software and are subject to this
+   License.
+
+5. INTELLECTUAL PROPERTY
+
+a) Hungry Ghost retains all right, title, and interest in and to the Software,
+   including all intellectual property rights.
+
+b) This License does not grant you any rights to use Hungry Ghost's trademarks,
+   service marks, or trade names.
+
+6. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL
+HUNGRY GHOST BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING
+FROM THE USE OF THE SOFTWARE.
+
+7. TERMINATION
+
+a) This License is effective until terminated.
+
+b) Your rights under this License will terminate automatically without notice
+   if you fail to comply with any term of this License.
+
+c) Upon termination, you must destroy all copies of the Software in your
+   possession.
+
+8. GENERAL
+
+a) This License constitutes the entire agreement between you and Hungry Ghost
+   concerning the Software.
+
+b) This License shall be governed by the laws of the jurisdiction in which
+   Hungry Ghost is incorporated.
+
+c) If any provision of this License is held to be unenforceable, such provision
+   shall be reformed only to the extent necessary to make it enforceable.
+
+For permissions beyond the scope of this License, contact: legal@hungryghost.io
+
+---
+
+SUMMARY (not legally binding):
+- You CAN view the source code
+- You CAN contribute improvements via pull requests
+- You CANNOT fork for your own use
+- You CANNOT modify and use privately
+- You CANNOT distribute or sell
+- You CANNOT use commercially
