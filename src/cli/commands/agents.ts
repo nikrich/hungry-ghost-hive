@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
-import { getAllAgents, getAgentById, getActiveAgents } from '../../db/queries/agents.js';
+import { getAllAgents, getAgentById, getActiveAgents, getAgentsByStatus, deleteAgent } from '../../db/queries/agents.js';
 import { getLogsByAgent } from '../../db/queries/logs.js';
 import { statusColor } from '../../utils/logger.js';
 
@@ -170,6 +170,63 @@ agentsCommand
         }
       }
       console.log();
+    } finally {
+      db.close();
+    }
+  });
+
+agentsCommand
+  .command('cleanup')
+  .description('Clean up terminated agents from the database')
+  .option('--dry-run', 'Show what would be deleted without actually deleting')
+  .action(async (options: { dryRun?: boolean }) => {
+    const root = findHiveRoot();
+    if (!root) {
+      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
+      process.exit(1);
+    }
+
+    const paths = getHivePaths(root);
+    const db = await getDatabase(paths.hiveDir);
+
+    try {
+      const terminatedAgents = getAgentsByStatus(db.db, 'terminated');
+
+      if (terminatedAgents.length === 0) {
+        console.log(chalk.green('No terminated agents to clean up.'));
+        return;
+      }
+
+      console.log(chalk.yellow(`\nFound ${terminatedAgents.length} terminated agent(s):\n`));
+
+      // Group by type for summary
+      const byType = terminatedAgents.reduce((acc, agent) => {
+        acc[agent.type] = (acc[agent.type] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      for (const [type, count] of Object.entries(byType)) {
+        console.log(chalk.gray(`  ${type}: ${count}`));
+      }
+      console.log();
+
+      if (options.dryRun) {
+        console.log(chalk.yellow('Dry run - no agents were deleted.'));
+        return;
+      }
+
+      // Delete terminated agents
+      let deleted = 0;
+      for (const agent of terminatedAgents) {
+        try {
+          deleteAgent(db.db, agent.id);
+          deleted++;
+        } catch (err) {
+          console.error(chalk.red(`Failed to delete ${agent.id}: ${err instanceof Error ? err.message : 'Unknown error'}`));
+        }
+      }
+
+      console.log(chalk.green(`✓ Cleaned up ${deleted} terminated agent(s).`));
     } finally {
       db.close();
     }
