@@ -30,6 +30,7 @@ export function getStaleAgents(db: Database, timeoutSeconds: number = 15): Array
       CAST((julianday('now') - julianday(COALESCE(last_seen, created_at))) * 86400 AS INTEGER) as seconds_since_heartbeat
     FROM agents
     WHERE status IN ('working', 'idle')
+      AND (julianday('now') - julianday(created_at)) * 86400 > 60
       AND (last_seen IS NULL OR
            (julianday('now') - julianday(last_seen)) * 86400 > ?)
   `;
