@@ -9,26 +9,31 @@ export class TimeoutError extends Error {
   }
 }
 
+export interface RetryOptions {
+  maxRetries: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+}
+
 /**
- * Wraps a promise with a timeout. Rejects with TimeoutError if the promise
- * doesn't resolve within the specified time.
+ * Wraps a promise with a timeout
  */
 export function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   errorMessage = 'Operation timed out'
 ): Promise<T> {
-  return new Promise((resolve, reject) => {
+  return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new TimeoutError(errorMessage, timeoutMs));
+      reject(new TimeoutError(`${errorMessage} after ${timeoutMs}ms`, timeoutMs));
     }, timeoutMs);
 
     promise
-      .then(value => {
+      .then((result) => {
         clearTimeout(timer);
-        resolve(value);
+        resolve(result);
       })
-      .catch(err => {
+      .catch((err) => {
         clearTimeout(timer);
         reject(err);
       });
@@ -36,61 +41,35 @@ export function withTimeout<T>(
 }
 
 /**
- * Retry configuration options
- */
-export interface RetryOptions {
-  maxRetries: number;
-  initialDelayMs?: number;
-  maxDelayMs?: number;
-  backoffMultiplier?: number;
-  onRetry?: (error: Error, attempt: number) => void;
-}
-
-/**
- * Wraps a function with retry logic using exponential backoff.
- * Will retry on any error up to maxRetries times.
+ * Retries a function with exponential backoff
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
   options: RetryOptions
 ): Promise<T> {
-  const {
-    maxRetries,
-    initialDelayMs = 1000,
-    maxDelayMs = 60000,
-    backoffMultiplier = 2,
-    onRetry,
-  } = options;
-
-  let lastError: Error = new Error('Retry failed');
+  const { maxRetries, baseDelayMs = 1000, maxDelayMs = 30000 } = options;
+  let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt === maxRetries) break;
 
-      if (attempt < maxRetries) {
-        const delayMs = Math.min(
-          initialDelayMs * Math.pow(backoffMultiplier, attempt),
-          maxDelayMs
-        );
-
-        if (onRetry) {
-          onRetry(lastError, attempt + 1);
-        }
-
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      }
+      const delay = Math.min(
+        baseDelayMs * Math.pow(2, attempt) * (0.5 + Math.random() * 0.5),
+        maxDelayMs
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
 
-  throw lastError;
+  throw lastError || new Error('Max retries exceeded');
 }
 
 /**
- * Combines timeout and retry logic for LLM calls.
- * Each retry attempt has its own timeout.
+ * Combines timeout and retry logic
  */
 export async function withTimeoutAndRetry<T>(
   fn: () => Promise<T>,

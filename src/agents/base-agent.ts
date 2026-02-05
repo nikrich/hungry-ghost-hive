@@ -143,17 +143,28 @@ export abstract class BaseAgent {
   protected async chat(userMessage: string): Promise<string> {
     this.messages.push({ role: 'user', content: userMessage });
 
-    const result = await this.provider.complete(this.messages);
-    this.totalTokens += result.usage.inputTokens + result.usage.outputTokens;
+    try {
+      // Apply configured timeout to LLM call
+      const result = await this.provider.complete(this.messages, {
+        timeoutMs: this.config.llmTimeoutMs,
+      });
 
-    this.messages.push({ role: 'assistant', content: result.content });
+      this.totalTokens += result.usage.inputTokens + result.usage.outputTokens;
+      this.messages.push({ role: 'assistant', content: result.content });
 
-    // Check if we need to checkpoint
-    if (this.totalTokens > this.config.checkpointThreshold) {
-      await this.checkpoint();
+      // Check if we need to checkpoint
+      if (this.totalTokens > this.config.checkpointThreshold) {
+        await this.checkpoint();
+      }
+
+      return result.content;
+    } catch (err) {
+      // Log timeout/error event
+      this.log('AGENT_TERMINATED', `LLM call failed: ${err instanceof Error ? err.message : String(err)}`, {
+        error: err instanceof Error ? err.stack : String(err),
+      });
+      throw err;
     }
-
-    return result.content;
   }
 
   protected async checkpoint(): Promise<void> {
