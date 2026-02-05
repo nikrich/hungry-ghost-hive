@@ -310,16 +310,28 @@ hive my-stories ${session.name}
     }
 
     // Check for rejected PRs that need developer attention
+    // Only notify once by updating status to 'closed' after notification (prevents spam)
     const rejectedPRs = getPullRequestsByStatus(db.db, 'rejected');
+    let rejectionNotified = 0;
     for (const pr of rejectedPRs) {
       if (pr.submitted_by) {
         const devSession = hiveSessions.find(s => s.name === pr.submitted_by);
         if (devSession) {
           await sendToTmuxSession(devSession.name,
-            `# Your PR ${pr.id} was rejected. Reason: ${pr.review_notes || 'See details'}`
+            `# PR REJECTED: ${pr.id}
+# Reason: ${pr.review_notes || 'See review comments'}
+# Fix the issues and resubmit: hive pr submit -b ${pr.branch_name} -s ${pr.story_id || 'STORY-ID'} --from ${devSession.name}`
           );
+          rejectionNotified++;
         }
       }
+      // Mark as closed to prevent re-notification spam
+      // Developer will create a new PR when they resubmit
+      db.db.run("UPDATE pull_requests SET status = 'closed' WHERE id = ?", [pr.id]);
+    }
+    if (rejectedPRs.length > 0) {
+      db.save();
+      console.log(chalk.yellow(`  Notified ${rejectionNotified} developer(s) of PR rejection(s)`));
     }
 
     // Check for stories stuck in "in_progress" for too long (> 30 min without activity)
