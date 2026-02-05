@@ -321,6 +321,22 @@ function runMigrations(db: SqlJsDatabase): void {
 
     db.run("INSERT INTO migrations (name) VALUES ('004-add-messages.sql')");
   }
+
+  // Migration 005: Add last_seen column to agents for heartbeat mechanism
+  const result005 = db.exec("SELECT name FROM migrations WHERE name = '005-add-agent-last-seen.sql'");
+  const migration005Applied = result005.length > 0 && result005[0].values.length > 0;
+
+  if (!migration005Applied) {
+    const columns = db.exec("PRAGMA table_info(agents)");
+    const hasLastSeenColumn = columns.length > 0 &&
+      columns[0].values.some((col: unknown[]) => col[1] === 'last_seen');
+
+    if (!hasLastSeenColumn) {
+      // sql.js doesn't support non-constant defaults in ALTER TABLE
+      db.run("ALTER TABLE agents ADD COLUMN last_seen TIMESTAMP");
+    }
+    db.run("INSERT INTO migrations (name) VALUES ('005-add-agent-last-seen.sql')");
+  }
 }
 
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
@@ -371,6 +387,7 @@ export interface AgentRow {
   status: 'idle' | 'working' | 'blocked' | 'terminated';
   current_story_id: string | null;
   memory_state: string | null;
+  last_seen: string | null;
   created_at: string;
   updated_at: string;
 }

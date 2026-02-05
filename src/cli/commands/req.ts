@@ -8,7 +8,7 @@ import { createRequirement, updateRequirement } from '../../db/queries/requireme
 import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.js';
 import { getAllTeams } from '../../db/queries/teams.js';
 import { createLog } from '../../db/queries/logs.js';
-import { spawnTmuxSession, isTmuxAvailable, sendToTmuxSession } from '../../tmux/manager.js';
+import { spawnTmuxSession, isTmuxAvailable, sendToTmuxSession, waitForTmuxSessionReady } from '../../tmux/manager.js';
 
 export const reqCommand = new Command('req')
   .description('Submit a requirement')
@@ -108,8 +108,8 @@ export const reqCommand = new Command('req')
           command: `claude --dangerously-skip-permissions --model opus`,
         });
 
-        // Wait for Claude to fully start, then send the planning prompt
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Wait for Claude to be ready before sending the prompt
+        await waitForTmuxSessionReady(sessionName);
         await sendToTmuxSession(sessionName, techLeadPrompt);
 
         updateAgent(db.db, techLead.id, { tmuxSession: sessionName });

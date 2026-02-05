@@ -20,7 +20,7 @@ export const myStoriesCommand = new Command('my-stories')
     try {
       if (!session) {
         // Show all in-progress stories
-        const stories = queryAll<StoryRow>(db.db, `
+        const stories = queryAll<StoryRow & { tmux_session?: string }>(db.db, `
           SELECT s.*, a.tmux_session
           FROM stories s
           LEFT JOIN agents a ON s.assigned_agent_id = a.id
@@ -35,7 +35,7 @@ export const myStoriesCommand = new Command('my-stories')
 
         console.log(chalk.bold('\nActive Stories:\n'));
         for (const story of stories) {
-          printStory(story, (story as any).tmux_session);
+          printStory(story, story.tmux_session);
         }
         return;
       }

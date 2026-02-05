@@ -2,6 +2,7 @@ import type { Database } from 'sql.js';
 import type { LLMProvider, Message } from '../llm/provider.js';
 import { createLog, type EventType } from '../db/queries/logs.js';
 import { updateAgent, type AgentRow, type AgentType, type AgentStatus } from '../db/queries/agents.js';
+import { updateAgentHeartbeat } from '../db/queries/heartbeat.js';
 
 export interface MemoryState {
   conversationSummary: string;
@@ -28,6 +29,8 @@ export interface AgentContext {
     maxRetries: number;
     checkpointThreshold: number;
     pollInterval: number;
+    llmTimeoutMs: number;
+    llmMaxRetries: number;
   };
 }
 
@@ -42,6 +45,7 @@ export abstract class BaseAgent {
   protected messages: Message[] = [];
   protected memoryState: MemoryState;
   protected totalTokens = 0;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
 
   constructor(context: AgentContext) {
     this.db = context.db;
@@ -78,9 +82,38 @@ export abstract class BaseAgent {
         content: `Previous context:\n${this.memoryState.conversationSummary}\n\nContinue from where you left off.`,
       });
     }
+
+    // Start heartbeat mechanism for faster failure detection
+    this.startHeartbeat();
   }
 
   abstract getSystemPrompt(): string;
+
+  private startHeartbeat(): void {
+    // Send initial heartbeat
+    this.sendHeartbeat();
+
+    // Send heartbeat every 10 seconds
+    this.heartbeatInterval = setInterval(() => {
+      this.sendHeartbeat();
+    }, 10000);
+  }
+
+  private sendHeartbeat(): void {
+    try {
+      updateAgentHeartbeat(this.db, this.agentId);
+    } catch (err) {
+      // Heartbeat failure shouldn't crash the agent
+      console.error(`Heartbeat failed for ${this.agentId}:`, err);
+    }
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
 
   protected log(
     eventType: EventType,
@@ -201,6 +234,9 @@ Keep it under 500 words.`;
         error: err instanceof Error ? err.stack : String(err),
       });
       throw err;
+    } finally {
+      // Stop heartbeat when agent completes or fails
+      this.stopHeartbeat();
     }
   }
 
