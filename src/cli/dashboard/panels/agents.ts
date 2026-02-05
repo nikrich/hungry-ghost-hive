@@ -82,8 +82,11 @@ interface DisplayAgent extends AgentRow {
 }
 
 export async function updateAgentsPanel(list: Widgets.ListElement, db: Database): Promise<void> {
+  // Preserve current selection before updating
+  const currentSelection = (list as unknown as { selected: number }).selected;
+
   const agents = getActiveAgents(db);
-  debugLog(`updateAgentsPanel called, found ${agents.length} agents`);
+  debugLog(`updateAgentsPanel called, found ${agents.length} agents, currentSelection=${currentSelection}`);
 
   // Check for manager session (not in DB)
   const hiveSessions = await getHiveSessions();
@@ -151,9 +154,13 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
   debugLog(`Setting data with ${rows.length} rows`);
   list.setItems([header, ...rows]);
 
-  // Select first agent row (index 1, since 0 is the header)
+  // Restore selection position (clamped to valid range)
+  // Index 0 is header, so valid agent indices are 1 to rows.length
   if (rows.length > 0) {
-    list.select(1);
+    const maxIndex = rows.length; // header + rows, so max selectable is rows.length
+    const restoredIndex = Math.max(1, Math.min(currentSelection, maxIndex));
+    list.select(restoredIndex);
+    debugLog(`Restored selection to ${restoredIndex}`);
   }
 }
 
