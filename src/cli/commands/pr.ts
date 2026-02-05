@@ -305,9 +305,17 @@ prCommand
         reviewNotes: options.notes || null,
       });
 
-      // Update story status if linked
-      if (pr.story_id) {
-        updateStory(db.db, pr.story_id, { status: 'merged' });
+      // Update story status if linked, or try to extract from branch name
+      let storyId = pr.story_id;
+      if (!storyId && pr.branch_name) {
+        // Extract story ID from branch name (e.g., feature/STORY-001-TIMEOUT-impl -> STORY-001-TIMEOUT)
+        const storyMatch = pr.branch_name.match(/STORY-\d+-[A-Z]+/i);
+        if (storyMatch) {
+          storyId = storyMatch[0].toUpperCase();
+        }
+      }
+      if (storyId && newStatus === 'merged') {
+        updateStory(db.db, storyId, { status: 'merged' });
       }
 
       db.save();
@@ -322,10 +330,10 @@ prCommand
       if (options.from) {
         createLog(db.db, {
           agentId: options.from,
-          storyId: pr.story_id || undefined,
+          storyId: storyId || undefined,
           eventType: newStatus === 'merged' ? 'PR_MERGED' : 'PR_APPROVED',
-          message: `${newStatus === 'merged' ? 'Merged' : 'Approved'} PR ${prId}`,
-          metadata: { pr_id: prId, branch: pr.branch_name },
+          message: `${newStatus === 'merged' ? 'Merged' : 'Approved'} PR ${prId}${storyId ? ` (${storyId})` : ''}`,
+          metadata: { pr_id: prId, branch: pr.branch_name, story_id: storyId },
         });
         db.save();
       }
@@ -363,9 +371,16 @@ prCommand
         reviewNotes: options.reason,
       });
 
-      // Update story status if linked
-      if (pr.story_id) {
-        updateStory(db.db, pr.story_id, { status: 'qa_failed' });
+      // Update story status - extract from branch name if not directly linked
+      let storyId = pr.story_id;
+      if (!storyId && pr.branch_name) {
+        const storyMatch = pr.branch_name.match(/STORY-\d+-[A-Z]+/i);
+        if (storyMatch) {
+          storyId = storyMatch[0].toUpperCase();
+        }
+      }
+      if (storyId) {
+        updateStory(db.db, storyId, { status: 'qa_failed' });
       }
 
       db.save();
@@ -394,10 +409,10 @@ prCommand
       if (options.from) {
         createLog(db.db, {
           agentId: options.from,
-          storyId: pr.story_id || undefined,
+          storyId: storyId || undefined,
           eventType: 'PR_REJECTED',
-          message: `Rejected PR ${prId}: ${options.reason}`,
-          metadata: { pr_id: prId, branch: pr.branch_name },
+          message: `Rejected PR ${prId}${storyId ? ` (${storyId})` : ''}: ${options.reason}`,
+          metadata: { pr_id: prId, branch: pr.branch_name, story_id: storyId },
         });
         db.save();
       }
