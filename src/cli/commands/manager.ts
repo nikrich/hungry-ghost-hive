@@ -214,6 +214,12 @@ async function managerCheck(root: string): Promise<void> {
     await scheduler.checkMergeQueue();
     db.save();
 
+    // Sync merged PRs from GitHub to keep story statuses in sync
+    const mergedSynced = await syncMergedPRsFromGitHub(root, db);
+    if (mergedSynced > 0) {
+      console.log(chalk.green(`  Synced ${mergedSynced} merged story(ies) from GitHub`));
+    }
+
     // Sync GitHub PRs that might not be in queue
     const syncedPRs = await syncGitHubPRs(root, db, paths.hiveDir);
     if (syncedPRs > 0) {
@@ -529,6 +535,65 @@ async function forwardMessages(sessionName: string, messages: MessageRow[]): Pro
 interface DatabaseClient {
   db: import('sql.js').Database;
   save: () => void;
+}
+
+async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promise<number> {
+  const teams = getAllTeams(db.db);
+  if (teams.length === 0) return 0;
+
+  let storiesUpdated = 0;
+
+  for (const team of teams) {
+    if (!team.repo_path) continue;
+
+    const repoDir = `${root}/${team.repo_path}`;
+
+    try {
+      // Get recently merged PRs from GitHub
+      const result = await execa('gh', ['pr', 'list', '--json', 'number,headRefName,mergedAt', '--state', 'merged', '--limit', '20'], {
+        cwd: repoDir,
+      });
+      const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> = JSON.parse(result.stdout);
+
+      for (const pr of mergedPRs) {
+        // Extract story ID from branch name
+        const storyMatch = pr.headRefName.match(/STORY-[\w-]+/i);
+        if (!storyMatch) continue;
+
+        const storyId = storyMatch[0].toUpperCase();
+
+        // Check if story exists and isn't already merged
+        const story = queryAll<StoryRow>(db.db,
+          "SELECT * FROM stories WHERE id = ? AND status != 'merged'",
+          [storyId]
+        );
+
+        if (story.length > 0) {
+          // Update story to merged
+          db.db.run("UPDATE stories SET status = 'merged', assigned_agent_id = NULL, updated_at = datetime('now') WHERE id = ?", [storyId]);
+
+          // Log the sync
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: storyId,
+            eventType: 'STORY_MERGED',
+            message: `Story synced to merged from GitHub PR #${pr.number}`,
+          });
+
+          storiesUpdated++;
+        }
+      }
+    } catch {
+      // gh CLI might not be authenticated or repo might not have remote
+      continue;
+    }
+  }
+
+  if (storiesUpdated > 0) {
+    db.save();
+  }
+
+  return storiesUpdated;
 }
 
 async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string): Promise<number> {
