@@ -6,6 +6,12 @@ export interface CompletionOptions {
     maxTokens?: number;
     temperature?: number;
     stopSequences?: string[];
+    /**
+     * Timeout in milliseconds for this completion request.
+     * If the LLM call doesn't complete within this time, it will be cancelled
+     * and a TimeoutError will be thrown.
+     */
+    timeoutMs?: number;
 }
 export interface CompletionResult {
     content: string;

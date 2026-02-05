@@ -80,6 +80,10 @@ const AgentsConfigSchema = z.object({
     max_retries: z.number().int().nonnegative().default(2),
     // Token threshold for checkpoint
     checkpoint_threshold: z.number().int().positive().default(14000),
+    // LLM call timeout in milliseconds (default: 30 minutes)
+    llm_timeout_ms: z.number().int().positive().default(1800000),
+    // Max retries for LLM calls on timeout
+    llm_max_retries: z.number().int().nonnegative().default(2),
 });
 // Logging configuration
 const LoggingConfigSchema = z.object({
@@ -180,6 +184,10 @@ agents:
   max_retries: 2
   # Token threshold for checkpoint
   checkpoint_threshold: 14000
+  # LLM call timeout in milliseconds (default: 30 minutes)
+  llm_timeout_ms: 1800000
+  # Max retries for LLM calls on timeout
+  llm_max_retries: 2
 
 # Logging
 logging:

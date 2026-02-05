@@ -199,14 +199,20 @@ declare const AgentsConfigSchema: z.ZodObject<{
     poll_interval: z.ZodDefault<z.ZodNumber>;
     max_retries: z.ZodDefault<z.ZodNumber>;
     checkpoint_threshold: z.ZodDefault<z.ZodNumber>;
+    llm_timeout_ms: z.ZodDefault<z.ZodNumber>;
+    llm_max_retries: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     poll_interval: number;
     max_retries: number;
     checkpoint_threshold: number;
+    llm_timeout_ms: number;
+    llm_max_retries: number;
 }, {
     poll_interval?: number | undefined;
     max_retries?: number | undefined;
     checkpoint_threshold?: number | undefined;
+    llm_timeout_ms?: number | undefined;
+    llm_max_retries?: number | undefined;
 }>;
 declare const LoggingConfigSchema: z.ZodObject<{
     level: z.ZodDefault<z.ZodEnum<["debug", "info", "warn", "error"]>>;
@@ -404,14 +410,20 @@ export declare const HiveConfigSchema: z.ZodObject<{
         poll_interval: z.ZodDefault<z.ZodNumber>;
         max_retries: z.ZodDefault<z.ZodNumber>;
         checkpoint_threshold: z.ZodDefault<z.ZodNumber>;
+        llm_timeout_ms: z.ZodDefault<z.ZodNumber>;
+        llm_max_retries: z.ZodDefault<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         poll_interval: number;
         max_retries: number;
         checkpoint_threshold: number;
+        llm_timeout_ms: number;
+        llm_max_retries: number;
     }, {
         poll_interval?: number | undefined;
         max_retries?: number | undefined;
         checkpoint_threshold?: number | undefined;
+        llm_timeout_ms?: number | undefined;
+        llm_max_retries?: number | undefined;
     }>>;
     logging: z.ZodDefault<z.ZodObject<{
         level: z.ZodDefault<z.ZodEnum<["debug", "info", "warn", "error"]>>;
@@ -428,6 +440,8 @@ export declare const HiveConfigSchema: z.ZodObject<{
         poll_interval: number;
         max_retries: number;
         checkpoint_threshold: number;
+        llm_timeout_ms: number;
+        llm_max_retries: number;
     };
     qa: {
         quality_checks: string[];
@@ -485,6 +499,8 @@ export declare const HiveConfigSchema: z.ZodObject<{
         poll_interval?: number | undefined;
         max_retries?: number | undefined;
         checkpoint_threshold?: number | undefined;
+        llm_timeout_ms?: number | undefined;
+        llm_max_retries?: number | undefined;
     } | undefined;
     qa?: {
         quality_checks?: string[] | undefined;

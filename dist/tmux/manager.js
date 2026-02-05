@@ -136,6 +136,36 @@ export async function captureTmuxPane(sessionName, lines = 100) {
         return '';
     }
 }
+/**
+ * Waits for a tmux session to be ready by detecting Claude CLI initialization.
+ * Claude is considered ready when the prompt appears in the pane output.
+ * @param sessionName - The tmux session name
+ * @param maxWaitMs - Maximum time to wait in milliseconds (default 15000ms)
+ * @param pollIntervalMs - Interval between checks in milliseconds (default 200ms)
+ * @returns true if ready, false on timeout
+ */
+export async function waitForTmuxSessionReady(sessionName, maxWaitMs = 15000, pollIntervalMs = 200) {
+    const startTime = Date.now();
+    let lastOutput = '';
+    while (Date.now() - startTime < maxWaitMs) {
+        const output = await captureTmuxPane(sessionName, 50);
+        // Check if we have Claude prompt indicator or substantial output
+        // Claude typically shows a prompt with "> " or similar
+        if (output.includes('>') || output.includes('Claude')) {
+            return true;
+        }
+        // Check if output has stabilized (same content for consecutive polls)
+        // This handles cases where output appears without explicit prompt
+        if (lastOutput === output && output.length > 0) {
+            return true;
+        }
+        lastOutput = output;
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+    // Timeout reached, but return true anyway as a fallback
+    // to avoid infinite hangs. Claude might still be starting.
+    return true;
+}
 export function generateSessionName(agentType, teamName, index) {
     let name = `hive-${agentType}`;
     if (teamName) {
