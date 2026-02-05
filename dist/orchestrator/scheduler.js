@@ -434,6 +434,15 @@ hive msg outbox ${sessionName}
 - Keep commits atomic and well-documented
 - Message the Tech Lead if blocked or need clarification
 
+## IMPORTANT: Autonomous Workflow
+You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
+After completing a story:
+1. Run \`hive my-stories ${sessionName}\` to get your next assignment
+2. If no stories assigned, run \`hive my-stories ${sessionName} --all\` to see available work
+3. Claim available work with \`hive my-stories claim <story-id> --session ${sessionName}\`
+4. ALWAYS submit PRs to hive after creating them on GitHub:
+   \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
+
 Start by exploring the codebase to understand its structure, then begin working on the highest priority story.`;
 }
 function generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName) {
@@ -503,6 +512,15 @@ hive msg outbox ${sessionName}
 - Keep commits focused and clear
 - Message Senior or Tech Lead if blocked
 
+## IMPORTANT: Autonomous Workflow
+You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
+After completing a story:
+1. Run \`hive my-stories ${sessionName}\` to get your next assignment
+2. If no stories assigned, run \`hive my-stories ${sessionName} --all\` to see available work
+3. Claim available work with \`hive my-stories claim <story-id> --session ${sessionName}\`
+4. ALWAYS submit PRs to hive after creating them on GitHub:
+   \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
+
 Start by exploring the codebase, then run \`hive my-stories ${sessionName}\` to see your assignments.`;
 }
 function generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName) {
@@ -571,6 +589,15 @@ hive msg outbox ${sessionName}
 - Ask questions if requirements are unclear
 - Test thoroughly before submitting
 - Keep changes small and focused
+
+## IMPORTANT: Autonomous Workflow
+You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
+After completing a story:
+1. Run \`hive my-stories ${sessionName}\` to get your next assignment
+2. If no stories assigned, run \`hive my-stories ${sessionName} --all\` to see available work
+3. Claim available work with \`hive my-stories claim <story-id> --session ${sessionName}\`
+4. ALWAYS submit PRs to hive after creating them on GitHub:
+   \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
 
 Start by exploring the codebase to understand how things work, then run \`hive my-stories ${sessionName}\` to see your assignments.`;
 }

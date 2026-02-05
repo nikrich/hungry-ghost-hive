@@ -7,7 +7,12 @@ import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getHiveSessions, sendToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession } from '../../tmux/manager.js';
 import { getMergeQueue, getPullRequestsByStatus } from '../../db/queries/pull-requests.js';
 import { getUnreadMessages, markMessageRead } from '../../db/queries/messages.js';
+import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
+import { getAgentById } from '../../db/queries/agents.js';
 import { queryAll } from '../../db/client.js';
+import { getAllTeams } from '../../db/queries/teams.js';
+import { execa } from 'execa';
+import { createPullRequest } from '../../db/queries/pull-requests.js';
 export const managerCommand = new Command('manager')
     .description('Micromanager daemon that keeps agents productive');
 // Start the manager daemon
@@ -156,6 +161,14 @@ async function managerCheck(root) {
         // Check merge queue for QA spawning
         await scheduler.checkMergeQueue();
         db.save();
+        // Sync GitHub PRs that might not be in queue
+        const syncedPRs = await syncGitHubPRs(root, db, paths.hiveDir);
+        if (syncedPRs > 0) {
+            console.log(chalk.yellow(`  Synced ${syncedPRs} GitHub PR(s) into merge queue`));
+            // Recheck merge queue after syncing
+            await scheduler.checkMergeQueue();
+            db.save();
+        }
         const sessions = await getHiveSessions();
         const hiveSessions = sessions.filter(s => s.name.startsWith('hive-') &&
             !s.name.includes('tech-lead') // Don't micromanage the tech lead
@@ -166,7 +179,16 @@ async function managerCheck(root) {
         }
         let nudged = 0;
         let messagesForwarded = 0;
+        let escalationsCreated = 0;
+        // Get existing pending escalations to avoid duplicates
+        const existingEscalations = getPendingEscalations(db.db);
+        const escalatedSessions = new Set(existingEscalations
+            .filter(e => e.from_agent_id)
+            .map(e => e.from_agent_id));
         for (const session of hiveSessions) {
+            // Skip manager itself
+            if (session.name === 'hive-manager')
+                continue;
             // Check if agent has unread messages
             const unread = getUnreadMessages(db.db, session.name);
             if (unread.length > 0) {
@@ -179,13 +201,36 @@ async function managerCheck(root) {
                 db.save();
             }
             // Check if agent appears stuck (capture last output)
-            const output = await captureTmuxPane(session.name, 30);
-            const isWaiting = detectWaitingState(output);
-            if (isWaiting) {
-                // Determine what to nudge them about
-                const agentType = getAgentType(session.name);
-                await nudgeAgent(root, session.name, undefined, agentType);
-                nudged++;
+            const output = await captureTmuxPane(session.name, 50);
+            const waitingInfo = detectWaitingState(output);
+            if (waitingInfo.isWaiting) {
+                if (waitingInfo.needsHuman && !escalatedSessions.has(session.name)) {
+                    // Create escalation for human attention
+                    const agent = getAgentById(db.db, session.name.replace('hive-', ''));
+                    const storyId = agent?.current_story_id || null;
+                    createEscalation(db.db, {
+                        storyId,
+                        fromAgentId: session.name,
+                        toAgentId: null, // Escalate to human
+                        reason: `Agent waiting for input: ${waitingInfo.reason || 'Unknown question'}`,
+                    });
+                    db.save();
+                    escalationsCreated++;
+                    escalatedSessions.add(session.name);
+                    // Also remind the agent to continue autonomously if they can
+                    await sendToTmuxSession(session.name, `# REMINDER: You are an autonomous agent. Don't wait for instructions.
+# If you completed your task, check for more work:
+hive my-stories ${session.name}
+# If no stories, check available work: hive my-stories ${session.name} --all
+# If you created a PR, make sure to submit it: hive pr submit -b <branch> -s <story-id> --from ${session.name}`);
+                    console.log(chalk.red(`  ESCALATION: ${session.name} needs human input`));
+                }
+                else if (!waitingInfo.needsHuman) {
+                    // Just nudge them
+                    const agentType = getAgentType(session.name);
+                    await nudgeAgent(root, session.name, undefined, agentType);
+                    nudged++;
+                }
             }
         }
         // Check for PRs needing QA attention
@@ -206,6 +251,21 @@ async function managerCheck(root) {
                 }
             }
         }
+        // Check for stories stuck in "in_progress" for too long (> 30 min without activity)
+        const stuckStories = queryAll(db.db, `SELECT * FROM stories
+       WHERE status = 'in_progress'
+       AND updated_at < datetime('now', '-30 minutes')`);
+        for (const story of stuckStories) {
+            if (story.assigned_agent_id) {
+                const agentSession = hiveSessions.find(s => s.name.includes(story.assigned_agent_id?.replace(/^hive-/, '') || ''));
+                if (agentSession) {
+                    await sendToTmuxSession(agentSession.name, `# REMINDER: Story ${story.id} has been in progress for a while.
+# If stuck, escalate to your Senior or Tech Lead.
+# If done, submit your PR: hive pr submit -b <branch> -s ${story.id} --from ${agentSession.name}
+# Then mark complete: hive my-stories complete ${story.id}`);
+                }
+            }
+        }
         // Check for unassigned planned stories
         const plannedStories = queryAll(db.db, "SELECT * FROM stories WHERE status = 'planned' AND assigned_agent_id IS NULL");
         if (plannedStories.length > 0) {
@@ -217,6 +277,8 @@ async function managerCheck(root) {
         }
         // Summary
         const summary = [];
+        if (escalationsCreated > 0)
+            summary.push(`${escalationsCreated} escalations created`);
         if (nudged > 0)
             summary.push(`${nudged} nudged`);
         if (messagesForwarded > 0)
@@ -235,35 +297,54 @@ async function managerCheck(root) {
     }
 }
 function detectWaitingState(output) {
-    const waitingPatterns = [
-        /waiting for.*input/i,
-        /press enter to continue/i,
-        /\?\s*$/, // Ends with a question
-        /y\/n\s*\]?\s*$/i, // Yes/No prompt
-        /\[Y\/n\]/i,
-        /\(yes\/no\)/i,
-        /password:/i,
-        /enter .*:/i,
-        /would you like to/i,
-        /do you want to/i,
-        /please confirm/i,
-        /waiting for response/i,
+    // Patterns that indicate agent finished work and is asking for more (should nudge to check hive)
+    const finishedAskingPatterns = [
+        /is there anything else/i,
+        /anything else you'd like/i,
+        /what else would you like/i,
+        /let me know if there's anything/i,
+        /feel free to ask/i,
+        /can I help with anything else/i,
     ];
-    // Check for Claude asking questions (common patterns)
-    const claudeQuestionPatterns = [
-        /I have a few questions/i,
-        /Could you clarify/i,
-        /Which option would you prefer/i,
-        /Should I proceed/i,
-        /Do you want me to/i,
-        /Let me know if/i,
-    ];
-    for (const pattern of [...waitingPatterns, ...claudeQuestionPatterns]) {
+    // Check if agent finished and is waiting - they should be nudged to check hive
+    for (const pattern of finishedAskingPatterns) {
         if (pattern.test(output)) {
-            return true;
+            return { isWaiting: true, needsHuman: false };
         }
     }
-    return false;
+    // Patterns that indicate waiting for simple input (can be nudged)
+    const nudgeablePatterns = [
+        /press enter to continue/i,
+        /password:/i,
+    ];
+    // Patterns that indicate Claude is asking questions (needs human)
+    const humanInputPatterns = [
+        { pattern: /I have a few questions/i, reason: 'Agent has questions' },
+        { pattern: /Could you clarify/i, reason: 'Agent needs clarification' },
+        { pattern: /Which option would you prefer/i, reason: 'Agent needs decision' },
+        { pattern: /Should I proceed/i, reason: 'Agent asking for confirmation' },
+        { pattern: /Do you want me to/i, reason: 'Agent asking for direction' },
+        { pattern: /Let me know if/i, reason: 'Agent waiting for feedback' },
+        { pattern: /What would you like/i, reason: 'Agent needs instructions' },
+        { pattern: /Can you provide/i, reason: 'Agent needs more information' },
+        { pattern: /I need.*to proceed/i, reason: 'Agent blocked, needs input' },
+        { pattern: /waiting for.*input/i, reason: 'Agent waiting for input' },
+        { pattern: /\?\s*$/, reason: 'Agent asked a question' },
+        { pattern: /please (provide|specify|confirm)/i, reason: 'Agent needs confirmation' },
+    ];
+    // Check for human-input-needed patterns first
+    for (const { pattern, reason } of humanInputPatterns) {
+        if (pattern.test(output)) {
+            return { isWaiting: true, needsHuman: true, reason };
+        }
+    }
+    // Check for nudgeable patterns
+    for (const pattern of nudgeablePatterns) {
+        if (pattern.test(output)) {
+            return { isWaiting: true, needsHuman: false };
+        }
+    }
+    return { isWaiting: false, needsHuman: false };
 }
 function getAgentType(sessionName) {
     if (sessionName.includes('-senior-'))
@@ -312,5 +393,52 @@ async function forwardMessages(sessionName, messages) {
         // Small delay between messages
         await new Promise(resolve => setTimeout(resolve, 500));
     }
+}
+async function syncGitHubPRs(root, db, _hiveDir) {
+    const teams = getAllTeams(db.db);
+    if (teams.length === 0)
+        return 0;
+    // Get existing PRs
+    const existingPRs = queryAll(db.db, "SELECT * FROM pull_requests WHERE status NOT IN ('merged', 'closed')");
+    const existingBranches = new Set(existingPRs.map(pr => pr.branch_name));
+    const existingPrNumbers = new Set(existingPRs.map(pr => pr.github_pr_number).filter(Boolean));
+    let synced = 0;
+    for (const team of teams) {
+        if (!team.repo_path)
+            continue;
+        const repoDir = `${root}/${team.repo_path}`;
+        try {
+            const result = await execa('gh', ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'], {
+                cwd: repoDir,
+            });
+            const ghPRs = JSON.parse(result.stdout);
+            for (const ghPR of ghPRs) {
+                // Skip if already in queue
+                if (existingBranches.has(ghPR.headRefName) || existingPrNumbers.has(ghPR.number)) {
+                    continue;
+                }
+                // Try to match to a story by parsing branch name
+                const storyMatch = ghPR.headRefName.match(/STORY-\d+/i);
+                const storyId = storyMatch ? storyMatch[0].toUpperCase() : null;
+                createPullRequest(db.db, {
+                    storyId,
+                    teamId: team.id,
+                    branchName: ghPR.headRefName,
+                    githubPrNumber: ghPR.number,
+                    githubPrUrl: ghPR.url,
+                    submittedBy: null,
+                });
+                synced++;
+            }
+        }
+        catch {
+            // gh CLI might not be authenticated or repo might not have remote
+            continue;
+        }
+    }
+    if (synced > 0) {
+        db.save();
+    }
+    return synced;
 }
 //# sourceMappingURL=manager.js.map

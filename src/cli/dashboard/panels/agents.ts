@@ -3,6 +3,8 @@ import blessed, { type Widgets } from 'blessed';
 import { appendFileSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { getActiveAgents, type AgentRow } from '../../../db/queries/agents.js';
+import { getTeamById } from '../../../db/queries/teams.js';
+import { getHiveSessions } from '../../../tmux/manager.js';
 
 function debugLog(msg: string) {
   appendFileSync('/tmp/hive-dashboard-debug.log', `${new Date().toISOString()} ${msg}\n`);
@@ -11,44 +13,44 @@ function debugLog(msg: string) {
 // Store agents for selection lookup
 let currentAgents: AgentRow[] = [];
 
-export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets.ListTableElement {
+export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
 
-  const table = blessed.listtable({
+  const list = blessed.list({
     parent: screen,
     top: 1,
     left: 0,
     width: '100%',
     height: '30%',
     border: { type: 'line' },
-    label: ' Agents [↑↓: Navigate, Enter: Attach to session] ',
+    label: ' Agents [↑↓: Navigate, Enter: Attach] ',
     keys: true,
     vi: true,
     mouse: true,
-    interactive: true,
     scrollable: true,
     scrollbar: {
       ch: '█',
       style: { fg: 'cyan' },
     },
     style: {
-      header: { bold: true, fg: 'cyan' },
-      cell: { fg: 'white' },
-      selected: { bg: 'magenta', fg: 'white', bold: true },
+      fg: 'white',
+      selected: { bg: 'blue', fg: 'white', bold: true },
       border: { fg: 'cyan' },
       focus: { border: { fg: 'yellow' } },
     },
-    align: 'left',
     tags: true,
   });
 
   // Handle Enter key to attach to tmux session
-  table.key(['enter'], () => {
-    const selectedIndex = (table as unknown as { selected: number }).selected;
-    // selected index 0 is the header row, so subtract 1
+  list.key(['enter'], () => {
+    const selectedIndex = (list as unknown as { selected: number }).selected;
+    // Index 0 is the header, so subtract 1 for agent index
     const agentIndex = selectedIndex - 1;
+
+    debugLog(`Enter pressed, selectedIndex=${selectedIndex}, agentIndex=${agentIndex}, agents=${currentAgents.length}`);
 
     if (agentIndex >= 0 && agentIndex < currentAgents.length) {
       const agent = currentAgents[agentIndex];
+      debugLog(`Selected agent: ${agent.id}, tmux: ${agent.tmux_session}`);
       if (agent.tmux_session) {
         // Temporarily leave blessed to attach to tmux
         screen.destroy();
@@ -59,58 +61,142 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
         });
 
         // When user detaches, restart the dashboard
-        console.log('\nReturning to dashboard... (run "hive dashboard" to reopen)');
+        console.log('\nReturning to dashboard...');
+        spawnSync('hive', ['dashboard'], {
+          stdio: 'inherit',
+        });
         process.exit(0);
       }
     }
   });
 
   // Initial data
-  updateAgentsPanel(table, db);
+  updateAgentsPanel(list, db);
 
-  return table;
+  return list;
 }
 
-export function updateAgentsPanel(table: Widgets.ListTableElement, db: Database): void {
+// Extended agent with repo info for display
+interface DisplayAgent extends AgentRow {
+  repo?: string;
+}
+
+export async function updateAgentsPanel(list: Widgets.ListElement, db: Database): Promise<void> {
   const agents = getActiveAgents(db);
-  currentAgents = agents; // Store for selection lookup
   debugLog(`updateAgentsPanel called, found ${agents.length} agents`);
 
-  const headers = ['Type', 'Model', 'Status', 'Story', 'Tmux Session'];
+  // Check for manager session (not in DB)
+  const hiveSessions = await getHiveSessions();
+  const managerSession = hiveSessions.find(s => s.name === 'hive-manager');
 
-  if (agents.length === 0) {
+  // Build combined list - manager first if running
+  const displayAgents: DisplayAgent[] = [];
+
+  if (managerSession) {
+    // Add manager as a pseudo-agent
+    displayAgents.push({
+      id: 'manager',
+      type: 'manager' as AgentRow['type'],
+      team_id: null,
+      tmux_session: 'hive-manager',
+      model: '-',
+      status: 'working',
+      current_story_id: null,
+      memory_state: null,
+      created_at: '',
+      updated_at: '',
+      repo: '(all)',
+    } as DisplayAgent);
+  }
+
+  // Add regular agents with repo info
+  for (const agent of agents) {
+    const displayAgent: DisplayAgent = { ...agent };
+    if (agent.team_id) {
+      const team = getTeamById(db, agent.team_id);
+      if (team?.repo_path) {
+        // Extract repo name from path (e.g., "repos/my-service" -> "my-service")
+        displayAgent.repo = team.repo_path.replace(/^repos\//, '');
+      }
+    }
+    if (!displayAgent.repo && agent.type === 'tech_lead') {
+      displayAgent.repo = '(all)';
+    }
+    displayAgents.push(displayAgent);
+  }
+
+  currentAgents = displayAgents; // Store for selection lookup
+
+  // Format header
+  const header = formatRow('TYPE', 'REPO', 'STATUS', 'STORY', 'TMUX SESSION', true);
+
+  if (displayAgents.length === 0) {
     currentAgents = [];
     debugLog('Setting empty data');
-    table.setData([headers, ['(no active agents)', '', '', '', '']]);
+    list.setItems([header, '{gray-fg}(no active agents){/}']);
     return;
   }
 
-  const rows = agents.map((agent: AgentRow) => [
-    agent.type.toUpperCase(),
-    agent.model || '-',
-    formatStatus(agent.status),
-    agent.current_story_id || '-',
-    agent.tmux_session || '-',
-  ]);
+  const rows = displayAgents.map((agent: DisplayAgent) =>
+    formatRow(
+      agent.type.toUpperCase(),
+      agent.repo || '-',
+      agent.status,
+      agent.current_story_id || '-',
+      agent.tmux_session || '-',
+      false
+    )
+  );
 
   debugLog(`Setting data with ${rows.length} rows`);
-  table.setData([headers, ...rows]);
+  list.setItems([header, ...rows]);
 
   // Select first agent row (index 1, since 0 is the header)
   if (rows.length > 0) {
-    table.select(1);
+    list.select(1);
   }
 }
 
-function formatStatus(status: string): string {
+function formatRow(type: string, repo: string, status: string, story: string, tmux: string, isHeader: boolean): string {
+  // Fixed column widths
+  const COL_TYPE = 14;
+  const COL_REPO = 18;
+  const COL_STATUS = 12;
+  const COL_STORY = 14;
+
+  // Format status with color (pad first, then wrap with color)
+  const statusText = status.toUpperCase().padEnd(COL_STATUS);
+  const coloredStatus = colorizeStatus(status, statusText);
+
+  // Truncate long values
+  const repoDisplay = repo.length > COL_REPO - 1 ? repo.substring(0, COL_REPO - 2) + '…' : repo;
+  const storyDisplay = story.length > COL_STORY - 1 ? story.substring(0, COL_STORY - 2) + '…' : story;
+
+  const cols = [
+    type.padEnd(COL_TYPE),
+    repoDisplay.padEnd(COL_REPO),
+    coloredStatus,
+    storyDisplay.padEnd(COL_STORY),
+    tmux,
+  ];
+
+  if (isHeader) {
+    return `{cyan-fg}{bold}${type.padEnd(COL_TYPE)}${repo.padEnd(COL_REPO)}${status.toUpperCase().padEnd(COL_STATUS)}${story.padEnd(COL_STORY)}${tmux}{/}`;
+  }
+  return cols.join('');
+}
+
+function colorizeStatus(status: string, paddedText: string): string {
   switch (status) {
     case 'working':
-      return '{yellow-fg}WORKING{/}';
+      return `{yellow-fg}${paddedText}{/yellow-fg}`;
     case 'idle':
-      return '{gray-fg}IDLE{/}';
+      return `{gray-fg}${paddedText}{/gray-fg}`;
     case 'blocked':
-      return '{red-fg}BLOCKED{/}';
+      return `{red-fg}${paddedText}{/red-fg}`;
+    case 'terminated':
+      return `{red-fg}${paddedText}{/red-fg}`;
     default:
-      return status;
+      return paddedText;
   }
 }

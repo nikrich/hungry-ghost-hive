@@ -75,7 +75,7 @@ export async function startDashboard(options = {}) {
             }
             catch { /* ignore close errors */ }
             db = newDb;
-            updateAgentsPanel(agentsPanel, db.db);
+            await updateAgentsPanel(agentsPanel, db.db);
             updateStoriesPanel(storiesPanel, db.db);
             updatePipelinePanel(pipelinePanel, db.db);
             updateActivityPanel(activityPanel, db.db);

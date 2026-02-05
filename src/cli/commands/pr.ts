@@ -1,7 +1,8 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { execa } from 'execa';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
-import { getDatabase } from '../../db/client.js';
+import { getDatabase, queryAll } from '../../db/client.js';
 import {
   createPullRequest,
   getMergeQueue,
@@ -9,6 +10,7 @@ import {
   getPullRequestById,
   updatePullRequest,
   getQueuePosition,
+  type PullRequestRow,
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
 import { createLog } from '../../db/queries/logs.js';
@@ -398,6 +400,104 @@ prCommand
           metadata: { pr_id: prId, branch: pr.branch_name },
         });
         db.save();
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+// Sync GitHub PRs into the merge queue
+prCommand
+  .command('sync')
+  .description('Import open GitHub PRs into the merge queue')
+  .option('-r, --repo <path>', 'Repository path (relative to repos/)')
+  .action(async (options: { repo?: string }) => {
+    const root = findHiveRoot();
+    if (!root) {
+      console.error(chalk.red('Not in a Hive workspace.'));
+      process.exit(1);
+    }
+
+    const paths = getHivePaths(root);
+    const db = await getDatabase(paths.hiveDir);
+
+    try {
+      // Get existing PRs in queue
+      const existingPRs = queryAll<PullRequestRow>(db.db,
+        'SELECT * FROM pull_requests WHERE status NOT IN (\'merged\', \'closed\')'
+      );
+      const existingBranches = new Set(existingPRs.map(pr => pr.branch_name));
+      const existingPrNumbers = new Set(existingPRs.map(pr => pr.github_pr_number).filter(Boolean));
+
+      // Find repo directories
+      const repoDir = options.repo
+        ? `${root}/repos/${options.repo}`
+        : process.cwd();
+
+      console.log(chalk.cyan(`Checking for open PRs in ${repoDir}...`));
+
+      // Get open PRs from GitHub
+      let ghPRs: Array<{ number: number; headRefName: string; url: string; title: string }> = [];
+      try {
+        const result = await execa('gh', ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'], {
+          cwd: repoDir,
+        });
+        ghPRs = JSON.parse(result.stdout);
+      } catch (err) {
+        console.error(chalk.red('Failed to list GitHub PRs. Is gh CLI authenticated?'));
+        process.exit(1);
+      }
+
+      if (ghPRs.length === 0) {
+        console.log(chalk.yellow('No open PRs found on GitHub.'));
+        return;
+      }
+
+      let imported = 0;
+      for (const ghPR of ghPRs) {
+        // Skip if already in queue
+        if (existingBranches.has(ghPR.headRefName) || existingPrNumbers.has(ghPR.number)) {
+          console.log(chalk.gray(`  Skipping PR #${ghPR.number} (${ghPR.headRefName}) - already in queue`));
+          continue;
+        }
+
+        // Try to match to a story by parsing branch name (e.g., feature/STORY-001-description)
+        const storyMatch = ghPR.headRefName.match(/STORY-\d+/i);
+        const storyId = storyMatch ? storyMatch[0].toUpperCase() : null;
+
+        const pr = createPullRequest(db.db, {
+          storyId,
+          teamId: null,
+          branchName: ghPR.headRefName,
+          githubPrNumber: ghPR.number,
+          githubPrUrl: ghPR.url,
+          submittedBy: null,
+        });
+
+        console.log(chalk.green(`  Imported: PR #${ghPR.number} (${ghPR.headRefName}) → ${pr.id}`));
+        imported++;
+      }
+
+      db.save();
+
+      if (imported > 0) {
+        console.log(chalk.green(`\nImported ${imported} PR(s) into merge queue.`));
+
+        // Trigger QA check
+        try {
+          const config = loadConfig(paths.hiveDir);
+          const scheduler = new Scheduler(db.db, {
+            scaling: config.scaling,
+            rootDir: root,
+          });
+          await scheduler.checkMergeQueue();
+          db.save();
+          console.log(chalk.gray('QA agents notified.'));
+        } catch {
+          // Non-fatal
+        }
+      } else {
+        console.log(chalk.yellow('\nNo new PRs to import.'));
       }
     } finally {
       db.close();
