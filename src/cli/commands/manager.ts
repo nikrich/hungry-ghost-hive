@@ -16,6 +16,7 @@ import { execa } from 'execa';
 import { createPullRequest, type PullRequestRow } from '../../db/queries/pull-requests.js';
 import { acquireLock } from '../../db/lock.js';
 import { join } from 'path';
+import { detectClaudeCodeState, getStateDescription } from '../../utils/claude-code-state.js';
 
 export const managerCommand = new Command('manager')
   .description('Micromanager daemon that keeps agents productive');
