@@ -29,6 +29,7 @@ export class Scheduler {
    */
   private buildDependencyGraph(stories: StoryRow[]): Map<string, Set<string>> {
     const graph = new Map<string, Set<string>>();
+    const storyIds = new Set(stories.map(s => s.id));
 
     // Initialize all stories in the graph
     for (const story of stories) {
@@ -37,11 +38,11 @@ export class Scheduler {
       }
     }
 
-    // Add dependencies
+    // Add dependencies (only within the planned set; external deps handled by areDependenciesSatisfied)
     for (const story of stories) {
       const dependencies = getStoryDependencies(this.db, story.id);
       for (const dep of dependencies) {
-        if (graph.has(story.id)) {
+        if (graph.has(story.id) && storyIds.has(dep.id)) {
           graph.get(story.id)!.add(dep.id);
         }
       }
@@ -113,7 +114,7 @@ export class Scheduler {
 
     for (const dep of dependencies) {
       // Check if dependency is in a terminal or in-progress state
-      if (dep.status !== 'merged' && dep.status !== 'in_progress' && dep.status !== 'review' && dep.status !== 'qa' && dep.status !== 'qa_failed') {
+      if (dep.status !== 'merged' && dep.status !== 'pr_submitted' && dep.status !== 'in_progress' && dep.status !== 'review' && dep.status !== 'qa' && dep.status !== 'qa_failed') {
         return false;
       }
     }

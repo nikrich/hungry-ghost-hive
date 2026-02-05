@@ -5,29 +5,21 @@ export declare class TimeoutError extends Error {
     readonly timeoutMs: number;
     constructor(message: string, timeoutMs: number);
 }
+export interface RetryOptions {
+    maxRetries: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+}
 /**
- * Wraps a promise with a timeout. Rejects with TimeoutError if the promise
- * doesn't resolve within the specified time.
+ * Wraps a promise with a timeout
  */
 export declare function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage?: string): Promise<T>;
 /**
- * Retry configuration options
- */
-export interface RetryOptions {
-    maxRetries: number;
-    initialDelayMs?: number;
-    maxDelayMs?: number;
-    backoffMultiplier?: number;
-    onRetry?: (error: Error, attempt: number) => void;
-}
-/**
- * Wraps a function with retry logic using exponential backoff.
- * Will retry on any error up to maxRetries times.
+ * Retries a function with exponential backoff
  */
 export declare function withRetry<T>(fn: () => Promise<T>, options: RetryOptions): Promise<T>;
 /**
- * Combines timeout and retry logic for LLM calls.
- * Each retry attempt has its own timeout.
+ * Combines timeout and retry logic
  */
 export declare function withTimeoutAndRetry<T>(fn: () => Promise<T>, timeoutMs: number, retryOptions: RetryOptions, errorMessage?: string): Promise<T>;
 //# sourceMappingURL=timeout.d.ts.map
