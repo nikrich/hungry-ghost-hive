@@ -472,6 +472,39 @@ hive pr queue`
       console.log(chalk.green(`  Spun down ${agentsSpunDown} agent(s) after successful merge`));
     }
 
+    // Spin down all non-tech-lead agents when no work remains in the pipeline
+    const activeStories = queryAll<StoryRow>(db.db,
+      `SELECT * FROM stories WHERE status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')`
+    );
+    if (activeStories.length === 0) {
+      // No active work - spin down all agents except tech lead
+      const workingAgents = queryAll<{ id: string; tmux_session: string | null; type: string }>(db.db,
+        `SELECT id, tmux_session, type FROM agents WHERE status = 'working' AND type != 'tech_lead'`
+      );
+      let idleSpunDown = 0;
+      for (const agent of workingAgents) {
+        const agentSession = hiveSessions.find(s => s.name === agent.tmux_session);
+        if (agentSession) {
+          await sendToTmuxSession(agentSession.name,
+            `# All work complete. No stories in pipeline. Spinning down...`
+          );
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await killTmuxSession(agentSession.name);
+        }
+        updateAgent(db.db, agent.id, { status: 'terminated', currentStoryId: null });
+        createLog(db.db, {
+          agentId: agent.id,
+          eventType: 'AGENT_TERMINATED',
+          message: 'Agent spun down - no work remaining in pipeline',
+        });
+        idleSpunDown++;
+      }
+      if (idleSpunDown > 0) {
+        db.save();
+        console.log(chalk.green(`  Spun down ${idleSpunDown} idle agent(s) - pipeline empty`));
+      }
+    }
+
     // Check for stories stuck in "in_progress" for too long (> 30 min without activity)
     const stuckStories = queryAll<StoryRow>(db.db,
       `SELECT * FROM stories
