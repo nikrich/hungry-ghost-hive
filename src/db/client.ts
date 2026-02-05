@@ -387,6 +387,7 @@ export interface AgentRow {
   status: 'idle' | 'working' | 'blocked' | 'terminated';
   current_story_id: string | null;
   memory_state: string | null;
+  last_seen: string | null;
   created_at: string;
   updated_at: string;
 }
