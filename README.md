@@ -3,6 +3,7 @@
 Hive is a CLI tool that orchestrates AI agents modeled after agile software development teams. You act as the **Product Owner**, providing requirements. Hive's AI agents handle the rest—from planning through to PR submission.
 
 ## Quick Start
+IMPORTANT: The npm package does not exist yet. Please clone the repository and create a symlink to the hive command.
 
 ```bash
 # Initialize a workspace
