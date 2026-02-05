@@ -86,6 +86,16 @@ const AgentsConfigSchema = z.object({
   max_retries: z.number().int().nonnegative().default(2),
   // Token threshold for checkpoint
   checkpoint_threshold: z.number().int().positive().default(14000),
+  // LLM call timeout in milliseconds (default: 30 minutes)
+  llm_timeout_ms: z.number().int().positive().default(1800000),
+  // Max retries for LLM calls on timeout
+  llm_max_retries: z.number().int().nonnegative().default(2),
+});
+
+// Manager daemon configuration
+const ManagerConfigSchema = z.object({
+  fast_poll_interval: z.number().int().positive().default(15000),
+  slow_poll_interval: z.number().int().positive().default(60000),
 });
 
 // Logging configuration
@@ -104,6 +114,7 @@ export const HiveConfigSchema = z.object({
   github: GitHubConfigSchema.default({}),
   qa: QAConfigSchema.default({}),
   agents: AgentsConfigSchema.default({}),
+  manager: ManagerConfigSchema.default({}),
   logging: LoggingConfigSchema.default({}),
 });
 
@@ -114,6 +125,7 @@ export type ScalingConfig = z.infer<typeof ScalingConfigSchema>;
 export type GitHubConfig = z.infer<typeof GitHubConfigSchema>;
 export type QAConfig = z.infer<typeof QAConfigSchema>;
 export type AgentsConfig = z.infer<typeof AgentsConfigSchema>;
+export type ManagerConfig = z.infer<typeof ManagerConfigSchema>;
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
 export type HiveConfig = z.infer<typeof HiveConfigSchema>;
 
@@ -200,6 +212,10 @@ agents:
   max_retries: 2
   # Token threshold for checkpoint
   checkpoint_threshold: 14000
+  # LLM call timeout in milliseconds (default: 30 minutes)
+  llm_timeout_ms: 1800000
+  # Max retries for LLM calls on timeout
+  llm_max_retries: 2
 
 # Logging
 logging:
