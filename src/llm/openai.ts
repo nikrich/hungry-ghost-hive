@@ -61,11 +61,17 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async *streamComplete(messages: Message[], options?: CompletionOptions): AsyncIterable<string> {
+    // Capture instance properties to avoid 'this' binding issues in generator
+    const client = this.client;
+    const model = this.model;
+    const defaultMaxTokens = this.defaultMaxTokens;
+    const defaultTemperature = this.defaultTemperature;
+
     const streamGenerator = async function* () {
-      const stream = await this.client.chat.completions.create({
-        model: this.model,
-        max_tokens: options?.maxTokens ?? this.defaultMaxTokens,
-        temperature: options?.temperature ?? this.defaultTemperature,
+      const stream = await client.chat.completions.create({
+        model: model,
+        max_tokens: options?.maxTokens ?? defaultMaxTokens,
+        temperature: options?.temperature ?? defaultTemperature,
         messages: messages.map(m => ({
           role: m.role,
           content: m.content,
@@ -80,7 +86,7 @@ export class OpenAIProvider implements LLMProvider {
           yield delta;
         }
       }
-    }.bind(this);
+    };
 
     // Apply timeout if specified
     if (options?.timeoutMs) {

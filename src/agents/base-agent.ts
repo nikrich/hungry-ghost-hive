@@ -2,7 +2,6 @@ import type { Database } from 'sql.js';
 import type { LLMProvider, Message } from '../llm/provider.js';
 import { createLog, type EventType } from '../db/queries/logs.js';
 import { updateAgent, type AgentRow, type AgentType, type AgentStatus } from '../db/queries/agents.js';
-import { withRetry, TimeoutError } from '../utils/timeout.js';
 
 export interface MemoryState {
   conversationSummary: string;
