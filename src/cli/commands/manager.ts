@@ -60,8 +60,25 @@ managerCommand
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
 
-    const interval = parseInt(options.interval, 10) * 1000;
-    console.log(chalk.cyan(`Manager started (checking every ${options.interval}s)`));
+    // Load config to get polling intervals (for two-tier polling)
+    const hivePaths = getHivePaths(root);
+    const config = loadConfig(hivePaths.hiveDir);
+
+    // Support two modes: legacy single-interval and new two-tier polling
+    const useTwoTier = options.interval === '60' && config.manager;
+    let interval: number;
+
+    if (useTwoTier) {
+      // Use configured two-tier polling
+      const fastInterval = config.manager.fast_poll_interval;
+      const slowInterval = config.manager.slow_poll_interval;
+      console.log(chalk.cyan(`Manager started (two-tier: ${fastInterval / 1000}s fast, ${slowInterval / 1000}s slow)`));
+      interval = fastInterval; // Use fast interval as primary
+    } else {
+      // Legacy mode: single interval
+      interval = parseInt(options.interval, 10) * 1000;
+      console.log(chalk.cyan(`Manager started (checking every ${options.interval}s)`));
+    }
     console.log(chalk.gray('Press Ctrl+C to stop\n'));
 
     const runCheck = async () => {
