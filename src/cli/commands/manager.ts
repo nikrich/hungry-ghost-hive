@@ -13,6 +13,7 @@ import { createLog } from '../../db/queries/logs.js';
 import { queryAll } from '../../db/client.js';
 import type { StoryRow } from '../../db/client.js';
 import { getAllTeams } from '../../db/queries/teams.js';
+import { updateStory, getStoriesByStatus } from '../../db/queries/stories.js';
 import { execa } from 'execa';
 import { createPullRequest, type PullRequestRow } from '../../db/queries/pull-requests.js';
 import { acquireLock } from '../../db/lock.js';
@@ -361,14 +362,29 @@ hive my-stories ${session.name}
     const rejectedPRs = getPullRequestsByStatus(db.db, 'rejected');
     let rejectionNotified = 0;
     for (const pr of rejectedPRs) {
+      // Update the story status to qa_failed so developer knows they need to act
+      if (pr.story_id) {
+        updateStory(db.db, pr.story_id, { status: 'qa_failed' });
+        createLog(db.db, {
+          agentId: 'manager',
+          eventType: 'STORY_QA_FAILED',
+          message: `Story ${pr.story_id} QA failed: ${pr.review_notes || 'See review comments'}`,
+          storyId: pr.story_id,
+        });
+      }
+
       if (pr.submitted_by) {
         const devSession = hiveSessions.find(s => s.name === pr.submitted_by);
         if (devSession) {
           await sendToTmuxSession(devSession.name,
-            `# PR REJECTED: ${pr.id}
+            `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
+# Story: ${pr.story_id || 'Unknown'}
 # Reason: ${pr.review_notes || 'See review comments'}
+#
+# You MUST fix this issue before doing anything else.
 # Fix the issues and resubmit: hive pr submit -b ${pr.branch_name} -s ${pr.story_id || 'STORY-ID'} --from ${devSession.name}`
           );
+          await sendEnterToTmuxSession(devSession.name);
           rejectionNotified++;
         }
       }
@@ -379,6 +395,33 @@ hive my-stories ${session.name}
     if (rejectedPRs.length > 0) {
       db.save();
       console.log(chalk.yellow(`  Notified ${rejectionNotified} developer(s) of PR rejection(s)`));
+    }
+
+    // Nudge developers who have qa_failed stories - they need to fix and resubmit
+    const qaFailedStories = getStoriesByStatus(db.db, 'qa_failed');
+    for (const story of qaFailedStories) {
+      if (story.assigned_agent_id) {
+        const agent = getAgentById(db.db, story.assigned_agent_id);
+        if (agent && agent.status === 'working') {
+          const agentSession = hiveSessions.find(s =>
+            s.name === agent.tmux_session || s.name.includes(agent.id)
+          );
+          if (agentSession) {
+            // Check if agent is idle before nudging
+            const output = await captureTmuxPane(agentSession.name, 30);
+            const state = detectWaitingState(output);
+            if (state.isWaiting && !state.needsHuman) {
+              await sendToTmuxSession(agentSession.name,
+                `# REMINDER: Story ${story.id} failed QA review!
+# You must fix the issues and resubmit the PR.
+# Check the QA feedback and address all concerns.
+hive pr queue`
+              );
+              await sendEnterToTmuxSession(agentSession.name);
+            }
+          }
+        }
+      }
     }
 
     // Spin down agents whose stories have been merged
