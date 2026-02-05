@@ -16,6 +16,7 @@ import { execa } from 'execa';
 import { createPullRequest, type PullRequestRow } from '../../db/queries/pull-requests.js';
 import { acquireLock } from '../../db/lock.js';
 import { join } from 'path';
+import { detectClaudeCodeState, getStateDescription } from '../../utils/claude-code-state.js';
 
 export const managerCommand = new Command('manager')
   .description('Micromanager daemon that keeps agents productive');
@@ -394,72 +395,15 @@ interface WaitingState {
 }
 
 function detectWaitingState(output: string): WaitingState {
-  // Claude Code UI detection - check status line indicators
-  const hasEscToInterrupt = /esc to interrupt/i.test(output);
-  const hasThinkingIndicator = /\(thinking\)|Concocting|Twisting|Sautéed|Cooked|Crunched|Brewed/i.test(output);
-  const hasToolRunning = /Running|Executing|Reading|Writing|Searching/i.test(output);
+  // Use state machine-based detection for more robust parsing
+  const stateResult = detectClaudeCodeState(output);
 
-  // If agent is actively working (has interrupt option, thinking indicator, or tool running), not waiting
-  if (hasEscToInterrupt || hasThinkingIndicator || hasToolRunning) {
-    return { isWaiting: false, needsHuman: false, reason: 'actively working' };
-  }
-
-  // Patterns that indicate agent needs human input (escalate)
-  const humanInputPatterns: Array<{ pattern: RegExp; reason: string }> = [
-    // AskUserQuestion UI - numbered options menu
-    { pattern: /Enter to select.*↑\/↓ to navigate/i, reason: 'Agent waiting for user selection' },
-    { pattern: /❯\s+\d+\.\s+.+\n\s+\d+\./m, reason: 'Agent presenting options menu' },
-    // Plan mode approval prompts
-    { pattern: /Would you like to proceed\?/i, reason: 'Agent waiting for plan approval' },
-    { pattern: /Yes, clear context and bypass/i, reason: 'Agent waiting for plan approval' },
-    { pattern: /Yes, manually approve edits/i, reason: 'Agent waiting for plan approval' },
-    { pattern: /Do you want to/i, reason: 'Agent waiting for confirmation' },
-    // Conversational questions
-    { pattern: /Could you clarify/i, reason: 'Agent needs clarification' },
-    { pattern: /Which option would you prefer/i, reason: 'Agent needs decision' },
-    { pattern: /I need.*to proceed/i, reason: 'Agent blocked, needs input' },
-    { pattern: /User declined to answer/i, reason: 'Agent was declined, needs guidance' },
-    { pattern: /What would you like/i, reason: 'Agent asking for direction' },
-    { pattern: /How should I/i, reason: 'Agent asking for guidance' },
-  ];
-
-  // Check for human-input-needed patterns first
-  for (const { pattern, reason } of humanInputPatterns) {
-    if (pattern.test(output)) {
-      return { isWaiting: true, needsHuman: true, reason };
-    }
-  }
-
-  // Check if at Claude Code prompt (idle state) - can be nudged
-  const atPrompt = /❯\s*$/m.test(output) || /bypass permissions/i.test(output);
-
-  if (atPrompt) {
-    // Agent is at prompt, likely idle - should be nudged to continue
-    return { isWaiting: true, needsHuman: false, reason: 'idle at prompt' };
-  }
-
-  // If output shows completion messages, agent finished and needs new work
-  const finishedPatterns = [
-    /work is complete/i,
-    /implementation is complete/i,
-    /task.*complete/i,
-    /successfully/i,
-    /all.*tests pass/i,
-    /PR.*created/i,
-    /committed/i,
-    /is there anything else/i,
-    /anything else you'd like/i,
-    /let me know if/i,
-  ];
-
-  for (const pattern of finishedPatterns) {
-    if (pattern.test(output)) {
-      return { isWaiting: true, needsHuman: false, reason: 'task completed' };
-    }
-  }
-
-  // Default: assume idle if no active indicators found
-  return { isWaiting: true, needsHuman: false, reason: 'no activity detected' };
+  // Convert state machine result to WaitingState format
+  return {
+    isWaiting: stateResult.isWaiting,
+    needsHuman: stateResult.needsHuman,
+    reason: stateResult.needsHuman ? getStateDescription(stateResult.state) : undefined,
+  };
 }
 
 function getAgentType(sessionName: string): 'senior' | 'intermediate' | 'junior' | 'qa' | 'unknown' {

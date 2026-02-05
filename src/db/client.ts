@@ -332,7 +332,8 @@ function runMigrations(db: SqlJsDatabase): void {
       columns[0].values.some((col: unknown[]) => col[1] === 'last_seen');
 
     if (!hasLastSeenColumn) {
-      db.run("ALTER TABLE agents ADD COLUMN last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+      // sql.js doesn't support non-constant defaults in ALTER TABLE
+      db.run("ALTER TABLE agents ADD COLUMN last_seen TIMESTAMP");
     }
     db.run("INSERT INTO migrations (name) VALUES ('005-add-agent-last-seen.sql')");
   }
