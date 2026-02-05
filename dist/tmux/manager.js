@@ -89,21 +89,33 @@ export async function killAllHiveSessions() {
     }
     return killed;
 }
-export async function sendToTmuxSession(sessionName, text) {
+export async function sendToTmuxSession(sessionName, text, clearFirst = true) {
+    if (clearFirst) {
+        // Clear any existing input at the prompt before sending new text
+        // Escape: exit any menu/selection state
+        // Ctrl+U: clear line from cursor to beginning
+        await execa('tmux', ['send-keys', '-t', sessionName, 'Escape']);
+        await new Promise(resolve => setTimeout(resolve, 50));
+        await execa('tmux', ['send-keys', '-t', sessionName, 'C-u']);
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
     if (text.includes('\n')) {
-        // For multi-line text, use tmux buffer to paste correctly
-        // Load text into a tmux buffer
-        await execa('tmux', ['load-buffer', '-'], { input: text });
-        // Paste the buffer into the session
-        await execa('tmux', ['paste-buffer', '-t', sessionName]);
-        // Small delay to let paste complete
-        await new Promise(resolve => setTimeout(resolve, 200));
-        // Send Enter to submit
-        await sendEnterToTmuxSession(sessionName);
+        // For multi-line text, send each line separately to avoid buffer race conditions
+        const lines = text.split('\n');
+        for (const line of lines) {
+            if (line.trim()) {
+                // Use send-keys with literal flag to handle special characters
+                await execa('tmux', ['send-keys', '-t', sessionName, '-l', line]);
+                await execa('tmux', ['send-keys', '-t', sessionName, 'Enter']);
+                // Small delay between lines to ensure they're processed
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
     }
     else {
-        // For single-line text, use send-keys directly
-        await execa('tmux', ['send-keys', '-t', sessionName, text, 'Enter']);
+        // For single-line text, use send-keys with literal flag then Enter separately
+        await execa('tmux', ['send-keys', '-t', sessionName, '-l', text]);
+        await execa('tmux', ['send-keys', '-t', sessionName, 'Enter']);
     }
 }
 export async function sendEnterToTmuxSession(sessionName) {

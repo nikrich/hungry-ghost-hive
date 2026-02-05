@@ -4,7 +4,7 @@ import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
-import { getHiveSessions, sendToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession } from '../../tmux/manager.js';
+import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession } from '../../tmux/manager.js';
 import { getMergeQueue, getPullRequestsByStatus } from '../../db/queries/pull-requests.js';
 import { getUnreadMessages, markMessageRead } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
@@ -170,9 +170,7 @@ async function managerCheck(root) {
             db.save();
         }
         const sessions = await getHiveSessions();
-        const hiveSessions = sessions.filter(s => s.name.startsWith('hive-') &&
-            !s.name.includes('tech-lead') // Don't micromanage the tech lead
-        );
+        const hiveSessions = sessions.filter(s => s.name.startsWith('hive-'));
         if (hiveSessions.length === 0) {
             console.log(chalk.gray('  No agent sessions found'));
             return;
@@ -297,40 +295,28 @@ hive my-stories ${session.name}
     }
 }
 function detectWaitingState(output) {
-    // Patterns that indicate agent finished work and is asking for more (should nudge to check hive)
-    const finishedAskingPatterns = [
-        /is there anything else/i,
-        /anything else you'd like/i,
-        /what else would you like/i,
-        /let me know if there's anything/i,
-        /feel free to ask/i,
-        /can I help with anything else/i,
-    ];
-    // Check if agent finished and is waiting - they should be nudged to check hive
-    for (const pattern of finishedAskingPatterns) {
-        if (pattern.test(output)) {
-            return { isWaiting: true, needsHuman: false };
-        }
+    // Claude Code UI detection - check status line indicators
+    const hasEscToInterrupt = /esc to interrupt/i.test(output);
+    const hasBypassPermissions = /bypass permissions/i.test(output);
+    const hasThinkingIndicator = /\(thinking\)|Concocting|Twisting|Sautéed|Cooked|Crunched|Brewed/i.test(output);
+    // If agent is actively working (has interrupt option or thinking indicator), not waiting
+    if (hasEscToInterrupt || hasThinkingIndicator) {
+        return { isWaiting: false, needsHuman: false };
     }
-    // Patterns that indicate waiting for simple input (can be nudged)
-    const nudgeablePatterns = [
-        /press enter to continue/i,
-        /password:/i,
-    ];
-    // Patterns that indicate Claude is asking questions (needs human)
+    // Patterns that indicate agent needs human input (escalate)
     const humanInputPatterns = [
-        { pattern: /I have a few questions/i, reason: 'Agent has questions' },
+        // AskUserQuestion UI - numbered options menu
+        { pattern: /Enter to select.*↑\/↓ to navigate/i, reason: 'Agent waiting for user selection' },
+        { pattern: /❯\s+\d+\.\s+.+\n\s+\d+\./m, reason: 'Agent presenting options menu' },
+        // Plan mode approval prompts
+        { pattern: /Would you like to proceed\?/i, reason: 'Agent waiting for plan approval' },
+        { pattern: /Yes, clear context and bypass/i, reason: 'Agent waiting for plan approval' },
+        { pattern: /Yes, manually approve edits/i, reason: 'Agent waiting for plan approval' },
+        // Conversational questions
         { pattern: /Could you clarify/i, reason: 'Agent needs clarification' },
         { pattern: /Which option would you prefer/i, reason: 'Agent needs decision' },
-        { pattern: /Should I proceed/i, reason: 'Agent asking for confirmation' },
-        { pattern: /Do you want me to/i, reason: 'Agent asking for direction' },
-        { pattern: /Let me know if/i, reason: 'Agent waiting for feedback' },
-        { pattern: /What would you like/i, reason: 'Agent needs instructions' },
-        { pattern: /Can you provide/i, reason: 'Agent needs more information' },
         { pattern: /I need.*to proceed/i, reason: 'Agent blocked, needs input' },
-        { pattern: /waiting for.*input/i, reason: 'Agent waiting for input' },
-        { pattern: /\?\s*$/, reason: 'Agent asked a question' },
-        { pattern: /please (provide|specify|confirm)/i, reason: 'Agent needs confirmation' },
+        { pattern: /User declined to answer/i, reason: 'Agent was declined, needs guidance' },
     ];
     // Check for human-input-needed patterns first
     for (const { pattern, reason } of humanInputPatterns) {
@@ -338,10 +324,29 @@ function detectWaitingState(output) {
             return { isWaiting: true, needsHuman: true, reason };
         }
     }
-    // Check for nudgeable patterns
-    for (const pattern of nudgeablePatterns) {
-        if (pattern.test(output)) {
+    // If at prompt (has bypass permissions line but no activity), agent is idle and can be nudged
+    if (hasBypassPermissions) {
+        // Check if there's a prompt with text waiting (❯ followed by non-empty content)
+        const promptWithInput = /❯\s+[^\n]+\S/m.test(output);
+        if (promptWithInput) {
+            // There's input at the prompt but no processing - might need Enter or be confused
             return { isWaiting: true, needsHuman: false };
+        }
+        // Check if agent just finished work
+        const finishedPatterns = [
+            /work is complete/i,
+            /implementation is complete/i,
+            /successfully/i,
+            /all.*tests pass/i,
+            /PR.*created/i,
+            /committed/i,
+            /is there anything else/i,
+            /anything else you'd like/i,
+        ];
+        for (const pattern of finishedPatterns) {
+            if (pattern.test(output)) {
+                return { isWaiting: true, needsHuman: false };
+            }
         }
     }
     return { isWaiting: false, needsHuman: false };
@@ -362,25 +367,25 @@ async function nudgeAgent(_root, sessionName, customMessage, agentType) {
         await sendToTmuxSession(sessionName, customMessage);
         return;
     }
-    // Default nudge based on agent type
+    // For idle agents at empty prompts, just send Enter to trigger continuation
+    // Claude Code interprets empty Enter as "continue with your current task"
+    // This is more reliable than sending complex multi-line commands
+    await sendEnterToTmuxSession(sessionName);
+    return;
+    // Default nudge based on agent type (kept for reference but not used)
     const type = agentType || getAgentType(sessionName);
     let nudge;
     switch (type) {
         case 'qa':
-            nudge = `# Manager check-in: Review the merge queue
-hive pr queue
-# If PRs waiting, claim one: hive pr review --from ${sessionName}`;
+            nudge = `hive pr queue`;
             break;
         case 'senior':
         case 'intermediate':
         case 'junior':
-            nudge = `# Manager check-in: Check your assignments
-hive my-stories ${sessionName}
-# Check messages: hive msg inbox ${sessionName}`;
+            nudge = `hive my-stories ${sessionName}`;
             break;
         default:
-            nudge = `# Manager check-in: Status check
-hive status`;
+            nudge = `hive status`;
     }
     await sendToTmuxSession(sessionName, nudge);
 }

@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { spawnSync } from 'child_process';
 import {
   initCommand,
   configCommand,
@@ -69,6 +70,16 @@ program
   .option('-r, --refresh <ms>', 'Refresh interval in milliseconds', '5000')
   .action(async (options: { refresh: string }) => {
     try {
+      // Ensure higher Node heap specifically for the dashboard by re-spawning with --max-old-space-size if not already set
+      const hasHeapFlag = process.execArgv.some(arg => arg.startsWith('--max-old-space-size'));
+      const desiredMb = parseInt(process.env.HIVE_DASHBOARD_HEAP_MB || '4096', 10);
+
+      if (!hasHeapFlag) {
+        const args = [`--max-old-space-size=${desiredMb}`, process.argv[1], 'dashboard', '--refresh', String(options.refresh)];
+        const result = spawnSync(process.execPath, args, { stdio: 'inherit', env: process.env });
+        process.exit(result.status === null ? 1 : result.status);
+      }
+
       const { startDashboard } = await import('./cli/dashboard/index.js');
       startDashboard({ refreshInterval: parseInt(options.refresh, 10) });
     } catch (err) {

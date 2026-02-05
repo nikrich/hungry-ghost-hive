@@ -1,5 +1,6 @@
 import blessed from 'blessed';
-import { appendFileSync } from 'fs';
+import { appendFileSync, statSync } from 'fs';
+import { join } from 'path';
 import { getDatabase } from '../../db/client.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 function debugLog(msg) {
@@ -18,8 +19,10 @@ export async function startDashboard(options = {}) {
         process.exit(1);
     }
     const paths = getHivePaths(root);
+    const dbPath = join(paths.hiveDir, 'hive.db');
     debugLog(`Dashboard starting - root: ${root}, hiveDir: ${paths.hiveDir}`);
     let db = await getDatabase(paths.hiveDir);
+    let lastDbMtime = statSync(dbPath).mtimeMs;
     const refreshInterval = options.refreshInterval || 5000;
     // Create screen
     const screen = blessed.screen({
@@ -64,17 +67,22 @@ export async function startDashboard(options = {}) {
     const panels = [agentsPanel, storiesPanel, activityPanel, mergeQueuePanel, escalationsPanel];
     let focusIndex = 0;
     panels[focusIndex].focus();
-    // Refresh function - reloads database from disk to see changes from other processes
+    // Refresh function - only reloads database when file has changed
     const refresh = async () => {
-        debugLog(`Refresh called - reloading from ${paths.hiveDir}`);
         try {
-            // Get new database connection first, then close old one
-            const newDb = await getDatabase(paths.hiveDir);
-            try {
-                db.db.close();
+            // Check if database file has been modified
+            const currentMtime = statSync(dbPath).mtimeMs;
+            if (currentMtime !== lastDbMtime) {
+                debugLog(`Database changed - reloading from ${paths.hiveDir}`);
+                lastDbMtime = currentMtime;
+                // Get new database connection first, then close old one
+                const newDb = await getDatabase(paths.hiveDir);
+                try {
+                    db.db.close();
+                }
+                catch { /* ignore close errors */ }
+                db = newDb;
             }
-            catch { /* ignore close errors */ }
-            db = newDb;
             await updateAgentsPanel(agentsPanel, db.db);
             updateStoriesPanel(storiesPanel, db.db);
             updatePipelinePanel(pipelinePanel, db.db);
@@ -82,7 +90,6 @@ export async function startDashboard(options = {}) {
             updateMergeQueuePanel(mergeQueuePanel, db.db);
             updateEscalationsPanel(escalationsPanel, db.db);
             screen.render();
-            debugLog('Refresh complete');
         }
         catch (err) {
             debugLog(`Refresh error: ${err}`);
