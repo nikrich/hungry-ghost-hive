@@ -596,8 +596,9 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
       const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> = JSON.parse(result.stdout);
 
       for (const pr of mergedPRs) {
-        // Extract story ID from branch name
-        const storyMatch = pr.headRefName.match(/STORY-[\w-]+/i);
+        // Extract story ID from branch name - match STORY-XXX-NAME pattern
+        // Use a more specific pattern to avoid matching extra suffixes
+        const storyMatch = pr.headRefName.match(/STORY-\d+-[A-Z]+/i);
         if (!storyMatch) continue;
 
         const storyId = storyMatch[0].toUpperCase();
