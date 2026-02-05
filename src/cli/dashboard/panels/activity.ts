@@ -48,6 +48,9 @@ export function updateActivityPanel(box: Widgets.BoxElement, db: Database): void
   }
 
   box.setContent(lines.join('\n'));
+
+  // Always scroll to the latest (bottom) entries
+  box.setScrollPerc(100);
 }
 
 function formatTimestamp(timestamp: string): string {
