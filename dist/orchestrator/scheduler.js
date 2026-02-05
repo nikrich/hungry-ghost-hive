@@ -1,10 +1,10 @@
-import { getPlannedStories, updateStory, getStoryPointsByTeam } from '../db/queries/stories.js';
+import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { getMergeQueue } from '../db/queries/pull-requests.js';
 import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
-import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions } from '../tmux/manager.js';
+import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady } from '../tmux/manager.js';
 export class Scheduler {
     db;
     config;
@@ -13,15 +13,137 @@ export class Scheduler {
         this.config = config;
     }
     /**
+     * Build a dependency graph for stories
+     * Returns a map of story ID to its direct dependencies
+     */
+    buildDependencyGraph(stories) {
+        const graph = new Map();
+        // Initialize all stories in the graph
+        for (const story of stories) {
+            if (!graph.has(story.id)) {
+                graph.set(story.id, new Set());
+            }
+        }
+        // Add dependencies
+        for (const story of stories) {
+            const dependencies = getStoryDependencies(this.db, story.id);
+            for (const dep of dependencies) {
+                if (graph.has(story.id)) {
+                    graph.get(story.id).add(dep.id);
+                }
+            }
+        }
+        return graph;
+    }
+    /**
+     * Topological sort of stories based on dependencies
+     * Returns stories in order where dependencies come before dependents
+     * Returns null if circular dependency is detected
+     */
+    topologicalSort(stories) {
+        const graph = this.buildDependencyGraph(stories);
+        const storyMap = new Map(stories.map(s => [s.id, s]));
+        // Kahn's algorithm for topological sort
+        const inDegree = new Map();
+        const result = [];
+        // Calculate in-degrees
+        for (const storyId of graph.keys()) {
+            inDegree.set(storyId, 0);
+        }
+        for (const dependencies of graph.values()) {
+            for (const depId of dependencies) {
+                inDegree.set(depId, (inDegree.get(depId) || 0) + 1);
+            }
+        }
+        // Find all nodes with in-degree 0
+        const queue = [];
+        for (const [storyId, degree] of inDegree.entries()) {
+            if (degree === 0) {
+                queue.push(storyId);
+            }
+        }
+        // Process queue
+        while (queue.length > 0) {
+            const storyId = queue.shift();
+            const story = storyMap.get(storyId);
+            if (story) {
+                result.push(story);
+            }
+            // For each story that depends on this one, reduce in-degree
+            for (const story of stories) {
+                const deps = graph.get(story.id) || new Set();
+                if (deps.has(storyId)) {
+                    const newDegree = (inDegree.get(story.id) || 0) - 1;
+                    inDegree.set(story.id, newDegree);
+                    if (newDegree === 0) {
+                        queue.push(story.id);
+                    }
+                }
+            }
+        }
+        // Check for circular dependencies
+        if (result.length !== stories.length) {
+            return null;
+        }
+        return result;
+    }
+    /**
+     * Check if a story's dependencies are satisfied
+     * A dependency is satisfied if it's completed (merged) or in progress (being worked on)
+     */
+    areDependenciesSatisfied(storyId) {
+        const dependencies = getStoryDependencies(this.db, storyId);
+        for (const dep of dependencies) {
+            // Check if dependency is in a terminal or in-progress state
+            if (dep.status !== 'merged' && dep.status !== 'in_progress' && dep.status !== 'review' && dep.status !== 'qa' && dep.status !== 'qa_failed') {
+                return false;
+            }
+        }
+        return true;
+    }
+    /**
+     * Select the agent with the least workload (queue-depth aware)
+     * Returns the agent with fewest active stories; breaks ties by creation order
+     */
+    selectAgentWithLeastWorkload(agents) {
+        let selectedAgent = agents[0];
+        let minWorkload = this.getAgentWorkload(selectedAgent.id);
+        for (let i = 1; i < agents.length; i++) {
+            const workload = this.getAgentWorkload(agents[i].id);
+            if (workload < minWorkload) {
+                minWorkload = workload;
+                selectedAgent = agents[i];
+            }
+        }
+        return selectedAgent;
+    }
+    /**
+     * Calculate queue depth for an agent (number of active stories)
+     */
+    getAgentWorkload(agentId) {
+        const activeStories = queryAll(this.db, `
+      SELECT * FROM stories
+      WHERE assigned_agent_id = ?
+        AND status IN ('in_progress', 'review', 'qa', 'qa_failed')
+    `, [agentId]);
+        return activeStories.length;
+    }
+    /**
      * Assign planned stories to available agents
      */
     async assignStories() {
         const plannedStories = getPlannedStories(this.db);
         const errors = [];
         let assigned = 0;
+        // Topological sort stories to respect dependencies
+        const sortedStories = this.topologicalSort(plannedStories);
+        if (sortedStories === null) {
+            errors.push('Circular dependency detected in planned stories');
+            return { assigned, errors };
+        }
         // Group stories by team
         const storiesByTeam = new Map();
-        for (const story of plannedStories) {
+        for (const story of sortedStories) {
             if (!story.team_id)
                 continue;
             const existing = storiesByTeam.get(story.team_id) || [];
@@ -49,24 +171,31 @@ export class Scheduler {
             }
             // Assign stories based on complexity
             for (const story of stories) {
+                // Check if dependencies are satisfied before assigning
+                if (!this.areDependenciesSatisfied(story.id)) {
+                    continue;
+                }
                 const complexity = story.complexity_score || 5;
                 let targetAgent;
                 if (complexity <= this.config.scaling.junior_max_complexity) {
-                    // Assign to Junior
-                    targetAgent = agents.find(a => a.type === 'junior' && a.status === 'idle');
+                    // Assign to Junior with least workload
+                    const juniors = agents.filter(a => a.type === 'junior' && a.status === 'idle');
+                    targetAgent = juniors.length > 0 ? this.selectAgentWithLeastWorkload(juniors) : undefined;
                     if (!targetAgent) {
                         try {
                             targetAgent = await this.spawnJunior(teamId, team.name, team.repo_path);
                         }
                         catch {
                             // Fall back to Intermediate or Senior
-                            targetAgent = agents.find(a => a.type === 'intermediate' && a.status === 'idle') || senior;
+                            const intermediates = agents.filter(a => a.type === 'intermediate' && a.status === 'idle');
+                            targetAgent = intermediates.length > 0 ? this.selectAgentWithLeastWorkload(intermediates) : senior;
                         }
                     }
                 }
                 else if (complexity <= this.config.scaling.intermediate_max_complexity) {
-                    // Assign to Intermediate
-                    targetAgent = agents.find(a => a.type === 'intermediate' && a.status === 'idle');
+                    // Assign to Intermediate with least workload
+                    const intermediates = agents.filter(a => a.type === 'intermediate' && a.status === 'idle');
+                    targetAgent = intermediates.length > 0 ? this.selectAgentWithLeastWorkload(intermediates) : undefined;
                     if (!targetAgent) {
                         try {
                             targetAgent = await this.spawnIntermediate(teamId, team.name, team.repo_path);
@@ -235,8 +364,8 @@ export class Scheduler {
                 workDir,
                 command: `claude --dangerously-skip-permissions --model sonnet`,
             });
-            // Wait for Claude to start, then send prompt
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            // Wait for Claude to be ready before sending prompt
+            await waitForTmuxSessionReady(sessionName);
             const team = getTeamById(this.db, teamId);
             const prompt = generateQAPrompt(teamName, team?.repo_url || '', repoPath, sessionName);
             await sendToTmuxSession(sessionName, prompt);
@@ -268,8 +397,8 @@ export class Scheduler {
                 workDir,
                 command: `claude --dangerously-skip-permissions --model sonnet`,
             });
-            // Wait for Claude to start, then send prompt
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            // Wait for Claude to be ready before sending prompt
+            await waitForTmuxSessionReady(sessionName);
             const team = getTeamById(this.db, teamId);
             const stories = this.getTeamStories(teamId);
             const prompt = generateSeniorPrompt(teamName, team?.repo_url || '', repoPath, stories);
@@ -299,8 +428,8 @@ export class Scheduler {
                 workDir,
                 command: `claude --dangerously-skip-permissions --model haiku`,
             });
-            // Wait for Claude to start, then send prompt
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            // Wait for Claude to be ready before sending prompt
+            await waitForTmuxSessionReady(sessionName);
             const team = getTeamById(this.db, teamId);
             const prompt = generateIntermediatePrompt(teamName, team?.repo_url || '', repoPath, sessionName);
             await sendToTmuxSession(sessionName, prompt);
@@ -330,8 +459,8 @@ export class Scheduler {
                 workDir,
                 command: `claude --dangerously-skip-permissions --model haiku`,
             });
-            // Wait for Claude to start, then send prompt
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            // Wait for Claude to be ready before sending prompt
+            await waitForTmuxSessionReady(sessionName);
             const team = getTeamById(this.db, teamId);
             const prompt = generateJuniorPrompt(teamName, team?.repo_url || '', repoPath, sessionName);
             await sendToTmuxSession(sessionName, prompt);
