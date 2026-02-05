@@ -7,7 +7,6 @@ import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady } from '../tmux/manager.js';
 import type { ScalingConfig } from '../config/schema.js';
-import { getStaleAgents } from '../db/queries/heartbeat.js';
 
 export interface SchedulerConfig {
   scaling: ScalingConfig;
@@ -334,10 +333,6 @@ export class Scheduler {
     const liveSessions = await getHiveSessions();
     const liveSessionNames = new Set(liveSessions.map(s => s.name));
 
-    // Check for agents with stale heartbeats (>15 seconds)
-    const staleAgents = getStaleAgents(this.db, 15);
-    const staleAgentIds = new Set(staleAgents.map(a => a.id));
-
     let terminated = 0;
     const revived: string[] = [];
 
@@ -345,19 +340,16 @@ export class Scheduler {
       if (!agent.tmux_session) continue;
 
       const sessionAlive = liveSessionNames.has(agent.tmux_session);
-      const heartbeatStale = staleAgentIds.has(agent.id);
 
-      if ((!sessionAlive || heartbeatStale) && agent.status !== 'terminated') {
-        // Session died or heartbeat stale - mark as terminated
-        const reason = !sessionAlive
-          ? `Session ${agent.tmux_session} no longer running`
-          : `Heartbeat stale (last seen ${agent.last_seen || 'never'})`;
-
+      // Only terminate if tmux session is actually dead
+      // Heartbeat staleness alone is not sufficient since Claude Code sessions
+      // don't have a mechanism to send heartbeats
+      if (!sessionAlive && agent.status !== 'terminated') {
         updateAgent(this.db, agent.id, { status: 'terminated', currentStoryId: null });
         createLog(this.db, {
           agentId: agent.id,
           eventType: 'AGENT_TERMINATED',
-          message: reason,
+          message: `Session ${agent.tmux_session} no longer running`,
         });
         terminated++;
 
