@@ -132,7 +132,8 @@ export async function sendToTmuxSession(sessionName: string, text: string, clear
     for (const line of lines) {
       if (line.trim()) {
         // Use send-keys with literal flag to handle special characters
-        await execa('tmux', ['send-keys', '-t', sessionName, '-l', line]);
+        // Use '--' to prevent lines starting with '-' from being parsed as flags
+        await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', line]);
         await execa('tmux', ['send-keys', '-t', sessionName, 'Enter']);
         // Small delay between lines to ensure they're processed
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -140,7 +141,8 @@ export async function sendToTmuxSession(sessionName: string, text: string, clear
     }
   } else {
     // For single-line text, use send-keys with literal flag then Enter separately
-    await execa('tmux', ['send-keys', '-t', sessionName, '-l', text]);
+    // Use '--' to prevent text starting with '-' from being parsed as flags
+    await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', text]);
     await execa('tmux', ['send-keys', '-t', sessionName, 'Enter']);
   }
 }
