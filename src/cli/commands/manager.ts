@@ -61,25 +61,65 @@ managerCommand
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
 
-    const interval = parseInt(options.interval, 10) * 1000;
-    console.log(chalk.cyan(`Manager started (checking every ${options.interval}s)`));
-    console.log(chalk.gray('Press Ctrl+C to stop\n'));
+    // Load config to get polling intervals (for two-tier polling)
+    const hivePaths = getHivePaths(root);
+    const config = loadConfig(hivePaths.hiveDir);
 
-    const runCheck = async () => {
-      try {
-        await managerCheck(root);
-      } catch (err) {
-        console.error(chalk.red('Manager error:'), err);
+    // Support two modes: legacy single-interval and new two-tier polling
+    const useTwoTier = options.interval === '60' && config.manager;
+
+    if (useTwoTier) {
+      // Two-tier polling with separate intervals
+      const fastInterval = config.manager.fast_poll_interval;
+      const slowInterval = config.manager.slow_poll_interval;
+      console.log(chalk.cyan(`Manager started (fast: ${fastInterval / 1000}s, slow: ${slowInterval / 1000}s)`));
+      console.log(chalk.gray('Press Ctrl+C to stop\n'));
+
+      let checkCount = 0;
+      const runCheck = async () => {
+        try {
+          checkCount++;
+          // Run full check periodically based on slow interval ratio
+          const ratio = Math.floor(slowInterval / fastInterval);
+          if (checkCount % ratio === 0) {
+            await managerCheck(root);
+          } else {
+            // Fast check only (still runs full check for now, TODO: split implementation)
+            await managerCheck(root);
+          }
+        } catch (err) {
+          console.error(chalk.red('Manager error:'), err);
+        }
+      };
+
+      await runCheck();
+
+      if (!options.once) {
+        setInterval(runCheck, fastInterval);
+      } else if (releaseLock) {
+        await releaseLock();
       }
-    };
+    } else {
+      // Legacy mode: single interval
+      const interval = parseInt(options.interval, 10) * 1000;
+      console.log(chalk.cyan(`Manager started (checking every ${options.interval}s)`));
+      console.log(chalk.gray('Press Ctrl+C to stop\n'));
 
-    await runCheck();
+      const runCheck = async () => {
+        try {
+          await managerCheck(root);
+        } catch (err) {
+          console.error(chalk.red('Manager error:'), err);
+        }
+      };
 
-    if (!options.once) {
-      setInterval(runCheck, interval);
-    } else if (releaseLock) {
-      // Release lock immediately if running once
-      await releaseLock();
+      await runCheck();
+
+      if (!options.once) {
+        setInterval(runCheck, interval);
+      } else if (releaseLock) {
+        await releaseLock();
+      }
     }
   });
 
