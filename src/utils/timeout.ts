@@ -62,7 +62,7 @@ export async function withRetry<T>(
     onRetry,
   } = options;
 
-  let lastError: Error;
+  let lastError: Error = new Error('Retry failed');
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
