@@ -4,11 +4,12 @@ import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
-import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession } from '../../tmux/manager.js';
+import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
 import { getMergeQueue, getPullRequestsByStatus } from '../../db/queries/pull-requests.js';
 import { getUnreadMessages, markMessageRead, type MessageRow } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
-import { getAgentById } from '../../db/queries/agents.js';
+import { getAgentById, updateAgent } from '../../db/queries/agents.js';
+import { createLog } from '../../db/queries/logs.js';
 import { queryAll } from '../../db/client.js';
 import type { StoryRow } from '../../db/client.js';
 import { getAllTeams } from '../../db/queries/teams.js';
@@ -332,6 +333,54 @@ hive my-stories ${session.name}
     if (rejectedPRs.length > 0) {
       db.save();
       console.log(chalk.yellow(`  Notified ${rejectionNotified} developer(s) of PR rejection(s)`));
+    }
+
+    // Spin down agents whose stories have been merged
+    // Find merged stories that still have assigned agents
+    const mergedStoriesWithAgents = queryAll<StoryRow>(db.db,
+      `SELECT * FROM stories WHERE status = 'merged' AND assigned_agent_id IS NOT NULL`
+    );
+    let agentsSpunDown = 0;
+    for (const story of mergedStoriesWithAgents) {
+      if (story.assigned_agent_id) {
+        const agent = getAgentById(db.db, story.assigned_agent_id);
+        if (agent && agent.status !== 'terminated') {
+          // Find and kill the agent's tmux session
+          const agentSession = hiveSessions.find(s =>
+            s.name === agent.tmux_session || s.name.includes(agent.id)
+          );
+
+          if (agentSession) {
+            // Thank the agent and terminate
+            await sendToTmuxSession(agentSession.name,
+              `# Congratulations! Your story ${story.id} has been merged.
+# Your work is complete. Spinning down...`
+            );
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await killTmuxSession(agentSession.name);
+          }
+
+          // Mark agent as terminated
+          updateAgent(db.db, agent.id, { status: 'terminated', currentStoryId: null });
+
+          // Log the termination
+          createLog(db.db, {
+            agentId: agent.id,
+            storyId: story.id,
+            eventType: 'AGENT_TERMINATED',
+            message: `Agent spun down after story ${story.id} was merged`,
+          });
+
+          // Clear the story assignment
+          db.db.run("UPDATE stories SET assigned_agent_id = NULL WHERE id = ?", [story.id]);
+
+          agentsSpunDown++;
+        }
+      }
+    }
+    if (agentsSpunDown > 0) {
+      db.save();
+      console.log(chalk.green(`  Spun down ${agentsSpunDown} agent(s) after successful merge`));
     }
 
     // Check for stories stuck in "in_progress" for too long (> 30 min without activity)
