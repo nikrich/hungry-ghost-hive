@@ -21,8 +21,63 @@ export const assignCommand = new Command('assign')
     try {
         const config = loadConfig(paths.hiveDir);
         if (options.dryRun) {
-            spinner.info(chalk.yellow('Dry run - no changes will be made'));
-            // TODO: Add dry run logic
+            spinner.text = 'Previewing assignments...';
+            const scheduler = new Scheduler(db.db, {
+                scaling: config.scaling,
+                models: config.models,
+                rootDir: root,
+            });
+            const preview = await scheduler.previewAssignments();
+            spinner.stop();
+            console.log();
+            console.log(chalk.cyan.bold('📋 Assignment Preview (Dry Run)'));
+            console.log(chalk.gray('No changes will be made\n'));
+            if (preview.assignments.length === 0) {
+                console.log(chalk.gray('No stories to assign'));
+            }
+            else {
+                console.log(chalk.cyan('Planned Assignments:'));
+                for (const { story, agent, willSpawn, agentType } of preview.assignments) {
+                    const spawnIndicator = willSpawn ? chalk.yellow(' [NEW]') : '';
+                    const agentDisplay = agent.id.includes('preview')
+                        ? chalk.yellow(`new ${agentType}${spawnIndicator}`)
+                        : chalk.green(agent.id);
+                    console.log(`  ${chalk.bold(story.id)}: ${story.title.substring(0, 40)}`);
+                    console.log(`    → ${agentDisplay}`);
+                }
+            }
+            if (preview.blocked.length > 0) {
+                console.log();
+                console.log(chalk.yellow('⏸️  Blocked (dependencies not satisfied):'));
+                for (const blocked of preview.blocked) {
+                    console.log(`  ${blocked}`);
+                }
+            }
+            if (preview.newAgents.length > 0) {
+                console.log();
+                console.log(chalk.yellow('🚀 New Agents to Spawn:'));
+                const agentCounts = new Map();
+                for (const { type, team } of preview.newAgents) {
+                    const key = `${team}/${type}`;
+                    agentCounts.set(key, (agentCounts.get(key) || 0) + 1);
+                }
+                for (const [key, count] of agentCounts) {
+                    console.log(`  ${count}x ${key}`);
+                }
+            }
+            if (preview.errors.length > 0) {
+                console.log();
+                console.log(chalk.red('❌ Errors:'));
+                for (const error of preview.errors) {
+                    console.log(`  ${error}`);
+                }
+            }
+            console.log();
+            console.log(chalk.gray(`Summary: ${preview.assignments.length} stories would be assigned`));
+            console.log();
+            console.log(chalk.cyan('To apply assignments, run:'));
+            console.log(chalk.bold('  hive assign'));
+            console.log();
             return;
         }
         const scheduler = new Scheduler(db.db, {

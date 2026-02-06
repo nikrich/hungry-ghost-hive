@@ -177,6 +177,137 @@ export class Scheduler {
         return activeStories.length;
     }
     /**
+     * Preview what assignments would be made without actually assigning
+     */
+    async previewAssignments() {
+        const plannedStories = getPlannedStories(this.db);
+        const errors = [];
+        const blocked = [];
+        const assignments = [];
+        const newAgents = [];
+        // Topological sort stories to respect dependencies
+        const sortedStories = this.topologicalSort(plannedStories);
+        if (sortedStories === null) {
+            errors.push('Circular dependency detected in planned stories');
+            return { assignments, newAgents, errors, blocked };
+        }
+        // Group stories by team
+        const storiesByTeam = new Map();
+        for (const story of sortedStories) {
+            if (!story.team_id)
+                continue;
+            const existing = storiesByTeam.get(story.team_id) || [];
+            existing.push(story);
+            storiesByTeam.set(story.team_id, existing);
+        }
+        // Process each team
+        for (const [teamId, stories] of storiesByTeam) {
+            const team = getTeamById(this.db, teamId);
+            if (!team)
+                continue;
+            // Get available agents for this team
+            const agents = getAgentsByTeam(this.db, teamId)
+                .filter(a => a.status === 'idle' && a.type !== 'qa');
+            // Check if we would need to spawn a Senior
+            let senior = agents.find(a => a.type === 'senior');
+            if (!senior) {
+                newAgents.push({ type: 'senior', team: team.name });
+                // Create a fake senior for preview purposes
+                senior = {
+                    id: `senior-preview-${teamId}`,
+                    type: 'senior',
+                    team_id: teamId,
+                    tmux_session: null,
+                    model: null,
+                    status: 'idle',
+                    current_story_id: null,
+                    memory_state: null,
+                    created_at: '',
+                    updated_at: '',
+                    worktree_path: null,
+                    last_seen: '',
+                    cli_tool: '',
+                };
+            }
+            // Assign stories based on complexity
+            for (const story of stories) {
+                // Check if dependencies are satisfied before assigning
+                if (!this.areDependenciesSatisfied(story.id)) {
+                    blocked.push(`${story.id}: dependencies not satisfied`);
+                    continue;
+                }
+                const complexity = story.complexity_score || 5;
+                let targetAgent;
+                let willSpawnAgent = false;
+                if (complexity <= this.config.scaling.junior_max_complexity) {
+                    // Would assign to Junior
+                    const juniors = agents.filter(a => a.type === 'junior' && a.status === 'idle');
+                    targetAgent = juniors.length > 0 ? this.selectAgentWithLeastWorkload(juniors) : undefined;
+                    if (!targetAgent) {
+                        willSpawnAgent = true;
+                        newAgents.push({ type: 'junior', team: team.name });
+                        // Create fake junior for preview
+                        targetAgent = {
+                            id: `junior-preview-${teamId}-${story.id}`,
+                            type: 'junior',
+                            team_id: teamId,
+                            tmux_session: null,
+                            model: null,
+                            status: 'idle',
+                            current_story_id: null,
+                            memory_state: null,
+                            created_at: '',
+                            updated_at: '',
+                            worktree_path: null,
+                            last_seen: '',
+                            cli_tool: '',
+                        };
+                    }
+                }
+                else if (complexity <= this.config.scaling.intermediate_max_complexity) {
+                    // Would assign to Intermediate
+                    const intermediates = agents.filter(a => a.type === 'intermediate' && a.status === 'idle');
+                    targetAgent = intermediates.length > 0 ? this.selectAgentWithLeastWorkload(intermediates) : undefined;
+                    if (!targetAgent) {
+                        willSpawnAgent = true;
+                        newAgents.push({ type: 'intermediate', team: team.name });
+                        // Create fake intermediate for preview
+                        targetAgent = {
+                            id: `intermediate-preview-${teamId}-${story.id}`,
+                            type: 'intermediate',
+                            team_id: teamId,
+                            tmux_session: null,
+                            model: null,
+                            status: 'idle',
+                            current_story_id: null,
+                            memory_state: null,
+                            created_at: '',
+                            updated_at: '',
+                            worktree_path: null,
+                            last_seen: '',
+                            cli_tool: '',
+                        };
+                    }
+                }
+                else {
+                    // Senior handles directly
+                    targetAgent = senior;
+                }
+                if (!targetAgent) {
+                    errors.push(`No available agent for story ${story.id}`);
+                    continue;
+                }
+                assignments.push({
+                    story,
+                    agent: targetAgent,
+                    willSpawn: willSpawnAgent,
+                    agentType: targetAgent.type,
+                });
+            }
+        }
+        return { assignments, newAgents, errors, blocked };
+    }
+    /**
      * Assign planned stories to available agents
      */
     async assignStories() {
@@ -529,6 +660,13 @@ export class Scheduler {
         }
     }
     async spawnSenior(teamId, teamName, repoPath, index) {
+        const sessionName = generateSessionName('senior', teamName, index);
+        // Prevent creating duplicate agents on same tmux session
+        const existingSeniors = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'senior');
+        const existingOnSession = existingSeniors.find(a => a.tmux_session === sessionName && a.status !== 'terminated');
+        if (existingOnSession && await isTmuxSessionRunning(sessionName)) {
+            return existingOnSession;
+        }
         const agent = createAgent(this.db, {
             type: 'senior',
             teamId,
@@ -537,7 +675,6 @@ export class Scheduler {
         // Create git worktree for this agent
         const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
         const workDir = `${this.config.rootDir}/${worktreePath}`;
-        const sessionName = generateSessionName('senior', teamName, index);
         if (!await isTmuxSessionRunning(sessionName)) {
             // Build CLI command using the configured runtime for Senior agents
             const cliTool = this.config.models.senior.cli_tool;
@@ -570,6 +707,12 @@ export class Scheduler {
     async spawnIntermediate(teamId, teamName, repoPath) {
         const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'intermediate');
         const index = existing.length + 1;
+        const sessionName = generateSessionName('intermediate', teamName, index);
+        // Prevent creating duplicate agents on same tmux session
+        const existingOnSession = existing.find(a => a.tmux_session === sessionName && a.status !== 'terminated');
+        if (existingOnSession && await isTmuxSessionRunning(sessionName)) {
+            return existingOnSession;
+        }
         const agent = createAgent(this.db, {
             type: 'intermediate',
             teamId,
@@ -578,7 +721,6 @@ export class Scheduler {
         // Create git worktree for this agent
         const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
         const workDir = `${this.config.rootDir}/${worktreePath}`;
-        const sessionName = generateSessionName('intermediate', teamName, index);
         if (!await isTmuxSessionRunning(sessionName)) {
             // Build CLI command using the configured runtime for Intermediate agents
             const cliTool = this.config.models.intermediate.cli_tool;
@@ -610,6 +752,12 @@ export class Scheduler {
     async spawnJunior(teamId, teamName, repoPath) {
         const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'junior');
         const index = existing.length + 1;
+        const sessionName = generateSessionName('junior', teamName, index);
+        // Prevent creating duplicate agents on same tmux session
+        const existingOnSession = existing.find(a => a.tmux_session === sessionName && a.status !== 'terminated');
+        if (existingOnSession && await isTmuxSessionRunning(sessionName)) {
+            return existingOnSession;
+        }
         const agent = createAgent(this.db, {
             type: 'junior',
             teamId,
@@ -618,7 +766,6 @@ export class Scheduler {
         // Create git worktree for this agent
         const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
         const workDir = `${this.config.rootDir}/${worktreePath}`;
-        const sessionName = generateSessionName('junior', teamName, index);
         if (!await isTmuxSessionRunning(sessionName)) {
             // Build CLI command using the configured runtime for Junior agents
             // Note: Spec calls for gpt-4o-mini but using haiku until OpenAI integration is added

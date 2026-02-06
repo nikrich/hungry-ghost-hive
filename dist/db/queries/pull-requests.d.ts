@@ -25,6 +25,7 @@ export declare function getMergeQueue(db: Database, teamId?: string): PullReques
 export declare function getNextInQueue(db: Database, teamId?: string): PullRequestRow | undefined;
 export declare function getQueuePosition(db: Database, prId: string): number;
 export declare function getPullRequestsByStatus(db: Database, status: PullRequestStatus): PullRequestRow[];
+export declare function getApprovedPullRequests(db: Database): PullRequestRow[];
 export declare function getAllPullRequests(db: Database): PullRequestRow[];
 export declare function getPullRequestsByTeam(db: Database, teamId: string): PullRequestRow[];
 export declare function updatePullRequest(db: Database, id: string, input: UpdatePullRequestInput): PullRequestRow | undefined;

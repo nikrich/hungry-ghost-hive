@@ -1,5 +1,6 @@
 import type { Database } from 'sql.js';
 import { type StoryRow } from '../db/queries/stories.js';
+import { type AgentRow } from '../db/queries/agents.js';
 import type { ScalingConfig, ModelsConfig } from '../config/schema.js';
 export interface SchedulerConfig {
     scaling: ScalingConfig;
@@ -44,6 +45,23 @@ export declare class Scheduler {
      * Calculate queue depth for an agent (number of active stories)
      */
     private getAgentWorkload;
+    /**
+     * Preview what assignments would be made without actually assigning
+     */
+    previewAssignments(): Promise<{
+        assignments: Array<{
+            story: StoryRow;
+            agent: AgentRow;
+            willSpawn: boolean;
+            agentType: string;
+        }>;
+        newAgents: Array<{
+            type: string;
+            team: string;
+        }>;
+        errors: string[];
+        blocked: string[];
+    }>;
     /**
      * Assign planned stories to available agents
      */

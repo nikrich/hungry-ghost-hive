@@ -211,6 +211,150 @@ export class Scheduler {
   }
 
   /**
+   * Preview what assignments would be made without actually assigning
+   */
+  async previewAssignments(): Promise<{
+    assignments: Array<{ story: StoryRow; agent: AgentRow; willSpawn: boolean; agentType: string }>;
+    newAgents: Array<{ type: string; team: string }>;
+    errors: string[];
+    blocked: string[];
+  }> {
+    const plannedStories = getPlannedStories(this.db);
+    const errors: string[] = [];
+    const blocked: string[] = [];
+    const assignments: Array<{ story: StoryRow; agent: AgentRow; willSpawn: boolean; agentType: string }> = [];
+    const newAgents: Array<{ type: string; team: string }> = [];
+
+    // Topological sort stories to respect dependencies
+    const sortedStories = this.topologicalSort(plannedStories);
+    if (sortedStories === null) {
+      errors.push('Circular dependency detected in planned stories');
+      return { assignments, newAgents, errors, blocked };
+    }
+
+    // Group stories by team
+    const storiesByTeam = new Map<string, StoryRow[]>();
+    for (const story of sortedStories) {
+      if (!story.team_id) continue;
+      const existing = storiesByTeam.get(story.team_id) || [];
+      existing.push(story);
+      storiesByTeam.set(story.team_id, existing);
+    }
+
+    // Process each team
+    for (const [teamId, stories] of storiesByTeam) {
+      const team = getTeamById(this.db, teamId);
+      if (!team) continue;
+
+      // Get available agents for this team
+      const agents = getAgentsByTeam(this.db, teamId)
+        .filter(a => a.status === 'idle' && a.type !== 'qa');
+
+      // Check if we would need to spawn a Senior
+      let senior = agents.find(a => a.type === 'senior');
+      if (!senior) {
+        newAgents.push({ type: 'senior', team: team.name });
+        // Create a fake senior for preview purposes
+        senior = {
+          id: `senior-preview-${teamId}`,
+          type: 'senior' as const,
+          team_id: teamId,
+          tmux_session: null,
+          model: null,
+          status: 'idle' as const,
+          current_story_id: null,
+          memory_state: null,
+          created_at: '',
+          updated_at: '',
+          worktree_path: null,
+          last_seen: '',
+          cli_tool: '',
+        } as AgentRow;
+      }
+
+      // Assign stories based on complexity
+      for (const story of stories) {
+        // Check if dependencies are satisfied before assigning
+        if (!this.areDependenciesSatisfied(story.id)) {
+          blocked.push(`${story.id}: dependencies not satisfied`);
+          continue;
+        }
+
+        const complexity = story.complexity_score || 5;
+        let targetAgent: AgentRow | undefined;
+        let willSpawnAgent = false;
+
+        if (complexity <= this.config.scaling.junior_max_complexity) {
+          // Would assign to Junior
+          const juniors = agents.filter(a => a.type === 'junior' && a.status === 'idle');
+          targetAgent = juniors.length > 0 ? this.selectAgentWithLeastWorkload(juniors) : undefined;
+          if (!targetAgent) {
+            willSpawnAgent = true;
+            newAgents.push({ type: 'junior', team: team.name });
+            // Create fake junior for preview
+            targetAgent = {
+              id: `junior-preview-${teamId}-${story.id}`,
+              type: 'junior' as const,
+              team_id: teamId,
+              tmux_session: null,
+              model: null,
+              status: 'idle' as const,
+              current_story_id: null,
+              memory_state: null,
+              created_at: '',
+              updated_at: '',
+              worktree_path: null,
+              last_seen: '',
+              cli_tool: '',
+            } as AgentRow;
+          }
+        } else if (complexity <= this.config.scaling.intermediate_max_complexity) {
+          // Would assign to Intermediate
+          const intermediates = agents.filter(a => a.type === 'intermediate' && a.status === 'idle');
+          targetAgent = intermediates.length > 0 ? this.selectAgentWithLeastWorkload(intermediates) : undefined;
+          if (!targetAgent) {
+            willSpawnAgent = true;
+            newAgents.push({ type: 'intermediate', team: team.name });
+            // Create fake intermediate for preview
+            targetAgent = {
+              id: `intermediate-preview-${teamId}-${story.id}`,
+              type: 'intermediate' as const,
+              team_id: teamId,
+              tmux_session: null,
+              model: null,
+              status: 'idle' as const,
+              current_story_id: null,
+              memory_state: null,
+              created_at: '',
+              updated_at: '',
+              worktree_path: null,
+              last_seen: '',
+              cli_tool: '',
+            } as AgentRow;
+          }
+        } else {
+          // Senior handles directly
+          targetAgent = senior;
+        }
+
+        if (!targetAgent) {
+          errors.push(`No available agent for story ${story.id}`);
+          continue;
+        }
+
+        assignments.push({
+          story,
+          agent: targetAgent,
+          willSpawn: willSpawnAgent,
+          agentType: targetAgent.type,
+        });
+      }
+    }
+
+    return { assignments, newAgents, errors, blocked };
+  }
+
+  /**
    * Assign planned stories to available agents
    */
   async assignStories(): Promise<{ assigned: number; errors: string[] }> {
