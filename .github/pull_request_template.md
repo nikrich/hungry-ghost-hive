@@ -5,6 +5,7 @@
 ## Story ID
 
 <!-- Link to the related story/issue. Example: STORY-001, STORY-DOC-004, etc. -->
+
 Closes #
 
 ## Changes Checklist
