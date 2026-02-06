@@ -56,6 +56,7 @@
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
     "prettier": "^3.8.1",
     "prettier-plugin-organize-imports": "^4.3.0",
     "tsx": "^4.0.0",
@@ -82,5 +83,11 @@
   "license": "SEE LICENSE IN LICENSE",
   "publishConfig": {
     "access": "public"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "eslint --fix",
+      "tsc --noEmit"
+    ]
   }
 }
