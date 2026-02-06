@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.11.1...v0.12.0) (2026-02-06)
+
+
+### Features
+
+* Configure Vitest code coverage and enhance CI test reporting ([5e01ddb](https://github.com/nikrich/hungry-ghost-hive/commit/5e01ddbf52091d33cc2ca9abbfdd655776b09224))
+
 ## [0.11.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.11.0...v0.11.1) (2026-02-06)
 
 
