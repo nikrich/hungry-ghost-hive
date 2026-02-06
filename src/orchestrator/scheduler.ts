@@ -4,9 +4,10 @@ import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow 
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
+import { createEscalation } from '../db/queries/escalations.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode, killTmuxSession } from '../tmux/manager.js';
 import type { ScalingConfig, ModelsConfig, QAConfig } from '../config/schema.js';
-import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
+import { getCliRuntimeBuilder, validateModelCliCompatibility } from '../cli-runtimes/index.js';
 import { generateSeniorPrompt, generateIntermediatePrompt, generateJuniorPrompt, generateQAPrompt } from './prompt-templates.js';
 
 export interface SchedulerConfig {
@@ -655,6 +656,29 @@ export class Scheduler {
     // Get model info from config
     const modelConfig = this.config.models[type as keyof typeof this.config.models];
     const modelShorthand = this.getModelShorthand(modelConfig.model);
+    const cliTool = modelConfig.cli_tool || 'claude';
+
+    // Validate that the model is compatible with the CLI tool
+    try {
+      validateModelCliCompatibility(modelConfig.model, cliTool);
+    } catch (err) {
+      // Create an escalation for human review instead of spawning a broken agent
+      const errorMessage = err instanceof Error ? err.message : 'Unknown compatibility error';
+      createEscalation(this.db, {
+        reason: `Configuration mismatch: Cannot spawn ${type} agent for team ${teamName}. ${errorMessage}`,
+      });
+
+      createLog(this.db, {
+        agentId: 'scheduler',
+        eventType: 'AGENT_SPAWN_FAILED',
+        status: 'error',
+        message: `Failed to spawn ${type} agent for team ${teamName}: ${errorMessage}. Created escalation for human review.`,
+        metadata: { teamId, agentType: type, model: modelConfig.model, cliTool, error: errorMessage },
+      });
+
+      // Throw the error to prevent agent creation
+      throw new Error(`Cannot spawn ${type} agent: ${errorMessage}`);
+    }
 
     const agent = createAgent(this.db, {
       type,
@@ -668,7 +692,6 @@ export class Scheduler {
 
     if (!await isTmuxSessionRunning(sessionName)) {
       // Build CLI command using the configured runtime
-      const cliTool = modelConfig.cli_tool;
       const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(modelShorthand);
       const command = commandArgs.join(' ');
 
@@ -678,11 +701,11 @@ export class Scheduler {
         command,
       });
 
-      // Wait for Claude to be ready before sending prompt
+      // Wait for CLI tool to be ready before sending prompt
       await waitForTmuxSessionReady(sessionName);
 
       // Force bypass permissions mode to enable autonomous work
-      await forceBypassMode(sessionName, 'claude');
+      await forceBypassMode(sessionName, cliTool);
 
       const team = getTeamById(this.db, teamId);
       let prompt: string;

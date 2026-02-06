@@ -5,6 +5,7 @@ export type { AgentLogRow };
 
 export type EventType =
   | 'AGENT_SPAWNED'
+  | 'AGENT_SPAWN_FAILED'
   | 'AGENT_TERMINATED'
   | 'AGENT_RESUMED'
   | 'AGENT_CHECKPOINT'
