@@ -73,7 +73,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
       const { execSync } = await import('child_process');
       try {
         // Verify PR state and mergeable status
-        let prState: any;
+        let prState: { state: string; mergeable: string };
         let mergeableStatus: boolean;
         try {
           const prViewOutput = execSync(`gh pr view ${pr.github_pr_number} --json state,mergeable`, {
