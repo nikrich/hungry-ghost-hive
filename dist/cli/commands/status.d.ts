@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const statusCommand: Command;
+export declare const statusCommand: any;
 //# sourceMappingURL=status.d.ts.map

@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const prCommand: Command;
+export declare const prCommand: any;
 //# sourceMappingURL=pr.d.ts.map

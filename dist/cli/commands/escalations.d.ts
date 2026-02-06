@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const escalationsCommand: Command;
+export declare const escalationsCommand: any;
 //# sourceMappingURL=escalations.d.ts.map
