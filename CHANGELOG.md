@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.3](https://github.com/nikrich/hungry-ghost-hive/compare/v0.10.2...v0.10.3) (2026-02-06)
+
+
+### Bug Fixes
+
+* deliver initial prompts via CLI arg instead of tmux send-keys ([9a8b0a5](https://github.com/nikrich/hungry-ghost-hive/commit/9a8b0a561eb0c77a3b03da0a5fed9e55fbe67f3e))
+* deliver initial prompts via CLI positional argument instead of tmux send-keys ([b388d31](https://github.com/nikrich/hungry-ghost-hive/commit/b388d31c246174f92caeea60c311d94ce9a26341))
+
 ## [0.10.2](https://github.com/nikrich/hungry-ghost-hive/compare/v0.10.1...v0.10.2) (2026-02-06)
 
 
