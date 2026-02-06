@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { Scheduler } from './scheduler.js';
 import { createStory, addStoryDependency, updateStory } from '../db/queries/stories.js';
 import { createTeam } from '../db/queries/teams.js';
+import { getLogsByEventType } from '../db/queries/logs.js';
 import type { StoryRow } from '../db/queries/stories.js';
 
 let db: Database;
@@ -85,6 +86,17 @@ CREATE TABLE IF NOT EXISTS story_dependencies (
     story_id TEXT REFERENCES stories(id),
     depends_on_story_id TEXT REFERENCES stories(id),
     PRIMARY KEY (story_id, depends_on_story_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL,
+    story_id TEXT,
+    event_type TEXT NOT NULL,
+    status TEXT,
+    message TEXT,
+    metadata TEXT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 `;
 
@@ -284,5 +296,42 @@ describe('Scheduler Build Dependency Graph', () => {
     expect(graph.has(storyB.id)).toBe(true);
     expect(graph.has(storyC.id)).toBe(true);
     expect(graph.has(storyA.id)).toBe(false);
+  });
+});
+
+describe('Scheduler Worktree Removal', () => {
+  it('should log worktree removal failures to the database', async () => {
+    // Mock execSync to throw an error
+    const mockExecSync = vi.fn().mockImplementation(() => {
+      throw new Error('Permission denied');
+    });
+    vi.doMock('child_process', () => ({
+      execSync: mockExecSync,
+    }));
+
+    const removeMethod = (scheduler as any).removeWorktree;
+    await removeMethod.call(scheduler, 'repos/test-agent-1', 'agent-test-1');
+
+    // Check that the failure was logged
+    const logs = getLogsByEventType(db, 'WORKTREE_REMOVAL_FAILED');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].agent_id).toBe('agent-test-1');
+    expect(logs[0].event_type).toBe('WORKTREE_REMOVAL_FAILED');
+    expect(logs[0].status).toBe('error');
+    expect(logs[0].message).toContain('Permission denied');
+
+    // Restore original execSync
+    vi.unmock('child_process');
+  });
+
+  it('should handle empty worktree paths gracefully', async () => {
+    const removeMethod = (scheduler as any).removeWorktree;
+
+    // Should return without error for empty path
+    await expect(removeMethod.call(scheduler, '', 'agent-test-1')).resolves.toBeUndefined();
+
+    // Should not log anything
+    const logs = getLogsByEventType(db, 'WORKTREE_REMOVAL_FAILED');
+    expect(logs).toHaveLength(0);
   });
 });
