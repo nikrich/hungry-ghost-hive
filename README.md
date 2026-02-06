@@ -448,4 +448,4 @@ git status  # MUST show "up to date with origin"
 
 ## License
 
-MIT
+See [LICENSE](LICENSE) file for details. This project uses a proprietary Hungry Ghost Hive License.
