@@ -18,7 +18,21 @@ import { execa } from 'execa';
 import { createPullRequest, type PullRequestRow } from '../../db/queries/pull-requests.js';
 import { acquireLock } from '../../db/lock.js';
 import { join } from 'path';
-import { detectClaudeCodeState, getStateDescription } from '../../utils/claude-code-state.js';
+import { detectClaudeCodeState, getStateDescription, ClaudeCodeState } from '../../utils/claude-code-state.js';
+
+// Agent state tracking for nudge logic
+interface AgentStateTracking {
+  lastState: ClaudeCodeState;
+  lastStateChangeTime: number;
+  lastNudgeTime: number;
+}
+
+// In-memory state tracking per agent session
+const agentStates = new Map<string, AgentStateTracking>();
+
+// Constants for nudge behavior
+const STATE_STUCK_THRESHOLD_MS = 120000; // 120 seconds = 2 minutes
+const NUDGE_COOLDOWN_MS = 300000; // 300 seconds = 5 minutes
 
 export const managerCommand = new Command('manager')
   .description('Micromanager daemon that keeps agents productive');
@@ -70,24 +84,14 @@ managerCommand
     const useTwoTier = options.interval === '60' && config.manager;
 
     if (useTwoTier) {
-      // Two-tier polling with separate intervals
-      const fastInterval = config.manager.fast_poll_interval;
+      // Two-tier polling - use slow interval (60s) by default to reduce interruptions
       const slowInterval = config.manager.slow_poll_interval;
-      console.log(chalk.cyan(`Manager started (fast: ${fastInterval / 1000}s, slow: ${slowInterval / 1000}s)`));
+      console.log(chalk.cyan(`Manager started (polling every ${slowInterval / 1000}s)`));
       console.log(chalk.gray('Press Ctrl+C to stop\n'));
 
-      let checkCount = 0;
       const runCheck = async () => {
         try {
-          checkCount++;
-          // Run full check periodically based on slow interval ratio
-          const ratio = Math.floor(slowInterval / fastInterval);
-          if (checkCount % ratio === 0) {
-            await managerCheck(root);
-          } else {
-            // Fast check only (still runs full check for now, TODO: split implementation)
-            await managerCheck(root);
-          }
+          await managerCheck(root);
         } catch (err) {
           console.error(chalk.red('Manager error:'), err);
         }
@@ -96,7 +100,7 @@ managerCommand
       await runCheck();
 
       if (!options.once) {
-        setInterval(runCheck, fastInterval);
+        setInterval(runCheck, slowInterval);
       } else if (releaseLock) {
         await releaseLock();
       }
@@ -312,7 +316,31 @@ async function managerCheck(root: string): Promise<void> {
 
       // Check if agent appears stuck (capture last output)
       const output = await captureTmuxPane(session.name, 50);
-      const waitingInfo = detectWaitingState(output);
+      const stateResult = detectClaudeCodeState(output);
+
+      // Track state changes for this agent
+      const now = Date.now();
+      const trackedState = agentStates.get(session.name);
+
+      if (!trackedState) {
+        // First time seeing this agent - initialize tracking
+        agentStates.set(session.name, {
+          lastState: stateResult.state,
+          lastStateChangeTime: now,
+          lastNudgeTime: 0,
+        });
+      } else if (trackedState.lastState !== stateResult.state) {
+        // State changed - update tracking
+        trackedState.lastState = stateResult.state;
+        trackedState.lastStateChangeTime = now;
+      }
+
+      // Convert to legacy format for escalation logic
+      const waitingInfo = {
+        isWaiting: stateResult.isWaiting,
+        needsHuman: stateResult.needsHuman,
+        reason: stateResult.needsHuman ? getStateDescription(stateResult.state) : undefined,
+      };
 
       if (waitingInfo.needsHuman && !escalatedSessions.has(session.name)) {
         // Create escalation for human attention
@@ -339,11 +367,35 @@ hive my-stories ${session.name}
         );
 
         console.log(chalk.red(`  ESCALATION: ${session.name} needs human input`));
-      } else if (waitingInfo.isWaiting) {
-        // Agent is idle/waiting but doesn't need human - nudge them to continue
-        const agentType = getAgentType(session.name);
-        await nudgeAgent(root, session.name, undefined, agentType, waitingInfo.reason);
-        nudged++;
+      } else if (waitingInfo.isWaiting && stateResult.state !== ClaudeCodeState.THINKING) {
+        // Agent is idle/waiting but doesn't need human
+        // Check if we should nudge based on state duration and cooldown
+        const currentTrackedState = agentStates.get(session.name);
+        if (currentTrackedState) {
+          const timeSinceStateChange = now - currentTrackedState.lastStateChangeTime;
+          const timeSinceLastNudge = now - currentTrackedState.lastNudgeTime;
+
+          // Only nudge if:
+          // 1. Agent stuck in same state for > 120 seconds
+          // 2. Haven't nudged in last 5 minutes
+          // 3. Not in THINKING state (extended thinking is normal)
+          if (
+            timeSinceStateChange > STATE_STUCK_THRESHOLD_MS &&
+            timeSinceLastNudge > NUDGE_COOLDOWN_MS
+          ) {
+            // Re-check state immediately before nudging to avoid interrupting active work
+            const recheckOutput = await captureTmuxPane(session.name, 50);
+            const recheckState = detectClaudeCodeState(recheckOutput);
+
+            // Only proceed if still in a waiting state and not THINKING
+            if (recheckState.isWaiting && !recheckState.needsHuman && recheckState.state !== ClaudeCodeState.THINKING) {
+              const agentType = getAgentType(session.name);
+              await nudgeAgent(root, session.name, undefined, agentType, waitingInfo.reason);
+              currentTrackedState.lastNudgeTime = now;
+              nudged++;
+            }
+          }
+        }
       }
       // If not waiting (actively working), do nothing - let them work
     }
@@ -411,8 +463,9 @@ hive my-stories ${session.name}
           if (agentSession) {
             // Check if agent is idle before nudging
             const output = await captureTmuxPane(agentSession.name, 30);
-            const state = detectWaitingState(output);
-            if (state.isWaiting && !state.needsHuman) {
+            const stateResult = detectClaudeCodeState(output);
+            // Only nudge if idle and not thinking (thinking is productive work)
+            if (stateResult.isWaiting && !stateResult.needsHuman && stateResult.state !== ClaudeCodeState.THINKING) {
               await sendToTmuxSession(agentSession.name,
                 `# REMINDER: Story ${story.id} failed QA review!
 # You must fix the issues and resubmit the PR.
@@ -561,23 +614,6 @@ hive pr queue`
   }
 }
 
-interface WaitingState {
-  isWaiting: boolean;
-  needsHuman: boolean;
-  reason?: string;
-}
-
-function detectWaitingState(output: string): WaitingState {
-  // Use state machine-based detection for more robust parsing
-  const stateResult = detectClaudeCodeState(output);
-
-  // Convert state machine result to WaitingState format
-  return {
-    isWaiting: stateResult.isWaiting,
-    needsHuman: stateResult.needsHuman,
-    reason: stateResult.needsHuman ? getStateDescription(stateResult.state) : undefined,
-  };
-}
 
 function getAgentType(sessionName: string): 'senior' | 'intermediate' | 'junior' | 'qa' | 'unknown' {
   if (sessionName.includes('-senior-')) return 'senior';
