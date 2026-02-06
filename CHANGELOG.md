@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.10.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.9.0...v0.10.0) (2026-02-06)
+
+
+### Features
+
+* add terminated agents footnote and improve agent count display ([72264db](https://github.com/nikrich/hungry-ghost-hive/commit/72264dbb308c5af0c906bfa56c11b22f5adaf02d))
+* ensure agents maintain bypass permissions mode throughout lifecycle ([8002763](https://github.com/nikrich/hungry-ghost-hive/commit/800276310d28eebe80ba153de57c92b9c0bcc91b))
+* implement bypass mode enforcement and permission auto-approval for STORY-REF-017 ([5840e9a](https://github.com/nikrich/hungry-ghost-hive/commit/5840e9a3b9579672e7c7054fac8b6e4614a23cdf))
+* require explicit story_id on PR submission and unify story ID regex ([37f7cc0](https://github.com/nikrich/hungry-ghost-hive/commit/37f7cc02b52d02e999afa3af110bdd63274795e0))
+* **scheduler:** create escalation on model-cli tool compatibility mismatch ([6d850b5](https://github.com/nikrich/hungry-ghost-hive/commit/6d850b5cdd2c4bdeb795643511d246148fcda053))
+* **scheduler:** detect and recover orphaned stories from terminated agents ([f118a5a](https://github.com/nikrich/hungry-ghost-hive/commit/f118a5ac4ea8fbee144d8a57ea67284adfd50b2d))
+* skip auto-merge for conflicting PRs ([9c51ddb](https://github.com/nikrich/hungry-ghost-hive/commit/9c51ddbd3c4c47f6ae3503ff98ea7488c62e1f28))
+* **story-ref-015:** validate cli tool compatibility with model at spawn time ([6ce4b98](https://github.com/nikrich/hungry-ghost-hive/commit/6ce4b980737420095a779003fcda3d34a9368c61))
+* track QA failure attempts per story and escalate after 3 rejections ([de3b64a](https://github.com/nikrich/hungry-ghost-hive/commit/de3b64a400ecb7ed4b63286b48990b856bd6624f))
+* wrap manager state mutations in transactions ([0968652](https://github.com/nikrich/hungry-ghost-hive/commit/09686520e9b5cdd1fa6739507748d4d27bf95f8e))
+
+
+### Bug Fixes
+
+* **auto-merge:** check GitHub PR state before attempting merge ([50a69cc](https://github.com/nikrich/hungry-ghost-hive/commit/50a69cc51fc49ffd55f25dec1c34745e8b68faf2))
+* **auto-merge:** correctly map GitHub PR state to database status ([ebe79d3](https://github.com/nikrich/hungry-ghost-hive/commit/ebe79d33e2fbbdc2047e43ab2e66317ad5af4b3e))
+* **cleanup:** replace any types with DatabaseClient ([9a38225](https://github.com/nikrich/hungry-ghost-hive/commit/9a382250736606ab62c964261c7af4238a4cd931))
+* **cleanup:** replace any types with DatabaseClient for type safety ([5d440b6](https://github.com/nikrich/hungry-ghost-hive/commit/5d440b6b54f7bb618af8ac5665fc9992aafd1f78))
+* improve type safety in cleanup command by removing 'any' types ([61a2702](https://github.com/nikrich/hungry-ghost-hive/commit/61a2702481376ad56114ecc4af455d1f9f3c792c))
+* **logs:** add AGENT_SPAWN_FAILED event type to EventType union ([28edf0e](https://github.com/nikrich/hungry-ghost-hive/commit/28edf0e3949989f75b250001390b1cfa9a36ba7e))
+* **logs:** add PR_MERGE_SKIPPED event type ([254b054](https://github.com/nikrich/hungry-ghost-hive/commit/254b054be383f9fc1b19c578a3267c0eff02629d))
+* maintain backward compatibility by keeping active field in status ([809092d](https://github.com/nikrich/hungry-ghost-hive/commit/809092d81738b446114fa495be88d3fdd9ce2f25))
+* properly use error variable in dashboard catch block ([ef5f29f](https://github.com/nikrich/hungry-ghost-hive/commit/ef5f29f84d4b1c3c404e1327247b0fc90459df08))
+* remove unused error variable in dashboard debug logging ([f894dc3](https://github.com/nikrich/hungry-ghost-hive/commit/f894dc3981eb09546c561b5b2576b2e0e87b6f8e))
+* remove unused error variable in dashboard debug logging ([4e0c08f](https://github.com/nikrich/hungry-ghost-hive/commit/4e0c08fe8c372e9168ad78c32a4030b5734ae347))
+* **scheduler:** use actual cli_tool for bypass mode and remove redundant declaration ([4db78d5](https://github.com/nikrich/hungry-ghost-hive/commit/4db78d592318bda20754e940f5e374e0e3543225))
+* **scheduler:** use atomic update for orphaned story recovery ([104f391](https://github.com/nikrich/hungry-ghost-hive/commit/104f391d4426a486daaa17715d2579a3ef58bed8))
+* show only active agents in hive status total count ([0f20b2d](https://github.com/nikrich/hungry-ghost-hive/commit/0f20b2d856495311054b86900287bce84cf67bd9))
+* show only active agents in hive status total count ([f590c77](https://github.com/nikrich/hungry-ghost-hive/commit/f590c7760247fed892960526f64dd9b231aff6e7))
+
 ## [0.9.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.8.0...v0.9.0) (2026-02-06)
 
 
