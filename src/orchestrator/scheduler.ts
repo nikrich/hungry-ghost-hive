@@ -5,7 +5,7 @@ import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { getMergeQueue } from '../db/queries/pull-requests.js';
 import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
-import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady } from '../tmux/manager.js';
+import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode } from '../tmux/manager.js';
 import type { ScalingConfig, ModelsConfig } from '../config/schema.js';
 import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
 
@@ -425,6 +425,10 @@ export class Scheduler {
 
       // Wait for Claude to be ready before sending prompt
       await waitForTmuxSessionReady(sessionName);
+
+      // Force bypass permissions mode to enable autonomous work
+      await forceBypassMode(sessionName, 'claude');
+
       const team = getTeamById(this.db, teamId);
       const prompt = generateQAPrompt(teamName, team?.repo_url || '', repoPath, sessionName);
       await sendToTmuxSession(sessionName, prompt);
@@ -472,6 +476,10 @@ export class Scheduler {
 
       // Wait for Claude to be ready before sending prompt
       await waitForTmuxSessionReady(sessionName);
+
+      // Force bypass permissions mode to enable autonomous work
+      await forceBypassMode(sessionName, 'claude');
+
       const team = getTeamById(this.db, teamId);
       const stories = this.getTeamStories(teamId);
       const prompt = generateSeniorPrompt(teamName, team?.repo_url || '', repoPath, stories);
@@ -517,6 +525,10 @@ export class Scheduler {
 
       // Wait for Claude to be ready before sending prompt
       await waitForTmuxSessionReady(sessionName);
+
+      // Force bypass permissions mode to enable autonomous work
+      await forceBypassMode(sessionName, 'claude');
+
       const team = getTeamById(this.db, teamId);
       const prompt = generateIntermediatePrompt(teamName, team?.repo_url || '', repoPath, sessionName);
       await sendToTmuxSession(sessionName, prompt);
@@ -562,6 +574,10 @@ export class Scheduler {
 
       // Wait for Claude to be ready before sending prompt
       await waitForTmuxSessionReady(sessionName);
+
+      // Force bypass permissions mode to enable autonomous work
+      await forceBypassMode(sessionName, 'claude');
+
       const team = getTeamById(this.db, teamId);
       const prompt = generateJuniorPrompt(teamName, team?.repo_url || '', repoPath, sessionName);
       await sendToTmuxSession(sessionName, prompt);

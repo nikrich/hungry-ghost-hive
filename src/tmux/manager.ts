@@ -206,6 +206,58 @@ export async function waitForTmuxSessionReady(
   return true;
 }
 
+/**
+ * Forces bypass permissions mode in a Claude CLI session.
+ * Detects if the agent is in plan mode and switches to bypass mode by sending BTab.
+ * @param sessionName - The tmux session name
+ * @param cliTool - The CLI tool being used ('claude', 'codex', or 'gemini')
+ * @param maxRetries - Maximum number of retry attempts (default 5)
+ * @returns true if bypass mode was confirmed, false if max retries exceeded
+ */
+export async function forceBypassMode(
+  sessionName: string,
+  _cliTool: 'claude' | 'codex' | 'gemini' = 'claude',
+  maxRetries = 5
+): Promise<boolean> {
+  // Note: cliTool parameter is reserved for future Codex/Gemini CLI integration
+  // Currently, all CLIs use the same BTab key sequence for cycling permissions
+  let retries = 0;
+
+  while (retries < maxRetries) {
+    // Capture pane output to check current permission mode
+    const output = await captureTmuxPane(sessionName, 100);
+
+    // Check if already in bypass mode
+    if (output.toLowerCase().includes('bypass permissions on')) {
+      return true;
+    }
+
+    // Check if in plan mode (needs to be switched)
+    if (output.toLowerCase().includes('plan mode on')) {
+      // Send BTab (Shift+Tab / backtab) to cycle permissions mode
+      // For Claude Code, BTab cycles through: plan -> safe -> bypass -> plan
+      await execa('tmux', ['send-keys', '-t', sessionName, 'BTab']);
+
+      // Wait for the mode change to take effect
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      retries++;
+      continue;
+    }
+
+    // If neither plan mode nor bypass mode is detected, try cycling anyway
+    // This handles cases where the mode indicator might not be visible
+    await execa('tmux', ['send-keys', '-t', sessionName, 'BTab']);
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    retries++;
+  }
+
+  // Max retries exceeded
+  // Return false to indicate we couldn't confirm bypass mode
+  return false;
+}
+
 export function generateSessionName(agentType: string, teamName?: string, index?: number): string {
   let name = `hive-${agentType}`;
   if (teamName) {
