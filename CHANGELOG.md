@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.3.0...v0.3.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* correct license field from MIT to custom license ([4251ac4](https://github.com/nikrich/hungry-ghost-hive/commit/4251ac43d47fab37da3411958127b35d9883f752))
+* use release tag name for tarball upload in release workflow ([e5f1a59](https://github.com/nikrich/hungry-ghost-hive/commit/e5f1a5975b7ad5060cefd30527f0b6422eb07f70))
+
 ## [0.3.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.2.0...v0.3.0) (2026-02-06)
 
 
