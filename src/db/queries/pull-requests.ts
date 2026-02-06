@@ -6,6 +6,16 @@ export type { PullRequestRow };
 
 export type PullRequestStatus = 'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed';
 
+/**
+ * Extract GitHub PR number from GitHub PR URL
+ * Handles formats like: https://github.com/owner/repo/pull/123
+ */
+export function extractPRNumberFromUrl(url: string | null | undefined): number | null {
+  if (!url) return null;
+  const match = url.match(/\/pull\/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
 export interface CreatePullRequestInput {
   storyId?: string | null;
   teamId?: string | null;
@@ -27,6 +37,12 @@ export function createPullRequest(db: Database, input: CreatePullRequestInput): 
   const id = `pr-${nanoid(8)}`;
   const now = new Date().toISOString();
 
+  // Extract PR number from URL if not explicitly provided
+  let prNumber = input.githubPrNumber || null;
+  if (!prNumber && input.githubPrUrl) {
+    prNumber = extractPRNumberFromUrl(input.githubPrUrl);
+  }
+
   run(db, `
     INSERT INTO pull_requests (id, story_id, team_id, branch_name, github_pr_number, github_pr_url, submitted_by, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)
@@ -35,7 +51,7 @@ export function createPullRequest(db: Database, input: CreatePullRequestInput): 
     input.storyId || null,
     input.teamId || null,
     input.branchName,
-    input.githubPrNumber || null,
+    prNumber,
     input.githubPrUrl || null,
     input.submittedBy || null,
     now,
@@ -175,4 +191,26 @@ export function updatePullRequest(db: Database, id: string, input: UpdatePullReq
 
 export function deletePullRequest(db: Database, id: string): void {
   run(db, 'DELETE FROM pull_requests WHERE id = ?', [id]);
+}
+
+/**
+ * Backfill github_pr_number for PRs that have github_pr_url but NULL github_pr_number
+ * Returns count of updated records
+ */
+export function backfillPRNumbersFromUrls(db: Database): number {
+  const prsToBackfill = queryAll<PullRequestRow>(db, `
+    SELECT * FROM pull_requests
+    WHERE github_pr_number IS NULL AND github_pr_url IS NOT NULL
+  `);
+
+  let count = 0;
+  for (const pr of prsToBackfill) {
+    const prNumber = extractPRNumberFromUrl(pr.github_pr_url);
+    if (prNumber) {
+      updatePullRequest(db, pr.id, { githubPrNumber: prNumber });
+      count++;
+    }
+  }
+
+  return count;
 }

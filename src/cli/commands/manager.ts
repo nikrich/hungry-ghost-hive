@@ -6,7 +6,7 @@ import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
-import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests, updatePullRequest } from '../../db/queries/pull-requests.js';
+import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests, updatePullRequest, backfillPRNumbersFromUrls } from '../../db/queries/pull-requests.js';
 import { markMessagesRead, getAllPendingMessages, type MessageRow } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
 import { getAgentById, updateAgent, getAllAgents } from '../../db/queries/agents.js';
@@ -255,7 +255,14 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       config = loadConfig(paths.hiveDir);
     }
 
-    // First, run health check to sync agent status with tmux
+    // First, backfill any missing PR numbers from URLs
+    const backfilledCount = backfillPRNumbersFromUrls(db.db);
+    if (backfilledCount > 0) {
+      console.log(chalk.cyan(`  Backfilled ${backfilledCount} PR number(s) from URL(s)`));
+      db.save();
+    }
+
+    // Then, run health check to sync agent status with tmux
     const scheduler = new Scheduler(db.db, {
       scaling: config.scaling,
       models: config.models,
