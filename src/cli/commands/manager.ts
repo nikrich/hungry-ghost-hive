@@ -549,8 +549,11 @@ ${formatCommandForAgent(agentCommands.queueCheck(), agentCliTool)}`
       // Notify seniors about unassigned work
       const seniorSessions = hiveSessions.filter(s => s.name.includes('-senior-'));
       for (const senior of seniorSessions) {
+        const seniorAgent = getAgentById(db.db, senior.name.replace('hive-', ''));
+        const seniorCliTool = (seniorAgent?.cli_tool || 'claude') as CLITool;
+        const seniorCommands = getAvailableCommands(seniorCliTool);
         await sendToTmuxSession(senior.name,
-          `# ${plannedStories.length} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
+          `# ${plannedStories.length} unassigned story(ies). Run: ${formatCommandForAgent(seniorCommands.getMyStories(senior.name, true), seniorCliTool)}`
         );
       }
     }
