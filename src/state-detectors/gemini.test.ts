@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { GeminiStateDetector } from './gemini';
-import { AgentState } from './types';
+import { GeminiStateDetector } from './gemini.js';
+import { AgentState } from './types.js';
 
 describe('GeminiStateDetector', () => {
   const detector = new GeminiStateDetector();

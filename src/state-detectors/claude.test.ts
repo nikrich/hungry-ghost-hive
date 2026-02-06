@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { ClaudeStateDetector } from './claude';
-import { AgentState } from './types';
+import { ClaudeStateDetector } from './claude.js';
+import { AgentState } from './types.js';
 
 describe('ClaudeStateDetector', () => {
   const detector = new ClaudeStateDetector();

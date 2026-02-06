@@ -5,7 +5,7 @@
  * Refactored from src/utils/claude-code-state.ts
  */
 
-import { AgentState, StateDetectionResult, StateDetector } from './types';
+import { AgentState, StateDetectionResult, StateDetector } from './types.js';
 
 interface StateIndicator {
   state: AgentState;

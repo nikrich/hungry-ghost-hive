@@ -8,7 +8,6 @@ import {
   contextFileExists,
   generateContextFile,
   type ContextFileOptions,
-  type CLITool,
 } from './index.js';
 import type { TeamRow } from '../db/queries/teams.js';
 import type { StoryRow } from '../db/queries/stories.js';

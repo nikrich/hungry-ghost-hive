@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { getStateDetector, isSupportedCLI } from './factory';
-import { ClaudeStateDetector } from './claude';
-import { CodexStateDetector } from './codex';
-import { GeminiStateDetector } from './gemini';
+import { getStateDetector, isSupportedCLI } from './factory.js';
+import { ClaudeStateDetector } from './claude.js';
+import { CodexStateDetector } from './codex.js';
+import { GeminiStateDetector } from './gemini.js';
 
 describe('getStateDetector', () => {
   it('should return ClaudeStateDetector for claude CLI type', () => {

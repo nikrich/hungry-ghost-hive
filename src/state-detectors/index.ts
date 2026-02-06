@@ -13,13 +13,13 @@
  */
 
 // Export types and interfaces
-export type { StateDetector, StateDetectionResult, CLIType } from './types';
-export { AgentState } from './types';
+export type { StateDetector, StateDetectionResult, CLIType } from './types.js';
+export { AgentState } from './types.js';
 
 // Export state detector implementations
-export { ClaudeStateDetector } from './claude';
-export { CodexStateDetector } from './codex';
-export { GeminiStateDetector } from './gemini';
+export { ClaudeStateDetector } from './claude.js';
+export { CodexStateDetector } from './codex.js';
+export { GeminiStateDetector } from './gemini.js';
 
 // Export factory functions
-export { getStateDetector, isSupportedCLI } from './factory';
+export { getStateDetector, isSupportedCLI } from './factory.js';

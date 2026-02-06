@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { CodexStateDetector } from './codex';
-import { AgentState } from './types';
+import { CodexStateDetector } from './codex.js';
+import { AgentState } from './types.js';
 
 describe('CodexStateDetector', () => {
   const detector = new CodexStateDetector();

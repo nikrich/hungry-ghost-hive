@@ -6,7 +6,7 @@
  * based on actual Codex CLI output behavior
  */
 
-import { AgentState, StateDetectionResult, StateDetector } from './types';
+import { AgentState, StateDetectionResult, StateDetector } from './types.js';
 
 interface StateIndicator {
   state: AgentState;

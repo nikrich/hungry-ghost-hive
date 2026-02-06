@@ -388,6 +388,7 @@ export interface AgentRow {
   current_story_id: string | null;
   memory_state: string | null;
   last_seen: string | null;
+  cli_tool: string;
   created_at: string;
   updated_at: string;
 }
