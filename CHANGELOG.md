@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.5.0...v0.6.0) (2026-02-06)
+
+
+### Features
+
+* auto-close duplicate PRs when new PR submitted for same story ([#80](https://github.com/nikrich/hungry-ghost-hive/issues/80)) ([cf06c39](https://github.com/nikrich/hungry-ghost-hive/commit/cf06c39e202c6658dfba5d817c2a93fc5c6b2371))
+* implement --dry-run flag for hive assign command ([163fa22](https://github.com/nikrich/hungry-ghost-hive/commit/163fa223a249dec59611a256bf2aae955187f083))
+* implement --dry-run flag for hive assign command ([dd831b4](https://github.com/nikrich/hungry-ghost-hive/commit/dd831b41529cb3272f87858b1df359752c74b691))
+* update default model IDs to latest Claude versions ([#84](https://github.com/nikrich/hungry-ghost-hive/issues/84)) ([1161419](https://github.com/nikrich/hungry-ghost-hive/commit/1161419a3cfb4b261b10187e297aa3079ea1c395))
+
 ## [0.5.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.4.1...v0.5.0) (2026-02-06)
 
 
