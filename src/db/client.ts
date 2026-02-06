@@ -416,7 +416,9 @@ export async function withTransaction<T>(
   fn: () => Promise<T> | T,
 ): Promise<T> {
   try {
-    db.run('BEGIN TRANSACTION');
+    // Use BEGIN IMMEDIATE for immediate locking to prevent race conditions
+    // in multi-agent scenarios. Prevents lost updates from concurrent writers.
+    db.run('BEGIN IMMEDIATE');
     const result = await fn();
     db.run('COMMIT');
     return result;
