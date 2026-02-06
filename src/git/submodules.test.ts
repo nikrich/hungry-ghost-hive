@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as submodules from './submodules.js';
 
 // Mock execa
@@ -36,9 +36,11 @@ describe('submodules module', () => {
 
       await submodules.addSubmodule(rootDir, url, path);
 
-      expect(mockedExeca).toHaveBeenCalledWith('git', [
-        'submodule', 'add', '-b', 'main', url, path,
-      ], { cwd: rootDir });
+      expect(mockedExeca).toHaveBeenCalledWith(
+        'git',
+        ['submodule', 'add', '-b', 'main', url, path],
+        { cwd: rootDir }
+      );
     });
 
     it('should add a submodule with custom branch', async () => {
@@ -57,7 +59,9 @@ describe('submodules module', () => {
     it('should throw error if path already exists', async () => {
       mockedExistsSync.mockReturnValueOnce(true);
 
-      await expect(submodules.addSubmodule(rootDir, url, path)).rejects.toThrow('Path already exists');
+      await expect(submodules.addSubmodule(rootDir, url, path)).rejects.toThrow(
+        'Path already exists'
+      );
     });
   });
 
@@ -95,9 +99,9 @@ describe('submodules module', () => {
 
       await submodules.updateSubmodules(rootDir);
 
-      expect(mockedExeca).toHaveBeenCalledWith('git', [
-        'submodule', 'update', '--recursive',
-      ], { cwd: rootDir });
+      expect(mockedExeca).toHaveBeenCalledWith('git', ['submodule', 'update', '--recursive'], {
+        cwd: rootDir,
+      });
     });
 
     it('should update submodules non-recursively when specified', async () => {
@@ -108,9 +112,7 @@ describe('submodules module', () => {
 
       await submodules.updateSubmodules(rootDir, false);
 
-      expect(mockedExeca).toHaveBeenCalledWith('git', [
-        'submodule', 'update',
-      ], { cwd: rootDir });
+      expect(mockedExeca).toHaveBeenCalledWith('git', ['submodule', 'update'], { cwd: rootDir });
     });
   });
 
@@ -125,9 +127,11 @@ describe('submodules module', () => {
 
       await submodules.initAndUpdateSubmodules(rootDir);
 
-      expect(mockedExeca).toHaveBeenCalledWith('git', [
-        'submodule', 'update', '--init', '--recursive',
-      ], { cwd: rootDir });
+      expect(mockedExeca).toHaveBeenCalledWith(
+        'git',
+        ['submodule', 'update', '--init', '--recursive'],
+        { cwd: rootDir }
+      );
     });
   });
 
@@ -143,12 +147,10 @@ describe('submodules module', () => {
       await submodules.removeSubmodule(rootDir, path);
 
       expect(mockedExeca).toHaveBeenCalledTimes(2);
-      expect(mockedExeca).toHaveBeenNthCalledWith(1, 'git', [
-        'submodule', 'deinit', '-f', path,
-      ], { cwd: rootDir });
-      expect(mockedExeca).toHaveBeenNthCalledWith(2, 'git', [
-        'rm', '-f', path,
-      ], { cwd: rootDir });
+      expect(mockedExeca).toHaveBeenNthCalledWith(1, 'git', ['submodule', 'deinit', '-f', path], {
+        cwd: rootDir,
+      });
+      expect(mockedExeca).toHaveBeenNthCalledWith(2, 'git', ['rm', '-f', path], { cwd: rootDir });
     });
 
     it('should handle removal errors', async () => {
@@ -252,10 +254,11 @@ describe('submodules module', () => {
       const result = await submodules.getSubmoduleUrl(rootDir, path);
 
       expect(result).toBe('https://github.com/test/submodule.git');
-      expect(mockedExeca).toHaveBeenCalledWith('git', [
-        'config', '--file', '.gitmodules',
-        'submodule.libs/submodule.url',
-      ], { cwd: rootDir });
+      expect(mockedExeca).toHaveBeenCalledWith(
+        'git',
+        ['config', '--file', '.gitmodules', 'submodule.libs/submodule.url'],
+        { cwd: rootDir }
+      );
     });
 
     it('should return empty string if URL not found', async () => {
@@ -337,9 +340,9 @@ describe('submodules module', () => {
 
       await submodules.fetchSubmodules(rootDir);
 
-      expect(mockedExeca).toHaveBeenCalledWith('git', [
-        'submodule', 'foreach', 'git', 'fetch',
-      ], { cwd: rootDir });
+      expect(mockedExeca).toHaveBeenCalledWith('git', ['submodule', 'foreach', 'git', 'fetch'], {
+        cwd: rootDir,
+      });
     });
 
     it('should handle fetch error', async () => {

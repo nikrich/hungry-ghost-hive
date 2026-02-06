@@ -1,5 +1,5 @@
-import type { MessageDao } from '../interfaces/message.dao.js';
 import type { MessageRow } from '../../queries/messages.js';
+import type { MessageDao } from '../interfaces/message.dao.js';
 import { LevelDbStore } from './leveldb-store.js';
 import { compareIsoAsc } from './sort.js';
 
@@ -31,8 +31,6 @@ export class LevelDbMessageDao implements MessageDao {
 
   async getAllPendingMessages(): Promise<MessageRow[]> {
     const messages = await this.store.listValues<MessageRow>(MESSAGE_PREFIX);
-    return messages
-      .filter(msg => msg.status === 'pending')
-      .sort(compareIsoAsc);
+    return messages.filter(msg => msg.status === 'pending').sort(compareIsoAsc);
   }
 }

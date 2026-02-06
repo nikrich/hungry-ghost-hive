@@ -1,7 +1,6 @@
-import type { TeamRow } from '../../queries/teams.js';
-import type { CreateTeamInput } from '../../queries/teams.js';
+import type { CreateTeamInput, TeamRow } from '../../queries/teams.js';
 
-export type { TeamRow, CreateTeamInput };
+export type { CreateTeamInput, TeamRow };
 
 export interface TeamDao {
   createTeam(input: CreateTeamInput): Promise<TeamRow>;

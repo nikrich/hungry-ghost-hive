@@ -39,13 +39,13 @@ export function getRequirementById(db: Database, id: string): RequirementRow | u
 }
 
 export function getAllRequirements(db: Database): RequirementRow[] {
-  return queryAll<RequirementRow>(db, 'SELECT * FROM requirements ORDER BY created_at DESC, rowid DESC');
+  return queryAll<RequirementRow>(
+    db,
+    'SELECT * FROM requirements ORDER BY created_at DESC, rowid DESC'
+  );
 }
 
-export function getRequirementsByStatus(
-  db: Database,
-  status: RequirementStatus
-): RequirementRow[] {
+export function getRequirementsByStatus(db: Database, status: RequirementStatus): RequirementRow[] {
   return queryAll<RequirementRow>(
     db,
     'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC, rowid DESC',

@@ -1,14 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDb } from './helpers.js';
-import { SqliteTeamDao } from '../sqlite/team.sqlite-dao.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SqliteAgentDao } from '../sqlite/agent.sqlite-dao.js';
-import { SqliteStoryDao } from '../sqlite/story.sqlite-dao.js';
-import { SqliteRequirementDao } from '../sqlite/requirement.sqlite-dao.js';
-import { SqlitePullRequestDao } from '../sqlite/pull-request.sqlite-dao.js';
 import { SqliteEscalationDao } from '../sqlite/escalation.sqlite-dao.js';
 import { SqliteLogDao } from '../sqlite/log.sqlite-dao.js';
 import { SqliteMessageDao } from '../sqlite/message.sqlite-dao.js';
+import { SqlitePullRequestDao } from '../sqlite/pull-request.sqlite-dao.js';
+import { SqliteRequirementDao } from '../sqlite/requirement.sqlite-dao.js';
+import { SqliteStoryDao } from '../sqlite/story.sqlite-dao.js';
+import { SqliteTeamDao } from '../sqlite/team.sqlite-dao.js';
+import { createTestDb } from './helpers.js';
 
 describe('Broader DAO contract', () => {
   let db: Database;
@@ -59,8 +59,14 @@ describe('Broader DAO contract', () => {
     await reqDao.updateRequirement(r1.id, { status: 'planned' });
     await reqDao.updateRequirement(r2.id, { status: 'planned' });
 
-    db.run('UPDATE requirements SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', r1.id]);
-    db.run('UPDATE requirements SET created_at = ? WHERE id = ?', ['2025-01-02T00:00:00.000Z', r2.id]);
+    db.run('UPDATE requirements SET created_at = ? WHERE id = ?', [
+      '2025-01-01T00:00:00.000Z',
+      r1.id,
+    ]);
+    db.run('UPDATE requirements SET created_at = ? WHERE id = ?', [
+      '2025-01-02T00:00:00.000Z',
+      r2.id,
+    ]);
 
     const planned = await reqDao.getRequirementsByStatus('planned');
     expect(planned.map(req => req.id)).toEqual([r2.id, r1.id]);
@@ -70,8 +76,14 @@ describe('Broader DAO contract', () => {
     const r1 = await reqDao.createRequirement({ title: 'Old', description: 'Desc' });
     const r2 = await reqDao.createRequirement({ title: 'New', description: 'Desc' });
 
-    db.run('UPDATE requirements SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', r1.id]);
-    db.run('UPDATE requirements SET created_at = ? WHERE id = ?', ['2025-01-02T00:00:00.000Z', r2.id]);
+    db.run('UPDATE requirements SET created_at = ? WHERE id = ?', [
+      '2025-01-01T00:00:00.000Z',
+      r1.id,
+    ]);
+    db.run('UPDATE requirements SET created_at = ? WHERE id = ?', [
+      '2025-01-02T00:00:00.000Z',
+      r2.id,
+    ]);
 
     const pending = await reqDao.getPendingRequirements();
     expect(pending.map(req => req.id)).toEqual([r1.id, r2.id]);
@@ -83,7 +95,10 @@ describe('Broader DAO contract', () => {
       description: 'Desc',
       submittedBy: 'tech-lead',
     });
-    db.run('UPDATE requirements SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', req.id]);
+    db.run('UPDATE requirements SET created_at = ? WHERE id = ?', [
+      '2025-01-01T00:00:00.000Z',
+      req.id,
+    ]);
 
     const updated = await reqDao.updateRequirement(req.id, { title: 'Updated' });
     expect(updated!.submitted_by).toBe('tech-lead');
@@ -92,8 +107,16 @@ describe('Broader DAO contract', () => {
 
   it('dao-broader.sqlite-dao case 5', async () => {
     const req = await reqDao.createRequirement({ title: 'Req', description: 'Desc' });
-    const s1 = await storyDao.createStory({ title: 'Old', description: 'D1', requirementId: req.id });
-    const s2 = await storyDao.createStory({ title: 'New', description: 'D2', requirementId: req.id });
+    const s1 = await storyDao.createStory({
+      title: 'Old',
+      description: 'D1',
+      requirementId: req.id,
+    });
+    const s2 = await storyDao.createStory({
+      title: 'New',
+      description: 'D2',
+      requirementId: req.id,
+    });
 
     db.run('UPDATE stories SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', s1.id]);
     db.run('UPDATE stories SET created_at = ? WHERE id = ?', ['2025-01-02T00:00:00.000Z', s2.id]);
@@ -168,8 +191,14 @@ describe('Broader DAO contract', () => {
     const pr1 = await prDao.createPullRequest({ branchName: 'b1', teamId });
     const pr2 = await prDao.createPullRequest({ branchName: 'b2', teamId });
 
-    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', pr1.id]);
-    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', ['2025-01-02T00:00:00.000Z', pr2.id]);
+    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', [
+      '2025-01-01T00:00:00.000Z',
+      pr1.id,
+    ]);
+    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', [
+      '2025-01-02T00:00:00.000Z',
+      pr2.id,
+    ]);
 
     const queue = await prDao.getMergeQueue(teamId);
     expect(queue.map(pr => pr.id)).toEqual([pr1.id, pr2.id]);
@@ -181,8 +210,14 @@ describe('Broader DAO contract', () => {
     await prDao.updatePullRequest(pr1.id, { status: 'approved' });
     await prDao.updatePullRequest(pr2.id, { status: 'approved' });
 
-    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', ['2025-01-02T00:00:00.000Z', pr1.id]);
-    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', pr2.id]);
+    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', [
+      '2025-01-02T00:00:00.000Z',
+      pr1.id,
+    ]);
+    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', [
+      '2025-01-01T00:00:00.000Z',
+      pr2.id,
+    ]);
 
     const approved = await prDao.getApprovedPullRequests();
     expect(approved.map(pr => pr.id)).toEqual([pr2.id, pr1.id]);
@@ -200,8 +235,14 @@ describe('Broader DAO contract', () => {
     await prDao.updatePullRequest(pr1.id, { status: 'rejected' });
     await prDao.updatePullRequest(pr2.id, { status: 'rejected' });
 
-    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', pr1.id]);
-    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', ['2025-01-02T00:00:00.000Z', pr2.id]);
+    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', [
+      '2025-01-01T00:00:00.000Z',
+      pr1.id,
+    ]);
+    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', [
+      '2025-01-02T00:00:00.000Z',
+      pr2.id,
+    ]);
 
     const rejected = await prDao.getPullRequestsByStatus('rejected');
     expect(rejected.map(pr => pr.id)).toEqual([pr2.id, pr1.id]);
@@ -210,11 +251,25 @@ describe('Broader DAO contract', () => {
   it('dao-broader.sqlite-dao case 16', async () => {
     const agent = await agentDao.createAgent({ type: 'senior', teamId });
     const story = await storyDao.createStory({ title: 'Story', description: 'Desc', teamId });
-    const e1 = await escDao.createEscalation({ storyId: story.id, fromAgentId: agent.id, reason: 'Old' });
-    const e2 = await escDao.createEscalation({ storyId: story.id, fromAgentId: agent.id, reason: 'New' });
+    const e1 = await escDao.createEscalation({
+      storyId: story.id,
+      fromAgentId: agent.id,
+      reason: 'Old',
+    });
+    const e2 = await escDao.createEscalation({
+      storyId: story.id,
+      fromAgentId: agent.id,
+      reason: 'New',
+    });
 
-    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', e1.id]);
-    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', ['2025-01-02T00:00:00.000Z', e2.id]);
+    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', [
+      '2025-01-01T00:00:00.000Z',
+      e1.id,
+    ]);
+    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', [
+      '2025-01-02T00:00:00.000Z',
+      e2.id,
+    ]);
 
     const escalations = await escDao.getEscalationsByStory(story.id);
     expect(escalations.map(esc => esc.id)).toEqual([e2.id, e1.id]);
@@ -225,8 +280,14 @@ describe('Broader DAO contract', () => {
     const e1 = await escDao.createEscalation({ fromAgentId: agent.id, reason: 'Old' });
     const e2 = await escDao.createEscalation({ fromAgentId: agent.id, reason: 'New' });
 
-    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', e1.id]);
-    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', ['2025-01-02T00:00:00.000Z', e2.id]);
+    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', [
+      '2025-01-01T00:00:00.000Z',
+      e1.id,
+    ]);
+    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', [
+      '2025-01-02T00:00:00.000Z',
+      e2.id,
+    ]);
 
     const pending = await escDao.getPendingHumanEscalations();
     expect(pending.map(esc => esc.id)).toEqual([e1.id, e2.id]);
@@ -428,7 +489,10 @@ describe('Broader DAO contract', () => {
   it('dao-broader.sqlite-dao case 34', async () => {
     const rPending = await reqDao.createRequirement({ title: 'Pending', description: 'Desc' });
     const rPlanning = await reqDao.createRequirement({ title: 'Planning', description: 'Desc' });
-    const rInProgress = await reqDao.createRequirement({ title: 'In Progress', description: 'Desc' });
+    const rInProgress = await reqDao.createRequirement({
+      title: 'In Progress',
+      description: 'Desc',
+    });
     const rDone = await reqDao.createRequirement({ title: 'Done', description: 'Desc' });
 
     await reqDao.updateRequirement(rPlanning.id, { status: 'planning' });
@@ -459,7 +523,10 @@ describe('Broader DAO contract', () => {
 
   it('dao-broader.sqlite-dao case 36', async () => {
     const pr = await prDao.createPullRequest({ branchName: 'branch', teamId });
-    const updated = await prDao.updatePullRequest(pr.id, { status: 'approved', reviewedBy: 'lead' });
+    const updated = await prDao.updatePullRequest(pr.id, {
+      status: 'approved',
+      reviewedBy: 'lead',
+    });
 
     expect(updated!.status).toBe('approved');
     expect(updated!.reviewed_at).not.toBeNull();
@@ -469,8 +536,14 @@ describe('Broader DAO contract', () => {
     const pr1 = await prDao.createPullRequest({ branchName: 'b1', teamId });
     const pr2 = await prDao.createPullRequest({ branchName: 'b2', teamId });
 
-    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', pr1.id]);
-    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', ['2025-01-02T00:00:00.000Z', pr2.id]);
+    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', [
+      '2025-01-01T00:00:00.000Z',
+      pr1.id,
+    ]);
+    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', [
+      '2025-01-02T00:00:00.000Z',
+      pr2.id,
+    ]);
 
     await prDao.updatePullRequest(pr1.id, { status: 'reviewing' });
 
@@ -493,8 +566,14 @@ describe('Broader DAO contract', () => {
     const e2 = await escDao.createEscalation({ fromAgentId: agent1.id, reason: 'New' });
     await escDao.createEscalation({ fromAgentId: agent2.id, reason: 'Other' });
 
-    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', e1.id]);
-    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', ['2025-01-02T00:00:00.000Z', e2.id]);
+    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', [
+      '2025-01-01T00:00:00.000Z',
+      e1.id,
+    ]);
+    db.run('UPDATE escalations SET created_at = ? WHERE id = ?', [
+      '2025-01-02T00:00:00.000Z',
+      e2.id,
+    ]);
 
     const fromAgent1 = await escDao.getEscalationsByFromAgent(agent1.id);
     expect(fromAgent1.map(esc => esc.id)).toEqual([e2.id, e1.id]);

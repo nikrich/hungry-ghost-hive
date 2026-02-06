@@ -1,6 +1,11 @@
 import { nanoid } from 'nanoid';
+import type {
+  CreateStoryInput,
+  StoryRow,
+  StoryStatus,
+  UpdateStoryInput,
+} from '../../queries/stories.js';
 import type { StoryDao } from '../interfaces/story.dao.js';
-import type { StoryRow, CreateStoryInput, UpdateStoryInput, StoryStatus } from '../../queries/stories.js';
 import { LevelDbStore, type NowProvider, defaultNow } from './leveldb-store.js';
 import { compareIsoAsc, compareIsoDesc } from './sort.js';
 
@@ -10,7 +15,10 @@ const STORY_DEP_PREFIX = 'storydep:';
 export class LevelDbStoryDao implements StoryDao {
   private readonly now: NowProvider;
 
-  constructor(private readonly store: LevelDbStore, now: NowProvider = defaultNow) {
+  constructor(
+    private readonly store: LevelDbStore,
+    now: NowProvider = defaultNow
+  ) {
     this.now = now;
   }
 
@@ -67,7 +75,14 @@ export class LevelDbStoryDao implements StoryDao {
   }
 
   async getActiveStoriesByAgent(agentId: string): Promise<StoryRow[]> {
-    const activeStatuses = new Set(['planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted']);
+    const activeStatuses = new Set([
+      'planned',
+      'in_progress',
+      'review',
+      'qa',
+      'qa_failed',
+      'pr_submitted',
+    ]);
     const stories = await this.store.listValues<StoryRow>(STORY_PREFIX);
     return stories
       .filter(story => story.assigned_agent_id === agentId && activeStatuses.has(story.status))
@@ -94,15 +109,17 @@ export class LevelDbStoryDao implements StoryDao {
   async getInProgressStories(): Promise<StoryRow[]> {
     const statuses = new Set(['in_progress', 'review', 'qa', 'qa_failed']);
     const stories = await this.store.listValues<StoryRow>(STORY_PREFIX);
-    return stories
-      .filter(story => statuses.has(story.status))
-      .sort(compareIsoAsc);
+    return stories.filter(story => statuses.has(story.status)).sort(compareIsoAsc);
   }
 
   async getStoryPointsByTeam(teamId: string): Promise<number> {
     const stories = await this.store.listValues<StoryRow>(STORY_PREFIX);
     return stories
-      .filter(story => story.team_id === teamId && ['planned', 'in_progress', 'review', 'qa'].includes(story.status))
+      .filter(
+        story =>
+          story.team_id === teamId &&
+          ['planned', 'in_progress', 'review', 'qa'].includes(story.status)
+      )
       .reduce((sum, story) => sum + (story.story_points ?? 0), 0);
   }
 
@@ -115,7 +132,9 @@ export class LevelDbStoryDao implements StoryDao {
     if (input.title !== undefined) updates.title = input.title;
     if (input.description !== undefined) updates.description = input.description;
     if (input.acceptanceCriteria !== undefined) {
-      updates.acceptance_criteria = input.acceptanceCriteria ? JSON.stringify(input.acceptanceCriteria) : null;
+      updates.acceptance_criteria = input.acceptanceCriteria
+        ? JSON.stringify(input.acceptanceCriteria)
+        : null;
     }
     if (input.complexityScore !== undefined) updates.complexity_score = input.complexityScore;
     if (input.storyPoints !== undefined) updates.story_points = input.storyPoints;
@@ -212,7 +231,9 @@ export class LevelDbStoryDao implements StoryDao {
   async getStoriesWithOrphanedAssignments(): Promise<Array<{ id: string; agent_id: string }>> {
     const stories = await this.store.listValues<StoryRow>(STORY_PREFIX);
     const agents = await this.store.listValues<{ id: string; status: string }>('agent:');
-    const activeAgentIds = new Set(agents.filter(agent => agent.status !== 'terminated').map(agent => agent.id));
+    const activeAgentIds = new Set(
+      agents.filter(agent => agent.status !== 'terminated').map(agent => agent.id)
+    );
 
     return stories
       .filter(story => story.assigned_agent_id && !activeAgentIds.has(story.assigned_agent_id))

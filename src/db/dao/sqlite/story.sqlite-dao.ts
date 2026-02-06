@@ -1,8 +1,13 @@
-import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run } from '../../client.js';
+import type {
+  CreateStoryInput,
+  StoryRow,
+  StoryStatus,
+  UpdateStoryInput,
+} from '../../queries/stories.js';
 import type { StoryDao } from '../interfaces/story.dao.js';
-import type { StoryRow, CreateStoryInput, UpdateStoryInput, StoryStatus } from '../../queries/stories.js';
 
 export class SqliteStoryDao implements StoryDao {
   constructor(private readonly db: Database) {}
@@ -14,10 +19,23 @@ export class SqliteStoryDao implements StoryDao {
       : null;
     const now = new Date().toISOString();
 
-    run(this.db, `
+    run(
+      this.db,
+      `
       INSERT INTO stories (id, requirement_id, team_id, title, description, acceptance_criteria, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, input.requirementId || null, input.teamId || null, input.title, input.description, acceptanceCriteria, now, now]);
+    `,
+      [
+        id,
+        input.requirementId || null,
+        input.teamId || null,
+        input.title,
+        input.description,
+        acceptanceCriteria,
+        now,
+        now,
+      ]
+    );
 
     return (await this.getStoryById(id))!;
   }
@@ -27,28 +45,48 @@ export class SqliteStoryDao implements StoryDao {
   }
 
   async getStoriesByRequirement(requirementId: string): Promise<StoryRow[]> {
-    return queryAll<StoryRow>(this.db, 'SELECT * FROM stories WHERE requirement_id = ? ORDER BY created_at', [requirementId]);
+    return queryAll<StoryRow>(
+      this.db,
+      'SELECT * FROM stories WHERE requirement_id = ? ORDER BY created_at',
+      [requirementId]
+    );
   }
 
   async getStoriesByTeam(teamId: string): Promise<StoryRow[]> {
-    return queryAll<StoryRow>(this.db, 'SELECT * FROM stories WHERE team_id = ? ORDER BY created_at', [teamId]);
+    return queryAll<StoryRow>(
+      this.db,
+      'SELECT * FROM stories WHERE team_id = ? ORDER BY created_at',
+      [teamId]
+    );
   }
 
   async getStoriesByStatus(status: StoryStatus): Promise<StoryRow[]> {
-    return queryAll<StoryRow>(this.db, 'SELECT * FROM stories WHERE status = ? ORDER BY created_at', [status]);
+    return queryAll<StoryRow>(
+      this.db,
+      'SELECT * FROM stories WHERE status = ? ORDER BY created_at',
+      [status]
+    );
   }
 
   async getStoriesByAgent(agentId: string): Promise<StoryRow[]> {
-    return queryAll<StoryRow>(this.db, 'SELECT * FROM stories WHERE assigned_agent_id = ? ORDER BY created_at', [agentId]);
+    return queryAll<StoryRow>(
+      this.db,
+      'SELECT * FROM stories WHERE assigned_agent_id = ? ORDER BY created_at',
+      [agentId]
+    );
   }
 
   async getActiveStoriesByAgent(agentId: string): Promise<StoryRow[]> {
-    return queryAll<StoryRow>(this.db, `
+    return queryAll<StoryRow>(
+      this.db,
+      `
       SELECT * FROM stories
       WHERE assigned_agent_id = ?
       AND status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')
       ORDER BY created_at
-    `, [agentId]);
+    `,
+      [agentId]
+    );
   }
 
   async getAllStories(): Promise<StoryRow[]> {
@@ -56,27 +94,37 @@ export class SqliteStoryDao implements StoryDao {
   }
 
   async getPlannedStories(): Promise<StoryRow[]> {
-    return queryAll<StoryRow>(this.db, `
+    return queryAll<StoryRow>(
+      this.db,
+      `
       SELECT * FROM stories
       WHERE status = 'planned'
       ORDER BY story_points DESC, created_at
-    `);
+    `
+    );
   }
 
   async getInProgressStories(): Promise<StoryRow[]> {
-    return queryAll<StoryRow>(this.db, `
+    return queryAll<StoryRow>(
+      this.db,
+      `
       SELECT * FROM stories
       WHERE status IN ('in_progress', 'review', 'qa', 'qa_failed')
       ORDER BY created_at
-    `);
+    `
+    );
   }
 
   async getStoryPointsByTeam(teamId: string): Promise<number> {
-    const result = queryOne<{ total: number }>(this.db, `
+    const result = queryOne<{ total: number }>(
+      this.db,
+      `
       SELECT COALESCE(SUM(story_points), 0) as total
       FROM stories
       WHERE team_id = ? AND status IN ('planned', 'in_progress', 'review', 'qa')
-    `, [teamId]);
+    `,
+      [teamId]
+    );
     return result?.total || 0;
   }
 
@@ -135,43 +183,64 @@ export class SqliteStoryDao implements StoryDao {
   }
 
   async deleteStory(id: string): Promise<void> {
-    run(this.db, 'DELETE FROM story_dependencies WHERE story_id = ? OR depends_on_story_id = ?', [id, id]);
+    run(this.db, 'DELETE FROM story_dependencies WHERE story_id = ? OR depends_on_story_id = ?', [
+      id,
+      id,
+    ]);
     run(this.db, 'DELETE FROM stories WHERE id = ?', [id]);
   }
 
   async addStoryDependency(storyId: string, dependsOnStoryId: string): Promise<void> {
-    run(this.db, `
+    run(
+      this.db,
+      `
       INSERT OR IGNORE INTO story_dependencies (story_id, depends_on_story_id)
       VALUES (?, ?)
-    `, [storyId, dependsOnStoryId]);
+    `,
+      [storyId, dependsOnStoryId]
+    );
   }
 
   async removeStoryDependency(storyId: string, dependsOnStoryId: string): Promise<void> {
-    run(this.db, 'DELETE FROM story_dependencies WHERE story_id = ? AND depends_on_story_id = ?', [storyId, dependsOnStoryId]);
+    run(this.db, 'DELETE FROM story_dependencies WHERE story_id = ? AND depends_on_story_id = ?', [
+      storyId,
+      dependsOnStoryId,
+    ]);
   }
 
   async getStoryDependencies(storyId: string): Promise<StoryRow[]> {
-    return queryAll<StoryRow>(this.db, `
+    return queryAll<StoryRow>(
+      this.db,
+      `
       SELECT s.* FROM stories s
       JOIN story_dependencies sd ON s.id = sd.depends_on_story_id
       WHERE sd.story_id = ?
-    `, [storyId]);
+    `,
+      [storyId]
+    );
   }
 
   async getStoriesDependingOn(storyId: string): Promise<StoryRow[]> {
-    return queryAll<StoryRow>(this.db, `
+    return queryAll<StoryRow>(
+      this.db,
+      `
       SELECT s.* FROM stories s
       JOIN story_dependencies sd ON s.id = sd.story_id
       WHERE sd.depends_on_story_id = ?
-    `, [storyId]);
+    `,
+      [storyId]
+    );
   }
 
   async getStoryCounts(): Promise<Record<StoryStatus, number>> {
-    const rows = queryAll<{ status: StoryStatus; count: number }>(this.db, `
+    const rows = queryAll<{ status: StoryStatus; count: number }>(
+      this.db,
+      `
       SELECT status, COUNT(*) as count
       FROM stories
       GROUP BY status
-    `);
+    `
+    );
 
     const counts: Record<StoryStatus, number> = {
       draft: 0,

@@ -1,15 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDb } from './helpers.js';
-import { SqliteTeamDao } from '../sqlite/team.sqlite-dao.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { run } from '../../client.js';
 import { SqliteAgentDao } from '../sqlite/agent.sqlite-dao.js';
-import { SqliteStoryDao } from '../sqlite/story.sqlite-dao.js';
-import { SqliteRequirementDao } from '../sqlite/requirement.sqlite-dao.js';
-import { SqlitePullRequestDao } from '../sqlite/pull-request.sqlite-dao.js';
 import { SqliteEscalationDao } from '../sqlite/escalation.sqlite-dao.js';
 import { SqliteLogDao } from '../sqlite/log.sqlite-dao.js';
 import { SqliteMessageDao } from '../sqlite/message.sqlite-dao.js';
-import { run } from '../../client.js';
+import { SqlitePullRequestDao } from '../sqlite/pull-request.sqlite-dao.js';
+import { SqliteRequirementDao } from '../sqlite/requirement.sqlite-dao.js';
+import { SqliteStoryDao } from '../sqlite/story.sqlite-dao.js';
+import { SqliteTeamDao } from '../sqlite/team.sqlite-dao.js';
+import { createTestDb } from './helpers.js';
 
 describe('DAO edge cases', () => {
   let db: Database;
@@ -223,7 +223,10 @@ describe('DAO edge cases', () => {
   // --- PR: getNextInQueue skips reviewing, returns only queued ---
   it('edge-cases.sqlite-dao case 21', async () => {
     const pr1 = await prDao.createPullRequest({ branchName: 'b1', teamId });
-    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', ['2025-01-01T00:00:00.000Z', pr1.id]);
+    db.run('UPDATE pull_requests SET created_at = ? WHERE id = ?', [
+      '2025-01-01T00:00:00.000Z',
+      pr1.id,
+    ]);
     await prDao.updatePullRequest(pr1.id, { status: 'reviewing' });
 
     const pr2 = await prDao.createPullRequest({ branchName: 'b2', teamId });
@@ -316,10 +319,18 @@ describe('DAO edge cases', () => {
 
   // --- Message: messages ordered by created_at ASC ---
   it('edge-cases.sqlite-dao case 28', async () => {
-    run(db, `INSERT INTO messages (id, from_session, to_session, body, status, created_at)
-             VALUES (?, ?, ?, ?, 'pending', ?)`, ['m1', 'a', 'b', 'First', '2025-01-02T00:00:00.000Z']);
-    run(db, `INSERT INTO messages (id, from_session, to_session, body, status, created_at)
-             VALUES (?, ?, ?, ?, 'pending', ?)`, ['m2', 'a', 'b', 'Second', '2025-01-01T00:00:00.000Z']);
+    run(
+      db,
+      `INSERT INTO messages (id, from_session, to_session, body, status, created_at)
+             VALUES (?, ?, ?, ?, 'pending', ?)`,
+      ['m1', 'a', 'b', 'First', '2025-01-02T00:00:00.000Z']
+    );
+    run(
+      db,
+      `INSERT INTO messages (id, from_session, to_session, body, status, created_at)
+             VALUES (?, ?, ?, ?, 'pending', ?)`,
+      ['m2', 'a', 'b', 'Second', '2025-01-01T00:00:00.000Z']
+    );
 
     const msgs = await msgDao.getUnreadMessages('b');
     expect(msgs).toHaveLength(2);

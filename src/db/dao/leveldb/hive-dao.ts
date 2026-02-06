@@ -1,20 +1,23 @@
 import type { Level } from 'level';
 import type { HiveDao } from '../hive-dao.js';
-import { LevelDbStore, defaultNow, type NowProvider } from './leveldb-store.js';
-import { LevelDbTeamDao } from './team.leveldb-dao.js';
 import { LevelDbAgentDao } from './agent.leveldb-dao.js';
-import { LevelDbStoryDao } from './story.leveldb-dao.js';
-import { LevelDbRequirementDao } from './requirement.leveldb-dao.js';
-import { LevelDbPullRequestDao } from './pull-request.leveldb-dao.js';
 import { LevelDbEscalationDao } from './escalation.leveldb-dao.js';
+import { LevelDbStore, defaultNow, type NowProvider } from './leveldb-store.js';
 import { LevelDbLogDao } from './log.leveldb-dao.js';
 import { LevelDbMessageDao } from './message.leveldb-dao.js';
+import { LevelDbPullRequestDao } from './pull-request.leveldb-dao.js';
+import { LevelDbRequirementDao } from './requirement.leveldb-dao.js';
+import { LevelDbStoryDao } from './story.leveldb-dao.js';
+import { LevelDbTeamDao } from './team.leveldb-dao.js';
 
 export interface LevelDbHiveDaoOptions {
   now?: NowProvider;
 }
 
-export function createLevelDbHiveDao(db: Level<string, unknown>, options: LevelDbHiveDaoOptions = {}): HiveDao {
+export function createLevelDbHiveDao(
+  db: Level<string, unknown>,
+  options: LevelDbHiveDaoOptions = {}
+): HiveDao {
   const store = new LevelDbStore(db);
   const now = options.now ?? defaultNow;
 

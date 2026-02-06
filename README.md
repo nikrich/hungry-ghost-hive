@@ -296,10 +296,10 @@ models:
 scaling:
   junior_max_complexity: 3 # 1-3 → Junior
   intermediate_max_complexity: 5 # 4-5 → Intermediate
-  senior_capacity: 20           # Story points before scaling up
+  senior_capacity: 20 # Story points before scaling up
   refactor:
     enabled: true
-    capacity_percent: 10        # Reserve up to 10% of feature capacity for refactor stories
+    capacity_percent: 10 # Reserve up to 10% of feature capacity for refactor stories
     allow_without_feature_work: true
 
 # QA checks
@@ -405,6 +405,7 @@ We welcome contributions! Here's how to get started:
 ### Development Setup
 
 1. **Clone and Install**:
+
    ```bash
    git clone https://github.com/nikrich/hungry-ghost-hive.git
    cd hungry-ghost-hive
@@ -412,6 +413,7 @@ We welcome contributions! Here's how to get started:
    ```
 
 2. **Run Tests**:
+
    ```bash
    npm test              # Run all tests
    npm run test:watch   # Watch mode

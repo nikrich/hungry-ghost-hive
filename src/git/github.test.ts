@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as github from './github.js';
 
 // Mock execa
@@ -52,13 +52,22 @@ describe('github module', () => {
       const result = await github.createPullRequest(workDir, options);
 
       expect(result).toEqual({ number: 123, url: 'https://github.com/test/repo/pull/123' });
-      expect(mockedExeca).toHaveBeenCalledWith('gh', [
-        'pr', 'create',
-        '--title', 'Test PR',
-        '--body', 'Test description',
-        '--base', 'main',
-        '--head', 'feature/test',
-      ], { cwd: workDir });
+      expect(mockedExeca).toHaveBeenCalledWith(
+        'gh',
+        [
+          'pr',
+          'create',
+          '--title',
+          'Test PR',
+          '--body',
+          'Test description',
+          '--base',
+          'main',
+          '--head',
+          'feature/test',
+        ],
+        { cwd: workDir }
+      );
     });
 
     it('should create a draft PR', async () => {
@@ -124,9 +133,7 @@ describe('github module', () => {
     it('should throw error if PR creation fails', async () => {
       mockedExeca.mockRejectedValueOnce(new Error('PR already exists'));
 
-      await expect(
-        github.createPullRequest(workDir, options)
-      ).rejects.toThrow('PR already exists');
+      await expect(github.createPullRequest(workDir, options)).rejects.toThrow('PR already exists');
     });
   });
 
@@ -188,9 +195,7 @@ describe('github module', () => {
     it('should throw error if PR view fails', async () => {
       mockedExeca.mockRejectedValueOnce(new Error('PR not found'));
 
-      await expect(
-        github.getPullRequest(workDir, prNumber)
-      ).rejects.toThrow('PR not found');
+      await expect(github.getPullRequest(workDir, prNumber)).rejects.toThrow('PR not found');
     });
 
     it('should throw error if JSON parsing fails', async () => {
@@ -199,9 +204,7 @@ describe('github module', () => {
         stderr: '',
       } as any);
 
-      await expect(
-        github.getPullRequest(workDir, prNumber)
-      ).rejects.toThrow();
+      await expect(github.getPullRequest(workDir, prNumber)).rejects.toThrow();
     });
   });
 
@@ -242,11 +245,18 @@ describe('github module', () => {
       expect(result).toHaveLength(2);
       expect(result[0].number).toBe(123);
       expect(result[1].number).toBe(124);
-      expect(mockedExeca).toHaveBeenCalledWith('gh', [
-        'pr', 'list',
-        '--state', 'open',
-        '--json', 'number,url,title,state,headRefName,baseRefName,additions,deletions,changedFiles',
-      ], { cwd: workDir });
+      expect(mockedExeca).toHaveBeenCalledWith(
+        'gh',
+        [
+          'pr',
+          'list',
+          '--state',
+          'open',
+          '--json',
+          'number,url,title,state,headRefName,baseRefName,additions,deletions,changedFiles',
+        ],
+        { cwd: workDir }
+      );
     });
 
     it('should list closed pull requests', async () => {
@@ -289,18 +299,19 @@ describe('github module', () => {
 
       await github.commentOnPullRequest(workDir, prNumber, comment);
 
-      expect(mockedExeca).toHaveBeenCalledWith('gh', [
-        'pr', 'comment', '123',
-        '--body', 'Test comment',
-      ], { cwd: workDir });
+      expect(mockedExeca).toHaveBeenCalledWith(
+        'gh',
+        ['pr', 'comment', '123', '--body', 'Test comment'],
+        { cwd: workDir }
+      );
     });
 
     it('should throw error if comment fails', async () => {
       mockedExeca.mockRejectedValueOnce(new Error('Failed to comment'));
 
-      await expect(
-        github.commentOnPullRequest(workDir, prNumber, comment)
-      ).rejects.toThrow('Failed to comment');
+      await expect(github.commentOnPullRequest(workDir, prNumber, comment)).rejects.toThrow(
+        'Failed to comment'
+      );
     });
   });
 
@@ -368,20 +379,17 @@ describe('github module', () => {
 
       await github.mergePullRequest(workDir, prNumber);
 
-      expect(mockedExeca).toHaveBeenCalledWith('gh', [
-        'pr', 'merge', '123',
-        '--auto',
-        '--merge',
-        '--delete-branch',
-      ], { cwd: workDir });
+      expect(mockedExeca).toHaveBeenCalledWith(
+        'gh',
+        ['pr', 'merge', '123', '--auto', '--merge', '--delete-branch'],
+        { cwd: workDir }
+      );
     });
 
     it('should throw error if merge fails', async () => {
       mockedExeca.mockRejectedValueOnce(new Error('PR has conflicts'));
 
-      await expect(
-        github.mergePullRequest(workDir, prNumber)
-      ).rejects.toThrow('PR has conflicts');
+      await expect(github.mergePullRequest(workDir, prNumber)).rejects.toThrow('PR has conflicts');
     });
   });
 
@@ -397,9 +405,7 @@ describe('github module', () => {
 
       await github.closePullRequest(workDir, prNumber);
 
-      expect(mockedExeca).toHaveBeenCalledWith('gh', [
-        'pr', 'close', '123',
-      ], { cwd: workDir });
+      expect(mockedExeca).toHaveBeenCalledWith('gh', ['pr', 'close', '123'], { cwd: workDir });
     });
   });
 
@@ -417,9 +423,7 @@ describe('github module', () => {
       const result = await github.getPullRequestDiff(workDir, prNumber);
 
       expect(result).toBe(diffContent);
-      expect(mockedExeca).toHaveBeenCalledWith('gh', [
-        'pr', 'diff', '123',
-      ], { cwd: workDir });
+      expect(mockedExeca).toHaveBeenCalledWith('gh', ['pr', 'diff', '123'], { cwd: workDir });
     });
   });
 

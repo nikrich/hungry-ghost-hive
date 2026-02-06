@@ -1,6 +1,6 @@
-import lockfile from 'proper-lockfile';
-import { existsSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
+import lockfile from 'proper-lockfile';
 import { ConcurrencyError } from '../errors/index.js';
 
 export interface LockOptions {

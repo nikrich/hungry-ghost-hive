@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
+import type { CreateTeamInput, TeamRow } from '../../queries/teams.js';
 import type { TeamDao } from '../interfaces/team.dao.js';
-import type { TeamRow, CreateTeamInput } from '../../queries/teams.js';
 import { LevelDbStore, type NowProvider, defaultNow } from './leveldb-store.js';
 import { compareIsoAsc } from './sort.js';
 
@@ -9,7 +9,10 @@ const TEAM_PREFIX = 'team:';
 export class LevelDbTeamDao implements TeamDao {
   private readonly now: NowProvider;
 
-  constructor(private readonly store: LevelDbStore, now: NowProvider = defaultNow) {
+  constructor(
+    private readonly store: LevelDbStore,
+    now: NowProvider = defaultNow
+  ) {
     this.now = now;
   }
 

@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import type { StoryRow } from '../db/client.js';
 import {
-  generateSeniorPrompt,
   generateIntermediatePrompt,
   generateJuniorPrompt,
   generateQAPrompt,
+  generateSeniorPrompt,
 } from './prompt-templates.js';
-import type { StoryRow } from '../db/client.js';
 
 describe('Prompt Templates', () => {
   const teamName = 'TestTeam';

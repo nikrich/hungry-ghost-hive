@@ -1,8 +1,13 @@
-import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run } from '../../client.js';
+import type {
+  CreateEscalationInput,
+  EscalationRow,
+  EscalationStatus,
+  UpdateEscalationInput,
+} from '../../queries/escalations.js';
 import type { EscalationDao } from '../interfaces/escalation.dao.js';
-import type { EscalationRow, CreateEscalationInput, UpdateEscalationInput, EscalationStatus } from '../../queries/escalations.js';
 
 export class SqliteEscalationDao implements EscalationDao {
   constructor(private readonly db: Database) {}
@@ -11,17 +16,21 @@ export class SqliteEscalationDao implements EscalationDao {
     const id = `ESC-${nanoid(6).toUpperCase()}`;
     const now = new Date().toISOString();
 
-    run(this.db, `
+    run(
+      this.db,
+      `
       INSERT INTO escalations (id, story_id, from_agent_id, to_agent_id, reason, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [
-      id,
-      input.storyId || null,
-      input.fromAgentId || null,
-      input.toAgentId || null,
-      input.reason,
-      now
-    ]);
+    `,
+      [
+        id,
+        input.storyId || null,
+        input.fromAgentId || null,
+        input.toAgentId || null,
+        input.reason,
+        now,
+      ]
+    );
 
     return (await this.getEscalationById(id))!;
   }
@@ -31,42 +40,61 @@ export class SqliteEscalationDao implements EscalationDao {
   }
 
   async getEscalationsByStory(storyId: string): Promise<EscalationRow[]> {
-    return queryAll<EscalationRow>(this.db, `
+    return queryAll<EscalationRow>(
+      this.db,
+      `
       SELECT * FROM escalations
       WHERE story_id = ?
       ORDER BY created_at DESC
-    `, [storyId]);
+    `,
+      [storyId]
+    );
   }
 
   async getEscalationsByFromAgent(agentId: string): Promise<EscalationRow[]> {
-    return queryAll<EscalationRow>(this.db, `
+    return queryAll<EscalationRow>(
+      this.db,
+      `
       SELECT * FROM escalations
       WHERE from_agent_id = ?
       ORDER BY created_at DESC
-    `, [agentId]);
+    `,
+      [agentId]
+    );
   }
 
   async getEscalationsByToAgent(agentId: string | null): Promise<EscalationRow[]> {
     if (agentId === null) {
-      return queryAll<EscalationRow>(this.db, `
+      return queryAll<EscalationRow>(
+        this.db,
+        `
         SELECT * FROM escalations
         WHERE to_agent_id IS NULL
         ORDER BY created_at DESC
-      `);
+      `
+      );
     }
-    return queryAll<EscalationRow>(this.db, `
+    return queryAll<EscalationRow>(
+      this.db,
+      `
       SELECT * FROM escalations
       WHERE to_agent_id = ?
       ORDER BY created_at DESC
-    `, [agentId]);
+    `,
+      [agentId]
+    );
   }
 
   async getEscalationsByStatus(status: EscalationStatus): Promise<EscalationRow[]> {
-    return queryAll<EscalationRow>(this.db, `
+    return queryAll<EscalationRow>(
+      this.db,
+      `
       SELECT * FROM escalations
       WHERE status = ?
       ORDER BY created_at DESC
-    `, [status]);
+    `,
+      [status]
+    );
   }
 
   async getPendingEscalations(): Promise<EscalationRow[]> {
@@ -74,18 +102,24 @@ export class SqliteEscalationDao implements EscalationDao {
   }
 
   async getPendingHumanEscalations(): Promise<EscalationRow[]> {
-    return queryAll<EscalationRow>(this.db, `
+    return queryAll<EscalationRow>(
+      this.db,
+      `
       SELECT * FROM escalations
       WHERE status = 'pending' AND to_agent_id IS NULL
       ORDER BY created_at
-    `);
+    `
+    );
   }
 
   async getAllEscalations(): Promise<EscalationRow[]> {
     return queryAll<EscalationRow>(this.db, 'SELECT * FROM escalations ORDER BY created_at DESC');
   }
 
-  async updateEscalation(id: string, input: UpdateEscalationInput): Promise<EscalationRow | undefined> {
+  async updateEscalation(
+    id: string,
+    input: UpdateEscalationInput
+  ): Promise<EscalationRow | undefined> {
     const updates: string[] = [];
     const values: (string | null)[] = [];
 

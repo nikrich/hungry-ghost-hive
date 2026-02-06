@@ -57,14 +57,16 @@ const ScalingConfigSchema = z.object({
   // Complexity threshold for delegation to intermediate
   intermediate_max_complexity: z.number().int().min(1).max(13).default(5),
   // Policy for organic refactoring work discovered by engineers
-  refactor: z.object({
-    // Master toggle for scheduling refactor stories
-    enabled: z.boolean().default(true),
-    // Refactor capacity budget as a percentage of feature workload
-    capacity_percent: z.number().min(0).max(100).default(10),
-    // If true, allow refactor-only queues to proceed when no feature work is planned
-    allow_without_feature_work: z.boolean().default(true),
-  }).default({}),
+  refactor: z
+    .object({
+      // Master toggle for scheduling refactor stories
+      enabled: z.boolean().default(true),
+      // Refactor capacity budget as a percentage of feature workload
+      capacity_percent: z.number().min(0).max(100).default(10),
+      // If true, allow refactor-only queues to proceed when no feature work is planned
+      allow_without_feature_work: z.boolean().default(true),
+    })
+    .default({}),
 });
 
 // GitHub integration
