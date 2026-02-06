@@ -86,11 +86,7 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       current_story_id: null,
       memory_state: null,
       last_seen: null,
-<<<<<<< HEAD
       cli_tool: 'claude',
-=======
-      cli_tool: 'hive',
->>>>>>> df28695 (fix: resolve test failures after rebase on main)
       worktree_path: null,
       created_at: '2024-01-01',
       updated_at: '2024-01-01',
