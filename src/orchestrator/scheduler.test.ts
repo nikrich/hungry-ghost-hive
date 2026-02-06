@@ -1147,15 +1147,14 @@ describe('Scheduler Story Assignment Prevention', () => {
       teamId: team.id,
       title: 'Story',
       description: 'Test',
-      complexityScore: 2,
-      status: 'planned',
     });
+    updateStory(db, story.id, { complexityScore: 2, status: 'planned' });
 
     // First assignment
     updateStory(db, story.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
 
     // Verify the story is now assigned
-    const result = db.exec('SELECT assigned_agent_id FROM stories WHERE id = ?', [story.id]);
+    const result = db.exec(`SELECT assigned_agent_id FROM stories WHERE id = '${story.id}'`);
     expect(result[0].values[0][0]).toBe('agent-1');
   });
 
@@ -1166,21 +1165,23 @@ describe('Scheduler Story Assignment Prevention', () => {
       teamId: team.id,
       title: 'Story',
       description: 'Test',
-      status: 'planned',
     });
+    updateStory(db, story.id, { status: 'planned' });
 
     // Change status to in_progress
     updateStory(db, story.id, { status: 'in_progress' });
 
     // Verify status changed
-    const result = db.exec('SELECT status FROM stories WHERE id = ?', [story.id]);
+    const result = db.exec(`SELECT status FROM stories WHERE id = '${story.id}'`);
     expect(result[0].values[0][0]).toBe('in_progress');
   });
 
   it('should skip stories with unsatisfied dependencies', () => {
     const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
-    const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test', status: 'planned' });
-    const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test', status: 'planned' });
+    const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
+    updateStory(db, storyA.id, { status: 'planned' });
+    const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
+    updateStory(db, storyB.id, { status: 'planned' });
 
     // B depends on A, but A is still planned
     addStoryDependency(db, storyB.id, storyA.id);
