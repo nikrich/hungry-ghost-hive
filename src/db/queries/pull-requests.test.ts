@@ -81,6 +81,34 @@ describe('pull-requests queries', () => {
 
       expect(pr1.id).not.toBe(pr2.id);
     });
+
+    it('should extract PR number from URL when not explicitly provided', () => {
+      const pr = createPullRequest(db, {
+        branchName: 'feature/test-branch',
+        githubPrUrl: 'https://github.com/test/repo/pull/456',
+      });
+
+      expect(pr.github_pr_number).toBe(456);
+      expect(pr.github_pr_url).toBe('https://github.com/test/repo/pull/456');
+    });
+
+    it('should handle PR URLs with query parameters', () => {
+      const pr = createPullRequest(db, {
+        branchName: 'feature/test-branch',
+        githubPrUrl: 'https://github.com/test/repo/pull/789?comment=123',
+      });
+
+      expect(pr.github_pr_number).toBe(789);
+    });
+
+    it('should handle PR URLs with fragments', () => {
+      const pr = createPullRequest(db, {
+        branchName: 'feature/test-branch',
+        githubPrUrl: 'https://github.com/test/repo/pull/999#discussion_r12345',
+      });
+
+      expect(pr.github_pr_number).toBe(999);
+    });
   });
 
   describe('getPullRequestById', () => {

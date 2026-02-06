@@ -6,7 +6,8 @@
 export function extractPRNumber(url: string): number | undefined {
   try {
     // Match GitHub PR URLs like https://github.com/owner/repo/pull/123
-    const match = url.match(/\/pull\/(\d+)(?:[?#]|$)/);
+    // Handles URLs with trailing slashes, query parameters, and fragments
+    const match = url.match(/\/pull\/(\d+)(?:[/?#]|$)/);
     return match ? parseInt(match[1], 10) : undefined;
   } catch {
     return undefined;

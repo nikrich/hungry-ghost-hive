@@ -800,8 +800,20 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
           storiesUpdated++;
         }
       }
-    } catch {
-      // gh CLI might not be authenticated or repo might not have remote
+    } catch (err) {
+      // Escalate GitHub sync errors instead of silently continuing
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      createLog(db.db, {
+        agentId: 'manager',
+        eventType: 'ESCALATION_CREATED',
+        message: `Failed to sync merged PRs from GitHub for team ${team.name}: ${errorMessage}`,
+        metadata: {
+          teamId: team.id,
+          teamName: team.name,
+          repoPath: team.repo_path,
+          error: errorMessage,
+        },
+      });
       continue;
     }
   }
@@ -859,8 +871,20 @@ async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string)
 
         synced++;
       }
-    } catch {
-      // gh CLI might not be authenticated or repo might not have remote
+    } catch (err) {
+      // Escalate GitHub PR sync errors instead of silently continuing
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      createLog(db.db, {
+        agentId: 'manager',
+        eventType: 'ESCALATION_CREATED',
+        message: `Failed to sync open PRs from GitHub for team ${team.name}: ${errorMessage}`,
+        metadata: {
+          teamId: team.id,
+          teamName: team.name,
+          repoPath: team.repo_path,
+          error: errorMessage,
+        },
+      });
       continue;
     }
   }
