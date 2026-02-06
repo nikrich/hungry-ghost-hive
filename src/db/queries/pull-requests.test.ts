@@ -17,6 +17,9 @@ import {
   getPullRequestsByTeam,
   updatePullRequest,
   deletePullRequest,
+  getPrioritizedMergeQueue,
+  getOpenPullRequestsByStory,
+  backfillGithubPrNumbers,
 } from './pull-requests.js';
 
 describe('pull-requests queries', () => {
@@ -495,6 +498,215 @@ describe('pull-requests queries', () => {
 
       expect(updated?.reviewed_by).toBeNull();
       expect(updated?.review_notes).toBeNull();
+    });
+  });
+
+  describe('getPrioritizedMergeQueue', () => {
+    it('should return empty array when queue is empty', () => {
+      const queue = getPrioritizedMergeQueue(db);
+      expect(queue).toEqual([]);
+    });
+
+    it('should return queued PRs in prioritized order', () => {
+      const pr1 = createPullRequest(db, {
+        branchName: 'feature/priorit-1',
+        submittedBy: 'agent-1',
+        storyId: storyId,
+      });
+      const pr2 = createPullRequest(db, {
+        branchName: 'feature/priorit-2',
+        submittedBy: 'agent-2',
+        storyId: storyId,
+      });
+
+      const queue = getPrioritizedMergeQueue(db);
+
+      expect(queue.length).toBeGreaterThan(0);
+      expect(queue.map(pr => pr.id)).toContain(pr1.id);
+      expect(queue.map(pr => pr.id)).toContain(pr2.id);
+    });
+
+    it('should only return queued status PRs', () => {
+      const pr1 = createPullRequest(db, {
+        branchName: 'feature/story-1',
+        submittedBy: 'agent-1',
+      });
+      const pr2 = createPullRequest(db, {
+        branchName: 'feature/story-2',
+        submittedBy: 'agent-2',
+      });
+
+      updatePullRequest(db, pr2.id, { status: 'merged' });
+
+      const queue = getPrioritizedMergeQueue(db);
+
+      expect(queue.map(pr => pr.id)).toContain(pr1.id);
+      expect(queue.map(pr => pr.id)).not.toContain(pr2.id);
+    });
+
+    it('should filter by team if specified', () => {
+      const team1 = createTeam(db, {
+        repoUrl: 'https://github.com/test/repo1.git',
+        repoPath: '/path/to/repo1',
+        name: 'Team 1',
+      });
+      const team2 = createTeam(db, {
+        repoUrl: 'https://github.com/test/repo2.git',
+        repoPath: '/path/to/repo2',
+        name: 'Team 2',
+      });
+
+      const pr1 = createPullRequest(db, {
+        branchName: 'feature/story-1',
+        submittedBy: 'agent-1',
+        teamId: team1.id,
+      });
+      const pr2 = createPullRequest(db, {
+        branchName: 'feature/story-2',
+        submittedBy: 'agent-2',
+        teamId: team2.id,
+      });
+
+      const team1Queue = getPrioritizedMergeQueue(db, team1.id);
+
+      expect(team1Queue.map(pr => pr.id)).toContain(pr1.id);
+      expect(team1Queue.map(pr => pr.id)).not.toContain(pr2.id);
+    });
+  });
+
+  describe('getOpenPullRequestsByStory', () => {
+    it('should return empty array when no open PRs for story', () => {
+      const openPRs = getOpenPullRequestsByStory(db, 'STORY-NONEXISTENT');
+      expect(openPRs).toEqual([]);
+    });
+
+    it('should return open PRs for a story', () => {
+      const pr1 = createPullRequest(db, {
+        branchName: 'feature/story-123',
+        submittedBy: 'agent-1',
+        storyId: storyId,
+      });
+      const pr2 = createPullRequest(db, {
+        branchName: 'feature/story-123-v2',
+        submittedBy: 'agent-2',
+        storyId: storyId,
+      });
+
+      const openPRs = getOpenPullRequestsByStory(db, storyId);
+
+      expect(openPRs).toHaveLength(2);
+      expect(openPRs.map(pr => pr.id)).toContain(pr1.id);
+      expect(openPRs.map(pr => pr.id)).toContain(pr2.id);
+    });
+
+    it('should not return merged PRs', () => {
+      const pr1 = createPullRequest(db, {
+        branchName: 'feature/story-merged-1',
+        submittedBy: 'agent-1',
+        storyId: storyId,
+      });
+      const pr2 = createPullRequest(db, {
+        branchName: 'feature/story-merged-2',
+        submittedBy: 'agent-2',
+        storyId: storyId,
+      });
+
+      updatePullRequest(db, pr2.id, { status: 'merged' });
+
+      const openPRs = getOpenPullRequestsByStory(db, storyId);
+
+      const openPRsForThisStory = openPRs.filter(pr => pr.id === pr1.id || pr.id === pr2.id);
+      expect(openPRsForThisStory).toHaveLength(1);
+      expect(openPRsForThisStory[0].id).toBe(pr1.id);
+    });
+
+    it('should not return rejected PRs', () => {
+      const pr1 = createPullRequest(db, {
+        branchName: 'feature/story-rejected-1',
+        submittedBy: 'agent-1',
+        storyId: storyId,
+      });
+      const pr2 = createPullRequest(db, {
+        branchName: 'feature/story-rejected-2',
+        submittedBy: 'agent-2',
+        storyId: storyId,
+      });
+
+      updatePullRequest(db, pr2.id, { status: 'rejected' });
+
+      const openPRs = getOpenPullRequestsByStory(db, storyId);
+
+      const openPRsForThisStory = openPRs.filter(pr => pr.id === pr1.id || pr.id === pr2.id);
+      expect(openPRsForThisStory).toHaveLength(1);
+      expect(openPRsForThisStory[0].id).toBe(pr1.id);
+    });
+  });
+
+  describe('backfillGithubPrNumbers', () => {
+    it('should return 0 when no PRs to backfill', () => {
+      const count = backfillGithubPrNumbers(db);
+      expect(count).toBe(0);
+    });
+
+    it('should backfill github_pr_number from PR URL', () => {
+      const pr = createPullRequest(db, {
+        branchName: 'feature/story-123',
+        submittedBy: 'agent-1',
+        githubPrUrl: 'https://github.com/test/repo/pull/42',
+      });
+
+      updatePullRequest(db, pr.id, { githubPrNumber: null });
+
+      const backfilled = backfillGithubPrNumbers(db);
+      expect(backfilled).toBeGreaterThan(0);
+
+      const updated = getPullRequestById(db, pr.id);
+      expect(updated?.github_pr_number).toBe(42);
+    });
+
+    it('should handle multiple PRs', () => {
+      const pr1 = createPullRequest(db, {
+        branchName: 'feature/story-1',
+        submittedBy: 'agent-1',
+        githubPrUrl: 'https://github.com/test/repo/pull/10',
+      });
+      const pr2 = createPullRequest(db, {
+        branchName: 'feature/story-2',
+        submittedBy: 'agent-2',
+        githubPrUrl: 'https://github.com/test/repo/pull/20',
+      });
+
+      updatePullRequest(db, pr1.id, { githubPrNumber: null });
+      updatePullRequest(db, pr2.id, { githubPrNumber: null });
+
+      const backfilled = backfillGithubPrNumbers(db);
+      expect(backfilled).toBe(2);
+
+      const updated1 = getPullRequestById(db, pr1.id);
+      const updated2 = getPullRequestById(db, pr2.id);
+      expect(updated1?.github_pr_number).toBe(10);
+      expect(updated2?.github_pr_number).toBe(20);
+    });
+
+    it('should skip PRs without PR URLs', () => {
+      createPullRequest(db, {
+        branchName: 'feature/story-1',
+        submittedBy: 'agent-1',
+      });
+
+      const backfilled = backfillGithubPrNumbers(db);
+      expect(backfilled).toBe(0);
+    });
+
+    it('should skip PRs with invalid PR URLs', () => {
+      createPullRequest(db, {
+        branchName: 'feature/story-1',
+        submittedBy: 'agent-1',
+        githubPrUrl: 'https://example.com/invalid-url',
+      });
+
+      const backfilled = backfillGithubPrNumbers(db);
+      expect(backfilled).toBe(0);
     });
   });
 });
