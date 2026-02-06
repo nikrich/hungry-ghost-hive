@@ -6,6 +6,8 @@ import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { startManager, isManagerRunning } from '../../tmux/manager.js';
+import { getPlannedStories } from '../../db/queries/stories.js';
+import { getTeamById } from '../../db/queries/teams.js';
 
 export const assignCommand = new Command('assign')
   .description('Assign planned stories to agents (spawns Seniors as needed)')
@@ -25,8 +27,8 @@ export const assignCommand = new Command('assign')
       const config = loadConfig(paths.hiveDir);
 
       if (options.dryRun) {
-        spinner.info(chalk.yellow('Dry run - no changes will be made'));
-        // TODO: Add dry run logic
+        spinner.stop();
+        performDryRun(db.db, config);
         return;
       }
 
@@ -84,3 +86,64 @@ export const assignCommand = new Command('assign')
       db.close();
     }
   });
+
+function performDryRun(db: any, config: any): void {
+  const plannedStories = getPlannedStories(db);
+
+  if (plannedStories.length === 0) {
+    console.log(chalk.gray('No stories to assign'));
+    return;
+  }
+
+  console.log(chalk.cyan('Assignment Plan (dry run):'));
+  console.log();
+
+  const assignments: { storyId: string; title: string; agentType: string; team: string }[] = [];
+
+  for (const story of plannedStories) {
+    const team = story.team_id ? getTeamById(db, story.team_id) : null;
+    const teamName = team?.name || 'Unknown';
+
+    const complexity = story.complexity_score || 5;
+    let agentType: string;
+
+    if (complexity <= config.scaling.junior_max_complexity) {
+      agentType = 'Junior';
+    } else if (complexity <= config.scaling.intermediate_max_complexity) {
+      agentType = 'Intermediate';
+    } else {
+      agentType = 'Senior';
+    }
+
+    assignments.push({
+      storyId: story.id,
+      title: story.title,
+      agentType,
+      team: teamName,
+    });
+  }
+
+  // Display table header
+  const storyIdWidth = 20;
+  const titleWidth = 50;
+  const agentTypeWidth = 15;
+  const teamWidth = 15;
+
+  console.log(
+    chalk.bold(
+      `${'Story ID'.padEnd(storyIdWidth)} | ${'Title'.padEnd(titleWidth)} | ${'Agent Type'.padEnd(agentTypeWidth)} | ${'Team'.padEnd(teamWidth)}`
+    )
+  );
+  console.log('-'.repeat(storyIdWidth + titleWidth + agentTypeWidth + teamWidth + 9));
+
+  // Display assignments
+  for (const assignment of assignments) {
+    const truncatedTitle = assignment.title.length > titleWidth ? assignment.title.substring(0, titleWidth - 3) + '...' : assignment.title;
+    console.log(
+      `${assignment.storyId.padEnd(storyIdWidth)} | ${truncatedTitle.padEnd(titleWidth)} | ${assignment.agentType.padEnd(agentTypeWidth)} | ${assignment.team.padEnd(teamWidth)}`
+    );
+  }
+
+  console.log();
+  console.log(chalk.yellow(`Would assign ${assignments.length} stories (no changes made)`));
+}
