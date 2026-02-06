@@ -260,6 +260,58 @@ export async function forceBypassMode(
   return false;
 }
 
+/**
+ * Attempts to deliver a message to a tmux session with verification.
+ * Sends the message and verifies it appears in the session output before confirming delivery.
+ * Uses exponential backoff retry on failed verification attempts.
+ * @param sessionName - The tmux session name
+ * @param message - The message text to send
+ * @param maxRetries - Maximum number of retry attempts (default 3)
+ * @param initialWaitMs - Initial wait time before first verification check (default 300ms)
+ * @returns true if delivery confirmed, false if max retries exceeded
+ */
+export async function sendMessageWithConfirmation(
+  sessionName: string,
+  message: string,
+  maxRetries = 3,
+  initialWaitMs = 300
+): Promise<boolean> {
+  // Send the message to the session
+  await sendToTmuxSession(sessionName, message);
+
+  // Wait before first verification check
+  await new Promise(resolve => setTimeout(resolve, initialWaitMs));
+
+  // Try to verify delivery by checking if message appears in output
+  let retries = 0;
+  let waitTime = initialWaitMs;
+
+  while (retries < maxRetries) {
+    // Capture pane output to verify message was received
+    const output = await captureTmuxPane(sessionName, 100);
+
+    // Check if the first line of the message appears in the output
+    // Extract first meaningful part of message for verification
+    const messageLines = message.split('\n').filter(line => line.trim());
+    const verificationText = messageLines.length > 0 ? messageLines[0].substring(0, 50) : message.substring(0, 50);
+
+    if (output.includes(verificationText)) {
+      // Message verified in output - delivery confirmed
+      return true;
+    }
+
+    retries++;
+    if (retries < maxRetries) {
+      // Exponential backoff: double the wait time for next retry
+      waitTime = Math.min(waitTime * 2, 2000); // Cap at 2 seconds
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+
+  // Max retries exceeded - delivery not confirmed
+  return false;
+}
+
 export function generateSessionName(agentType: string, teamName?: string, index?: number): string {
   let name = `hive-${agentType}`;
   if (teamName) {
