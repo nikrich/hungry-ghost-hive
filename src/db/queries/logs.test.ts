@@ -13,6 +13,7 @@ import {
   getRecentLogs,
   getLogsSince,
   pruneOldLogs,
+  countQaFailuresByStory,
   type EventType,
 } from './logs.js';
 
@@ -424,6 +425,61 @@ describe('logs queries', () => {
 
       const remainingLogs = getLogsByAgent(db, agentId);
       expect(remainingLogs).toHaveLength(2);
+    });
+  });
+
+  describe('countQaFailuresByStory', () => {
+    it('should count STORY_QA_FAILED events for a specific story', () => {
+      createLog(db, { agentId, storyId, eventType: 'STORY_QA_FAILED' });
+      createLog(db, { agentId, storyId, eventType: 'STORY_QA_FAILED' });
+      createLog(db, { agentId, storyId, eventType: 'STORY_QA_FAILED' });
+
+      const count = countQaFailuresByStory(db, storyId);
+
+      expect(count).toBe(3);
+    });
+
+    it('should not count other event types for a story', () => {
+      createLog(db, { agentId, storyId, eventType: 'STORY_QA_FAILED' });
+      createLog(db, { agentId, storyId, eventType: 'STORY_QA_PASSED' });
+      createLog(db, { agentId, storyId, eventType: 'STORY_STARTED' });
+
+      const count = countQaFailuresByStory(db, storyId);
+
+      expect(count).toBe(1);
+    });
+
+    it('should only count failures for the specified story', () => {
+      const story2 = createStory(db, {
+        teamId,
+        title: 'Story 2',
+        description: 'Description',
+      });
+
+      createLog(db, { agentId, storyId, eventType: 'STORY_QA_FAILED' });
+      createLog(db, { agentId, storyId, eventType: 'STORY_QA_FAILED' });
+      createLog(db, { agentId, storyId: story2.id, eventType: 'STORY_QA_FAILED' });
+
+      const count1 = countQaFailuresByStory(db, storyId);
+      const count2 = countQaFailuresByStory(db, story2.id);
+
+      expect(count1).toBe(2);
+      expect(count2).toBe(1);
+    });
+
+    it('should return 0 for story with no QA failures', () => {
+      createLog(db, { agentId, storyId, eventType: 'STORY_STARTED' });
+      createLog(db, { agentId, storyId, eventType: 'STORY_COMPLETED' });
+
+      const count = countQaFailuresByStory(db, storyId);
+
+      expect(count).toBe(0);
+    });
+
+    it('should return 0 for non-existent story', () => {
+      const count = countQaFailuresByStory(db, 'non-existent-story');
+
+      expect(count).toBe(0);
     });
   });
 });

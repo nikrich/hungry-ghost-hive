@@ -123,6 +123,15 @@ export function getLogsSince(db: Database, since: string): AgentLogRow[] {
   `, [since]);
 }
 
+export function countQaFailuresByStory(db: Database, storyId: string): number {
+  const result = queryOne<{ count: number }>(db, `
+    SELECT COUNT(*) as count
+    FROM agent_logs
+    WHERE story_id = ? AND event_type = 'STORY_QA_FAILED'
+  `, [storyId]);
+  return result?.count || 0;
+}
+
 export function pruneOldLogs(db: Database, retentionDays: number): number {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
