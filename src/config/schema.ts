@@ -111,6 +111,7 @@ const ManagerConfigSchema = z.object({
   slow_poll_interval: z.number().int().positive().default(60000),
   stuck_threshold_ms: z.number().int().positive().default(120000),
   nudge_cooldown_ms: z.number().int().positive().default(300000),
+  bypass_enforcement_cooldown_ms: z.number().int().positive().default(300000),
   lock_stale_ms: z.number().int().positive().default(120000),
 });
 
@@ -249,6 +250,8 @@ manager:
   stuck_threshold_ms: 120000
   # Cooldown period before nudging the same agent again (ms)
   nudge_cooldown_ms: 300000
+  # Cooldown period before re-enforcing bypass mode on the same agent (ms)
+  bypass_enforcement_cooldown_ms: 300000
   # Time before manager lock is considered stale (ms)
   lock_stale_ms: 120000
 

@@ -5,7 +5,7 @@ import { getDatabase, withTransaction } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
-import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
+import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession, forceBypassMode } from '../../tmux/manager.js';
 import { getMergeQueue, getPullRequestsByStatus, backfillGithubPrNumbers } from '../../db/queries/pull-requests.js';
 import { markMessagesRead, getAllPendingMessages, type MessageRow } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
@@ -23,11 +23,12 @@ import { detectClaudeCodeState, getStateDescription, ClaudeCodeState } from '../
 import { getAvailableCommands, buildAutoRecoveryReminder, type CLITool } from '../../utils/cli-commands.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
 
-// Agent state tracking for nudge logic
+// Agent state tracking for nudge and bypass mode enforcement logic
 interface AgentStateTracking {
   lastState: ClaudeCodeState;
   lastStateChangeTime: number;
   lastNudgeTime: number;
+  lastBypassModeEnforcementTime: number;
 }
 
 // In-memory state tracking per agent session
@@ -243,6 +244,44 @@ managerCommand
     }
   });
 
+/**
+ * Check if an agent is in bypass permissions mode based on captured output
+ */
+function isInBypassMode(output: string): boolean {
+  return output.toLowerCase().includes('bypass permissions on');
+}
+
+/**
+ * Enforce bypass permissions mode for an agent if needed
+ * Uses cooldown to prevent excessive enforcement attempts
+ */
+async function enforceBypassMode(
+  sessionName: string,
+  trackedState: AgentStateTracking,
+  config: HiveConfig,
+  now: number
+): Promise<void> {
+  const bypassCooldownMs = config.manager?.bypass_enforcement_cooldown_ms || 300000; // 5 minutes default
+
+  // Check if we've recently attempted enforcement on this agent
+  const timeSinceLastEnforcement = now - trackedState.lastBypassModeEnforcementTime;
+  if (timeSinceLastEnforcement < bypassCooldownMs) {
+    // Still within cooldown window, skip enforcement
+    return;
+  }
+
+  // Attempt to enforce bypass mode
+  const success = await forceBypassMode(sessionName, 'claude');
+  if (success) {
+    // Successfully re-enforced bypass mode
+  } else {
+    // Failed to enforce - may need manual intervention
+  }
+
+  // Update enforcement timestamp regardless of success (to maintain cooldown)
+  trackedState.lastBypassModeEnforcementTime = now;
+}
+
 async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
   const timestamp = new Date().toLocaleTimeString();
   console.log(chalk.gray(`[${timestamp}] Manager checking...`));
@@ -376,11 +415,25 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
           lastState: stateResult.state,
           lastStateChangeTime: now,
           lastNudgeTime: 0,
+          lastBypassModeEnforcementTime: 0,
         });
       } else if (trackedState.lastState !== stateResult.state) {
         // State changed - update tracking
         trackedState.lastState = stateResult.state;
         trackedState.lastStateChangeTime = now;
+      }
+
+      // Enforce bypass mode if agent has drifted away from it
+      // Only enforce if agent is not actively working (THINKING state)
+      // and not in a blocked state waiting for human intervention
+      const currentTrackedState = agentStates.get(session.name);
+      if (
+        currentTrackedState &&
+        !isInBypassMode(output) &&
+        stateResult.state !== ClaudeCodeState.THINKING &&
+        !stateResult.needsHuman // Don't interrupt escalated agents
+      ) {
+        await enforceBypassMode(session.name, currentTrackedState, config!, now);
       }
 
       // Convert to legacy format for escalation logic

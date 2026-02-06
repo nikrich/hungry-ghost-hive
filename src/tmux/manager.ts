@@ -210,7 +210,10 @@ export async function waitForTmuxSessionReady(
 
 /**
  * Forces bypass permissions mode in a Claude CLI session.
- * Detects if the agent is in plan mode and switches to bypass mode by sending BTab.
+ * Detects current mode and cycles to bypass mode using BTab if needed.
+ *
+ * Mode cycle: plan -> safe -> bypass -> plan
+ *
  * @param sessionName - The tmux session name
  * @param cliTool - The CLI tool being used ('claude', 'codex', or 'gemini')
  * @param maxRetries - Maximum number of retry attempts (default 5)
@@ -228,35 +231,45 @@ export async function forceBypassMode(
   while (retries < maxRetries) {
     // Capture pane output to check current permission mode
     const output = await captureTmuxPane(sessionName, 100);
+    const outputLower = output.toLowerCase();
 
-    // Check if already in bypass mode
-    if (output.toLowerCase().includes('bypass permissions on')) {
+    // Check if already in bypass mode (most desired state)
+    if (outputLower.includes('bypass permissions on')) {
       return true;
     }
 
-    // Check if in plan mode (needs to be switched)
-    if (output.toLowerCase().includes('plan mode on')) {
+    // Detect other modes to make intelligent cycling decisions
+    const inPlanMode = outputLower.includes('plan mode on');
+    const inSafeMode = outputLower.includes('safe mode on');
+
+    // If in plan or safe mode, need to cycle to reach bypass mode
+    // For plan mode: plan -> safe -> bypass (2 cycles needed)
+    // For safe mode: safe -> bypass (1 cycle needed)
+    // If neither detected: attempt cycle anyway (may already be in bypass)
+    if (inPlanMode || inSafeMode || (!inPlanMode && !inSafeMode)) {
       // Send BTab (Shift+Tab / backtab) to cycle permissions mode
-      // For Claude Code, BTab cycles through: plan -> safe -> bypass -> plan
       await execa('tmux', ['send-keys', '-t', sessionName, 'BTab']);
 
-      // Wait for the mode change to take effect
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Adaptive delay: start at 500ms, increase on retries
+      // This accounts for UI refresh time which may vary
+      const delayMs = 500 + (retries * 100);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
 
       retries++;
       continue;
     }
 
-    // If neither plan mode nor bypass mode is detected, try cycling anyway
-    // This handles cases where the mode indicator might not be visible
+    // Unexpected state - safety check: cycle anyway
+    // This is a fallback for any unrecognized mode state
     await execa('tmux', ['send-keys', '-t', sessionName, 'BTab']);
-    await new Promise(resolve => setTimeout(resolve, 500));
+    const delayMs = 500 + (retries * 100);
+    await new Promise(resolve => setTimeout(resolve, delayMs));
 
     retries++;
   }
 
   // Max retries exceeded
-  // Return false to indicate we couldn't confirm bypass mode
+  // Log that we couldn't confirm bypass mode for debugging
   return false;
 }
 
