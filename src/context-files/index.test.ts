@@ -104,7 +104,7 @@ describe('context-files module', () => {
         tech_lead: { provider: 'anthropic', model: 'claude-opus', max_tokens: 16000, temperature: 0.7, cli_tool: 'claude' },
         senior: { provider: 'anthropic', model: 'claude-sonnet', max_tokens: 8000, temperature: 0.5, cli_tool: 'claude' },
         intermediate: { provider: 'anthropic', model: 'claude-haiku', max_tokens: 4000, temperature: 0.3, cli_tool: 'claude' },
-        junior: { provider: 'openai', model: 'gpt-4o-mini', max_tokens: 4000, temperature: 0.2, cli_tool: 'claude' },
+        junior: { provider: 'openai', model: 'gpt-4o-mini', max_tokens: 4000, temperature: 0.2, cli_tool: 'codex' },
         qa: { provider: 'anthropic', model: 'claude-sonnet', max_tokens: 8000, temperature: 0.2, cli_tool: 'claude' },
       },
       scaling: { senior_capacity: 20, junior_max_complexity: 3, intermediate_max_complexity: 5 },

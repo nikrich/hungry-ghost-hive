@@ -6,7 +6,7 @@ import { queryOne, queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode, killTmuxSession } from '../tmux/manager.js';
 import type { ScalingConfig, ModelsConfig, QAConfig } from '../config/schema.js';
-import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
+import { getCliRuntimeBuilder, validateCliToolCompatibility } from '../cli-runtimes/index.js';
 
 export interface SchedulerConfig {
   scaling: ScalingConfig;
@@ -623,8 +623,12 @@ export class Scheduler {
     const workDir = `${this.config.rootDir}/${worktreePath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
-      // Build CLI command using the configured runtime
+      // Validate CLI tool compatibility with model provider
       const cliTool = modelConfig.cli_tool;
+      const provider = modelConfig.provider;
+      validateCliToolCompatibility(cliTool, provider);
+
+      // Build CLI command using the configured runtime
       const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(modelShorthand);
       const command = commandArgs.join(' ');
 

@@ -46,6 +46,28 @@ export async function validateCliRuntime(runtimeType: CliRuntimeType): Promise<b
   return validateCliBinary(runtimeType);
 }
 
+/**
+ * Validate that a CLI tool is compatible with a model provider
+ * @param cliTool - The CLI tool type (claude, codex, gemini)
+ * @param provider - The model provider (anthropic, openai, google)
+ * @throws Error if the CLI tool is not compatible with the provider
+ */
+export function validateCliToolCompatibility(cliTool: CliRuntimeType, provider: string): void {
+  const compatibilityMap: Record<CliRuntimeType, string[]> = {
+    claude: ['anthropic'],
+    codex: ['openai'],
+    gemini: ['google'],
+  };
+
+  const supportedProviders = compatibilityMap[cliTool];
+  if (!supportedProviders.includes(provider)) {
+    throw new Error(
+      `CLI tool '${cliTool}' is not compatible with provider '${provider}'. ` +
+      `Supported providers for '${cliTool}': ${supportedProviders.join(', ')}`
+    );
+  }
+}
+
 export type { CliRuntimeType, CliRuntimeBuilder };
 export { ClaudeRuntimeBuilder } from './claude.js';
 export { CodexRuntimeBuilder } from './codex.js';

@@ -3,6 +3,7 @@ import {
   getCliRuntimeBuilder,
   validateCliBinary,
   validateCliRuntime,
+  validateCliToolCompatibility,
   ClaudeRuntimeBuilder,
   CodexRuntimeBuilder,
   GeminiRuntimeBuilder,
@@ -256,6 +257,74 @@ describe('CLI Runtime Builders', () => {
 
       const result = await validateCliRuntime('claude');
       expect(result).toBe(false);
+    });
+  });
+
+  describe('validateCliToolCompatibility', () => {
+    it('should allow claude tool with anthropic provider', () => {
+      expect(() => {
+        validateCliToolCompatibility('claude', 'anthropic');
+      }).not.toThrow();
+    });
+
+    it('should throw error for claude tool with openai provider', () => {
+      expect(() => {
+        validateCliToolCompatibility('claude', 'openai');
+      }).toThrow(
+        "CLI tool 'claude' is not compatible with provider 'openai'. Supported providers for 'claude': anthropic"
+      );
+    });
+
+    it('should throw error for claude tool with google provider', () => {
+      expect(() => {
+        validateCliToolCompatibility('claude', 'google');
+      }).toThrow(
+        "CLI tool 'claude' is not compatible with provider 'google'. Supported providers for 'claude': anthropic"
+      );
+    });
+
+    it('should allow codex tool with openai provider', () => {
+      expect(() => {
+        validateCliToolCompatibility('codex', 'openai');
+      }).not.toThrow();
+    });
+
+    it('should throw error for codex tool with anthropic provider', () => {
+      expect(() => {
+        validateCliToolCompatibility('codex', 'anthropic');
+      }).toThrow(
+        "CLI tool 'codex' is not compatible with provider 'anthropic'. Supported providers for 'codex': openai"
+      );
+    });
+
+    it('should throw error for codex tool with google provider', () => {
+      expect(() => {
+        validateCliToolCompatibility('codex', 'google');
+      }).toThrow(
+        "CLI tool 'codex' is not compatible with provider 'google'. Supported providers for 'codex': openai"
+      );
+    });
+
+    it('should allow gemini tool with google provider', () => {
+      expect(() => {
+        validateCliToolCompatibility('gemini', 'google');
+      }).not.toThrow();
+    });
+
+    it('should throw error for gemini tool with anthropic provider', () => {
+      expect(() => {
+        validateCliToolCompatibility('gemini', 'anthropic');
+      }).toThrow(
+        "CLI tool 'gemini' is not compatible with provider 'anthropic'. Supported providers for 'gemini': google"
+      );
+    });
+
+    it('should throw error for gemini tool with openai provider', () => {
+      expect(() => {
+        validateCliToolCompatibility('gemini', 'openai');
+      }).toThrow(
+        "CLI tool 'gemini' is not compatible with provider 'openai'. Supported providers for 'gemini': google"
+      );
     });
   });
 });
