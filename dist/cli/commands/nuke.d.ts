@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const nukeCommand: Command;
+export declare const nukeCommand: any;
 //# sourceMappingURL=nuke.d.ts.map

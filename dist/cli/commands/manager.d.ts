@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const managerCommand: Command;
+export declare const managerCommand: any;
 //# sourceMappingURL=manager.d.ts.map

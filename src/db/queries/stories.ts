@@ -221,3 +221,31 @@ export function getStoryCounts(db: Database): Record<StoryStatus, number> {
 
   return counts;
 }
+
+export function getStoriesWithOrphanedAssignments(
+  db: Database
+): Array<{ id: string; agent_id: string }> {
+  return queryAll<{ id: string; agent_id: string }>(
+    db,
+    `
+    SELECT s.id, s.assigned_agent_id as agent_id
+    FROM stories s
+    WHERE s.assigned_agent_id IS NOT NULL
+    AND s.assigned_agent_id NOT IN (
+      SELECT id FROM agents WHERE status != 'terminated'
+    )
+  `
+  );
+}
+
+export function updateStoryAssignment(
+  db: Database,
+  storyId: string,
+  agentId: string | null
+): void {
+  run(db, 'UPDATE stories SET assigned_agent_id = ?, updated_at = ? WHERE id = ?', [
+    agentId,
+    new Date().toISOString(),
+    storyId,
+  ]);
+}

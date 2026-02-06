@@ -160,4 +160,21 @@ export function getStoryCounts(db) {
     }
     return counts;
 }
+export function getStoriesWithOrphanedAssignments(db) {
+    return queryAll(db, `
+    SELECT s.id, s.assigned_agent_id as agent_id
+    FROM stories s
+    WHERE s.assigned_agent_id IS NOT NULL
+    AND s.assigned_agent_id NOT IN (
+      SELECT id FROM agents WHERE status != 'terminated'
+    )
+  `);
+}
+export function updateStoryAssignment(db, storyId, agentId) {
+    run(db, 'UPDATE stories SET assigned_agent_id = ?, updated_at = ? WHERE id = ?', [
+        agentId,
+        new Date().toISOString(),
+        storyId,
+    ]);
+}
 //# sourceMappingURL=stories.js.map

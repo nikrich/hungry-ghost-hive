@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const configCommand: Command;
+export declare const configCommand: any;
 //# sourceMappingURL=config.d.ts.map
