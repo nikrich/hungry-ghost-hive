@@ -96,11 +96,11 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
       }
 
       await updateAgentsPanel(agentsPanel, db.db);
-      updateStoriesPanel(storiesPanel, db.db);
-      updatePipelinePanel(pipelinePanel, db.db);
-      updateActivityPanel(activityPanel, db.db);
-      updateMergeQueuePanel(mergeQueuePanel, db.db);
-      updateEscalationsPanel(escalationsPanel, db.db);
+      await updateStoriesPanel(storiesPanel, db.db);
+      await updatePipelinePanel(pipelinePanel, db.db);
+      await updateActivityPanel(activityPanel, db.db);
+      await updateMergeQueuePanel(mergeQueuePanel, db.db);
+      await updateEscalationsPanel(escalationsPanel, db.db);
       screen.render();
     } catch (err) {
       debugLog(`Refresh error: ${err}`);
@@ -108,12 +108,19 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
     }
   };
 
-  // Auto-refresh - wrap in arrow function to handle async properly
-  const timer = setInterval(() => { refresh(); }, refreshInterval);
+  // Auto-refresh using recursive setTimeout to prevent overlapping refreshes
+  let currentTimeout: NodeJS.Timeout | null = null;
+  const scheduleRefresh = () => {
+    currentTimeout = setTimeout(async () => {
+      await refresh();
+      scheduleRefresh();
+    }, refreshInterval);
+  };
+  scheduleRefresh();
 
   // Key bindings
   screen.key(['q', 'C-c', 'escape'], () => {
-    clearInterval(timer);
+    if (currentTimeout) clearTimeout(currentTimeout);
     try { db.db.close(); } catch { /* ignore */ }
     screen.destroy();
     process.exit(0);
