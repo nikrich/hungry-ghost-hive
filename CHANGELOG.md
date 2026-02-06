@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.4.1...v0.5.0) (2026-02-06)
+
+
+### Features
+
+* make QA agent scaling configurable via hive.config.yaml ([49471e1](https://github.com/nikrich/hungry-ghost-hive/commit/49471e14b4fcf03f5d785a97b898dbcbcfe798a4))
+
 ## [0.4.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.4.0...v0.4.1) (2026-02-06)
 
 
