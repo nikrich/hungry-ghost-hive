@@ -7,6 +7,8 @@ import { getAllAgents, getAgentById, updateAgent, type AgentRow } from '../../db
 import { getTeamById } from '../../db/queries/teams.js';
 import { createLog } from '../../db/queries/logs.js';
 import { spawnTmuxSession, isTmuxAvailable, isTmuxSessionRunning } from '../../tmux/manager.js';
+import { loadConfig } from '../../config/index.js';
+import { getCliRuntimeBuilder } from '../../cli-runtimes/index.js';
 
 export const resumeCommand = new Command('resume')
   .description('Resume agents from saved state')
@@ -26,6 +28,7 @@ export const resumeCommand = new Command('resume')
 
     const paths = getHivePaths(root);
     const db = await getDatabase(paths.hiveDir);
+    const config = loadConfig(paths.hiveDir);
 
     try {
       let agentsToResume: AgentRow[];
@@ -78,11 +81,21 @@ export const resumeCommand = new Command('resume')
             }
           }
 
+          // Get CLI runtime configuration for this agent type
+          const agentConfig = config.models[agent.type];
+          const cliTool = agentConfig.cli_tool;
+          const model = agent.model || agentConfig.model;
+
+          // Build resume command using CLI runtime builder
+          const runtimeBuilder = getCliRuntimeBuilder(cliTool);
+          const commandArray = runtimeBuilder.buildResumeCommand(model, sessionName);
+          const command = commandArray.join(' ');
+
           // Spawn new session
           await spawnTmuxSession({
             sessionName,
             workDir,
-            command: `claude --resume ${sessionName}`,
+            command,
           });
 
           // Update agent state
