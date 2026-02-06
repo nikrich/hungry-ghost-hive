@@ -717,11 +717,11 @@ async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string)
   const teams = getAllTeams(db.db);
   if (teams.length === 0) return 0;
 
-  // Get existing PRs
+  // Get ALL existing PRs (including merged/closed) to prevent duplicate imports
   const existingPRs = queryAll<PullRequestRow>(db.db,
-    "SELECT * FROM pull_requests WHERE status NOT IN ('merged', 'closed')"
+    "SELECT * FROM pull_requests"
   );
-  const existingBranches = new Set(existingPRs.map(pr => pr.branch_name));
+  const existingBranches = new Set(existingPRs.filter(pr => !['merged', 'closed'].includes(pr.status)).map(pr => pr.branch_name));
   const existingPrNumbers = new Set(existingPRs.map(pr => pr.github_pr_number).filter(Boolean));
 
   let synced = 0;

@@ -437,11 +437,11 @@ prCommand
     const db = await getDatabase(paths.hiveDir);
 
     try {
-      // Get existing PRs in queue
+      // Get ALL existing PRs (including merged/closed) to prevent duplicate imports
       const existingPRs = queryAll<PullRequestRow>(db.db,
-        'SELECT * FROM pull_requests WHERE status NOT IN (\'merged\', \'closed\')'
+        'SELECT * FROM pull_requests'
       );
-      const existingBranches = new Set(existingPRs.map(pr => pr.branch_name));
+      const existingBranches = new Set(existingPRs.filter(pr => !['merged', 'closed'].includes(pr.status)).map(pr => pr.branch_name));
       const existingPrNumbers = new Set(existingPRs.map(pr => pr.github_pr_number).filter(Boolean));
 
       // Find repo directories
