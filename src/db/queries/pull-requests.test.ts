@@ -81,6 +81,39 @@ describe('pull-requests queries', () => {
 
       expect(pr1.id).not.toBe(pr2.id);
     });
+
+    it('should extract PR number from github_pr_url when creating PR', () => {
+      const pr = createPullRequest(db, {
+        storyId,
+        teamId,
+        branchName: 'feature/extract-test',
+        githubPrUrl: 'https://github.com/test/repo/pull/456',
+        submittedBy: 'agent-456',
+      });
+
+      expect(pr.github_pr_number).toBe(456);
+      expect(pr.github_pr_url).toBe('https://github.com/test/repo/pull/456');
+    });
+
+    it('should prefer explicit githubPrNumber over extracted from URL', () => {
+      const pr = createPullRequest(db, {
+        branchName: 'feature/prefer-explicit',
+        githubPrNumber: 789,
+        githubPrUrl: 'https://github.com/test/repo/pull/456',
+      });
+
+      expect(pr.github_pr_number).toBe(789);
+    });
+
+    it('should handle malformed github_pr_url gracefully', () => {
+      const pr = createPullRequest(db, {
+        branchName: 'feature/malformed-url',
+        githubPrUrl: 'https://github.com/test/repo',
+      });
+
+      expect(pr.github_pr_number).toBeNull();
+      expect(pr.github_pr_url).toBe('https://github.com/test/repo');
+    });
   });
 
   describe('getPullRequestById', () => {
