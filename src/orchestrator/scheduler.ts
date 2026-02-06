@@ -5,6 +5,7 @@ import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { createEscalation } from '../db/queries/escalations.js';
+import { isAgentReviewingPR } from '../db/queries/pull-requests.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode, killTmuxSession } from '../tmux/manager.js';
 import type { ScalingConfig, ModelsConfig, QAConfig } from '../config/schema.js';
 import { getCliRuntimeBuilder, validateModelCliCompatibility } from '../cli-runtimes/index.js';
@@ -571,13 +572,16 @@ export class Scheduler {
       const toTerminate = currentQACount - neededQAs;
 
       // Identify QA agents to terminate (remove the ones with highest indices first)
+      // But skip agents that are actively reviewing a PR
       const sortedAgents = activeQAs.sort((a, b) => {
         const aIndex = parseInt(a.id.split('-').pop() || '0', 10);
         const bIndex = parseInt(b.id.split('-').pop() || '0', 10);
         return bIndex - aIndex; // Descending order to remove highest indices first
       });
 
-      const qaAgentsToTerminate = sortedAgents.slice(0, toTerminate);
+      // Filter out agents that are actively reviewing
+      const terminableAgents = sortedAgents.filter(agent => !isAgentReviewingPR(this.db, agent.id));
+      const qaAgentsToTerminate = terminableAgents.slice(0, toTerminate);
 
       try {
         for (const agent of qaAgentsToTerminate) {

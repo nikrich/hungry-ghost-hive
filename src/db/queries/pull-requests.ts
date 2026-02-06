@@ -227,6 +227,18 @@ export function deletePullRequest(db: Database, id: string): void {
 }
 
 /**
+ * Check if an agent is actively reviewing a PR
+ * Returns true if the agent has a PR with status 'reviewing'
+ */
+export function isAgentReviewingPR(db: Database, agentId: string): boolean {
+  const result = queryOne<{ count: number }>(db, `
+    SELECT COUNT(*) as count FROM pull_requests
+    WHERE reviewed_by = ? AND status = 'reviewing'
+  `, [agentId]);
+  return (result?.count || 0) > 0;
+}
+
+/**
  * Backfill github_pr_number for existing PRs that have github_pr_url but no number
  * This is an idempotent operation - it only updates PRs with NULL github_pr_number
  * @returns Number of PRs updated
