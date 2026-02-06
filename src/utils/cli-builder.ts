@@ -4,6 +4,7 @@
  */
 
 import type { ModelsConfig } from '../config/schema.js';
+import { UnsupportedFeatureError, ConfigurationError } from '../errors/index.js';
 
 export type AgentType = 'senior' | 'intermediate' | 'junior' | 'qa' | 'tech_lead';
 
@@ -24,7 +25,7 @@ export function buildCLICommand(config: CLICommandConfig): string {
     case 'gemini':
       return buildGeminiCLICommand(config.model, config.permissions);
     default:
-      throw new Error(`Unknown CLI tool: ${cliTool}`);
+      throw new UnsupportedFeatureError(`Unknown CLI tool: ${cliTool}`);
   }
 }
 
@@ -58,7 +59,7 @@ function buildGeminiCLICommand(model: string, permissions?: string): string {
 export function getModelForAgentType(agentType: AgentType, modelsConfig: ModelsConfig): string {
   const modelConfig = modelsConfig[agentType];
   if (!modelConfig) {
-    throw new Error(`No model configuration found for agent type: ${agentType}`);
+    throw new ConfigurationError(`No model configuration found for agent type: ${agentType}`);
   }
   return modelConfig.model;
 }

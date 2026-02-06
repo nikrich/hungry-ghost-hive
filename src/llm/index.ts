@@ -1,10 +1,11 @@
+import type { LLMProvider, ProviderConfig } from './provider.js';
 import { AnthropicProvider } from './anthropic.js';
 import { OpenAIProvider } from './openai.js';
-import type { LLMProvider, ProviderConfig } from './provider.js';
+import { UnsupportedFeatureError } from '../errors/index.js';
 
+export * from './provider.js';
 export { AnthropicProvider } from './anthropic.js';
 export { OpenAIProvider } from './openai.js';
-export * from './provider.js';
 
 export function createProvider(config: ProviderConfig): LLMProvider {
   switch (config.provider) {
@@ -21,6 +22,6 @@ export function createProvider(config: ProviderConfig): LLMProvider {
         temperature: config.temperature,
       });
     default:
-      throw new Error(`Unknown provider: ${config.provider}`);
+      throw new UnsupportedFeatureError(`Unknown provider: ${config.provider}`);
   }
 }
