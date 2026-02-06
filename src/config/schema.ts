@@ -56,6 +56,15 @@ const ScalingConfigSchema = z.object({
   junior_max_complexity: z.number().int().min(1).max(13).default(3),
   // Complexity threshold for delegation to intermediate
   intermediate_max_complexity: z.number().int().min(1).max(13).default(5),
+  // Policy for organic refactoring work discovered by engineers
+  refactor: z.object({
+    // Master toggle for scheduling refactor stories
+    enabled: z.boolean().default(true),
+    // Refactor capacity budget as a percentage of feature workload
+    capacity_percent: z.number().min(0).max(100).default(10),
+    // If true, allow refactor-only queues to proceed when no feature work is planned
+    allow_without_feature_work: z.boolean().default(true),
+  }).default({}),
 });
 
 // GitHub integration
@@ -202,6 +211,14 @@ scaling:
   # Complexity threshold for delegation
   junior_max_complexity: 3
   intermediate_max_complexity: 5
+  # Organic refactor scheduling policy
+  refactor:
+    # Master toggle for assigning refactor stories
+    enabled: true
+    # Refactor budget as a percentage of feature workload
+    capacity_percent: 10
+    # Allow refactor work even when only refactor stories exist
+    allow_without_feature_work: true
 
 # GitHub integration
 github:

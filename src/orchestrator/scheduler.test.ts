@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { Scheduler } from './scheduler.js';
-import { createStory, addStoryDependency, updateStory } from '../db/queries/stories.js';
+import { createStory, addStoryDependency, updateStory, getStoryById } from '../db/queries/stories.js';
 import { createTeam } from '../db/queries/teams.js';
 import { getLogsByEventType } from '../db/queries/logs.js';
 import type { StoryRow } from '../db/queries/stories.js';
@@ -441,5 +441,466 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(recovered.length).toBe(2);
     expect(recovered).toContain(story1.id);
     expect(recovered).toContain(story2.id);
+  });
+});
+
+describe('Scheduler Refactor Capacity Policy', () => {
+  function createSchedulerWithRefactorConfig(config: {
+    enabled: boolean;
+    capacity_percent: number;
+    allow_without_feature_work: boolean;
+  }): Scheduler {
+    return new Scheduler(db, {
+      ...mockConfig,
+      scaling: {
+        ...mockConfig.scaling,
+        refactor: config,
+      },
+    } as any);
+  }
+
+  it('should enforce refactor budget based on feature workload', () => {
+    const team = createTeam(db, { name: 'Refactor Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+
+    const feature = createStory(db, { teamId: team.id, title: 'Add endpoint', description: 'Feature story' });
+    updateStory(db, feature.id, { status: 'planned', storyPoints: 10, complexityScore: 10 });
+
+    const refactorA = createStory(db, { teamId: team.id, title: 'Refactor: clean parser', description: 'Refactor A' });
+    updateStory(db, refactorA.id, { status: 'planned', storyPoints: 1, complexityScore: 1 });
+
+    const refactorB = createStory(db, { teamId: team.id, title: 'Refactor: simplify auth flow', description: 'Refactor B' });
+    updateStory(db, refactorB.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
+
+    const localScheduler = createSchedulerWithRefactorConfig({
+      enabled: true,
+      capacity_percent: 10,
+      allow_without_feature_work: true,
+    });
+
+    const selectMethod = (localScheduler as any).selectStoriesForCapacity;
+    const selected = selectMethod.call(localScheduler, [
+      getStoryById(db, feature.id)!,
+      getStoryById(db, refactorA.id)!,
+      getStoryById(db, refactorB.id)!,
+    ]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toContain(feature.id);
+    expect(selected.map(s => s.id)).toContain(refactorA.id);
+    expect(selected.map(s => s.id)).not.toContain(refactorB.id);
+  });
+
+  it('should allow refactor-only queues when policy permits', () => {
+    const team = createTeam(db, { name: 'Maintenance Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const refactor = createStory(db, { teamId: team.id, title: 'Refactor: remove dead code', description: 'Maintenance' });
+    updateStory(db, refactor.id, { status: 'planned', storyPoints: 3, complexityScore: 3 });
+
+    const localScheduler = createSchedulerWithRefactorConfig({
+      enabled: true,
+      capacity_percent: 10,
+      allow_without_feature_work: true,
+    });
+
+    const selectMethod = (localScheduler as any).selectStoriesForCapacity;
+    const selected = selectMethod.call(localScheduler, [getStoryById(db, refactor.id)!]) as StoryRow[];
+
+    expect(selected).toHaveLength(1);
+    expect(selected[0].id).toBe(refactor.id);
+  });
+
+  it('should block refactor-only queues when policy disallows it', () => {
+    const team = createTeam(db, { name: 'Strict Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const refactor = createStory(db, { teamId: team.id, title: 'Refactor: rename internals', description: 'Maintenance' });
+    updateStory(db, refactor.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
+
+    const localScheduler = createSchedulerWithRefactorConfig({
+      enabled: true,
+      capacity_percent: 10,
+      allow_without_feature_work: false,
+    });
+
+    const selectMethod = (localScheduler as any).selectStoriesForCapacity;
+    const selected = selectMethod.call(localScheduler, [getStoryById(db, refactor.id)!]) as StoryRow[];
+
+    expect(selected).toHaveLength(0);
+  });
+});
+
+describe('Scheduler Refactor Policy Test Matrix', () => {
+  let storyCounter = 0;
+
+  function mkStory(title: string, storyPoints: number | null = null, complexity: number | null = null): StoryRow {
+    storyCounter++;
+    return {
+      id: `STORY-MATRIX-${storyCounter}`,
+      requirement_id: null,
+      team_id: 'team-matrix',
+      title,
+      description: 'matrix story',
+      acceptance_criteria: null,
+      complexity_score: complexity,
+      story_points: storyPoints,
+      status: 'planned',
+      assigned_agent_id: null,
+      branch_name: null,
+      pr_url: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  function mkSchedulerWithRefactor(config?: {
+    enabled: boolean;
+    capacity_percent: number;
+    allow_without_feature_work: boolean;
+  }): Scheduler {
+    if (!config) {
+      return new Scheduler(db, {
+        ...mockConfig,
+        scaling: { ...mockConfig.scaling },
+      } as any);
+    }
+
+    return new Scheduler(db, {
+      ...mockConfig,
+      scaling: {
+        ...mockConfig.scaling,
+        refactor: config,
+      },
+    } as any);
+  }
+
+  beforeEach(() => {
+    storyCounter = 0;
+  });
+
+  // 8 tests: refactor title detection
+  it.each([
+    'Refactor: simplify parser',
+    'refactor: simplify parser',
+    'REFACTOR: simplify parser',
+    '  Refactor : simplify parser',
+    '\tRefactor: simplify parser',
+    'Refactor:',
+  ])('should detect refactor story title: %s', (title) => {
+    const localScheduler = mkSchedulerWithRefactor();
+    const isRefactor = (localScheduler as any).isRefactorStory.bind(localScheduler);
+    expect(isRefactor(mkStory(title))).toBe(true);
+  });
+
+  it.each([
+    'Refactoring: simplify parser',
+    'Hotfix refactor: simplify parser',
+    'Feature Refactor : simplify parser',
+    'Maintenance task',
+    '',
+  ])('should not detect non-refactor story title: %s', (title) => {
+    const localScheduler = mkSchedulerWithRefactor();
+    const isRefactor = (localScheduler as any).isRefactorStory.bind(localScheduler);
+    expect(isRefactor(mkStory(title))).toBe(false);
+  });
+
+  // 5 tests: capacity point calculation
+  it('should use story_points when both story_points and complexity_score exist', () => {
+    const localScheduler = mkSchedulerWithRefactor();
+    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
+    expect(getCapacityPoints(mkStory('Feature', 8, 3))).toBe(8);
+  });
+
+  it('should use complexity_score when story_points is null', () => {
+    const localScheduler = mkSchedulerWithRefactor();
+    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
+    expect(getCapacityPoints(mkStory('Feature', null, 5))).toBe(5);
+  });
+
+  it('should default to 1 when both story_points and complexity_score are null', () => {
+    const localScheduler = mkSchedulerWithRefactor();
+    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
+    expect(getCapacityPoints(mkStory('Feature', null, null))).toBe(1);
+  });
+
+  it('should treat story_points 0 as missing and fall back to complexity_score', () => {
+    const localScheduler = mkSchedulerWithRefactor();
+    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
+    expect(getCapacityPoints(mkStory('Feature', 0, 4))).toBe(4);
+  });
+
+  it('should treat 0/0 points as minimum 1 capacity unit', () => {
+    const localScheduler = mkSchedulerWithRefactor();
+    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
+    expect(getCapacityPoints(mkStory('Feature', 0, 0))).toBe(1);
+  });
+
+  it('should use story_points when complexity_score is null', () => {
+    const localScheduler = mkSchedulerWithRefactor();
+    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
+    expect(getCapacityPoints(mkStory('Feature', 6, null))).toBe(6);
+  });
+
+  it('should pass through non-integer capacity points as provided', () => {
+    const localScheduler = mkSchedulerWithRefactor();
+    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
+    expect(getCapacityPoints(mkStory('Feature', 2.5, null))).toBe(2.5);
+  });
+
+  // 12 tests: capacity selection behavior
+  it('should filter out refactor stories when refactor policy is disabled', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: false,
+      capacity_percent: 100,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const feature = mkStory('Feature: add endpoint', 8, 8);
+    const refactor = mkStory('Refactor: split parser', 2, 2);
+    const selected = selectStories([feature, refactor]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([feature.id]);
+  });
+
+  it('should include all refactor stories when capacity percent is 100', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 100,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const feature = mkStory('Feature: add endpoint', 10, 10);
+    const refactorA = mkStory('Refactor: split parser', 3, 3);
+    const refactorB = mkStory('Refactor: normalize naming', 4, 4);
+    const selected = selectStories([feature, refactorA, refactorB]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id, refactorB.id]);
+  });
+
+  it('should include no refactor stories when capacity percent is 0 and feature work exists', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 0,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const feature = mkStory('Feature: add endpoint', 10, 10);
+    const refactor = mkStory('Refactor: split parser', 1, 1);
+    const selected = selectStories([feature, refactor]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([feature.id]);
+  });
+
+  it('should allow at least one refactor point when percent is positive but rounded budget is zero', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 10,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const feature = mkStory('Feature: tiny patch', 5, 5); // floor(5 * 0.1) = 0 -> min 1
+    const refactor = mkStory('Refactor: tighten types', 1, 1);
+    const selected = selectStories([feature, refactor]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([feature.id, refactor.id]);
+  });
+
+  it('should compute budget from total feature story points across multiple stories', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 20,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const featureA = mkStory('Feature: A', 5, 5);
+    const featureB = mkStory('Feature: B', 5, 5); // total feature = 10, budget = 2
+    const refactorA = mkStory('Refactor: A', 1, 1);
+    const refactorB = mkStory('Refactor: B', 1, 1);
+    const refactorC = mkStory('Refactor: C', 1, 1);
+    const selected = selectStories([featureA, featureB, refactorA, refactorB, refactorC]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([featureA.id, featureB.id, refactorA.id, refactorB.id]);
+  });
+
+  it('should skip a refactor story that exceeds remaining budget', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 20,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const feature = mkStory('Feature: A', 10, 10); // budget = 2
+    const refactorLarge = mkStory('Refactor: big cleanup', 3, 3);
+    const selected = selectStories([feature, refactorLarge]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([feature.id]);
+  });
+
+  it('should select a later smaller refactor story if an earlier one exceeds budget', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 20,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const feature = mkStory('Feature: A', 10, 10); // budget = 2
+    const refactorLarge = mkStory('Refactor: big cleanup', 3, 3); // skipped
+    const refactorSmall = mkStory('Refactor: tiny cleanup', 2, 2); // fits
+    const selected = selectStories([feature, refactorLarge, refactorSmall]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([feature.id, refactorSmall.id]);
+  });
+
+  it('should allow refactor-only queues when configured to allow without feature work', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 10,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const refactorA = mkStory('Refactor: A', 3, 3);
+    const refactorB = mkStory('Refactor: B', 5, 5);
+    const selected = selectStories([refactorA, refactorB]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([refactorA.id, refactorB.id]);
+  });
+
+  it('should block refactor-only queues when allow_without_feature_work is false', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 10,
+      allow_without_feature_work: false,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const refactorA = mkStory('Refactor: A', 3, 3);
+    const refactorB = mkStory('Refactor: B', 5, 5);
+    const selected = selectStories([refactorA, refactorB]) as StoryRow[];
+
+    expect(selected).toHaveLength(0);
+  });
+
+  it('should preserve order of selected stories', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 20,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const featureA = mkStory('Feature: A', 5, 5);
+    const refactorA = mkStory('Refactor: A', 1, 1);
+    const featureB = mkStory('Feature: B', 5, 5);
+    const refactorB = mkStory('Refactor: B', 1, 1);
+    const selected = selectStories([featureA, refactorA, featureB, refactorB]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([featureA.id, refactorA.id, featureB.id, refactorB.id]);
+  });
+
+  it('should default to disabled behavior when refactor config is missing', () => {
+    const localScheduler = mkSchedulerWithRefactor();
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const feature = mkStory('Feature: A', 5, 5);
+    const refactor = mkStory('Refactor: A', 1, 1);
+    const selected = selectStories([feature, refactor]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([feature.id]);
+  });
+
+  it('should return an empty array when no stories are provided', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 50,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const selected = selectStories([]) as StoryRow[];
+    expect(selected).toEqual([]);
+  });
+
+  it('should include refactor stories when cumulative points exactly match budget', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 30,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const feature = mkStory('Feature: A', 10, 10); // budget = 3
+    const refactorA = mkStory('Refactor: A', 1, 1);
+    const refactorB = mkStory('Refactor: B', 2, 2);
+    const selected = selectStories([feature, refactorA, refactorB]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id, refactorB.id]);
+  });
+
+  it('should continue selecting later refactors after partially consuming budget and skipping a too-large one', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 50,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const feature = mkStory('Feature: A', 10, 10); // budget = 5
+    const refactorA = mkStory('Refactor: A', 2, 2); // used = 2
+    const refactorLarge = mkStory('Refactor: Large', 4, 4); // skipped (2 + 4 > 5)
+    const refactorB = mkStory('Refactor: B', 3, 3); // used = 5
+    const selected = selectStories([feature, refactorA, refactorLarge, refactorB]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id, refactorB.id]);
+  });
+
+  it('should derive feature budget from complexity when story_points are not set', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 20,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const featureA = mkStory('Feature: A', null, 6);
+    const featureB = mkStory('Feature: B', null, 4); // feature total = 10, budget = 2
+    const refactorA = mkStory('Refactor: A', 1, 1);
+    const refactorB = mkStory('Refactor: B', 2, 2);
+    const selected = selectStories([featureA, featureB, refactorA, refactorB]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([featureA.id, featureB.id, refactorA.id]);
+  });
+
+  it('should allow one point of refactor work when feature stories have no explicit points', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 10,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const feature = mkStory('Feature: A', null, null); // defaults to 1, floor(1 * 0.1)=0 -> min 1
+    const refactorA = mkStory('Refactor: A', 1, 1);
+    const refactorB = mkStory('Refactor: B', 1, 1);
+    const selected = selectStories([feature, refactorA, refactorB]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id]);
+  });
+
+  it('should ignore capacity_percent for refactor-only queues when allow_without_feature_work is true', () => {
+    const localScheduler = mkSchedulerWithRefactor({
+      enabled: true,
+      capacity_percent: 0,
+      allow_without_feature_work: true,
+    });
+    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+
+    const refactorA = mkStory('Refactor: A', 2, 2);
+    const refactorB = mkStory('Refactor: B', 4, 4);
+    const selected = selectStories([refactorA, refactorB]) as StoryRow[];
+
+    expect(selected.map(s => s.id)).toEqual([refactorA.id, refactorB.id]);
   });
 });

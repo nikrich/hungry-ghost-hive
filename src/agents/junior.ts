@@ -61,6 +61,7 @@ ${storyInfo}
 - You should NOT refactor unrelated code
 - You should ask for clarification rather than guessing
 - Escalate any blockers to Senior immediately
+- If you spot a useful fix outside this story, create a separate refactor follow-up story from your current analysis context
 
 ## Current Context
 ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
@@ -121,7 +122,8 @@ This is a simple task (complexity ${this.story.complexity_score || 1}-3).
 2. Make the minimal required changes
 3. Follow the existing patterns exactly
 4. Write a simple test if applicable
-5. Commit the changes
+5. If I find useful out-of-scope fixes, I'll create a separate refactor story from this same analysis
+6. Commit the changes
 
 Please help me identify which files I need to read and modify.`;
 

@@ -55,6 +55,7 @@ ${storyInfo}
 - Commit frequently with descriptive messages
 - Update progress regularly
 - Escalate after 2 failed attempts
+- If you discover out-of-scope fixes, create a refactor follow-up story from your current analysis context and continue this story
 
 ## Current Context
 ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
@@ -115,7 +116,8 @@ ${this.story.acceptance_criteria ? JSON.parse(this.story.acceptance_criteria).jo
 3. Implement the required changes
 4. Write tests
 5. Commit with clear messages
-6. Update me on progress
+6. For useful fixes outside this story, create a separate refactor story using this same code-reading context
+7. Update me on progress
 
 Begin implementation.`;
 

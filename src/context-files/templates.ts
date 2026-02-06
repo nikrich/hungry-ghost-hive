@@ -88,6 +88,7 @@ ${hiveMsgCommands}
 - Keep your branch up to date with main
 - Link stories to PRs using the story ID in the PR description
 - Follow the existing code patterns and conventions in the repository
+- If you discover a useful fix outside the current story scope, do not expand the current branch; create a separate refactor story using context from the code you already read
 
 ## Escalation
 
@@ -176,6 +177,7 @@ ${hiveMsgCommands}
 - Link PRs to stories using story identifiers
 - Follow established code patterns and conventions
 - Document non-obvious implementation decisions
+- If you discover a useful fix outside the current story scope, do not expand the current branch; create a separate refactor story using context from the code you already read
 
 ## Getting Help
 
@@ -265,6 +267,7 @@ ${hiveMsgCommands}
 - Use story IDs in PR references for tracking
 - Maintain consistency with existing codebase
 - Comment complex logic
+- If you discover a useful fix outside the current story scope, do not expand the current branch; create a separate refactor story using context from the code you already read
 
 ## Support and Escalation
 
