@@ -32,8 +32,12 @@ describe('heartbeat queries', () => {
 
       updateAgentHeartbeat(db, agent.id);
 
-      const afterUpdate = db.exec(`SELECT last_seen FROM agents WHERE id = ?`, [agent.id]);
-      const updatedLastSeen = afterUpdate[0]?.values[0]?.[0];
+      const stmt = db.prepare(`SELECT last_seen FROM agents WHERE id = ?`);
+      stmt.bind([agent.id]);
+      const afterUpdate = [];
+      while (stmt.step()) afterUpdate.push(stmt.getAsObject());
+      stmt.free();
+      const updatedLastSeen = afterUpdate[0]?.last_seen;
 
       expect(updatedLastSeen).toBeDefined();
       expect(typeof updatedLastSeen).toBe('string');
@@ -49,8 +53,12 @@ describe('heartbeat queries', () => {
       updateAgentHeartbeat(db, agent.id);
       updateAgentHeartbeat(db, agent.id);
 
-      const result = db.exec(`SELECT last_seen FROM agents WHERE id = ?`, [agent.id]);
-      const lastSeen = result[0]?.values[0]?.[0];
+      const stmtResult = db.prepare(`SELECT last_seen FROM agents WHERE id = ?`);
+      stmtResult.bind([agent.id]);
+      const result = [];
+      while (stmtResult.step()) result.push(stmtResult.getAsObject());
+      stmtResult.free();
+      const lastSeen = result[0]?.last_seen;
 
       expect(lastSeen).toBeDefined();
     });
