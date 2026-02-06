@@ -1,12 +1,11 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
-import * as logger from '../../utils/logger.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase, withTransaction } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
-import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession, sendMessageWithConfirmation } from '../../tmux/manager.js';
+import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession, sendMessageWithConfirmation, autoApprovePermission, forceBypassMode } from '../../tmux/manager.js';
 import { getMergeQueue, getPullRequestsByStatus, backfillGithubPrNumbers } from '../../db/queries/pull-requests.js';
 import { markMessagesRead, getAllPendingMessages, type MessageRow } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations, getRecentEscalationsForAgent, getActiveEscalationsForAgent, updateEscalation } from '../../db/queries/escalations.js';
@@ -383,6 +382,31 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
         // State changed - update tracking
         trackedState.lastState = stateResult.state;
         trackedState.lastStateChangeTime = now;
+      }
+
+      // Auto-handle permission prompts before escalation
+      if (stateResult.state === ClaudeCodeState.PERMISSION_REQUIRED) {
+        const approved = await autoApprovePermission(session.name);
+        if (approved) {
+          console.log(chalk.green(`  AUTO-APPROVED: ${session.name} permission prompt`));
+          // Don't escalate if we successfully auto-approved
+          continue;
+        }
+        // If auto-approval failed, fall through to escalation
+      }
+
+      // Re-enforce bypass mode if agent drifted away from it
+      if (stateResult.state === ClaudeCodeState.PLAN_APPROVAL) {
+        const restored = await forceBypassMode(session.name);
+        if (restored) {
+          console.log(chalk.green(`  BYPASS MODE RESTORED: ${session.name} cycled out of plan mode`));
+          // Update tracked state since bypass was restored
+          const tracked = agentStates.get(session.name);
+          if (tracked) {
+            tracked.lastState = ClaudeCodeState.IDLE_AT_PROMPT;
+            tracked.lastStateChangeTime = now;
+          }
+        }
       }
 
       // Convert to legacy format for escalation logic

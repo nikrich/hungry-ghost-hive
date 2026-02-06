@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
 import { createTeam } from '../db/queries/teams.js';
