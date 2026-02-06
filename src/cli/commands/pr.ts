@@ -298,7 +298,42 @@ prCommand
         return;
       }
 
-      const newStatus = options.merge !== false ? 'merged' : 'approved';
+      // Extract story ID from PR or branch name
+      let storyId = pr.story_id;
+      if (!storyId && pr.branch_name) {
+        const storyMatch = pr.branch_name.match(/STORY-[A-Z0-9-]+/i);
+        if (storyMatch) {
+          storyId = storyMatch[0].toUpperCase();
+        }
+      }
+
+      const shouldMerge = options.merge !== false;
+      let actuallyMerged = false;
+
+      if (shouldMerge && pr.github_pr_number) {
+        // Actually merge on GitHub via gh CLI
+        try {
+          const { execSync } = await import('child_process');
+          // First approve the PR on GitHub
+          try {
+            execSync(`gh pr review ${pr.github_pr_number} --approve`, { stdio: 'pipe', cwd: root });
+          } catch {
+            // May fail if already approved or if it's our own PR - continue
+          }
+          // Then merge
+          execSync(`gh pr merge ${pr.github_pr_number} --squash --delete-branch`, { stdio: 'pipe', cwd: root });
+          actuallyMerged = true;
+          console.log(chalk.green(`PR ${prId} approved and merged on GitHub!`));
+        } catch (mergeErr: unknown) {
+          const errMsg = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
+          console.log(chalk.yellow(`GitHub merge failed: ${errMsg}`));
+          console.log(chalk.yellow('Marking as approved (manual merge needed).'));
+        }
+      } else if (shouldMerge && !pr.github_pr_number) {
+        console.log(chalk.yellow('No GitHub PR number linked - marking as approved only.'));
+      }
+
+      const newStatus = actuallyMerged ? 'merged' : 'approved';
 
       updatePullRequest(db.db, prId, {
         status: newStatus,
@@ -306,24 +341,16 @@ prCommand
         reviewNotes: options.notes || null,
       });
 
-      // Update story status if linked, or try to extract from branch name
-      let storyId = pr.story_id;
-      if (!storyId && pr.branch_name) {
-        // Extract story ID from branch name (e.g., feature/STORY-001-TIMEOUT-impl -> STORY-001-TIMEOUT)
-        const storyMatch = pr.branch_name.match(/STORY-\d+-[A-Z]+/i);
-        if (storyMatch) {
-          storyId = storyMatch[0].toUpperCase();
-        }
-      }
       if (storyId && newStatus === 'merged') {
         updateStory(db.db, storyId, { status: 'merged' });
       }
 
       db.save();
 
-      if (newStatus === 'merged') {
-        console.log(chalk.green(`PR ${prId} approved and merged!`));
-      } else {
+      if (!actuallyMerged && shouldMerge) {
+        console.log(chalk.green(`PR ${prId} approved.`));
+        console.log(chalk.gray('Manual merge is needed on GitHub.'));
+      } else if (!shouldMerge) {
         console.log(chalk.green(`PR ${prId} approved.`));
         console.log(chalk.gray('Manual merge is needed.'));
       }
