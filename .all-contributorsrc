@@ -1,0 +1,37 @@
+{
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": false,
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "nikrich",
+      "name": "Jannik Richter",
+      "avatar_url": "https://avatars.githubusercontent.com/u/12345678?v=4",
+      "profile": "https://github.com/nikrich",
+      "contributions": [
+        "code",
+        "doc",
+        "infra"
+      ]
+    },
+    {
+      "login": "mayor-bot",
+      "name": "Mayor",
+      "avatar_url": "https://avatars.githubusercontent.com/u/87654321?v=4",
+      "profile": "https://github.com/mayor-bot",
+      "contributions": [
+        "code"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7,
+  "projectName": "hungry-ghost-hive",
+  "projectOwner": "nikrich",
+  "repoHost": "https://github.com",
+  "repoType": "github",
+  "skipCi": true,
+  "badgeTemplate": "[<%= contributor.name %>](<%= contributor.profile %>)"
+}
