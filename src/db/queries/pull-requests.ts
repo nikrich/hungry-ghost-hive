@@ -107,6 +107,14 @@ export function getPullRequestsByStatus(db: Database, status: PullRequestStatus)
   `, [status]);
 }
 
+export function getApprovedPullRequests(db: Database): PullRequestRow[] {
+  return queryAll<PullRequestRow>(db, `
+    SELECT * FROM pull_requests
+    WHERE status = 'approved'
+    ORDER BY created_at ASC
+  `);
+}
+
 export function getAllPullRequests(db: Database): PullRequestRow[] {
   return queryAll<PullRequestRow>(db, 'SELECT * FROM pull_requests ORDER BY created_at DESC');
 }
