@@ -7,6 +7,7 @@ import type { StoryRow } from '../db/queries/stories.js';
 import {
   addStoryDependency,
   createStory,
+  getStoryById,
   updateStory,
 } from '../db/queries/stories.js';
 import { createTeam } from '../db/queries/teams.js';
