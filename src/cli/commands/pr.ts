@@ -64,11 +64,21 @@ prCommand
         }
       }
 
+      // Extract PR number from URL if not explicitly provided
+      let prNumber: number | null = options.prNumber ? parseInt(options.prNumber, 10) : null;
+      if (!prNumber && options.prUrl) {
+        // GitHub PR URLs follow pattern: https://github.com/{owner}/{repo}/pull/{number}
+        const match = options.prUrl.match(/\/pull\/(\d+)(?:[#?]|$)/);
+        if (match && match[1]) {
+          prNumber = parseInt(match[1], 10);
+        }
+      }
+
       const pr = createPullRequest(db.db, {
         storyId,
         teamId,
         branchName: options.branch,
-        githubPrNumber: options.prNumber ? parseInt(options.prNumber, 10) : null,
+        githubPrNumber: prNumber,
         githubPrUrl: options.prUrl || null,
         submittedBy: options.from || null,
       });
