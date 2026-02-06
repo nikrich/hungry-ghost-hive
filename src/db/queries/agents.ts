@@ -12,6 +12,7 @@ export interface CreateAgentInput {
   teamId?: string | null;
   tmuxSession?: string | null;
   model?: string | null;
+  worktreePath?: string | null;
 }
 
 export interface UpdateAgentInput {
@@ -19,6 +20,7 @@ export interface UpdateAgentInput {
   tmuxSession?: string | null;
   currentStoryId?: string | null;
   memoryState?: string | null;
+  worktreePath?: string | null;
 }
 
 export function createAgent(db: Database, input: CreateAgentInput): AgentRow {
@@ -28,9 +30,9 @@ export function createAgent(db: Database, input: CreateAgentInput): AgentRow {
   const now = new Date().toISOString();
 
   run(db, `
-    INSERT INTO agents (id, type, team_id, tmux_session, model, status, created_at, updated_at, last_seen)
-    VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?)
-  `, [id, input.type, input.teamId || null, input.tmuxSession || null, input.model || null, now, now, now]);
+    INSERT INTO agents (id, type, team_id, tmux_session, model, status, worktree_path, created_at, updated_at, last_seen)
+    VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?)
+  `, [id, input.type, input.teamId || null, input.tmuxSession || null, input.model || null, input.worktreePath || null, now, now, now]);
 
   return getAgentById(db, id)!;
 }
@@ -86,6 +88,10 @@ export function updateAgent(db: Database, id: string, input: UpdateAgentInput): 
   if (input.memoryState !== undefined) {
     updates.push('memory_state = ?');
     values.push(input.memoryState);
+  }
+  if (input.worktreePath !== undefined) {
+    updates.push('worktree_path = ?');
+    values.push(input.worktreePath);
   }
 
   if (updates.length === 1) {
