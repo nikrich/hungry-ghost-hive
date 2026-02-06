@@ -82,6 +82,13 @@ const QAConfigSchema = z.object({
   build_command: z.string().default('npm run build'),
   // Test command (optional)
   test_command: z.string().optional(),
+  // QA agent scaling configuration
+  scaling: z.object({
+    // Pending PRs per QA agent (e.g., 2.5 means 1 QA per 2.5 pending)
+    pending_per_agent: z.number().positive().default(2.5),
+    // Maximum number of QA agents per team
+    max_agents: z.number().int().positive().default(5),
+  }).optional(),
 });
 
 // Agent behavior configuration

@@ -214,14 +214,32 @@ declare const QAConfigSchema: z.ZodObject<{
     quality_checks: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     build_command: z.ZodDefault<z.ZodString>;
     test_command: z.ZodOptional<z.ZodString>;
+    scaling: z.ZodOptional<z.ZodObject<{
+        pending_per_agent: z.ZodDefault<z.ZodNumber>;
+        max_agents: z.ZodDefault<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        pending_per_agent: number;
+        max_agents: number;
+    }, {
+        pending_per_agent?: number | undefined;
+        max_agents?: number | undefined;
+    }>>;
 }, "strip", z.ZodTypeAny, {
     quality_checks: string[];
     build_command: string;
     test_command?: string | undefined;
+    scaling?: {
+        pending_per_agent: number;
+        max_agents: number;
+    } | undefined;
 }, {
     quality_checks?: string[] | undefined;
     build_command?: string | undefined;
     test_command?: string | undefined;
+    scaling?: {
+        pending_per_agent?: number | undefined;
+        max_agents?: number | undefined;
+    } | undefined;
 }>;
 declare const AgentsConfigSchema: z.ZodObject<{
     poll_interval: z.ZodDefault<z.ZodNumber>;
@@ -460,14 +478,32 @@ export declare const HiveConfigSchema: z.ZodObject<{
         quality_checks: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
         build_command: z.ZodDefault<z.ZodString>;
         test_command: z.ZodOptional<z.ZodString>;
+        scaling: z.ZodOptional<z.ZodObject<{
+            pending_per_agent: z.ZodDefault<z.ZodNumber>;
+            max_agents: z.ZodDefault<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            pending_per_agent: number;
+            max_agents: number;
+        }, {
+            pending_per_agent?: number | undefined;
+            max_agents?: number | undefined;
+        }>>;
     }, "strip", z.ZodTypeAny, {
         quality_checks: string[];
         build_command: string;
         test_command?: string | undefined;
+        scaling?: {
+            pending_per_agent: number;
+            max_agents: number;
+        } | undefined;
     }, {
         quality_checks?: string[] | undefined;
         build_command?: string | undefined;
         test_command?: string | undefined;
+        scaling?: {
+            pending_per_agent?: number | undefined;
+            max_agents?: number | undefined;
+        } | undefined;
     }>>;
     agents: z.ZodDefault<z.ZodObject<{
         poll_interval: z.ZodDefault<z.ZodNumber>;
@@ -520,6 +556,15 @@ export declare const HiveConfigSchema: z.ZodObject<{
         quality_checks: string[];
         build_command: string;
         test_command?: string | undefined;
+        scaling?: {
+            pending_per_agent: number;
+            max_agents: number;
+        } | undefined;
+    };
+    scaling: {
+        senior_capacity: number;
+        junior_max_complexity: number;
+        intermediate_max_complexity: number;
     };
     version: string;
     models: {
@@ -559,11 +604,6 @@ export declare const HiveConfigSchema: z.ZodObject<{
             cli_tool: "claude" | "codex" | "gemini";
         };
     };
-    scaling: {
-        senior_capacity: number;
-        junior_max_complexity: number;
-        intermediate_max_complexity: number;
-    };
     github: {
         base_branch: string;
         pr_template: string;
@@ -588,6 +628,15 @@ export declare const HiveConfigSchema: z.ZodObject<{
         quality_checks?: string[] | undefined;
         build_command?: string | undefined;
         test_command?: string | undefined;
+        scaling?: {
+            pending_per_agent?: number | undefined;
+            max_agents?: number | undefined;
+        } | undefined;
+    } | undefined;
+    scaling?: {
+        senior_capacity?: number | undefined;
+        junior_max_complexity?: number | undefined;
+        intermediate_max_complexity?: number | undefined;
     } | undefined;
     version?: string | undefined;
     models?: {
@@ -626,11 +675,6 @@ export declare const HiveConfigSchema: z.ZodObject<{
             temperature?: number | undefined;
             cli_tool?: "claude" | "codex" | "gemini" | undefined;
         } | undefined;
-    } | undefined;
-    scaling?: {
-        senior_capacity?: number | undefined;
-        junior_max_complexity?: number | undefined;
-        intermediate_max_complexity?: number | undefined;
     } | undefined;
     github?: {
         base_branch?: string | undefined;

@@ -73,7 +73,7 @@ export async function updateAgentsPanel(list, db) {
     const agents = getActiveAgents(db);
     debugLog(`updateAgentsPanel called, found ${agents.length} agents, currentSelection=${currentSelection}`);
     // Load config to get model version info
-    let versionMap = {};
+    const versionMap = {};
     try {
         const root = findHiveRoot();
         if (root) {

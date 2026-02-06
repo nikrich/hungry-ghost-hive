@@ -21,6 +21,7 @@ import {
   prCommand,
   managerCommand,
   versionCommand,
+  cleanupCommand,
 } from './cli/commands/index.js';
 import { getVersion } from './utils/version.js';
 
@@ -53,6 +54,7 @@ program.addCommand(escalationsCommand);
 
 // Destructive operations
 program.addCommand(nukeCommand);
+program.addCommand(cleanupCommand);
 
 // Communication
 program.addCommand(msgCommand);

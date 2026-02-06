@@ -7,9 +7,9 @@ import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
 import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests, updatePullRequest } from '../../db/queries/pull-requests.js';
-import { getUnreadMessages, markMessageRead, type MessageRow } from '../../db/queries/messages.js';
+import { markMessagesRead, getAllPendingMessages, type MessageRow } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
-import { getAgentById, updateAgent } from '../../db/queries/agents.js';
+import { getAgentById, updateAgent, getAllAgents } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { queryAll } from '../../db/client.js';
 import type { StoryRow } from '../../db/client.js';
@@ -162,6 +162,7 @@ managerCommand
       const scheduler = new Scheduler(db.db, {
         scaling: config.scaling,
         models: config.models,
+        qa: config.qa,
         rootDir: root,
       });
 
@@ -258,6 +259,7 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     const scheduler = new Scheduler(db.db, {
       scaling: config.scaling,
       models: config.models,
+      qa: config.qa,
       rootDir: root,
     });
 
@@ -318,24 +320,38 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
         .map(e => e.from_agent_id)
     );
 
+    // Optimization: Batch fetch all agents and messages instead of per-session queries
+    const allAgents = getAllAgents(db.db);
+    const agentsBySessionName = new Map(
+      allAgents.map(a => [`hive-${a.id}`, a])
+    );
+
+    const allPendingMessages = getAllPendingMessages(db.db);
+    const messagesBySessionName = new Map<string, MessageRow[]>();
+    const messagesToMarkRead: string[] = [];
+
+    for (const msg of allPendingMessages) {
+      if (!messagesBySessionName.has(msg.to_session)) {
+        messagesBySessionName.set(msg.to_session, []);
+      }
+      messagesBySessionName.get(msg.to_session)!.push(msg);
+    }
+
     for (const session of hiveSessions) {
       // Skip manager itself
       if (session.name === 'hive-manager') continue;
 
-      // Get agent information for CLI-aware messaging
-      const agent = getAgentById(db.db, session.name.replace('hive-', ''));
+      // Get agent information for CLI-aware messaging (from cached data)
+      const agent = agentsBySessionName.get(session.name);
       const agentCliTool = (agent?.cli_tool || 'claude') as CLITool;
 
-      // Check if agent has unread messages
-      const unread = getUnreadMessages(db.db, session.name);
+      // Check if agent has unread messages (from cached data)
+      const unread = messagesBySessionName.get(session.name) || [];
       if (unread.length > 0) {
         await forwardMessages(session.name, unread, agentCliTool);
         messagesForwarded += unread.length;
-        // Mark as read
-        for (const msg of unread) {
-          markMessageRead(db.db, msg.id);
-        }
-        db.save();
+        // Collect message IDs to mark as read in batch
+        messagesToMarkRead.push(...unread.map(msg => msg.id));
       }
 
       // Check if agent appears stuck (capture last output)
@@ -416,6 +432,12 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
         }
       }
       // If not waiting (actively working), do nothing - let them work
+    }
+
+    // Batch mark all messages as read after processing
+    if (messagesToMarkRead.length > 0) {
+      markMessagesRead(db.db, messagesToMarkRead);
+      db.save();
     }
 
     // Check for PRs needing QA attention

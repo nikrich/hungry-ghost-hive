@@ -5,12 +5,13 @@ import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode, killTmuxSession } from '../tmux/manager.js';
-import type { ScalingConfig, ModelsConfig } from '../config/schema.js';
+import type { ScalingConfig, ModelsConfig, QAConfig } from '../config/schema.js';
 import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
 
 export interface SchedulerConfig {
   scaling: ScalingConfig;
   models: ModelsConfig;
+  qa?: QAConfig;
   rootDir: string;
 }
 
@@ -458,9 +459,13 @@ export class Scheduler {
 
     const pendingCount = qaStories.length;
 
-    // Calculate needed QA agents: 1 per 2-3 pending PRs, max 5
+    // Calculate needed QA agents using configurable values
+    const qaScaling = this.config.qa?.scaling || { pending_per_agent: 2.5, max_agents: 5 };
+    const pendingPerAgent = qaScaling.pending_per_agent || 2.5;
+    const maxAgents = qaScaling.max_agents || 5;
+
     // If no pending work, scale down to 0 agents
-    const neededQAs = pendingCount > 0 ? Math.min(Math.ceil(pendingCount / 2.5), 5) : 0;
+    const neededQAs = pendingCount > 0 ? Math.min(Math.ceil(pendingCount / pendingPerAgent), maxAgents) : 0;
 
     // Get currently active QA agents for this team
     const activeQAs = getAgentsByTeam(this.db, teamId)
@@ -554,75 +559,42 @@ export class Scheduler {
     }
   }
 
-  private async spawnQA(teamId: string, teamName: string, repoPath: string, index: number = 1): Promise<AgentRow> {
-    const agent = createAgent(this.db, {
-      type: 'qa',
-      teamId,
-      model: 'sonnet',
-    });
-
-    // Create git worktree for this agent
-    const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
-    const workDir = `${this.config.rootDir}/${worktreePath}`;
-
-    const sessionName = generateSessionName('qa', teamName, index);
-
-    if (!await isTmuxSessionRunning(sessionName)) {
-      // Build CLI command using the configured runtime for QA agents
-      const cliTool = this.config.models.qa.cli_tool;
-      const model = 'sonnet';
-      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
-      const command = commandArgs.join(' ');
-
-      await spawnTmuxSession({
-        sessionName,
-        workDir,
-        command,
-      });
-
-      // Wait for Claude to be ready before sending prompt
-      await waitForTmuxSessionReady(sessionName);
-
-      // Force bypass permissions mode to enable autonomous work
-      await forceBypassMode(sessionName, 'claude');
-
-      const team = getTeamById(this.db, teamId);
-      const prompt = generateQAPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
-      await sendToTmuxSession(sessionName, prompt);
-
-      // Auto-start manager when spawning agents
-      await this.ensureManagerRunning();
-    }
-
-    updateAgent(this.db, agent.id, {
-      tmuxSession: sessionName,
-      status: 'working',
-      worktreePath,
-    });
-
-    return agent;
-  }
-
   private async ensureManagerRunning(): Promise<void> {
     if (!await isManagerRunning()) {
       await startManager(60);
     }
   }
 
-  private async spawnSenior(teamId: string, teamName: string, repoPath: string, index?: number): Promise<AgentRow> {
-    const sessionName = generateSessionName('senior', teamName, index);
+  /**
+   * Generic agent spawn method
+   * Handles spawning of all agent types (senior, intermediate, junior, qa)
+   */
+  private async spawnAgent(
+    type: 'senior' | 'intermediate' | 'junior' | 'qa',
+    teamId: string,
+    teamName: string,
+    repoPath: string,
+    index?: number
+  ): Promise<AgentRow> {
+    const sessionName = generateSessionName(type, teamName, index);
 
-    // Prevent creating duplicate agents on same tmux session
-    const existingSeniors = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'senior');
-    const existingOnSession = existingSeniors.find(a => a.tmux_session === sessionName && a.status !== 'terminated');
-    if (existingOnSession && await isTmuxSessionRunning(sessionName)) {
-      return existingOnSession;
+    // Prevent creating duplicate agents on same tmux session (for senior agents)
+    if (type === 'senior') {
+      const existingSeniors = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'senior');
+      const existingOnSession = existingSeniors.find(a => a.tmux_session === sessionName && a.status !== 'terminated');
+      if (existingOnSession && await isTmuxSessionRunning(sessionName)) {
+        return existingOnSession;
+      }
     }
 
+    // Get model info from config
+    const modelConfig = this.config.models[type as keyof typeof this.config.models];
+    const modelShorthand = this.getModelShorthand(modelConfig.model);
+
     const agent = createAgent(this.db, {
-      type: 'senior',
+      type,
       teamId,
-      model: 'sonnet',
+      model: modelShorthand,
     });
 
     // Create git worktree for this agent
@@ -630,10 +602,9 @@ export class Scheduler {
     const workDir = `${this.config.rootDir}/${worktreePath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
-      // Build CLI command using the configured runtime for Senior agents
-      const cliTool = this.config.models.senior.cli_tool;
-      const model = 'sonnet';
-      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
+      // Build CLI command using the configured runtime
+      const cliTool = modelConfig.cli_tool;
+      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(modelShorthand);
       const command = commandArgs.join(' ');
 
       await spawnTmuxSession({
@@ -649,8 +620,19 @@ export class Scheduler {
       await forceBypassMode(sessionName, 'claude');
 
       const team = getTeamById(this.db, teamId);
-      const stories = this.getTeamStories(teamId);
-      const prompt = generateSeniorPrompt(teamName, team?.repo_url || '', worktreePath, stories);
+      let prompt: string;
+
+      if (type === 'senior') {
+        const stories = this.getTeamStories(teamId);
+        prompt = generateSeniorPrompt(teamName, team?.repo_url || '', worktreePath, stories);
+      } else if (type === 'intermediate') {
+        prompt = generateIntermediatePrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
+      } else if (type === 'junior') {
+        prompt = generateJuniorPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
+      } else {
+        prompt = generateQAPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
+      }
+
       await sendToTmuxSession(sessionName, prompt);
 
       // Auto-start manager when spawning agents
@@ -664,121 +646,38 @@ export class Scheduler {
     });
 
     return agent;
+  }
+
+  /**
+   * Extract model shorthand from full model ID
+   * E.g., 'claude-sonnet-4-20250514' -> 'sonnet', 'claude-haiku-3-5-20241022' -> 'haiku'
+   */
+  private getModelShorthand(modelId: string): string {
+    if (modelId.includes('sonnet')) return 'sonnet';
+    if (modelId.includes('opus')) return 'opus';
+    if (modelId.includes('haiku')) return 'haiku';
+    if (modelId.includes('gpt-4o')) return 'gpt4o';
+    return 'haiku'; // default fallback
+  }
+
+  private async spawnQA(teamId: string, teamName: string, repoPath: string, index: number = 1): Promise<AgentRow> {
+    return this.spawnAgent('qa', teamId, teamName, repoPath, index);
+  }
+
+  private async spawnSenior(teamId: string, teamName: string, repoPath: string, index?: number): Promise<AgentRow> {
+    return this.spawnAgent('senior', teamId, teamName, repoPath, index);
   }
 
   private async spawnIntermediate(teamId: string, teamName: string, repoPath: string): Promise<AgentRow> {
     const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'intermediate');
     const index = existing.length + 1;
-    const sessionName = generateSessionName('intermediate', teamName, index);
-
-    // Prevent creating duplicate agents on same tmux session
-    const existingOnSession = existing.find(a => a.tmux_session === sessionName && a.status !== 'terminated');
-    if (existingOnSession && await isTmuxSessionRunning(sessionName)) {
-      return existingOnSession;
-    }
-
-    const agent = createAgent(this.db, {
-      type: 'intermediate',
-      teamId,
-      model: 'haiku',
-    });
-
-    // Create git worktree for this agent
-    const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
-    const workDir = `${this.config.rootDir}/${worktreePath}`;
-
-    if (!await isTmuxSessionRunning(sessionName)) {
-      // Build CLI command using the configured runtime for Intermediate agents
-      const cliTool = this.config.models.intermediate.cli_tool;
-      const model = 'haiku';
-      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
-      const command = commandArgs.join(' ');
-
-      await spawnTmuxSession({
-        sessionName,
-        workDir,
-        command,
-      });
-
-      // Wait for Claude to be ready before sending prompt
-      await waitForTmuxSessionReady(sessionName);
-
-      // Force bypass permissions mode to enable autonomous work
-      await forceBypassMode(sessionName, 'claude');
-
-      const team = getTeamById(this.db, teamId);
-      const prompt = generateIntermediatePrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
-      await sendToTmuxSession(sessionName, prompt);
-
-      // Auto-start manager when spawning agents
-      await this.ensureManagerRunning();
-    }
-
-    updateAgent(this.db, agent.id, {
-      tmuxSession: sessionName,
-      status: 'working',
-      worktreePath,
-    });
-
-    return agent;
+    return this.spawnAgent('intermediate', teamId, teamName, repoPath, index);
   }
 
   private async spawnJunior(teamId: string, teamName: string, repoPath: string): Promise<AgentRow> {
     const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'junior');
     const index = existing.length + 1;
-    const sessionName = generateSessionName('junior', teamName, index);
-
-    // Prevent creating duplicate agents on same tmux session
-    const existingOnSession = existing.find(a => a.tmux_session === sessionName && a.status !== 'terminated');
-    if (existingOnSession && await isTmuxSessionRunning(sessionName)) {
-      return existingOnSession;
-    }
-
-    const agent = createAgent(this.db, {
-      type: 'junior',
-      teamId,
-      model: 'haiku',
-    });
-
-    // Create git worktree for this agent
-    const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
-    const workDir = `${this.config.rootDir}/${worktreePath}`;
-
-    if (!await isTmuxSessionRunning(sessionName)) {
-      // Build CLI command using the configured runtime for Junior agents
-      // Note: Spec calls for gpt-4o-mini but using haiku until OpenAI integration is added
-      const cliTool = this.config.models.junior.cli_tool;
-      const model = 'haiku';
-      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
-      const command = commandArgs.join(' ');
-
-      await spawnTmuxSession({
-        sessionName,
-        workDir,
-        command,
-      });
-
-      // Wait for Claude to be ready before sending prompt
-      await waitForTmuxSessionReady(sessionName);
-
-      // Force bypass permissions mode to enable autonomous work
-      await forceBypassMode(sessionName, 'claude');
-
-      const team = getTeamById(this.db, teamId);
-      const prompt = generateJuniorPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
-      await sendToTmuxSession(sessionName, prompt);
-
-      // Auto-start manager when spawning agents
-      await this.ensureManagerRunning();
-    }
-
-    updateAgent(this.db, agent.id, {
-      tmuxSession: sessionName,
-      status: 'working',
-      worktreePath,
-    });
-
-    return agent;
+    return this.spawnAgent('junior', teamId, teamName, repoPath, index);
   }
 
   private getTeamStories(teamId: string): StoryRow[] {
