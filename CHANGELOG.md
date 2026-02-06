@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.4.0...v0.4.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* optimize manager daemon to eliminate N+1 queries ([64744fc](https://github.com/nikrich/hungry-ghost-hive/commit/64744fc04b381789351c177f579a065231fde823))
+
 ## [0.4.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.3.1...v0.4.0) (2026-02-06)
 
 
