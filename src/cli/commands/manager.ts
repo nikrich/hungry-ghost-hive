@@ -280,6 +280,11 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       db.save();
     }
 
+    if (healthResult.orphanedRecovered.length > 0) {
+      console.log(chalk.green(`  Recovered ${healthResult.orphanedRecovered.length} orphaned story(ies): ${healthResult.orphanedRecovered.join(', ')}`));
+      db.save();
+    }
+
     // Check merge queue for QA spawning
     await scheduler.checkMergeQueue();
     db.save();

@@ -1,5 +1,5 @@
 import type { Database } from 'sql.js';
-import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, getBatchStoryDependencies, getStoryById, type StoryRow } from '../db/queries/stories.js';
+import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, getBatchStoryDependencies, getStoryById, getStoriesWithOrphanedAssignments, type StoryRow } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll, withTransaction } from '../db/client.js';
@@ -413,10 +413,40 @@ export class Scheduler {
   }
 
   /**
+   * Detect and recover orphaned stories (assigned to terminated agents)
+   * Returns the story IDs that were recovered
+   */
+  private detectAndRecoverOrphanedStories(): string[] {
+    const orphanedAssignments = getStoriesWithOrphanedAssignments(this.db);
+    const recovered: string[] = [];
+
+    for (const assignment of orphanedAssignments) {
+      try {
+        // Update story in single atomic operation
+        updateStory(this.db, assignment.id, {
+          assignedAgentId: null,
+          status: 'planned',
+        });
+        createLog(this.db, {
+          agentId: 'scheduler',
+          storyId: assignment.id,
+          eventType: 'ORPHANED_STORY_RECOVERED',
+          message: `Recovered from terminated agent ${assignment.agent_id}`,
+        });
+        recovered.push(assignment.id);
+      } catch (err) {
+        console.error(`Failed to recover orphaned story ${assignment.id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+    }
+
+    return recovered;
+  }
+
+  /**
    * Health check: sync agent status with actual tmux sessions
    * Returns number of agents whose status was corrected
    */
-  async healthCheck(): Promise<{ terminated: number; revived: string[] }> {
+  async healthCheck(): Promise<{ terminated: number; revived: string[]; orphanedRecovered: string[] }> {
     const allAgents = queryAll<AgentRow>(this.db, `
       SELECT * FROM agents WHERE status != 'terminated'
     `);
@@ -460,7 +490,10 @@ export class Scheduler {
       }
     }
 
-    return { terminated, revived };
+    // Detect and recover orphaned stories (assigned to terminated agents)
+    const orphanedRecovered = this.detectAndRecoverOrphanedStories();
+
+    return { terminated, revived, orphanedRecovered };
   }
 
   /**
