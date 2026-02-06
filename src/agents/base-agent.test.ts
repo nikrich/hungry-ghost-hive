@@ -2,14 +2,18 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { BaseAgent, type AgentContext, type MemoryState } from './base-agent.js';
-import type { LLMProvider, Message, LLMResponse } from '../llm/provider.js';
+import type { LLMProvider, Message, CompletionResult, CompletionOptions } from '../llm/provider.js';
 import type { AgentRow } from '../db/queries/agents.js';
+import { queryOne, queryAll } from '../db/client.js';
 
 // Mock LLM Provider
 class MockLLMProvider implements LLMProvider {
-  async complete(messages: Message[], options?: { timeoutMs?: number }): Promise<LLMResponse> {
+  name = 'mock-provider';
+
+  async complete(_messages: Message[], _options?: CompletionOptions): Promise<CompletionResult> {
     return {
       content: 'Mock response',
+      stopReason: 'end_turn',
       usage: {
         inputTokens: 100,
         outputTokens: 50,
@@ -81,7 +85,9 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       status: 'idle',
       current_story_id: null,
       memory_state: null,
-      last_heartbeat: null,
+      last_seen: null,
+      cli_tool: 'claude',
+      worktree_path: null,
       created_at: '2024-01-01',
       updated_at: '2024-01-01',
     };
@@ -177,8 +183,8 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       const agent = new TestAgent(context);
       await agent.run();
 
-      const result = db.exec('SELECT status FROM agents WHERE id = ?', [agentRow.id]);
-      expect(result[0].values[0][0]).toBe('working');
+      const result = queryOne<{ status: string }>(db, 'SELECT status FROM agents WHERE id = ?', [agentRow.id]);
+      expect(result?.status).toBe('working');
     });
 
     it('should transition to blocked on error', async () => {
@@ -187,16 +193,15 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 
       await expect(agent.run()).rejects.toThrow('Test error');
 
-      const result = db.exec('SELECT status FROM agents WHERE id = ?', [agentRow.id]);
-      expect(result[0].values[0][0]).toBe('blocked');
+      const result = queryOne<{ status: string }>(db, 'SELECT status FROM agents WHERE id = ?', [agentRow.id]);
+      expect(result?.status).toBe('blocked');
     });
 
     it('should log agent spawn event when run is called', async () => {
       const agent = new TestAgent(context);
       await agent.run();
 
-      const result = db.exec('SELECT event_type, message FROM agent_logs WHERE agent_id = ?', [agentRow.id]);
-      const events = result[0].values.map(row => ({ event_type: row[0], message: row[1] }));
+      const events = queryAll<{ event_type: string; message: string }>(db, 'SELECT event_type, message FROM agent_logs WHERE agent_id = ?', [agentRow.id]);
       expect(events).toContainEqual(
         expect.objectContaining({
           event_type: 'AGENT_SPAWNED',
@@ -211,8 +216,7 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 
       await expect(agent.run()).rejects.toThrow();
 
-      const result = db.exec('SELECT event_type, message FROM agent_logs WHERE agent_id = ?', [agentRow.id]);
-      const events = result[0].values.map(row => ({ event_type: row[0], message: row[1] }));
+      const events = queryAll<{ event_type: string; message: string }>(db, 'SELECT event_type, message FROM agent_logs WHERE agent_id = ?', [agentRow.id]);
       expect(events).toContainEqual(
         expect.objectContaining({
           event_type: 'AGENT_TERMINATED',
@@ -288,8 +292,8 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       const agentAny = agent as any;
       await agentAny.chat('Test message');
 
-      const result = db.exec('SELECT memory_state FROM agents WHERE id = ?', [agentRow.id]);
-      const memoryState = JSON.parse(result[0].values[0][0] as string);
+      const result = queryOne<{ memory_state: string }>(db, 'SELECT memory_state FROM agents WHERE id = ?', [agentRow.id]);
+      const memoryState = JSON.parse(result!.memory_state);
       expect(memoryState.conversationSummary).toBe('Checkpoint summary');
       expect(memoryState.checkpointTokens).toBe(11000);
     });
@@ -393,9 +397,8 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 
       await expect(agentAny.chat('Test')).rejects.toThrow();
 
-      const result = db.exec('SELECT event_type FROM agent_logs WHERE agent_id = ?', [agentRow.id]);
-      const events = result[0].values.map(row => row[0]);
-      expect(events).toContain('AGENT_TERMINATED');
+      const events = queryAll<{ event_type: string }>(db, 'SELECT event_type FROM agent_logs WHERE agent_id = ?', [agentRow.id]);
+      expect(events.map(e => e.event_type)).toContain('AGENT_TERMINATED');
     });
 
     it('should pass through timeout option to LLM provider', async () => {
@@ -413,11 +416,12 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 
   describe('Heartbeat Mechanism', () => {
     it('should send initial heartbeat on construction', () => {
-      const agent = new TestAgent(context);
+      // Create agent to trigger heartbeat
+      new TestAgent(context);
 
       // Check that last_seen was updated
-      const result = db.exec('SELECT last_seen FROM agents WHERE id = ?', [agentRow.id]);
-      expect(result[0].values[0][0]).toBeTruthy();
+      const result = queryOne<{ last_seen: string | null }>(db, 'SELECT last_seen FROM agents WHERE id = ?', [agentRow.id]);
+      expect(result?.last_seen).toBeTruthy();
     });
 
     it('should stop heartbeat after agent completes', async () => {
