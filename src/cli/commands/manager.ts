@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
+import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
 import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests, updatePullRequest } from '../../db/queries/pull-requests.js';
@@ -240,7 +241,7 @@ managerCommand
     }
   });
 
-async function managerCheck(root: string, config?: any): Promise<void> {
+async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
   const timestamp = new Date().toLocaleTimeString();
   console.log(chalk.gray(`[${timestamp}] Manager checking...`));
 
