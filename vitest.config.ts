@@ -8,13 +8,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov', 'json'],
       reportsDirectory: './coverage',
-      exclude: [
-        'node_modules/',
-        'dist/',
-        'coverage/',
-        '**/*.test.ts',
-        '**/*.spec.ts',
-      ],
+      exclude: ['node_modules/', 'dist/', 'coverage/', '**/*.test.ts', '**/*.spec.ts'],
       all: true,
       includeAllSources: true,
       thresholds: {

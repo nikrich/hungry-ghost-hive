@@ -1,6 +1,11 @@
 import { nanoid } from 'nanoid';
+import type {
+  CreatePullRequestInput,
+  PullRequestRow,
+  PullRequestStatus,
+  UpdatePullRequestInput,
+} from '../../queries/pull-requests.js';
 import type { PullRequestDao } from '../interfaces/pull-request.dao.js';
-import type { PullRequestRow, CreatePullRequestInput, UpdatePullRequestInput, PullRequestStatus } from '../../queries/pull-requests.js';
 import { LevelDbStore, type NowProvider, defaultNow } from './leveldb-store.js';
 import { compareIsoAsc, compareIsoDesc } from './sort.js';
 
@@ -9,7 +14,10 @@ const PR_PREFIX = 'pull_request:';
 export class LevelDbPullRequestDao implements PullRequestDao {
   private readonly now: NowProvider;
 
-  constructor(private readonly store: LevelDbStore, now: NowProvider = defaultNow) {
+  constructor(
+    private readonly store: LevelDbStore,
+    now: NowProvider = defaultNow
+  ) {
     this.now = now;
   }
 
@@ -96,7 +104,10 @@ export class LevelDbPullRequestDao implements PullRequestDao {
     return prs.filter(pr => pr.team_id === teamId).sort(compareIsoDesc);
   }
 
-  async updatePullRequest(id: string, input: UpdatePullRequestInput): Promise<PullRequestRow | undefined> {
+  async updatePullRequest(
+    id: string,
+    input: UpdatePullRequestInput
+  ): Promise<PullRequestRow | undefined> {
     const existing = await this.getPullRequestById(id);
     if (!existing) return undefined;
 

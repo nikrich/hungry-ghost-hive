@@ -1,7 +1,11 @@
-import type { PullRequestRow } from '../../queries/pull-requests.js';
-import type { CreatePullRequestInput, UpdatePullRequestInput, PullRequestStatus } from '../../queries/pull-requests.js';
+import type {
+  CreatePullRequestInput,
+  PullRequestRow,
+  PullRequestStatus,
+  UpdatePullRequestInput,
+} from '../../queries/pull-requests.js';
 
-export type { PullRequestRow, CreatePullRequestInput, UpdatePullRequestInput, PullRequestStatus };
+export type { CreatePullRequestInput, PullRequestRow, PullRequestStatus, UpdatePullRequestInput };
 
 export interface PullRequestDao {
   createPullRequest(input: CreatePullRequestInput): Promise<PullRequestRow>;

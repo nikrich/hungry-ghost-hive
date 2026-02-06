@@ -1,7 +1,7 @@
 ---
 name: Feature Request
 about: Suggest an idea to improve Hive
-title: "[FEATURE] "
+title: '[FEATURE] '
 labels: enhancement
 assignees: ''
 ---

@@ -1,9 +1,9 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { Command } from 'commander';
 import { getDatabase, queryAll, queryOne, run, type StoryRow } from '../../db/client.js';
-import { createStory, updateStory } from '../../db/queries/stories.js';
 import { createLog } from '../../db/queries/logs.js';
+import { createStory, updateStory } from '../../db/queries/stories.js';
+import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 
 export const myStoriesCommand = new Command('my-stories')
   .description('View and manage stories assigned to an agent')
@@ -22,13 +22,16 @@ export const myStoriesCommand = new Command('my-stories')
     try {
       if (!session) {
         // Show all in-progress stories
-        const stories = queryAll<StoryRow & { tmux_session?: string }>(db.db, `
+        const stories = queryAll<StoryRow & { tmux_session?: string }>(
+          db.db,
+          `
           SELECT s.*, a.tmux_session
           FROM stories s
           LEFT JOIN agents a ON s.assigned_agent_id = a.id
           WHERE s.status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed')
           ORDER BY s.status, s.created_at
-        `);
+        `
+        );
 
         if (stories.length === 0) {
           console.log(chalk.gray('No active stories found.'));
@@ -43,14 +46,19 @@ export const myStoriesCommand = new Command('my-stories')
       }
 
       // Find agent by tmux session
-      const agent = queryOne<{ id: string; team_id: string }>(db.db,
-        'SELECT id, team_id FROM agents WHERE tmux_session = ?', [session]);
+      const agent = queryOne<{ id: string; team_id: string }>(
+        db.db,
+        'SELECT id, team_id FROM agents WHERE tmux_session = ?',
+        [session]
+      );
 
       if (!agent) {
         console.error(chalk.red(`No agent found with session: ${session}`));
         console.log(chalk.gray('Available sessions:'));
-        const agents = queryAll<{ tmux_session: string }>(db.db,
-          'SELECT tmux_session FROM agents WHERE tmux_session IS NOT NULL');
+        const agents = queryAll<{ tmux_session: string }>(
+          db.db,
+          'SELECT tmux_session FROM agents WHERE tmux_session IS NOT NULL'
+        );
         for (const a of agents) {
           console.log(chalk.gray(`  - ${a.tmux_session}`));
         }
@@ -60,7 +68,9 @@ export const myStoriesCommand = new Command('my-stories')
       let stories: StoryRow[];
       if (options.all && agent.team_id) {
         // Show all team stories
-        stories = queryAll<StoryRow>(db.db, `
+        stories = queryAll<StoryRow>(
+          db.db,
+          `
           SELECT * FROM stories
           WHERE team_id = ?
           ORDER BY
@@ -72,19 +82,27 @@ export const myStoriesCommand = new Command('my-stories')
               ELSE 5
             END,
             complexity_score DESC
-        `, [agent.team_id]);
+        `,
+          [agent.team_id]
+        );
       } else {
         // Show only assigned active stories (exclude merged/terminal states)
-        stories = queryAll<StoryRow>(db.db, `
+        stories = queryAll<StoryRow>(
+          db.db,
+          `
           SELECT * FROM stories
           WHERE assigned_agent_id = ?
           AND status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')
           ORDER BY created_at
-        `, [agent.id]);
+        `,
+          [agent.id]
+        );
       }
 
       if (stories.length === 0) {
-        console.log(chalk.yellow(`No stories ${options.all ? 'for your team' : 'assigned to you'}.`));
+        console.log(
+          chalk.yellow(`No stories ${options.all ? 'for your team' : 'assigned to you'}.`)
+        );
         if (!options.all) {
           console.log(chalk.gray('Use --all to see all team stories.'));
         }
@@ -96,7 +114,6 @@ export const myStoriesCommand = new Command('my-stories')
       for (const story of stories) {
         printStory(story);
       }
-
     } finally {
       db.close();
     }
@@ -118,8 +135,11 @@ myStoriesCommand
 
     try {
       // Find agent by session
-      const agent = queryOne<{ id: string }>(db.db,
-        'SELECT id FROM agents WHERE tmux_session = ?', [options.session]);
+      const agent = queryOne<{ id: string }>(
+        db.db,
+        'SELECT id FROM agents WHERE tmux_session = ?',
+        [options.session]
+      );
 
       if (!agent) {
         console.error(chalk.red(`No agent found with session: ${options.session}`));
@@ -139,11 +159,15 @@ myStoriesCommand
       }
 
       // Claim the story
-      run(db.db, `
+      run(
+        db.db,
+        `
         UPDATE stories
         SET assigned_agent_id = ?, status = 'in_progress', updated_at = datetime('now')
         WHERE id = ?
-      `, [agent.id, storyId]);
+      `,
+        [agent.id, storyId]
+      );
       db.save();
 
       console.log(chalk.green(`Claimed story: ${storyId}`));
@@ -173,11 +197,15 @@ myStoriesCommand
         process.exit(1);
       }
 
-      run(db.db, `
+      run(
+        db.db,
+        `
         UPDATE stories
         SET status = 'review', updated_at = datetime('now')
         WHERE id = ?
-      `, [storyId]);
+      `,
+        [storyId]
+      );
       db.save();
 
       console.log(chalk.green(`Story ${storyId} marked as ready for review.`));
@@ -195,97 +223,117 @@ myStoriesCommand
   .option('-p, --points <points>', 'Story points / complexity (1-13)', '2')
   .option('--status <status>', 'Initial status (estimated|planned)', 'planned')
   .option('-c, --criteria <criteria...>', 'Acceptance criteria (repeatable)')
-  .action(async (options: {
-    session: string;
-    title: string;
-    description: string;
-    points: string;
-    status?: string;
-    criteria?: string[];
-  }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const points = parseInt(options.points, 10);
-    if (!Number.isInteger(points) || points < 1 || points > 13) {
-      console.error(chalk.red('Points must be an integer between 1 and 13.'));
-      process.exit(1);
-    }
-
-    const status = options.status === 'estimated' ? 'estimated' : options.status === 'planned' ? 'planned' : null;
-    if (!status) {
-      console.error(chalk.red('Status must be either "estimated" or "planned".'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
-      const agent = queryOne<{ id: string; team_id: string | null }>(
-        db.db,
-        'SELECT id, team_id FROM agents WHERE tmux_session = ?',
-        [options.session]
-      );
-
-      if (!agent) {
-        console.error(chalk.red(`No agent found with session: ${options.session}`));
+  .action(
+    async (options: {
+      session: string;
+      title: string;
+      description: string;
+      points: string;
+      status?: string;
+      criteria?: string[];
+    }) => {
+      const root = findHiveRoot();
+      if (!root) {
+        console.error(chalk.red('Not in a Hive workspace.'));
         process.exit(1);
       }
 
-      if (!agent.team_id) {
-        console.error(chalk.red('This agent is not attached to a team, so a team refactor story cannot be created.'));
+      const points = parseInt(options.points, 10);
+      if (!Number.isInteger(points) || points < 1 || points > 13) {
+        console.error(chalk.red('Points must be an integer between 1 and 13.'));
         process.exit(1);
       }
 
-      const trimmedTitle = options.title.trim();
-      const normalizedTitle = /^refactor\s*:/i.test(trimmedTitle)
-        ? trimmedTitle
-        : `Refactor: ${trimmedTitle}`;
+      const status =
+        options.status === 'estimated'
+          ? 'estimated'
+          : options.status === 'planned'
+            ? 'planned'
+            : null;
+      if (!status) {
+        console.error(chalk.red('Status must be either "estimated" or "planned".'));
+        process.exit(1);
+      }
 
-      const story = createStory(db.db, {
-        teamId: agent.team_id,
-        title: normalizedTitle,
-        description: options.description.trim(),
-        acceptanceCriteria: options.criteria && options.criteria.length > 0 ? options.criteria : null,
-      });
+      const paths = getHivePaths(root);
+      const db = await getDatabase(paths.hiveDir);
 
-      const updatedStory = updateStory(db.db, story.id, {
-        complexityScore: points,
-        storyPoints: points,
-        status,
-      });
+      try {
+        const agent = queryOne<{ id: string; team_id: string | null }>(
+          db.db,
+          'SELECT id, team_id FROM agents WHERE tmux_session = ?',
+          [options.session]
+        );
 
-      createLog(db.db, {
-        agentId: agent.id,
-        storyId: story.id,
-        eventType: 'STORY_CREATED',
-        message: `Refactor story proposed: ${normalizedTitle}`,
-        metadata: {
-          source: 'engineer_discovery',
-          session: options.session,
-          points,
+        if (!agent) {
+          console.error(chalk.red(`No agent found with session: ${options.session}`));
+          process.exit(1);
+        }
+
+        if (!agent.team_id) {
+          console.error(
+            chalk.red(
+              'This agent is not attached to a team, so a team refactor story cannot be created.'
+            )
+          );
+          process.exit(1);
+        }
+
+        const trimmedTitle = options.title.trim();
+        const normalizedTitle = /^refactor\s*:/i.test(trimmedTitle)
+          ? trimmedTitle
+          : `Refactor: ${trimmedTitle}`;
+
+        const story = createStory(db.db, {
+          teamId: agent.team_id,
+          title: normalizedTitle,
+          description: options.description.trim(),
+          acceptanceCriteria:
+            options.criteria && options.criteria.length > 0 ? options.criteria : null,
+        });
+
+        const updatedStory = updateStory(db.db, story.id, {
+          complexityScore: points,
+          storyPoints: points,
           status,
-        },
-      });
+        });
 
-      db.save();
+        createLog(db.db, {
+          agentId: agent.id,
+          storyId: story.id,
+          eventType: 'STORY_CREATED',
+          message: `Refactor story proposed: ${normalizedTitle}`,
+          metadata: {
+            source: 'engineer_discovery',
+            session: options.session,
+            points,
+            status,
+          },
+        });
 
-      console.log(chalk.green(`Created refactor story: ${story.id}`));
-      console.log(chalk.gray(`Title: ${normalizedTitle}`));
-      console.log(chalk.gray(`Status: ${(updatedStory?.status || status).toUpperCase()} | Points: ${points}`));
-      console.log(chalk.gray('Run `hive assign` to schedule work based on current capacity policy.'));
-    } finally {
-      db.close();
+        db.save();
+
+        console.log(chalk.green(`Created refactor story: ${story.id}`));
+        console.log(chalk.gray(`Title: ${normalizedTitle}`));
+        console.log(
+          chalk.gray(
+            `Status: ${(updatedStory?.status || status).toUpperCase()} | Points: ${points}`
+          )
+        );
+        console.log(
+          chalk.gray('Run `hive assign` to schedule work based on current capacity policy.')
+        );
+      } finally {
+        db.close();
+      }
     }
-  });
+  );
 
 function printStory(story: StoryRow, assignedSession?: string): void {
   console.log(chalk.cyan(`[${story.id}]`) + ` ${story.title}`);
-  console.log(`  Status: ${story.status.toUpperCase()} | Complexity: ${story.complexity_score || '?'}`);
+  console.log(
+    `  Status: ${story.status.toUpperCase()} | Complexity: ${story.complexity_score || '?'}`
+  );
   if (assignedSession) {
     console.log(`  Assigned: ${assignedSession}`);
   }

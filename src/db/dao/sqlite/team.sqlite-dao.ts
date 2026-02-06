@@ -1,8 +1,8 @@
-import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run } from '../../client.js';
+import type { CreateTeamInput, TeamRow } from '../../queries/teams.js';
 import type { TeamDao } from '../interfaces/team.dao.js';
-import type { TeamRow, CreateTeamInput } from '../../queries/teams.js';
 
 export class SqliteTeamDao implements TeamDao {
   constructor(private readonly db: Database) {}
@@ -11,10 +11,14 @@ export class SqliteTeamDao implements TeamDao {
     const id = `team-${nanoid(10)}`;
     const now = new Date().toISOString();
 
-    run(this.db, `
+    run(
+      this.db,
+      `
       INSERT INTO teams (id, repo_url, repo_path, name, created_at)
       VALUES (?, ?, ?, ?, ?)
-    `, [id, input.repoUrl, input.repoPath, input.name, now]);
+    `,
+      [id, input.repoUrl, input.repoPath, input.name, now]
+    );
 
     return (await this.getTeamById(id))!;
   }

@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDb } from './helpers.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SqliteTeamDao } from '../sqlite/team.sqlite-dao.js';
+import { createTestDb } from './helpers.js';
 
 describe('SqliteTeamDao', () => {
   let db: Database;

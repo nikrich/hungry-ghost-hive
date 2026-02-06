@@ -1,13 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDatabase } from './test-helpers.js';
-import { createTeam } from './teams.js';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createAgent } from './agents.js';
-import {
-  updateAgentHeartbeat,
-  getStaleAgents,
-  isAgentHeartbeatCurrent,
-} from './heartbeat.js';
+import { getStaleAgents, isAgentHeartbeatCurrent, updateAgentHeartbeat } from './heartbeat.js';
+import { createTeam } from './teams.js';
+import { createTestDatabase } from './test-helpers.js';
 
 describe('heartbeat queries', () => {
   let db: Database;

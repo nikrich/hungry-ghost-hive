@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import * as paths from './paths.js';
 import { join } from 'path';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as paths from './paths.js';
 
 // Mock fs
 vi.mock('fs', () => ({
@@ -39,7 +39,7 @@ describe('paths utility', () => {
       mockedExistsSync
         .mockReturnValueOnce(false) // /test/project/src/.hive
         .mockReturnValueOnce(false) // /test/project/.hive
-        .mockReturnValueOnce(true);  // /test/.hive
+        .mockReturnValueOnce(true); // /test/.hive
 
       const result = paths.findHiveRoot('/test/project/src');
 

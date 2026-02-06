@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDb } from './helpers.js';
-import { createSqliteHiveDao } from '../hive-dao.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { HiveDao } from '../hive-dao.js';
+import { createSqliteHiveDao } from '../hive-dao.js';
+import { createTestDb } from './helpers.js';
 
 describe('HiveDao integration', () => {
   let db: Database;

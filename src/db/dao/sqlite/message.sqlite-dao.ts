@@ -1,21 +1,27 @@
 import type { Database } from 'sql.js';
 import { queryAll, queryOne, run } from '../../client.js';
-import type { MessageDao } from '../interfaces/message.dao.js';
 import type { MessageRow } from '../../queries/messages.js';
+import type { MessageDao } from '../interfaces/message.dao.js';
 
 export class SqliteMessageDao implements MessageDao {
   constructor(private readonly db: Database) {}
 
   async getUnreadMessages(toSession: string): Promise<MessageRow[]> {
-    return queryAll<MessageRow>(this.db, `
+    return queryAll<MessageRow>(
+      this.db,
+      `
       SELECT * FROM messages
       WHERE to_session = ? AND status = 'pending'
       ORDER BY created_at ASC
-    `, [toSession]);
+    `,
+      [toSession]
+    );
   }
 
   async markMessageRead(messageId: string): Promise<void> {
-    run(this.db, `UPDATE messages SET status = 'read' WHERE id = ? AND status = 'pending'`, [messageId]);
+    run(this.db, `UPDATE messages SET status = 'read' WHERE id = ? AND status = 'pending'`, [
+      messageId,
+    ]);
   }
 
   async getMessageById(id: string): Promise<MessageRow | undefined> {
@@ -23,10 +29,13 @@ export class SqliteMessageDao implements MessageDao {
   }
 
   async getAllPendingMessages(): Promise<MessageRow[]> {
-    return queryAll<MessageRow>(this.db, `
+    return queryAll<MessageRow>(
+      this.db,
+      `
       SELECT * FROM messages
       WHERE status = 'pending'
       ORDER BY created_at ASC
-    `);
+    `
+    );
   }
 }

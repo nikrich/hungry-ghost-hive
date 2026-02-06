@@ -49,10 +49,7 @@ const STATE_INDICATORS: StateIndicator[] = [
   // High priority: Active work states
   {
     state: ClaudeCodeState.THINKING,
-    patterns: [
-      /\(thinking\)/i,
-      /(?:^|\s)(?:Concocting|Twisting|Considering|Analyzing)(?:\s|$)/i,
-    ],
+    patterns: [/\(thinking\)/i, /(?:^|\s)(?:Concocting|Twisting|Considering|Analyzing)(?:\s|$)/i],
     priority: 100,
     confidence: 0.95, // High confidence - distinctive patterns
   },
@@ -68,10 +65,7 @@ const STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: ClaudeCodeState.PROCESSING,
-    patterns: [
-      /(?:^|\s)(?:Processing|Analyzing|Generating)(?:\s|\.\.\.)/i,
-      /Please wait/i,
-    ],
+    patterns: [/(?:^|\s)(?:Processing|Analyzing|Generating)(?:\s|\.\.\.)/i, /Please wait/i],
     priority: 90,
     confidence: 0.85, // Good confidence but less distinctive
   },
@@ -79,11 +73,7 @@ const STATE_INDICATORS: StateIndicator[] = [
   // High priority: Blocked states requiring human intervention
   {
     state: ClaudeCodeState.AWAITING_SELECTION,
-    patterns: [
-      /Enter to select.*↑\/↓/i,
-      /Use arrows to navigate/i,
-      /Select an option:/i,
-    ],
+    patterns: [/Enter to select.*↑\/↓/i, /Use arrows to navigate/i, /Select an option:/i],
     priority: 90,
     confidence: 0.95, // Very clear selection UI
   },
@@ -96,7 +86,7 @@ const STATE_INDICATORS: StateIndicator[] = [
       /(?:^|\n)Do you want to\b/i,
     ],
     priority: 85,
-    confidence: 0.80, // Medium confidence - questions can be contextual
+    confidence: 0.8, // Medium confidence - questions can be contextual
   },
   {
     state: ClaudeCodeState.PLAN_APPROVAL,
@@ -106,7 +96,7 @@ const STATE_INDICATORS: StateIndicator[] = [
       /plan (?:looks|ready)\b/i,
     ],
     priority: 90,
-    confidence: 0.90, // High confidence - plan mode is specific
+    confidence: 0.9, // High confidence - plan mode is specific
   },
   {
     state: ClaudeCodeState.PERMISSION_REQUIRED,
@@ -121,13 +111,9 @@ const STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: ClaudeCodeState.USER_DECLINED,
-    patterns: [
-      /(?:user |permission )?declined/i,
-      /permission denied/i,
-      /User chose not to/i,
-    ],
+    patterns: [/(?:user |permission )?declined/i, /permission denied/i, /User chose not to/i],
     priority: 85,
-    confidence: 0.90, // High confidence - explicit decline
+    confidence: 0.9, // High confidence - explicit decline
   },
 
   // Lower priority: Ready/idle states
@@ -202,7 +188,9 @@ export function detectClaudeCodeState(
 /**
  * Map a Claude Code state to waiting status flags
  */
-function mapStateToWaitingStatus(state: ClaudeCodeState): Omit<StateDetectionResult, 'confidence' | 'reason'> {
+function mapStateToWaitingStatus(
+  state: ClaudeCodeState
+): Omit<StateDetectionResult, 'confidence' | 'reason'> {
   switch (state) {
     // Active states - not waiting
     case ClaudeCodeState.THINKING:

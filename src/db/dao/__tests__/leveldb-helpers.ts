@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'fs/promises';
+import { Level } from 'level';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { Level } from 'level';
 
 export interface TestLevelDb {
   db: Level<string, unknown>;

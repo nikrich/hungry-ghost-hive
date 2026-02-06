@@ -1,11 +1,16 @@
 import type { Database } from 'sql.js';
-import { getStoryPointsByTeam } from '../db/queries/stories.js';
-import { getAgentsByTeam, getTechLead, terminateAgent, type AgentRow } from '../db/queries/agents.js';
-import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
-import { createLog } from '../db/queries/logs.js';
-import { withTransaction } from '../db/client.js';
-import { killTmuxSession } from '../tmux/manager.js';
 import type { ScalingConfig } from '../config/schema.js';
+import { withTransaction } from '../db/client.js';
+import {
+  getAgentsByTeam,
+  getTechLead,
+  terminateAgent,
+  type AgentRow,
+} from '../db/queries/agents.js';
+import { createLog } from '../db/queries/logs.js';
+import { getStoryPointsByTeam } from '../db/queries/stories.js';
+import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
+import { killTmuxSession } from '../tmux/manager.js';
 
 export interface ScalerConfig {
   scaling: ScalingConfig;
@@ -48,9 +53,7 @@ export class Scaler {
   private analyzeTeam(team: TeamRow): ScalingRecommendation {
     const storyPoints = getStoryPointsByTeam(this.db, team.id);
     const agents = getAgentsByTeam(this.db, team.id);
-    const activeSeniors = agents.filter(
-      a => a.type === 'senior' && a.status !== 'terminated'
-    );
+    const activeSeniors = agents.filter(a => a.type === 'senior' && a.status !== 'terminated');
 
     const seniorCapacity = this.config.scaling.senior_capacity;
     const recommendedSeniors = Math.max(1, Math.ceil(storyPoints / seniorCapacity));
@@ -94,10 +97,8 @@ export class Scaler {
       if (storyPoints > 0) continue;
 
       // Find idle agents (except the first Senior)
-      const idleAgents = agents.filter(a =>
-        a.status === 'idle' &&
-        a.type !== 'tech_lead' &&
-        !a.current_story_id
+      const idleAgents = agents.filter(
+        a => a.status === 'idle' && a.type !== 'tech_lead' && !a.current_story_id
       );
 
       // Keep at least one Senior
@@ -139,7 +140,10 @@ export class Scaler {
           eventType: 'WORKTREE_REMOVAL_FAILED',
           status: 'error',
           message: `Failed to remove worktree at ${this.config.rootDir}/${agent.worktree_path}: ${errorMessage}`,
-          metadata: { worktreePath: agent.worktree_path, fullWorktreePath: `${this.config.rootDir}/${agent.worktree_path}` },
+          metadata: {
+            worktreePath: agent.worktree_path,
+            fullWorktreePath: `${this.config.rootDir}/${agent.worktree_path}`,
+          },
         });
       }
     }

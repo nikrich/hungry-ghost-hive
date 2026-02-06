@@ -1,4 +1,4 @@
-# Hive: AI Agent Orchestrator Specification 
+# Hive: AI Agent Orchestrator Specification
 
 ## Overview
 
@@ -49,17 +49,17 @@ models:
     provider: anthropic
     model: claude-opus-4-20250514
     max_tokens: 16000
-  
+
   senior:
     provider: anthropic
     model: claude-sonnet-4-20250514
     max_tokens: 8000
-  
+
   intermediate:
     provider: anthropic
     model: claude-haiku-3-5-20241022
     max_tokens: 4000
-  
+
   junior:
     provider: openai
     model: gpt-4o-mini
@@ -90,7 +90,7 @@ hive-workspace/                    # Main orchestrator repo
 │       └── {agent-id}/
 │           └── {timestamp}.log
 ├── repos/                        # Git submodules
-│   ├── service-a/               
+│   ├── service-a/
 │   ├── service-b/
 │   └── service-c/
 └── README.md
@@ -141,13 +141,13 @@ CREATE TABLE stories (
     story_points INTEGER,
     status TEXT DEFAULT 'draft' CHECK (status IN (
         'draft',
-        'estimated', 
-        'planned', 
-        'in_progress', 
-        'review', 
-        'qa', 
+        'estimated',
+        'planned',
+        'in_progress',
+        'review',
+        'qa',
         'qa_failed',
-        'pr_submitted', 
+        'pr_submitted',
         'merged'
     )),
     assigned_agent_id TEXT REFERENCES agents(id),
@@ -365,7 +365,7 @@ TRIGGER: Planning complete, stories in 'planned' status
 
 1. Tech Lead assigns stories to Seniors based on team/repo ownership
 2. Senior receives story, evaluates complexity:
-   
+
    IF complexity_score <= 3:
        Delegate to Junior
    ELSE IF complexity_score <= 5:
@@ -400,12 +400,12 @@ TRIGGER: Story status = 'review'
    c. Logs: CODE_QUALITY_CHECK_PASSED or CODE_QUALITY_CHECK_FAILED
    d. Runs build
    e. Logs: BUILD_PASSED or BUILD_FAILED
-   
+
    IF any check fails:
        - Logs: STORY_QA_FAILED
        - Status → 'qa_failed'
        - Story returns to assigned developer
-   
+
    IF all checks pass:
        - Logs: STORY_QA_PASSED
        - Status → 'pr_submitted'
@@ -492,10 +492,7 @@ Each agent maintains a `memory_state` JSON blob in the agents table:
   "context": {
     "codebase_notes": "Uses Express.js, TypeScript, Jest for testing",
     "blockers": [],
-    "decisions_made": [
-      "Using RS256 for JWT signing",
-      "Token expiry set to 1 hour"
-    ]
+    "decisions_made": ["Using RS256 for JWT signing", "Token expiry set to 1 hour"]
   },
   "checkpoint_tokens": 12500
 }
@@ -545,6 +542,7 @@ graph TD
 ### Implementation
 
 Use one of:
+
 - `blessed` / `blessed-contrib` (Node.js)
 - `ink` (React for CLI)
 - `terminal-kit`
@@ -556,7 +554,7 @@ Use one of:
 ```yaml
 # hive.config.yaml
 
-version: "1.0"
+version: '1.0'
 
 # Model assignments per agent tier
 models:
@@ -565,25 +563,25 @@ models:
     model: claude-opus-4-20250514
     max_tokens: 16000
     temperature: 0.7
-  
+
   senior:
     provider: anthropic
     model: claude-sonnet-4-20250514
     max_tokens: 8000
     temperature: 0.5
-  
+
   intermediate:
     provider: anthropic
     model: claude-haiku-3-5-20241022
     max_tokens: 4000
     temperature: 0.3
-  
+
   junior:
     provider: openai
     model: gpt-4o-mini
     max_tokens: 4000
     temperature: 0.2
-  
+
   qa:
     provider: anthropic
     model: claude-sonnet-4-20250514
@@ -605,12 +603,12 @@ github:
   # PR template
   pr_template: |
     ## Story: {story_id}
-    
+
     {description}
-    
+
     ### Acceptance Criteria
     {acceptance_criteria}
-    
+
     ### Changes
     {changes}
 
@@ -729,6 +727,7 @@ src/
 You are the Tech Lead of Hive, an AI development team orchestrator. You coordinate multiple autonomous teams, each responsible for a specific service/repository.
 
 ## Your Responsibilities
+
 1. Receive requirements from the human (Head of Product)
 2. Analyze requirements and identify affected services/repos
 3. Coordinate with Seniors to gather domain-specific insights
@@ -738,12 +737,15 @@ You are the Tech Lead of Hive, an AI development team orchestrator. You coordina
 7. Ensure consistent progress across all teams
 
 ## Current State
+
 {current_state_from_sqlite}
 
 ## Teams Under Your Coordination
+
 {teams_list}
 
 ## Guidelines
+
 - Break down requirements into atomic, testable stories
 - Identify dependencies between stories across repos
 - Ensure each story has clear acceptance criteria
@@ -751,6 +753,7 @@ You are the Tech Lead of Hive, an AI development team orchestrator. You coordina
 - Escalate to human only for: ambiguous requirements, architectural decisions, security concerns
 
 ## Communication
+
 Update your progress by calling the `log_event` function with appropriate event types.
 When waiting for Seniors, poll the database state or wait for hook signals.
 ```
@@ -761,6 +764,7 @@ When waiting for Seniors, poll the database state or wait for hook signals.
 You are a Senior Developer on Team {team_name}, responsible for the {repo_name} service.
 
 ## Your Responsibilities
+
 1. Conduct codebase analysis when requested by Tech Lead
 2. Estimate story complexity and points
 3. Delegate work to Intermediates and Juniors based on complexity
@@ -769,19 +773,23 @@ You are a Senior Developer on Team {team_name}, responsible for the {repo_name} 
 6. Escalate blockers to Tech Lead
 
 ## Your Codebase
+
 Repository: {repo_path}
 Tech Stack: {detected_stack}
 Key Directories: {key_directories}
 
 ## Complexity Guidelines
+
 - 1-3 points: Simple changes, delegate to Junior
 - 4-5 points: Moderate changes, delegate to Intermediate
 - 6-13 points: Complex changes, handle yourself or pair with Intermediate
 
 ## Current Assignment
+
 {current_story_details}
 
 ## Guidelines
+
 - Always create a feature branch before starting work
 - Write clean, tested code following existing patterns
 - Update SQLite state with progress frequently
@@ -794,12 +802,14 @@ Key Directories: {key_directories}
 You are the QA Agent for Team {team_name}. You ensure code quality before PR submission.
 
 ## Your Responsibilities
+
 1. Run code quality checks (linting, type checking)
 2. Execute the build process
 3. Verify the code meets acceptance criteria
 4. Approve or reject with clear feedback
 
 ## Quality Checklist
+
 - [ ] Code passes linting: `{lint_command}`
 - [ ] Code passes type check: `{type_check_command}`
 - [ ] Build succeeds: `{build_command}`
@@ -808,11 +818,13 @@ You are the QA Agent for Team {team_name}. You ensure code quality before PR sub
 - [ ] Code follows repository patterns
 
 ## On Failure
+
 - Mark story as 'qa_failed'
 - Log specific failures with actionable feedback
 - Story returns to developer for fixes
 
 ## On Success
+
 - Mark story as ready for PR
 - Prepare PR description with changes summary
 ```
@@ -871,16 +883,16 @@ You are the QA Agent for Team {team_name}. You ensure code quality before PR sub
 
 ## Glossary
 
-| Term | Definition |
-|------|------------|
-| **Hive** | The orchestrator system |
-| **Requirement** | High-level feature request from human |
-| **Story** | Atomic unit of work with acceptance criteria |
-| **Agent** | AI instance performing a role |
-| **Team** | Group of agents assigned to a repository |
-| **Escalation** | Issue requiring higher-level intervention |
-| **Checkpoint** | Saved agent state for continuity |
-| **Hook** | Signal mechanism for agent coordination |
+| Term            | Definition                                   |
+| --------------- | -------------------------------------------- |
+| **Hive**        | The orchestrator system                      |
+| **Requirement** | High-level feature request from human        |
+| **Story**       | Atomic unit of work with acceptance criteria |
+| **Agent**       | AI instance performing a role                |
+| **Team**        | Group of agents assigned to a repository     |
+| **Escalation**  | Issue requiring higher-level intervention    |
+| **Checkpoint**  | Saved agent state for continuity             |
+| **Hook**        | Signal mechanism for agent coordination      |
 
 ---
 

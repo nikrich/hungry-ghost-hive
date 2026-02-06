@@ -5,13 +5,12 @@
  * that provide Hive workflow context to AI agents.
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
-import { mkdirSync } from 'fs';
-import { generateContextFileContent } from './generator.js';
-import type { TeamRow } from '../db/queries/teams.js';
-import type { StoryRow } from '../db/queries/stories.js';
 import type { HiveConfig } from '../config/schema.js';
+import type { StoryRow } from '../db/queries/stories.js';
+import type { TeamRow } from '../db/queries/teams.js';
+import { generateContextFileContent } from './generator.js';
 
 export type CLITool = 'claude-code' | 'codex' | 'gemini';
 

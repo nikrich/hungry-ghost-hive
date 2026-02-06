@@ -1,8 +1,8 @@
-import { BaseAgent, type AgentContext } from './base-agent.js';
-import { getTeamById, type TeamRow } from '../db/queries/teams.js';
-import { updateStory, getStoryById, type StoryRow } from '../db/queries/stories.js';
 import { getAgentsByTeam } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
+import { getStoryById, updateStory, type StoryRow } from '../db/queries/stories.js';
+import { getTeamById, type TeamRow } from '../db/queries/teams.js';
+import { BaseAgent, type AgentContext } from './base-agent.js';
 
 export interface JuniorContext extends AgentContext {
   storyId?: string;
@@ -82,11 +82,17 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       this.retryCount++;
       // Juniors escalate after just 1 retry
       if (this.retryCount >= 1) {
-        await this.escalateToSenior(`Encountered error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        await this.escalateToSenior(
+          `Encountered error: ${err instanceof Error ? err.message : 'Unknown error'}`
+        );
       } else {
-        this.log('STORY_PROGRESS_UPDATE', `Error: ${err instanceof Error ? err.message : 'Unknown error'}`, {
-          storyId: this.story.id,
-        });
+        this.log(
+          'STORY_PROGRESS_UPDATE',
+          `Error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          {
+            storyId: this.story.id,
+          }
+        );
         await this.execute();
       }
     }
@@ -95,8 +101,12 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
   private async implementStory(): Promise<void> {
     if (!this.story) return;
 
-    const branchName = this.story.branch_name ||
-      `feature/${this.story.id.toLowerCase()}-${this.story.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 30)}`;
+    const branchName =
+      this.story.branch_name ||
+      `feature/${this.story.id.toLowerCase()}-${this.story.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .substring(0, 30)}`;
 
     if (!this.story.branch_name) {
       updateStory(this.db, this.story.id, { branchName });
@@ -145,8 +155,9 @@ Please help me identify which files I need to read and modify.`;
   }
 
   private async escalateToSenior(reason: string): Promise<void> {
-    const seniors = getAgentsByTeam(this.db, this.teamId!)
-      .filter(a => a.type === 'senior' && a.status !== 'terminated');
+    const seniors = getAgentsByTeam(this.db, this.teamId!).filter(
+      a => a.type === 'senior' && a.status !== 'terminated'
+    );
 
     const seniorId = seniors[0]?.id;
 

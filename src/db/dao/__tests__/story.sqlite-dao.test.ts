@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDb } from './helpers.js';
-import { SqliteStoryDao } from '../sqlite/story.sqlite-dao.js';
-import { SqliteTeamDao } from '../sqlite/team.sqlite-dao.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SqliteAgentDao } from '../sqlite/agent.sqlite-dao.js';
 import { SqliteRequirementDao } from '../sqlite/requirement.sqlite-dao.js';
+import { SqliteStoryDao } from '../sqlite/story.sqlite-dao.js';
+import { SqliteTeamDao } from '../sqlite/team.sqlite-dao.js';
+import { createTestDb } from './helpers.js';
 
 describe('SqliteStoryDao', () => {
   let db: Database;

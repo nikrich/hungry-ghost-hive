@@ -1,11 +1,17 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
-import { Scheduler } from './scheduler.js';
-import { createStory, addStoryDependency, updateStory, getStoryById } from '../db/queries/stories.js';
-import { createTeam } from '../db/queries/teams.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { getLogsByEventType } from '../db/queries/logs.js';
 import type { StoryRow } from '../db/queries/stories.js';
+import {
+  addStoryDependency,
+  createStory,
+  getStoryById,
+  updateStory,
+} from '../db/queries/stories.js';
+import { createTeam } from '../db/queries/teams.js';
+import { Scheduler } from './scheduler.js';
 
 let db: Database;
 let scheduler: Scheduler;
@@ -17,11 +23,41 @@ const mockConfig = {
     senior_capacity: 50,
   },
   models: {
-    tech_lead: { provider: 'anthropic', model: 'claude-opus-4-20250514', max_tokens: 16000, temperature: 0.7, cli_tool: 'claude' },
-    senior: { provider: 'anthropic', model: 'claude-sonnet-4-20250514', max_tokens: 8000, temperature: 0.5, cli_tool: 'claude' },
-    intermediate: { provider: 'anthropic', model: 'claude-haiku-3-5-20241022', max_tokens: 4000, temperature: 0.3, cli_tool: 'claude' },
-    junior: { provider: 'openai', model: 'gpt-4o-mini', max_tokens: 4000, temperature: 0.2, cli_tool: 'claude' },
-    qa: { provider: 'anthropic', model: 'claude-sonnet-4-20250514', max_tokens: 8000, temperature: 0.2, cli_tool: 'claude' },
+    tech_lead: {
+      provider: 'anthropic',
+      model: 'claude-opus-4-20250514',
+      max_tokens: 16000,
+      temperature: 0.7,
+      cli_tool: 'claude',
+    },
+    senior: {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      temperature: 0.5,
+      cli_tool: 'claude',
+    },
+    intermediate: {
+      provider: 'anthropic',
+      model: 'claude-haiku-3-5-20241022',
+      max_tokens: 4000,
+      temperature: 0.3,
+      cli_tool: 'claude',
+    },
+    junior: {
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      max_tokens: 4000,
+      temperature: 0.2,
+      cli_tool: 'claude',
+    },
+    qa: {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      temperature: 0.2,
+      cli_tool: 'claude',
+    },
   },
   rootDir: '/tmp',
 };
@@ -112,7 +148,11 @@ beforeEach(async () => {
 
 describe('Scheduler Topological Sort', () => {
   it('should handle stories with no dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const story1 = createStory(db, { teamId: team.id, title: 'Story 1', description: 'Test' });
     const story2 = createStory(db, { teamId: team.id, title: 'Story 2', description: 'Test' });
 
@@ -125,7 +165,11 @@ describe('Scheduler Topological Sort', () => {
   });
 
   it('should respect linear dependencies (A -> B -> C)', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
     const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
     const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
@@ -146,7 +190,11 @@ describe('Scheduler Topological Sort', () => {
   });
 
   it('should respect diamond dependencies (A -> B, A -> C, B -> D, C -> D)', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
     const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
     const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
@@ -177,7 +225,11 @@ describe('Scheduler Topological Sort', () => {
   });
 
   it('should detect circular dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
     const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
 
@@ -194,9 +246,17 @@ describe('Scheduler Topological Sort', () => {
 
 describe('Scheduler Dependency Satisfaction', () => {
   it('should consider merged stories as satisfying dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const depStory = createStory(db, { teamId: team.id, title: 'Dependency', description: 'Test' });
-    const mainStory = createStory(db, { teamId: team.id, title: 'Main Story', description: 'Test' });
+    const mainStory = createStory(db, {
+      teamId: team.id,
+      title: 'Main Story',
+      description: 'Test',
+    });
 
     addStoryDependency(db, mainStory.id, depStory.id);
 
@@ -211,9 +271,17 @@ describe('Scheduler Dependency Satisfaction', () => {
   });
 
   it('should consider in-progress stories as satisfying dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const depStory = createStory(db, { teamId: team.id, title: 'Dependency', description: 'Test' });
-    const mainStory = createStory(db, { teamId: team.id, title: 'Main Story', description: 'Test' });
+    const mainStory = createStory(db, {
+      teamId: team.id,
+      title: 'Main Story',
+      description: 'Test',
+    });
 
     addStoryDependency(db, mainStory.id, depStory.id);
 
@@ -224,9 +292,17 @@ describe('Scheduler Dependency Satisfaction', () => {
   });
 
   it('should not consider planned stories as satisfying dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const depStory = createStory(db, { teamId: team.id, title: 'Dependency', description: 'Test' });
-    const mainStory = createStory(db, { teamId: team.id, title: 'Main Story', description: 'Test' });
+    const mainStory = createStory(db, {
+      teamId: team.id,
+      title: 'Main Story',
+      description: 'Test',
+    });
 
     addStoryDependency(db, mainStory.id, depStory.id);
 
@@ -238,10 +314,18 @@ describe('Scheduler Dependency Satisfaction', () => {
   });
 
   it('should handle multiple dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const dep1 = createStory(db, { teamId: team.id, title: 'Dep 1', description: 'Test' });
     const dep2 = createStory(db, { teamId: team.id, title: 'Dep 2', description: 'Test' });
-    const mainStory = createStory(db, { teamId: team.id, title: 'Main Story', description: 'Test' });
+    const mainStory = createStory(db, {
+      teamId: team.id,
+      title: 'Main Story',
+      description: 'Test',
+    });
 
     addStoryDependency(db, mainStory.id, dep1.id);
     addStoryDependency(db, mainStory.id, dep2.id);
@@ -260,7 +344,11 @@ describe('Scheduler Dependency Satisfaction', () => {
 
 describe('Scheduler Build Dependency Graph', () => {
   it('should correctly build a dependency graph', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
     const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
     const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
@@ -281,7 +369,11 @@ describe('Scheduler Build Dependency Graph', () => {
   });
 
   it('should include only stories in the input list', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
     const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
     const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
@@ -339,7 +431,11 @@ describe('Scheduler Worktree Removal', () => {
 describe('Scheduler Orphaned Story Recovery', () => {
   it('should recover orphaned stories assigned to terminated agents', async () => {
     // Setup: Create team, agents, and a story
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
     // Create a terminated agent in the database
     const terminatedAgentId = 'agent-terminated-1';
@@ -350,10 +446,14 @@ describe('Scheduler Orphaned Story Recovery', () => {
     );
 
     // Create a story assigned to the terminated agent
-    const story = createStory(db, { teamId: team.id, title: 'Orphaned Story', description: 'Test' });
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Orphaned Story',
+      description: 'Test',
+    });
     updateStory(db, story.id, {
       assignedAgentId: terminatedAgentId,
-      status: 'in_progress'
+      status: 'in_progress',
     });
 
     // Get the recovery method
@@ -375,7 +475,11 @@ describe('Scheduler Orphaned Story Recovery', () => {
   });
 
   it('should not affect stories assigned to active agents', async () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
     // Create an active (non-terminated) agent
     const activeAgentId = 'agent-active-1';
@@ -389,7 +493,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     const story = createStory(db, { teamId: team.id, title: 'Active Story', description: 'Test' });
     updateStory(db, story.id, {
       assignedAgentId: activeAgentId,
-      status: 'in_progress'
+      status: 'in_progress',
     });
 
     // Get the recovery method
@@ -410,7 +514,11 @@ describe('Scheduler Orphaned Story Recovery', () => {
   });
 
   it('should recover multiple orphaned stories', async () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
     // Create a terminated agent
     const terminatedAgentId = 'agent-terminated-2';
@@ -421,16 +529,24 @@ describe('Scheduler Orphaned Story Recovery', () => {
     );
 
     // Create multiple stories assigned to the terminated agent
-    const story1 = createStory(db, { teamId: team.id, title: 'Orphaned Story 1', description: 'Test' });
-    const story2 = createStory(db, { teamId: team.id, title: 'Orphaned Story 2', description: 'Test' });
+    const story1 = createStory(db, {
+      teamId: team.id,
+      title: 'Orphaned Story 1',
+      description: 'Test',
+    });
+    const story2 = createStory(db, {
+      teamId: team.id,
+      title: 'Orphaned Story 2',
+      description: 'Test',
+    });
 
     updateStory(db, story1.id, {
       assignedAgentId: terminatedAgentId,
-      status: 'in_progress'
+      status: 'in_progress',
     });
     updateStory(db, story2.id, {
       assignedAgentId: terminatedAgentId,
-      status: 'review'
+      status: 'review',
     });
 
     // Get the recovery method
@@ -460,15 +576,31 @@ describe('Scheduler Refactor Capacity Policy', () => {
   }
 
   it('should enforce refactor budget based on feature workload', () => {
-    const team = createTeam(db, { name: 'Refactor Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Refactor Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
-    const feature = createStory(db, { teamId: team.id, title: 'Add endpoint', description: 'Feature story' });
+    const feature = createStory(db, {
+      teamId: team.id,
+      title: 'Add endpoint',
+      description: 'Feature story',
+    });
     updateStory(db, feature.id, { status: 'planned', storyPoints: 10, complexityScore: 10 });
 
-    const refactorA = createStory(db, { teamId: team.id, title: 'Refactor: clean parser', description: 'Refactor A' });
+    const refactorA = createStory(db, {
+      teamId: team.id,
+      title: 'Refactor: clean parser',
+      description: 'Refactor A',
+    });
     updateStory(db, refactorA.id, { status: 'planned', storyPoints: 1, complexityScore: 1 });
 
-    const refactorB = createStory(db, { teamId: team.id, title: 'Refactor: simplify auth flow', description: 'Refactor B' });
+    const refactorB = createStory(db, {
+      teamId: team.id,
+      title: 'Refactor: simplify auth flow',
+      description: 'Refactor B',
+    });
     updateStory(db, refactorB.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
 
     const localScheduler = createSchedulerWithRefactorConfig({
@@ -490,8 +622,16 @@ describe('Scheduler Refactor Capacity Policy', () => {
   });
 
   it('should allow refactor-only queues when policy permits', () => {
-    const team = createTeam(db, { name: 'Maintenance Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
-    const refactor = createStory(db, { teamId: team.id, title: 'Refactor: remove dead code', description: 'Maintenance' });
+    const team = createTeam(db, {
+      name: 'Maintenance Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+    const refactor = createStory(db, {
+      teamId: team.id,
+      title: 'Refactor: remove dead code',
+      description: 'Maintenance',
+    });
     updateStory(db, refactor.id, { status: 'planned', storyPoints: 3, complexityScore: 3 });
 
     const localScheduler = createSchedulerWithRefactorConfig({
@@ -501,15 +641,25 @@ describe('Scheduler Refactor Capacity Policy', () => {
     });
 
     const selectMethod = (localScheduler as any).selectStoriesForCapacity;
-    const selected = selectMethod.call(localScheduler, [getStoryById(db, refactor.id)!]) as StoryRow[];
+    const selected = selectMethod.call(localScheduler, [
+      getStoryById(db, refactor.id)!,
+    ]) as StoryRow[];
 
     expect(selected).toHaveLength(1);
     expect(selected[0].id).toBe(refactor.id);
   });
 
   it('should block refactor-only queues when policy disallows it', () => {
-    const team = createTeam(db, { name: 'Strict Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
-    const refactor = createStory(db, { teamId: team.id, title: 'Refactor: rename internals', description: 'Maintenance' });
+    const team = createTeam(db, {
+      name: 'Strict Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+    const refactor = createStory(db, {
+      teamId: team.id,
+      title: 'Refactor: rename internals',
+      description: 'Maintenance',
+    });
     updateStory(db, refactor.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
 
     const localScheduler = createSchedulerWithRefactorConfig({
@@ -519,7 +669,9 @@ describe('Scheduler Refactor Capacity Policy', () => {
     });
 
     const selectMethod = (localScheduler as any).selectStoriesForCapacity;
-    const selected = selectMethod.call(localScheduler, [getStoryById(db, refactor.id)!]) as StoryRow[];
+    const selected = selectMethod.call(localScheduler, [
+      getStoryById(db, refactor.id)!,
+    ]) as StoryRow[];
 
     expect(selected).toHaveLength(0);
   });
@@ -528,7 +680,11 @@ describe('Scheduler Refactor Capacity Policy', () => {
 describe('Scheduler Refactor Policy Test Matrix', () => {
   let storyCounter = 0;
 
-  function mkStory(title: string, storyPoints: number | null = null, complexity: number | null = null): StoryRow {
+  function mkStory(
+    title: string,
+    storyPoints: number | null = null,
+    complexity: number | null = null
+  ): StoryRow {
     storyCounter++;
     return {
       id: `STORY-MATRIX-${storyCounter}`,
@@ -581,7 +737,7 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     '  Refactor : simplify parser',
     '\tRefactor: simplify parser',
     'Refactor:',
-  ])('should detect refactor story title: %s', (title) => {
+  ])('should detect refactor story title: %s', title => {
     const localScheduler = mkSchedulerWithRefactor();
     const isRefactor = (localScheduler as any).isRefactorStory.bind(localScheduler);
     expect(isRefactor(mkStory(title))).toBe(true);
@@ -593,7 +749,7 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     'Feature Refactor : simplify parser',
     'Maintenance task',
     '',
-  ])('should not detect non-refactor story title: %s', (title) => {
+  ])('should not detect non-refactor story title: %s', title => {
     const localScheduler = mkSchedulerWithRefactor();
     const isRefactor = (localScheduler as any).isRefactorStory.bind(localScheduler);
     expect(isRefactor(mkStory(title))).toBe(false);
@@ -717,7 +873,13 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     const refactorA = mkStory('Refactor: A', 1, 1);
     const refactorB = mkStory('Refactor: B', 1, 1);
     const refactorC = mkStory('Refactor: C', 1, 1);
-    const selected = selectStories([featureA, featureB, refactorA, refactorB, refactorC]) as StoryRow[];
+    const selected = selectStories([
+      featureA,
+      featureB,
+      refactorA,
+      refactorB,
+      refactorC,
+    ]) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([featureA.id, featureB.id, refactorA.id, refactorB.id]);
   });

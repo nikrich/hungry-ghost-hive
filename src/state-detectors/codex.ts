@@ -22,11 +22,7 @@ const CODEX_STATE_INDICATORS: StateIndicator[] = [
   // High priority: Active work states
   {
     state: AgentState.THINKING,
-    patterns: [
-      /thinking\.\.\./i,
-      /analyzing|considering/i,
-      /generating response/i,
-    ],
+    patterns: [/thinking\.\.\./i, /analyzing|considering/i, /generating response/i],
     priority: 100,
   },
   {
@@ -41,11 +37,7 @@ const CODEX_STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: AgentState.PROCESSING,
-    patterns: [
-      /processing/i,
-      /loading/i,
-      /working/i,
-    ],
+    patterns: [/processing/i, /loading/i, /working/i],
     priority: 90,
   },
 
@@ -71,34 +63,19 @@ const CODEX_STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: AgentState.PERMISSION_REQUIRED,
-    patterns: [
-      /permission required/i,
-      /authorization needed/i,
-      /\[y\/n\]/i,
-      /approve/i,
-    ],
+    patterns: [/permission required/i, /authorization needed/i, /\[y\/n\]/i, /approve/i],
     priority: 90,
   },
   {
     state: AgentState.USER_DECLINED,
-    patterns: [
-      /declined/i,
-      /denied/i,
-      /cancelled/i,
-      /aborted/i,
-    ],
+    patterns: [/declined/i, /denied/i, /cancelled/i, /aborted/i],
     priority: 85,
   },
 
   // Lower priority: Ready/idle states
   {
     state: AgentState.WORK_COMPLETE,
-    patterns: [
-      /done/i,
-      /completed/i,
-      /finished/i,
-      /success/i,
-    ],
+    patterns: [/done/i, /completed/i, /finished/i, /success/i],
     priority: 50,
   },
   {
@@ -183,11 +160,7 @@ export class CodexStateDetector implements StateDetector {
    * Check if a state represents active work (not waiting)
    */
   isActiveState(state: AgentState): boolean {
-    return [
-      AgentState.THINKING,
-      AgentState.TOOL_RUNNING,
-      AgentState.PROCESSING,
-    ].includes(state);
+    return [AgentState.THINKING, AgentState.TOOL_RUNNING, AgentState.PROCESSING].includes(state);
   }
 
   /**
@@ -206,7 +179,9 @@ export class CodexStateDetector implements StateDetector {
   /**
    * Map a state to waiting status flags
    */
-  private mapStateToWaitingStatus(state: AgentState): Omit<StateDetectionResult, 'confidence' | 'reason'> {
+  private mapStateToWaitingStatus(
+    state: AgentState
+  ): Omit<StateDetectionResult, 'confidence' | 'reason'> {
     switch (state) {
       // Active states - not waiting
       case AgentState.THINKING:

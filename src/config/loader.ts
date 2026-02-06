@@ -1,7 +1,7 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { parse, stringify } from 'yaml';
-import { HiveConfigSchema, type HiveConfig, generateDefaultConfigYaml } from './schema.js';
+import { generateDefaultConfigYaml, HiveConfigSchema, type HiveConfig } from './schema.js';
 
 export class ConfigError extends Error {
   constructor(message: string) {

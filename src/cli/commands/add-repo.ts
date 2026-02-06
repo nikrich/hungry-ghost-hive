@@ -1,12 +1,12 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
-import ora from 'ora';
+import { Command } from 'commander';
 import { execa } from 'execa';
-import { join } from 'path';
 import { existsSync } from 'fs';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import ora from 'ora';
+import { join } from 'path';
 import { getDatabase } from '../../db/client.js';
 import { createTeam, getTeamByName } from '../../db/queries/teams.js';
+import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 
 export const addRepoCommand = new Command('add-repo')
   .description('Add a repository as a git submodule with team assignment')
@@ -48,9 +48,13 @@ export const addRepoCommand = new Command('add-repo')
       // Add git submodule
       spinner.text = 'Adding git submodule...';
       try {
-        await execa('git', ['submodule', 'add', '-b', options.branch, options.url, relativeRepoPath], {
-          cwd: root,
-        });
+        await execa(
+          'git',
+          ['submodule', 'add', '-b', options.branch, options.url, relativeRepoPath],
+          {
+            cwd: root,
+          }
+        );
       } catch (gitErr: unknown) {
         // If submodule already exists, try to init/update instead
         const error = gitErr as { stderr?: string };

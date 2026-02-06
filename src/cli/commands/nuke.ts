@@ -1,10 +1,9 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
+import { Command } from 'commander';
 import readline from 'readline';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
-import { getDatabase } from '../../db/client.js';
-import { queryOne, run } from '../../db/client.js';
+import { getDatabase, queryOne, run } from '../../db/client.js';
 import { killAllHiveSessions } from '../../tmux/manager.js';
+import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 
 async function confirm(message: string): Promise<boolean> {
   const rl = readline.createInterface({
@@ -12,8 +11,8 @@ async function confirm(message: string): Promise<boolean> {
     output: process.stdout,
   });
 
-  return new Promise((resolve) => {
-    rl.question(`${message} (yes/no): `, (answer) => {
+  return new Promise(resolve => {
+    rl.question(`${message} (yes/no): `, answer => {
       rl.close();
       resolve(answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y');
     });
@@ -46,11 +45,15 @@ export const nukeCommand = new Command('nuke')
             return;
           }
 
-          console.log(chalk.yellow(`\nThis will delete ${storyCount} stories and their dependencies.`));
+          console.log(
+            chalk.yellow(`\nThis will delete ${storyCount} stories and their dependencies.`)
+          );
           console.log(chalk.red('This action cannot be undone.\n'));
 
           if (!options.force) {
-            const confirmed = await confirm(chalk.bold('Are you sure you want to delete all stories?'));
+            const confirmed = await confirm(
+              chalk.bold('Are you sure you want to delete all stories?')
+            );
             if (!confirmed) {
               console.log(chalk.gray('Aborted.'));
               return;
@@ -88,11 +91,15 @@ export const nukeCommand = new Command('nuke')
           const count = queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM agents');
           const agentCount = count?.count || 0;
 
-          console.log(chalk.yellow(`\nThis will kill all hive tmux sessions and delete ${agentCount} agents.`));
+          console.log(
+            chalk.yellow(`\nThis will kill all hive tmux sessions and delete ${agentCount} agents.`)
+          );
           console.log(chalk.red('This action cannot be undone.\n'));
 
           if (!options.force) {
-            const confirmed = await confirm(chalk.bold('Are you sure you want to kill all agents?'));
+            const confirmed = await confirm(
+              chalk.bold('Are you sure you want to kill all agents?')
+            );
             if (!confirmed) {
               console.log(chalk.gray('Aborted.'));
               return;
@@ -132,7 +139,10 @@ export const nukeCommand = new Command('nuke')
         const db = await getDatabase(paths.hiveDir);
 
         try {
-          const count = queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM requirements');
+          const count = queryOne<{ count: number }>(
+            db.db,
+            'SELECT COUNT(*) as count FROM requirements'
+          );
           const reqCount = count?.count || 0;
 
           if (reqCount === 0) {
@@ -140,13 +150,20 @@ export const nukeCommand = new Command('nuke')
             return;
           }
 
-          const storyCount = queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM stories')?.count || 0;
+          const storyCount =
+            queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM stories')?.count || 0;
 
-          console.log(chalk.yellow(`\nThis will delete ${reqCount} requirements and ${storyCount} related stories.`));
+          console.log(
+            chalk.yellow(
+              `\nThis will delete ${reqCount} requirements and ${storyCount} related stories.`
+            )
+          );
           console.log(chalk.red('This action cannot be undone.\n'));
 
           if (!options.force) {
-            const confirmed = await confirm(chalk.bold('Are you sure you want to delete all requirements?'));
+            const confirmed = await confirm(
+              chalk.bold('Are you sure you want to delete all requirements?')
+            );
             if (!confirmed) {
               console.log(chalk.gray('Aborted.'));
               return;
@@ -192,7 +209,9 @@ export const nukeCommand = new Command('nuke')
           console.log(chalk.red('\nThis action cannot be undone.\n'));
 
           if (!options.force) {
-            const confirmed = await confirm(chalk.bold('Are you sure you want to nuke EVERYTHING?'));
+            const confirmed = await confirm(
+              chalk.bold('Are you sure you want to nuke EVERYTHING?')
+            );
             if (!confirmed) {
               console.log(chalk.gray('Aborted.'));
               return;

@@ -1,7 +1,11 @@
-import type { RequirementRow } from '../../queries/requirements.js';
-import type { CreateRequirementInput, UpdateRequirementInput, RequirementStatus } from '../../queries/requirements.js';
+import type {
+  CreateRequirementInput,
+  RequirementRow,
+  RequirementStatus,
+  UpdateRequirementInput,
+} from '../../queries/requirements.js';
 
-export type { RequirementRow, CreateRequirementInput, UpdateRequirementInput, RequirementStatus };
+export type { CreateRequirementInput, RequirementRow, RequirementStatus, UpdateRequirementInput };
 
 export interface RequirementDao {
   createRequirement(input: CreateRequirementInput): Promise<RequirementRow>;

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as branches from './branches.js';
 
 // Mock execa
@@ -138,7 +138,9 @@ feature/test|def5678|
     });
 
     it('should throw error if branch already exists', async () => {
-      mockedExeca.mockRejectedValueOnce(new Error('fatal: A branch named feature/new-feature already exists'));
+      mockedExeca.mockRejectedValueOnce(
+        new Error('fatal: A branch named feature/new-feature already exists')
+      );
 
       await expect(branches.createBranch(workDir, branchName)).rejects.toThrow();
     });
@@ -175,7 +177,9 @@ feature/test|def5678|
     });
 
     it('should throw error if branch does not exist', async () => {
-      mockedExeca.mockRejectedValueOnce(new Error('error: pathspec \'nonexistent\' did not match any file(s) known to git'));
+      mockedExeca.mockRejectedValueOnce(
+        new Error("error: pathspec 'nonexistent' did not match any file(s) known to git")
+      );
 
       await expect(branches.checkoutBranch(workDir, 'nonexistent')).rejects.toThrow();
     });
@@ -212,7 +216,9 @@ feature/test|def5678|
     });
 
     it('should throw error if branch is not fully merged', async () => {
-      mockedExeca.mockRejectedValueOnce(new Error('error: The branch feature/old is not fully merged'));
+      mockedExeca.mockRejectedValueOnce(
+        new Error('error: The branch feature/old is not fully merged')
+      );
 
       await expect(branches.deleteBranch(workDir, branchName)).rejects.toThrow();
     });
@@ -301,7 +307,8 @@ feature/test|def5678|
 
     it('should push branch with upstream set', async () => {
       mockedExeca.mockResolvedValueOnce({
-        stdout: 'To github.com:test/repo.git\n * [new branch]      feature/test -> feature/test\nBranch feature/test set up to track remote branch feature/test from origin.',
+        stdout:
+          'To github.com:test/repo.git\n * [new branch]      feature/test -> feature/test\nBranch feature/test set up to track remote branch feature/test from origin.',
         stderr: '',
       } as any);
 
@@ -328,7 +335,9 @@ feature/test|def5678|
     });
 
     it('should throw error if push fails', async () => {
-      mockedExeca.mockRejectedValueOnce(new Error('fatal: The current branch feature/test has no upstream branch'));
+      mockedExeca.mockRejectedValueOnce(
+        new Error('fatal: The current branch feature/test has no upstream branch')
+      );
 
       await expect(branches.pushBranch(workDir, branchName)).rejects.toThrow();
     });
@@ -352,7 +361,8 @@ feature/test|def5678|
     });
 
     it('should truncate long descriptions to 30 chars', async () => {
-      const longDescription = 'This is a very long description that should be truncated to maintain reasonable branch name length';
+      const longDescription =
+        'This is a very long description that should be truncated to maintain reasonable branch name length';
       mockedExeca
         .mockResolvedValueOnce({ stdout: 'Switched to branch main', stderr: '' } as any)
         .mockRejectedValueOnce(new Error('no upstream'))
@@ -420,7 +430,9 @@ feature/test|def5678|
     });
 
     it('should throw error if merge has conflicts', async () => {
-      mockedExeca.mockRejectedValueOnce(new Error('CONFLICT (content): Merge conflict in file.txt'));
+      mockedExeca.mockRejectedValueOnce(
+        new Error('CONFLICT (content): Merge conflict in file.txt')
+      );
 
       await expect(branches.mergeBranch(workDir, branchName)).rejects.toThrow();
     });

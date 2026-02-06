@@ -1,5 +1,5 @@
-import type { Database } from 'sql.js';
 import blessed, { type Widgets } from 'blessed';
+import type { Database } from 'sql.js';
 import { queryAll, type StoryRow } from '../../../db/client.js';
 
 export function createStoriesPanel(screen: Widgets.Screen, db: Database): Widgets.ListTableElement {
@@ -28,8 +28,13 @@ export function createStoriesPanel(screen: Widgets.Screen, db: Database): Widget
   return table;
 }
 
-export async function updateStoriesPanel(table: Widgets.ListTableElement, db: Database): Promise<void> {
-  const stories = queryAll<StoryRow>(db, `
+export async function updateStoriesPanel(
+  table: Widgets.ListTableElement,
+  db: Database
+): Promise<void> {
+  const stories = queryAll<StoryRow>(
+    db,
+    `
     SELECT * FROM stories
     ORDER BY
       CASE status
@@ -43,7 +48,8 @@ export async function updateStoriesPanel(table: Widgets.ListTableElement, db: Da
       END,
       created_at DESC
     LIMIT 20
-  `);
+  `
+  );
 
   const headers = ['ID', 'Title', 'Status', 'Complexity', 'Assigned To'];
 

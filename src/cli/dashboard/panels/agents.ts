@@ -1,13 +1,18 @@
-import type { Database } from 'sql.js';
 import blessed, { type Widgets } from 'blessed';
-import { appendFileSync } from 'fs';
 import { spawnSync } from 'child_process';
-import { getActiveAgents, getAllAgents, updateAgent, type AgentRow } from '../../../db/queries/agents.js';
+import { appendFileSync } from 'fs';
+import type { Database } from 'sql.js';
+import { loadConfig } from '../../../config/loader.js';
+import type { ModelsConfig } from '../../../config/schema.js';
+import {
+  getActiveAgents,
+  getAllAgents,
+  updateAgent,
+  type AgentRow,
+} from '../../../db/queries/agents.js';
 import { getTeamById } from '../../../db/queries/teams.js';
 import { getHiveSessions } from '../../../tmux/manager.js';
-import { loadConfig } from '../../../config/loader.js';
 import { findHiveRoot, getHivePaths } from '../../../utils/paths.js';
-import type { ModelsConfig } from '../../../config/schema.js';
 
 function debugLog(msg: string) {
   appendFileSync('/tmp/hive-dashboard-debug.log', `${new Date().toISOString()} ${msg}\n`);
@@ -17,7 +22,6 @@ function debugLog(msg: string) {
 let currentAgents: AgentRow[] = [];
 
 export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
-
   const list = blessed.list({
     parent: screen,
     top: 1,
@@ -49,7 +53,9 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
     // Index 0 is the header, so subtract 1 for agent index
     const agentIndex = selectedIndex - 1;
 
-    debugLog(`Enter pressed, selectedIndex=${selectedIndex}, agentIndex=${agentIndex}, agents=${currentAgents.length}`);
+    debugLog(
+      `Enter pressed, selectedIndex=${selectedIndex}, agentIndex=${agentIndex}, agents=${currentAgents.length}`
+    );
 
     if (agentIndex >= 0 && agentIndex < currentAgents.length) {
       const agent = currentAgents[agentIndex];
@@ -92,7 +98,9 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
   await syncAgentStatusWithTmux(db);
 
   const agents = getActiveAgents(db);
-  debugLog(`updateAgentsPanel called, found ${agents.length} agents, currentSelection=${currentSelection}`);
+  debugLog(
+    `updateAgentsPanel called, found ${agents.length} agents, currentSelection=${currentSelection}`
+  );
 
   // Load config to get model version info
   const versionMap: Record<string, string> = {};
@@ -153,7 +161,16 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
   currentAgents = displayAgents; // Store for selection lookup
 
   // Format header
-  const header = formatRow('TYPE', 'MODEL', 'VERSION', 'REPO', 'STATUS', 'STORY', 'TMUX SESSION', true);
+  const header = formatRow(
+    'TYPE',
+    'MODEL',
+    'VERSION',
+    'REPO',
+    'STATUS',
+    'STORY',
+    'TMUX SESSION',
+    true
+  );
 
   if (displayAgents.length === 0) {
     currentAgents = [];
@@ -164,9 +181,8 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
 
   const rows = displayAgents.map((agent: DisplayAgent) => {
     const model = agent.model || '-';
-    const version = agent.type === ('manager' as AgentRow['type'])
-      ? '-'
-      : versionMap[agent.type] || '-';
+    const version =
+      agent.type === ('manager' as AgentRow['type']) ? '-' : versionMap[agent.type] || '-';
     return formatRow(
       agent.type.toUpperCase(),
       model,
@@ -214,7 +230,9 @@ async function syncAgentStatusWithTmux(db: Database): Promise<void> {
 
         if (!sessionExists) {
           // Tmux session no longer exists but agent is not marked as terminated
-          debugLog(`Agent ${agent.id} tmux session ${agent.tmux_session} not found, marking as terminated`);
+          debugLog(
+            `Agent ${agent.id} tmux session ${agent.tmux_session} not found, marking as terminated`
+          );
           updateAgent(db, agent.id, { status: 'terminated' });
         }
       }
@@ -224,7 +242,16 @@ async function syncAgentStatusWithTmux(db: Database): Promise<void> {
   }
 }
 
-function formatRow(type: string, model: string, version: string, repo: string, status: string, story: string, tmux: string, isHeader: boolean): string {
+function formatRow(
+  type: string,
+  model: string,
+  version: string,
+  repo: string,
+  status: string,
+  story: string,
+  tmux: string,
+  isHeader: boolean
+): string {
   // Fixed column widths
   const COL_TYPE = 14;
   const COL_MODEL = 10;
@@ -238,10 +265,13 @@ function formatRow(type: string, model: string, version: string, repo: string, s
   const coloredStatus = colorizeStatus(status, statusText);
 
   // Truncate long values
-  const modelDisplay = model.length > COL_MODEL - 1 ? model.substring(0, COL_MODEL - 2) + '…' : model;
-  const versionDisplay = version.length > COL_VERSION - 1 ? version.substring(0, COL_VERSION - 2) + '…' : version;
+  const modelDisplay =
+    model.length > COL_MODEL - 1 ? model.substring(0, COL_MODEL - 2) + '…' : model;
+  const versionDisplay =
+    version.length > COL_VERSION - 1 ? version.substring(0, COL_VERSION - 2) + '…' : version;
   const repoDisplay = repo.length > COL_REPO - 1 ? repo.substring(0, COL_REPO - 2) + '…' : repo;
-  const storyDisplay = story.length > COL_STORY - 1 ? story.substring(0, COL_STORY - 2) + '…' : story;
+  const storyDisplay =
+    story.length > COL_STORY - 1 ? story.substring(0, COL_STORY - 2) + '…' : story;
 
   const cols = [
     type.padEnd(COL_TYPE),

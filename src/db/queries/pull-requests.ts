@@ -1,11 +1,17 @@
-import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
-import { queryAll, queryOne, run, type PullRequestRow, type StoryRow } from '../client.js';
+import type { Database } from 'sql.js';
 import { extractPRNumber } from '../../utils/github.js';
+import { queryAll, queryOne, run, type PullRequestRow, type StoryRow } from '../client.js';
 
 export type { PullRequestRow };
 
-export type PullRequestStatus = 'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed';
+export type PullRequestStatus =
+  | 'queued'
+  | 'reviewing'
+  | 'approved'
+  | 'merged'
+  | 'rejected'
+  | 'closed';
 
 export interface CreatePullRequestInput {
   storyId?: string | null;
@@ -34,20 +40,24 @@ export function createPullRequest(db: Database, input: CreatePullRequestInput): 
     prNumber = extractPRNumber(input.githubPrUrl) || null;
   }
 
-  run(db, `
+  run(
+    db,
+    `
     INSERT INTO pull_requests (id, story_id, team_id, branch_name, github_pr_number, github_pr_url, submitted_by, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)
-  `, [
-    id,
-    input.storyId || null,
-    input.teamId || null,
-    input.branchName,
-    prNumber,
-    input.githubPrUrl || null,
-    input.submittedBy || null,
-    now,
-    now,
-  ]);
+  `,
+    [
+      id,
+      input.storyId || null,
+      input.teamId || null,
+      input.branchName,
+      prNumber,
+      input.githubPrUrl || null,
+      input.submittedBy || null,
+      now,
+      now,
+    ]
+  );
 
   return getPullRequestById(db, id)!;
 }
@@ -60,25 +70,37 @@ export function getPullRequestByStory(db: Database, storyId: string): PullReques
   return queryOne<PullRequestRow>(db, 'SELECT * FROM pull_requests WHERE story_id = ?', [storyId]);
 }
 
-export function getPullRequestByGithubNumber(db: Database, prNumber: number): PullRequestRow | undefined {
-  return queryOne<PullRequestRow>(db, 'SELECT * FROM pull_requests WHERE github_pr_number = ?', [prNumber]);
+export function getPullRequestByGithubNumber(
+  db: Database,
+  prNumber: number
+): PullRequestRow | undefined {
+  return queryOne<PullRequestRow>(db, 'SELECT * FROM pull_requests WHERE github_pr_number = ?', [
+    prNumber,
+  ]);
 }
 
 // Merge Queue functions
 
 export function getMergeQueue(db: Database, teamId?: string): PullRequestRow[] {
   if (teamId) {
-    return queryAll<PullRequestRow>(db, `
+    return queryAll<PullRequestRow>(
+      db,
+      `
       SELECT * FROM pull_requests
       WHERE team_id = ? AND status IN ('queued', 'reviewing')
       ORDER BY created_at ASC
-    `, [teamId]);
+    `,
+      [teamId]
+    );
   }
-  return queryAll<PullRequestRow>(db, `
+  return queryAll<PullRequestRow>(
+    db,
+    `
     SELECT * FROM pull_requests
     WHERE status IN ('queued', 'reviewing')
     ORDER BY created_at ASC
-  `);
+  `
+  );
 }
 
 export function getNextInQueue(db: Database, teamId?: string): PullRequestRow | undefined {
@@ -100,16 +122,22 @@ export function getQueuePosition(db: Database, prId: string): number {
  * A dependency is satisfied if the story is merged or in active development
  */
 function areDependenciesSatisfied(db: Database, storyId: string): boolean {
-  const dependencies = queryAll<StoryRow>(db, `
+  const dependencies = queryAll<StoryRow>(
+    db,
+    `
     SELECT s.* FROM stories s
     JOIN story_dependencies sd ON s.id = sd.depends_on_story_id
     WHERE sd.story_id = ?
-  `, [storyId]);
+  `,
+    [storyId]
+  );
 
   // All dependencies must be in a satisfied state
   for (const dep of dependencies) {
     // Satisfied if: merged, in active work (in_progress, review, qa, qa_failed), or awaiting merge (pr_submitted)
-    if (!['merged', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted'].includes(dep.status)) {
+    if (
+      !['merged', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted'].includes(dep.status)
+    ) {
       return false;
     }
   }
@@ -137,7 +165,7 @@ export function getPrioritizedMergeQueue(db: Database, teamId?: string): PullReq
 
     // Combined score: (dependencyScore * large_multiplier) + ageScore
     // This ensures dependency satisfaction is the primary sort key
-    const score = (dependencyScore * 1e15) + ageScore;
+    const score = dependencyScore * 1e15 + ageScore;
 
     return { pr, score, dependenciesSatisfied };
   });
@@ -149,27 +177,38 @@ export function getPrioritizedMergeQueue(db: Database, teamId?: string): PullReq
 }
 
 export function getPullRequestsByStatus(db: Database, status: PullRequestStatus): PullRequestRow[] {
-  return queryAll<PullRequestRow>(db, `
+  return queryAll<PullRequestRow>(
+    db,
+    `
     SELECT * FROM pull_requests
     WHERE status = ?
     ORDER BY created_at DESC
-  `, [status]);
+  `,
+    [status]
+  );
 }
 
 export function getApprovedPullRequests(db: Database): PullRequestRow[] {
-  return queryAll<PullRequestRow>(db, `
+  return queryAll<PullRequestRow>(
+    db,
+    `
     SELECT * FROM pull_requests
     WHERE status = 'approved'
     ORDER BY created_at ASC
-  `);
+  `
+  );
 }
 
 export function getOpenPullRequestsByStory(db: Database, storyId: string): PullRequestRow[] {
-  return queryAll<PullRequestRow>(db, `
+  return queryAll<PullRequestRow>(
+    db,
+    `
     SELECT * FROM pull_requests
     WHERE story_id = ? AND status IN ('queued', 'reviewing')
     ORDER BY created_at ASC
-  `, [storyId]);
+  `,
+    [storyId]
+  );
 }
 
 export function getAllPullRequests(db: Database): PullRequestRow[] {
@@ -177,14 +216,22 @@ export function getAllPullRequests(db: Database): PullRequestRow[] {
 }
 
 export function getPullRequestsByTeam(db: Database, teamId: string): PullRequestRow[] {
-  return queryAll<PullRequestRow>(db, `
+  return queryAll<PullRequestRow>(
+    db,
+    `
     SELECT * FROM pull_requests
     WHERE team_id = ?
     ORDER BY created_at DESC
-  `, [teamId]);
+  `,
+    [teamId]
+  );
 }
 
-export function updatePullRequest(db: Database, id: string, input: UpdatePullRequestInput): PullRequestRow | undefined {
+export function updatePullRequest(
+  db: Database,
+  id: string,
+  input: UpdatePullRequestInput
+): PullRequestRow | undefined {
   const updates: string[] = ['updated_at = ?'];
   const values: (string | number | null)[] = [new Date().toISOString()];
 
@@ -231,10 +278,14 @@ export function deletePullRequest(db: Database, id: string): void {
  * Returns true if the agent has a PR with status 'reviewing'
  */
 export function isAgentReviewingPR(db: Database, agentId: string): boolean {
-  const result = queryOne<{ count: number }>(db, `
+  const result = queryOne<{ count: number }>(
+    db,
+    `
     SELECT COUNT(*) as count FROM pull_requests
     WHERE reviewed_by = ? AND status = 'reviewing'
-  `, [agentId]);
+  `,
+    [agentId]
+  );
   return (result?.count || 0) > 0;
 }
 
@@ -244,10 +295,13 @@ export function isAgentReviewingPR(db: Database, agentId: string): boolean {
  * @returns Number of PRs updated
  */
 export function backfillGithubPrNumbers(db: Database): number {
-  const prsToBackfill = queryAll<PullRequestRow>(db, `
+  const prsToBackfill = queryAll<PullRequestRow>(
+    db,
+    `
     SELECT * FROM pull_requests
     WHERE github_pr_number IS NULL AND github_pr_url IS NOT NULL
-  `);
+  `
+  );
 
   let updated = 0;
   for (const pr of prsToBackfill) {

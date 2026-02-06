@@ -1,8 +1,8 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
+import { Command } from 'commander';
 import { nanoid } from 'nanoid';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase, queryAll, queryOne, run } from '../../db/client.js';
+import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 
 interface MessageRow {
   id: string;
@@ -16,41 +16,46 @@ interface MessageRow {
   replied_at: string | null;
 }
 
-export const msgCommand = new Command('msg')
-  .description('Inter-agent messaging');
+export const msgCommand = new Command('msg').description('Inter-agent messaging');
 
 msgCommand
   .command('send <to-session> <message>')
   .description('Send a message to another agent')
   .option('-s, --subject <subject>', 'Message subject')
   .option('-f, --from <session>', 'Your session name (defaults to hive-tech-lead)')
-  .action(async (toSession: string, message: string, options: { subject?: string; from?: string }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
+  .action(
+    async (toSession: string, message: string, options: { subject?: string; from?: string }) => {
+      const root = findHiveRoot();
+      if (!root) {
+        console.error(chalk.red('Not in a Hive workspace.'));
+        process.exit(1);
+      }
 
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
+      const paths = getHivePaths(root);
+      const db = await getDatabase(paths.hiveDir);
 
-    try {
-      const id = `msg-${nanoid(8)}`;
-      const fromSession = options.from || 'hive-tech-lead';
+      try {
+        const id = `msg-${nanoid(8)}`;
+        const fromSession = options.from || 'hive-tech-lead';
 
-      run(db.db, `
+        run(
+          db.db,
+          `
         INSERT INTO messages (id, from_session, to_session, subject, body, status, created_at)
         VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))
-      `, [id, fromSession, toSession, options.subject || null, message]);
-      db.save();
+      `,
+          [id, fromSession, toSession, options.subject || null, message]
+        );
+        db.save();
 
-      console.log(chalk.green(`Message sent: ${id}`));
-      console.log(chalk.gray(`To: ${toSession}`));
-      console.log(chalk.gray(`Subject: ${options.subject || '(none)'}`));
-    } finally {
-      db.close();
+        console.log(chalk.green(`Message sent: ${id}`));
+        console.log(chalk.gray(`To: ${toSession}`));
+        console.log(chalk.gray(`Subject: ${options.subject || '(none)'}`));
+      } finally {
+        db.close();
+      }
     }
-  });
+  );
 
 msgCommand
   .command('inbox [session]')
@@ -88,15 +93,23 @@ msgCommand
       console.log(chalk.bold(`\nInbox for ${targetSession} (${messages.length} messages):\n`));
 
       for (const msg of messages) {
-        const statusIcon = msg.status === 'pending' ? chalk.yellow('●') :
-                          msg.status === 'replied' ? chalk.green('✓') : chalk.gray('○');
+        const statusIcon =
+          msg.status === 'pending'
+            ? chalk.yellow('●')
+            : msg.status === 'replied'
+              ? chalk.green('✓')
+              : chalk.gray('○');
         const time = msg.created_at.substring(0, 16).replace('T', ' ');
 
         console.log(`${statusIcon} ${chalk.cyan(msg.id)} from ${chalk.bold(msg.from_session)}`);
         console.log(`  ${chalk.gray(time)} ${msg.subject || ''}`);
         console.log(`  ${msg.body.substring(0, 80)}${msg.body.length > 80 ? '...' : ''}`);
         if (msg.reply) {
-          console.log(chalk.green(`  Reply: ${msg.reply.substring(0, 60)}${msg.reply.length > 60 ? '...' : ''}`));
+          console.log(
+            chalk.green(
+              `  Reply: ${msg.reply.substring(0, 60)}${msg.reply.length > 60 ? '...' : ''}`
+            )
+          );
         }
         console.log();
       }
@@ -173,11 +186,15 @@ msgCommand
         process.exit(1);
       }
 
-      run(db.db, `
+      run(
+        db.db,
+        `
         UPDATE messages
         SET reply = ?, status = 'replied', replied_at = datetime('now')
         WHERE id = ?
-      `, [response, msgId]);
+      `,
+        [response, msgId]
+      );
       db.save();
 
       console.log(chalk.green(`Reply sent to ${msg.from_session}`));
@@ -202,11 +219,15 @@ msgCommand
     try {
       const fromSession = session || 'hive-tech-lead';
 
-      const messages = queryAll<MessageRow>(db.db, `
+      const messages = queryAll<MessageRow>(
+        db.db,
+        `
         SELECT * FROM messages
         WHERE from_session = ?
         ORDER BY created_at DESC
-      `, [fromSession]);
+      `,
+        [fromSession]
+      );
 
       if (messages.length === 0) {
         console.log(chalk.gray(`No sent messages from ${fromSession}`));
@@ -216,13 +237,19 @@ msgCommand
       console.log(chalk.bold(`\nSent messages from ${fromSession} (${messages.length}):\n`));
 
       for (const msg of messages) {
-        const statusIcon = msg.status === 'replied' ? chalk.green('✓ REPLIED') :
-                          msg.status === 'read' ? chalk.yellow('○ READ') : chalk.gray('● PENDING');
+        const statusIcon =
+          msg.status === 'replied'
+            ? chalk.green('✓ REPLIED')
+            : msg.status === 'read'
+              ? chalk.yellow('○ READ')
+              : chalk.gray('● PENDING');
 
         console.log(`${chalk.cyan(msg.id)} → ${chalk.bold(msg.to_session)} ${statusIcon}`);
         console.log(`  ${msg.body.substring(0, 60)}${msg.body.length > 60 ? '...' : ''}`);
         if (msg.reply) {
-          console.log(chalk.green(`  ↳ ${msg.reply.substring(0, 60)}${msg.reply.length > 60 ? '...' : ''}`));
+          console.log(
+            chalk.green(`  ↳ ${msg.reply.substring(0, 60)}${msg.reply.length > 60 ? '...' : ''}`)
+          );
         }
         console.log();
       }

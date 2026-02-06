@@ -1,6 +1,11 @@
 import { nanoid } from 'nanoid';
+import type {
+  CreateRequirementInput,
+  RequirementRow,
+  RequirementStatus,
+  UpdateRequirementInput,
+} from '../../queries/requirements.js';
 import type { RequirementDao } from '../interfaces/requirement.dao.js';
-import type { RequirementRow, CreateRequirementInput, UpdateRequirementInput, RequirementStatus } from '../../queries/requirements.js';
 import { LevelDbStore, type NowProvider, defaultNow } from './leveldb-store.js';
 import { compareIsoAsc, compareIsoDesc } from './sort.js';
 
@@ -9,7 +14,10 @@ const REQ_PREFIX = 'requirement:';
 export class LevelDbRequirementDao implements RequirementDao {
   private readonly now: NowProvider;
 
-  constructor(private readonly store: LevelDbStore, now: NowProvider = defaultNow) {
+  constructor(
+    private readonly store: LevelDbStore,
+    now: NowProvider = defaultNow
+  ) {
     this.now = now;
   }
 
@@ -51,7 +59,10 @@ export class LevelDbRequirementDao implements RequirementDao {
       .sort(compareIsoAsc);
   }
 
-  async updateRequirement(id: string, input: UpdateRequirementInput): Promise<RequirementRow | undefined> {
+  async updateRequirement(
+    id: string,
+    input: UpdateRequirementInput
+  ): Promise<RequirementRow | undefined> {
     const existing = await this.getRequirementById(id);
     if (!existing) return undefined;
 

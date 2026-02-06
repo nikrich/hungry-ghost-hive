@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Note: These tests validate the sendMessageWithConfirmation function behavior.
 // Full integration tests would require mocking at the execa level.

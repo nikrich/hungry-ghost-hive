@@ -22,18 +22,23 @@ export async function getCurrentBranch(workDir: string): Promise<string> {
  * List all local branches
  */
 export async function listBranches(workDir: string): Promise<BranchInfo[]> {
-  const { stdout } = await execa('git', [
-    'branch', '-v', '--format=%(refname:short)|%(objectname:short)|%(HEAD)',
-  ], { cwd: workDir });
+  const { stdout } = await execa(
+    'git',
+    ['branch', '-v', '--format=%(refname:short)|%(objectname:short)|%(HEAD)'],
+    { cwd: workDir }
+  );
 
-  return stdout.split('\n').filter(Boolean).map(line => {
-    const [name, lastCommit, head] = line.split('|');
-    return {
-      name,
-      current: head === '*',
-      lastCommit,
-    };
-  });
+  return stdout
+    .split('\n')
+    .filter(Boolean)
+    .map(line => {
+      const [name, lastCommit, head] = line.split('|');
+      return {
+        name,
+        current: head === '*',
+        lastCommit,
+      };
+    });
 }
 
 /**
@@ -94,19 +99,26 @@ export async function branchExists(workDir: string, name: string): Promise<boole
 /**
  * Get branch tracking info
  */
-export async function getBranchTracking(workDir: string, branch: string): Promise<{
+export async function getBranchTracking(
+  workDir: string,
+  branch: string
+): Promise<{
   upstream: string | null;
   ahead: number;
   behind: number;
 }> {
   try {
-    const { stdout: upstream } = await execa('git', [
-      'rev-parse', '--abbrev-ref', `${branch}@{upstream}`,
-    ], { cwd: workDir });
+    const { stdout: upstream } = await execa(
+      'git',
+      ['rev-parse', '--abbrev-ref', `${branch}@{upstream}`],
+      { cwd: workDir }
+    );
 
-    const { stdout: counts } = await execa('git', [
-      'rev-list', '--left-right', '--count', `${upstream.trim()}...${branch}`,
-    ], { cwd: workDir });
+    const { stdout: counts } = await execa(
+      'git',
+      ['rev-list', '--left-right', '--count', `${upstream.trim()}...${branch}`],
+      { cwd: workDir }
+    );
 
     const [behind, ahead] = counts.trim().split('\t').map(Number);
 

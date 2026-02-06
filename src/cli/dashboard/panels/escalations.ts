@@ -1,13 +1,12 @@
-import type { Database } from 'sql.js';
 import blessed, { type Widgets } from 'blessed';
 import { spawnSync } from 'child_process';
+import type { Database } from 'sql.js';
 import { getPendingEscalations, type EscalationRow } from '../../../db/queries/escalations.js';
 
 // Store escalations for selection lookup
 let currentEscalations: EscalationRow[] = [];
 
 export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
-
   const list = blessed.list({
     parent: screen,
     top: '55%+5',
@@ -84,12 +83,17 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Wi
     }
   });
 
-  updateEscalationsPanel(list, db).catch(err => console.error('Failed to update escalations panel:', err));
+  updateEscalationsPanel(list, db).catch(err =>
+    console.error('Failed to update escalations panel:', err)
+  );
 
   return list;
 }
 
-export async function updateEscalationsPanel(list: Widgets.ListElement, db: Database): Promise<void> {
+export async function updateEscalationsPanel(
+  list: Widgets.ListElement,
+  db: Database
+): Promise<void> {
   const escalations = getPendingEscalations(db);
   currentEscalations = escalations; // Store for selection lookup
 
