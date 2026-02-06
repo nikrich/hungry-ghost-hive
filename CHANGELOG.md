@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.7.0...v0.8.0) (2026-02-06)
+
+
+### Features
+
+* add hive version command with dynamic version from package.json ([#105](https://github.com/nikrich/hungry-ghost-hive/issues/105)) ([f5a3d6a](https://github.com/nikrich/hungry-ghost-hive/commit/f5a3d6a677ccf7d6c1a73ade6cbd670d8d056f7c))
+* implement prioritized merge queue ordering ([#107](https://github.com/nikrich/hungry-ghost-hive/issues/107)) ([9d8d1ba](https://github.com/nikrich/hungry-ghost-hive/commit/9d8d1ba72f474ba5a784abafffe88312b7d8c782))
+* **scheduler:** prevent multiple agents from being assigned to same story ([#106](https://github.com/nikrich/hungry-ghost-hive/issues/106)) ([0f32b60](https://github.com/nikrich/hungry-ghost-hive/commit/0f32b6084aaba37d9574ba3ea3c52eeacc3c6678))
+
 ## [0.7.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.6.3...v0.7.0) (2026-02-06)
 
 
