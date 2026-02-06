@@ -39,4 +39,9 @@ export declare function removeStoryDependency(db: Database, storyId: string, dep
 export declare function getStoryDependencies(db: Database, storyId: string): StoryRow[];
 export declare function getStoriesDependingOn(db: Database, storyId: string): StoryRow[];
 export declare function getStoryCounts(db: Database): Record<StoryStatus, number>;
+export declare function getStoriesWithOrphanedAssignments(db: Database): Array<{
+    id: string;
+    agent_id: string;
+}>;
+export declare function updateStoryAssignment(db: Database, storyId: string, agentId: string | null): void;
 //# sourceMappingURL=stories.d.ts.map

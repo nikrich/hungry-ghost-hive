@@ -20,6 +20,7 @@ import {
   myStoriesCommand,
   prCommand,
   managerCommand,
+  cleanupCommand,
 } from './cli/commands/index.js';
 
 const program = new Command();
@@ -50,6 +51,7 @@ program.addCommand(escalationsCommand);
 
 // Destructive operations
 program.addCommand(nukeCommand);
+program.addCommand(cleanupCommand);
 
 // Communication
 program.addCommand(msgCommand);
