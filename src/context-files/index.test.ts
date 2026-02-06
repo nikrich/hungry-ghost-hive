@@ -120,7 +120,13 @@ describe('context-files module', () => {
         llm_timeout_ms: 1800000,
         llm_max_retries: 2,
       },
-      manager: { fast_poll_interval: 15000, slow_poll_interval: 60000 },
+      manager: {
+        fast_poll_interval: 15000,
+        slow_poll_interval: 60000,
+        stuck_threshold_ms: 120000,
+        nudge_cooldown_ms: 300000,
+        lock_stale_ms: 120000,
+      },
       logging: { level: 'info', retention_days: 30 },
     };
 

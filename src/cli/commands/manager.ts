@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
+import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
 import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests, updatePullRequest } from '../../db/queries/pull-requests.js';
@@ -31,10 +32,6 @@ interface AgentStateTracking {
 // In-memory state tracking per agent session
 const agentStates = new Map<string, AgentStateTracking>();
 
-// Constants for nudge behavior
-const STATE_STUCK_THRESHOLD_MS = 120000; // 120 seconds = 2 minutes
-const NUDGE_COOLDOWN_MS = 300000; // 300 seconds = 5 minutes
-
 export const managerCommand = new Command('manager')
   .description('Micromanager daemon that keeps agents productive');
 
@@ -52,12 +49,16 @@ managerCommand
     }
 
     const paths = getHivePaths(root);
+
+    // Load config first to get all settings
+    const config = loadConfig(paths.hiveDir);
+
     const lockPath = join(paths.hiveDir, 'manager.lock');
 
     // Acquire manager lock to ensure singleton
     let releaseLock: (() => Promise<void>) | null = null;
     try {
-      releaseLock = await acquireLock(lockPath, { stale: 120000 }); // 2 min stale threshold
+      releaseLock = await acquireLock(lockPath, { stale: config.manager.lock_stale_ms });
       console.log(chalk.gray('Manager lock acquired'));
     } catch (err) {
       console.error(chalk.red('Failed to acquire manager lock - another manager instance may be running.'), err);
@@ -77,10 +78,6 @@ managerCommand
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
 
-    // Load config to get polling intervals (for two-tier polling)
-    const hivePaths = getHivePaths(root);
-    const config = loadConfig(hivePaths.hiveDir);
-
     // Support two modes: legacy single-interval and new two-tier polling
     const useTwoTier = options.interval === '60' && config.manager;
 
@@ -92,7 +89,7 @@ managerCommand
 
       const runCheck = async () => {
         try {
-          await managerCheck(root);
+          await managerCheck(root, config);
         } catch (err) {
           console.error(chalk.red('Manager error:'), err);
         }
@@ -113,7 +110,7 @@ managerCommand
 
       const runCheck = async () => {
         try {
-          await managerCheck(root);
+          await managerCheck(root, config);
         } catch (err) {
           console.error(chalk.red('Manager error:'), err);
         }
@@ -140,7 +137,10 @@ managerCommand
       process.exit(1);
     }
 
-    await managerCheck(root);
+    const paths = getHivePaths(root);
+    const config = loadConfig(paths.hiveDir);
+
+    await managerCheck(root, config);
   });
 
 // Run health check to sync agents with tmux
@@ -242,7 +242,7 @@ managerCommand
     }
   });
 
-async function managerCheck(root: string): Promise<void> {
+async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
   const timestamp = new Date().toLocaleTimeString();
   console.log(chalk.gray(`[${timestamp}] Manager checking...`));
 
@@ -250,8 +250,12 @@ async function managerCheck(root: string): Promise<void> {
   const db = await getDatabase(paths.hiveDir);
 
   try {
+    // Load config if not provided (for backwards compatibility)
+    if (!config) {
+      config = loadConfig(paths.hiveDir);
+    }
+
     // First, run health check to sync agent status with tmux
-    const config = loadConfig(paths.hiveDir);
     const scheduler = new Scheduler(db.db, {
       scaling: config.scaling,
       models: config.models,
@@ -406,12 +410,12 @@ async function managerCheck(root: string): Promise<void> {
           const timeSinceLastNudge = now - currentTrackedState.lastNudgeTime;
 
           // Only nudge if:
-          // 1. Agent stuck in same state for > 120 seconds
-          // 2. Haven't nudged in last 5 minutes
+          // 1. Agent stuck in same state for configured threshold
+          // 2. Haven't nudged within cooldown period
           // 3. Not in THINKING state (extended thinking is normal)
           if (
-            timeSinceStateChange > STATE_STUCK_THRESHOLD_MS &&
-            timeSinceLastNudge > NUDGE_COOLDOWN_MS
+            timeSinceStateChange > config.manager.stuck_threshold_ms &&
+            timeSinceLastNudge > config.manager.nudge_cooldown_ms
           ) {
             // Re-check state immediately before nudging to avoid interrupting active work
             const recheckOutput = await captureTmuxPane(session.name, 50);
