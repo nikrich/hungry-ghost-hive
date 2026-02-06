@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.6.0...v0.6.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* use prepared statements in heartbeat test to fix build ([#95](https://github.com/nikrich/hungry-ghost-hive/issues/95)) ([b1a223e](https://github.com/nikrich/hungry-ghost-hive/commit/b1a223e1fd91ebb53a40e136bc36c6568048657e))
+
 ## [0.6.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.5.0...v0.6.0) (2026-02-06)
 
 
