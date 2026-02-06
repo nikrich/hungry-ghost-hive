@@ -49,7 +49,12 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
       // Attempt to merge on GitHub
       const { execSync } = await import('child_process');
       try {
-        execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
+        // Add timeout to prevent blocking the manager daemon (60s for GitHub API operations)
+        execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, {
+          stdio: 'pipe',
+          cwd: repoCwd,
+          timeout: 60000 // 60 second timeout for GitHub operations
+        });
 
         // Update PR and story status, create logs (atomic transaction)
         const storyId = pr.story_id;
