@@ -5,10 +5,22 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=flat-square)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/language-TypeScript-blue?style=flat-square)](https://www.typescriptlang.org/)
+[![Codecov](https://img.shields.io/codecov/c/github/nikrich/hungry-ghost-hive?style=flat-square)](https://codecov.io/gh/nikrich/hungry-ghost-hive)
 
 <img width="1263" height="651" alt="image" src="https://github.com/user-attachments/assets/76eb8bd9-d5ec-45b7-9ee2-b7ef910f3e88" />
 
 Hive is a CLI tool that orchestrates AI agents modeled after agile software development teams. You act as the **Product Owner**, providing requirements. Hive's AI agents handle the rest—from planning through to PR submission.
+
+## Key Features
+
+- **AI-Powered Team Management**: Orchestrate autonomous teams of AI agents across multiple repositories
+- **Agile Workflow**: Natural hierarchy mirrors real development teams with Tech Lead, Seniors, Intermediates, and Juniors
+- **Requirement to PR Automation**: From initial requirements to merged pull requests, fully automated
+- **Intelligent Task Distribution**: Stories automatically routed to appropriate skill levels (Junior, Intermediate, Senior)
+- **Real-Time Dashboard**: Monitor team progress and agent activity with an interactive TUI dashboard
+- **Multi-Repository Support**: Manage related services and libraries as coordinated git submodules
+- **Escalation Handling**: Built-in escalation protocol when agents need guidance or hit blockers
+- **PR Merge Queue**: Automated QA checks and merge queue management for production readiness
 
 ## Installation
 
@@ -346,6 +358,51 @@ tmux attach -t hive-senior-alpha  # Attach to see what agent is doing
 ```bash
 hive nuke --all  # WARNING: Deletes all data
 ```
+
+## Code Quality
+
+Hive is built with production-grade quality standards:
+
+- **Comprehensive Testing**: 431+ test cases with automated test execution
+- **Strict TypeScript**: Full type safety with no implicit any
+- **Code Linting**: ESLint configuration enforces consistent code style
+- **Conventional Commits**: Commit messages follow the conventional commits specification for automatic changelog generation
+- **Automated Releases**: Release Please integration for semantic versioning and automated npm publishing
+
+## Contributing
+
+We welcome contributions! Here's how to get started:
+
+### Development Setup
+
+1. **Clone and Install**:
+   ```bash
+   git clone https://github.com/nikrich/hungry-ghost-hive.git
+   cd hungry-ghost-hive
+   npm ci
+   ```
+
+2. **Run Tests**:
+   ```bash
+   npm test              # Run all tests
+   npm run test:watch   # Watch mode
+   ```
+
+3. **Build and Lint**:
+   ```bash
+   npm run build         # Build the project
+   npm run lint          # Check code style
+   npm run type-check    # TypeScript type checking
+   ```
+
+### Pull Request Guidelines
+
+- Create a feature branch: `git checkout -b feature/your-feature-name`
+- Follow the existing code style and patterns
+- Add or update tests for your changes
+- Run linting and tests before committing: `npm run lint && npm test`
+- Use conventional commit messages (e.g., `feat:`, `fix:`, `docs:`, `test:`, `refactor:`)
+- Submit a pull request with a clear description of your changes
 
 ## Environment Variables
 
