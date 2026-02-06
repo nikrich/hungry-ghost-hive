@@ -263,12 +263,21 @@ declare const AgentsConfigSchema: z.ZodObject<{
 declare const ManagerConfigSchema: z.ZodObject<{
     fast_poll_interval: z.ZodDefault<z.ZodNumber>;
     slow_poll_interval: z.ZodDefault<z.ZodNumber>;
+    stuck_threshold_ms: z.ZodDefault<z.ZodNumber>;
+    nudge_cooldown_ms: z.ZodDefault<z.ZodNumber>;
+    lock_stale_ms: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     fast_poll_interval: number;
     slow_poll_interval: number;
+    stuck_threshold_ms: number;
+    nudge_cooldown_ms: number;
+    lock_stale_ms: number;
 }, {
     fast_poll_interval?: number | undefined;
     slow_poll_interval?: number | undefined;
+    stuck_threshold_ms?: number | undefined;
+    nudge_cooldown_ms?: number | undefined;
+    lock_stale_ms?: number | undefined;
 }>;
 declare const LoggingConfigSchema: z.ZodObject<{
     level: z.ZodDefault<z.ZodEnum<["debug", "info", "warn", "error"]>>;
@@ -527,12 +536,21 @@ export declare const HiveConfigSchema: z.ZodObject<{
     manager: z.ZodDefault<z.ZodObject<{
         fast_poll_interval: z.ZodDefault<z.ZodNumber>;
         slow_poll_interval: z.ZodDefault<z.ZodNumber>;
+        stuck_threshold_ms: z.ZodDefault<z.ZodNumber>;
+        nudge_cooldown_ms: z.ZodDefault<z.ZodNumber>;
+        lock_stale_ms: z.ZodDefault<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         fast_poll_interval: number;
         slow_poll_interval: number;
+        stuck_threshold_ms: number;
+        nudge_cooldown_ms: number;
+        lock_stale_ms: number;
     }, {
         fast_poll_interval?: number | undefined;
         slow_poll_interval?: number | undefined;
+        stuck_threshold_ms?: number | undefined;
+        nudge_cooldown_ms?: number | undefined;
+        lock_stale_ms?: number | undefined;
     }>>;
     logging: z.ZodDefault<z.ZodObject<{
         level: z.ZodDefault<z.ZodEnum<["debug", "info", "warn", "error"]>>;
@@ -611,6 +629,9 @@ export declare const HiveConfigSchema: z.ZodObject<{
     manager: {
         fast_poll_interval: number;
         slow_poll_interval: number;
+        stuck_threshold_ms: number;
+        nudge_cooldown_ms: number;
+        lock_stale_ms: number;
     };
     logging: {
         level: "debug" | "info" | "warn" | "error";
@@ -683,6 +704,9 @@ export declare const HiveConfigSchema: z.ZodObject<{
     manager?: {
         fast_poll_interval?: number | undefined;
         slow_poll_interval?: number | undefined;
+        stuck_threshold_ms?: number | undefined;
+        nudge_cooldown_ms?: number | undefined;
+        lock_stale_ms?: number | undefined;
     } | undefined;
     logging?: {
         level?: "debug" | "info" | "warn" | "error" | undefined;

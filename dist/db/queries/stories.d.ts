@@ -38,6 +38,14 @@ export declare function addStoryDependency(db: Database, storyId: string, depend
 export declare function removeStoryDependency(db: Database, storyId: string, dependsOnStoryId: string): void;
 export declare function getStoryDependencies(db: Database, storyId: string): StoryRow[];
 export declare function getStoriesDependingOn(db: Database, storyId: string): StoryRow[];
+/**
+ * Get dependencies for multiple stories in a single query.
+ * Returns a map of story ID to its dependencies for improved query performance.
+ * Avoids N+1 queries when building dependency graphs.
+ * @param storyIds Array of story IDs to get dependencies for
+ * @returns Map of story ID to array of dependent story IDs
+ */
+export declare function getBatchStoryDependencies(db: Database, storyIds: string[]): Map<string, string[]>;
 export declare function getStoryCounts(db: Database): Record<StoryStatus, number>;
 export declare function getStoriesWithOrphanedAssignments(db: Database): Array<{
     id: string;

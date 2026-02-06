@@ -6,6 +6,8 @@ import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { startManager, isManagerRunning } from '../../tmux/manager.js';
+import { getPlannedStories } from '../../db/queries/stories.js';
+import { getTeamById } from '../../db/queries/teams.js';
 export const assignCommand = new Command('assign')
     .description('Assign planned stories to agents (spawns Seniors as needed)')
     .option('--dry-run', 'Show what would be assigned without making changes')
@@ -22,7 +24,43 @@ export const assignCommand = new Command('assign')
         const config = loadConfig(paths.hiveDir);
         if (options.dryRun) {
             spinner.info(chalk.yellow('Dry run - no changes will be made'));
-            // TODO: Add dry run logic
+            // Get planned stories without making any assignments
+            const plannedStories = getPlannedStories(db.db);
+            if (plannedStories.length === 0) {
+                spinner.succeed(chalk.gray('No stories to assign'));
+                return;
+            }
+            console.log(chalk.bold('\nStories that would be assigned:\n'));
+            // Group by team for better readability
+            const storiesByTeam = new Map();
+            for (const story of plannedStories) {
+                if (!story.team_id)
+                    continue;
+                const existing = storiesByTeam.get(story.team_id) || [];
+                existing.push(story);
+                storiesByTeam.set(story.team_id, existing);
+            }
+            // Display planned assignments
+            for (const [teamId, stories] of storiesByTeam) {
+                const team = getTeamById(db.db, teamId);
+                if (!team)
+                    continue;
+                console.log(chalk.cyan(`\n📦 Team: ${team.name}\n`));
+                for (const story of stories) {
+                    const complexity = story.complexity_score || 5;
+                    let targetLevel = 'Senior';
+                    if (complexity <= config.scaling.junior_max_complexity) {
+                        targetLevel = 'Junior';
+                    }
+                    else if (complexity <= config.scaling.intermediate_max_complexity) {
+                        targetLevel = 'Intermediate';
+                    }
+                    console.log(`  ${chalk.blue(`[${story.id}]`)} ${story.title}`);
+                    console.log(`    Complexity: ${complexity} → ${targetLevel}`);
+                    console.log();
+                }
+            }
+            console.log(chalk.green(`✓ Would assign ${plannedStories.length} stories\n`));
             return;
         }
         const scheduler = new Scheduler(db.db, {
