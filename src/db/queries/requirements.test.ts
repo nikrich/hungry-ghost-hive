@@ -99,8 +99,8 @@ describe('requirements queries', () => {
 
       expect(requirements).toHaveLength(2);
       // Verify both requirements are present
-      expect(requirements.map(r => r.id)).toContain(req1.id);
-      expect(requirements.map(r => r.id)).toContain(req2.id);
+      expect(requirements.map((r) => r.id)).toContain(req1.id);
+      expect(requirements.map((r) => r.id)).toContain(req2.id);
     });
   });
 
@@ -160,10 +160,10 @@ describe('requirements queries', () => {
       const pending = getPendingRequirements(db);
 
       expect(pending).toHaveLength(3);
-      expect(pending.map(r => r.id)).toContain(req1.id);
-      expect(pending.map(r => r.id)).toContain(req2.id);
-      expect(pending.map(r => r.id)).toContain(req3.id);
-      expect(pending.map(r => r.id)).not.toContain(req4.id);
+      expect(pending.map((r) => r.id)).toContain(req1.id);
+      expect(pending.map((r) => r.id)).toContain(req2.id);
+      expect(pending.map((r) => r.id)).toContain(req3.id);
+      expect(pending.map((r) => r.id)).not.toContain(req4.id);
     });
   });
 
@@ -289,12 +289,12 @@ describe('requirements queries', () => {
 
     it('should handle special characters', () => {
       const req = createRequirement(db, {
-        title: "Title with 'quotes' and \"double\" quotes",
+        title: 'Title with \'quotes\' and "double" quotes',
         description: 'Description with\nnewlines\tand\ttabs',
       });
 
       const retrieved = getRequirementById(db, req.id);
-      expect(retrieved?.title).toBe("Title with 'quotes' and \"double\" quotes");
+      expect(retrieved?.title).toBe('Title with \'quotes\' and "double" quotes');
       expect(retrieved?.description).toBe('Description with\nnewlines\tand\ttabs');
     });
   });

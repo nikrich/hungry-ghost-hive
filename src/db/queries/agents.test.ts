@@ -129,8 +129,8 @@ describe('agents queries', () => {
       const teamAgents = getAgentsByTeam(db, teamId);
 
       expect(teamAgents).toHaveLength(2);
-      expect(teamAgents.map(a => a.id)).toContain(agent1.id);
-      expect(teamAgents.map(a => a.id)).toContain(agent2.id);
+      expect(teamAgents.map((a) => a.id)).toContain(agent1.id);
+      expect(teamAgents.map((a) => a.id)).toContain(agent2.id);
     });
 
     it('should return empty array when no agents for team', () => {
@@ -148,8 +148,8 @@ describe('agents queries', () => {
       const seniors = getAgentsByType(db, 'senior');
 
       expect(seniors).toHaveLength(2);
-      expect(seniors.map(a => a.id)).toContain(senior1.id);
-      expect(seniors.map(a => a.id)).toContain(senior2.id);
+      expect(seniors.map((a) => a.id)).toContain(senior1.id);
+      expect(seniors.map((a) => a.id)).toContain(senior2.id);
     });
   });
 
@@ -179,7 +179,7 @@ describe('agents queries', () => {
 
       expect(agents).toHaveLength(3);
       // Should be ordered
-      expect(agents.every(a => a.id)).toBe(true);
+      expect(agents.every((a) => a.id)).toBe(true);
     });
 
     it('should return empty array when no agents', () => {
@@ -200,9 +200,9 @@ describe('agents queries', () => {
       const active = getActiveAgents(db);
 
       expect(active).toHaveLength(2);
-      expect(active.map(a => a.id)).toContain(agent1.id);
-      expect(active.map(a => a.id)).toContain(agent2.id);
-      expect(active.map(a => a.id)).not.toContain(agent3.id);
+      expect(active.map((a) => a.id)).toContain(agent1.id);
+      expect(active.map((a) => a.id)).toContain(agent2.id);
+      expect(active.map((a) => a.id)).not.toContain(agent3.id);
     });
   });
 
@@ -357,7 +357,7 @@ describe('agents queries', () => {
         'qa',
       ];
 
-      types.forEach(type => {
+      types.forEach((type) => {
         const agent = createAgent(db, { type });
         expect(agent.type).toBe(type);
       });
@@ -373,7 +373,7 @@ describe('agents queries', () => {
 
       const agent = createAgent(db, { type: 'senior', teamId });
 
-      statuses.forEach(status => {
+      statuses.forEach((status) => {
         const updated = updateAgent(db, agent.id, { status });
         expect(updated?.status).toBe(status);
       });

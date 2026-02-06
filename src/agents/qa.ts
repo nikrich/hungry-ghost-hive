@@ -26,8 +26,9 @@ export class QAAgent extends BaseAgent {
 
     if (context.agentRow.team_id) {
       this.team = getTeamById(this.db, context.agentRow.team_id) || null;
-      this.pendingStories = getStoriesByStatus(this.db, 'qa')
-        .filter(s => s.team_id === context.agentRow.team_id);
+      this.pendingStories = getStoriesByStatus(this.db, 'qa').filter(
+        (s) => s.team_id === context.agentRow.team_id
+      );
     }
   }
 
@@ -88,9 +89,13 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       try {
         await execa('git', ['checkout', story.branch_name], { cwd: this.workDir });
       } catch (err) {
-        this.log('STORY_QA_FAILED', `Failed to checkout branch: ${err instanceof Error ? err.message : 'Unknown error'}`, {
-          storyId: story.id,
-        });
+        this.log(
+          'STORY_QA_FAILED',
+          `Failed to checkout branch: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          {
+            storyId: story.id,
+          }
+        );
         updateStory(this.db, story.id, { status: 'qa_failed' });
         this.checkAndEscalate(story);
         return;
@@ -211,13 +216,22 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       const title = `${story.id}: ${story.title}`;
       const body = this.generatePRBody(story);
 
-      const { stdout } = await execa('gh', [
-        'pr', 'create',
-        '--title', title,
-        '--body', body,
-        '--base', 'main',
-        '--head', story.branch_name,
-      ], { cwd: this.workDir });
+      const { stdout } = await execa(
+        'gh',
+        [
+          'pr',
+          'create',
+          '--title',
+          title,
+          '--body',
+          body,
+          '--base',
+          'main',
+          '--head',
+          story.branch_name,
+        ],
+        { cwd: this.workDir }
+      );
 
       // Extract PR URL from output
       const prUrl = stdout.trim();
@@ -261,7 +275,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
     if (failureCount >= 3) {
       // Find the senior agent for the team
       const seniorAgents = getAgentsByType(this.db, 'senior').filter(
-        a => a.team_id === story.team_id
+        (a) => a.team_id === story.team_id
       );
 
       if (seniorAgents.length > 0) {
@@ -283,7 +297,9 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
 
   private generatePRBody(story: StoryRow): string {
     const acceptanceCriteria = story.acceptance_criteria
-      ? JSON.parse(story.acceptance_criteria).map((c: string) => `- [ ] ${c}`).join('\n')
+      ? JSON.parse(story.acceptance_criteria)
+          .map((c: string) => `- [ ] ${c}`)
+          .join('\n')
       : 'N/A';
 
     return `## Story: ${story.id}

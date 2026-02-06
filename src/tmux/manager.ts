@@ -44,15 +44,18 @@ export async function listTmuxSessions(): Promise<TmuxSession[]> {
       '#{session_name}|#{session_windows}|#{session_created}|#{session_attached}',
     ]);
 
-    return stdout.split('\n').filter(Boolean).map(line => {
-      const [name, windows, created, attached] = line.split('|');
-      return {
-        name,
-        windows: parseInt(windows, 10),
-        created,
-        attached: attached === '1',
-      };
-    });
+    return stdout
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [name, windows, created, attached] = line.split('|');
+        return {
+          name,
+          windows: parseInt(windows, 10),
+          created,
+          attached: attached === '1',
+        };
+      });
   } catch {
     return [];
   }
@@ -60,7 +63,7 @@ export async function listTmuxSessions(): Promise<TmuxSession[]> {
 
 export async function getHiveSessions(): Promise<TmuxSession[]> {
   const sessions = await listTmuxSessions();
-  return sessions.filter(s => s.name.startsWith('hive-'));
+  return sessions.filter((s) => s.name.startsWith('hive-'));
 }
 
 export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<void> {
@@ -72,12 +75,7 @@ export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<voi
   }
 
   // Create new detached session with default shell
-  const args = [
-    'new-session',
-    '-d',
-    '-s', sessionName,
-    '-c', workDir,
-  ];
+  const args = ['new-session', '-d', '-s', sessionName, '-c', workDir];
 
   const execaOptions: { env?: NodeJS.ProcessEnv } = {};
   if (env) {
@@ -87,7 +85,7 @@ export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<voi
   await execa('tmux', args, execaOptions);
 
   // Small delay to let shell initialize
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // Send the command to the session
   if (command) {
@@ -134,15 +132,19 @@ export async function killAllHiveSessions(): Promise<number> {
   return killed;
 }
 
-export async function sendToTmuxSession(sessionName: string, text: string, clearFirst = true): Promise<void> {
+export async function sendToTmuxSession(
+  sessionName: string,
+  text: string,
+  clearFirst = true
+): Promise<void> {
   if (clearFirst) {
     // Clear any existing input at the prompt before sending new text
     // Escape: exit any menu/selection state
     // Ctrl+U: clear line from cursor to beginning
     await execa('tmux', ['send-keys', '-t', sessionName, 'Escape']);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     await execa('tmux', ['send-keys', '-t', sessionName, 'C-u']);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
 
   // For single-line text, use send-keys with literal flag then Enter separately.
@@ -166,9 +168,11 @@ export async function captureTmuxPane(sessionName: string, lines = 100): Promise
   try {
     const { stdout } = await execa('tmux', [
       'capture-pane',
-      '-t', sessionName,
+      '-t',
+      sessionName,
       '-p',
-      '-S', `-${lines}`,
+      '-S',
+      `-${lines}`,
     ]);
     return stdout;
   } catch {
@@ -208,7 +212,7 @@ export async function waitForTmuxSessionReady(
     }
 
     lastOutput = output;
-    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
 
   // Timeout reached, but return true anyway as a fallback
@@ -249,7 +253,7 @@ export async function forceBypassMode(
       await execa('tmux', ['send-keys', '-t', sessionName, 'BTab']);
 
       // Wait for the mode change to take effect
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       retries++;
       continue;
@@ -258,7 +262,7 @@ export async function forceBypassMode(
     // If neither plan mode nor bypass mode is detected, try cycling anyway
     // This handles cases where the mode indicator might not be visible
     await execa('tmux', ['send-keys', '-t', sessionName, 'BTab']);
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     retries++;
   }
@@ -288,7 +292,7 @@ export async function sendMessageWithConfirmation(
   await sendToTmuxSession(sessionName, message);
 
   // Wait before first verification check
-  await new Promise(resolve => setTimeout(resolve, initialWaitMs));
+  await new Promise((resolve) => setTimeout(resolve, initialWaitMs));
 
   // Try to verify delivery by checking if message appears in output
   let retries = 0;
@@ -300,8 +304,9 @@ export async function sendMessageWithConfirmation(
 
     // Check if the first line of the message appears in the output
     // Extract first meaningful part of message for verification
-    const messageLines = message.split('\n').filter(line => line.trim());
-    const verificationText = messageLines.length > 0 ? messageLines[0].substring(0, 50) : message.substring(0, 50);
+    const messageLines = message.split('\n').filter((line) => line.trim());
+    const verificationText =
+      messageLines.length > 0 ? messageLines[0].substring(0, 50) : message.substring(0, 50);
 
     if (output.includes(verificationText)) {
       // Message verified in output - delivery confirmed
@@ -312,7 +317,7 @@ export async function sendMessageWithConfirmation(
     if (retries < maxRetries) {
       // Exponential backoff: double the wait time for next retry
       waitTime = Math.min(waitTime * 2, 2000); // Cap at 2 seconds
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
     }
   }
 
@@ -327,10 +332,7 @@ export async function sendMessageWithConfirmation(
  * @param maxRetries - Maximum attempts to detect and approve prompt
  * @returns true if permission was approved, false if approval failed or no prompt detected
  */
-export async function autoApprovePermission(
-  sessionName: string,
-  maxRetries = 3
-): Promise<boolean> {
+export async function autoApprovePermission(sessionName: string, maxRetries = 3): Promise<boolean> {
   let retries = 0;
 
   while (retries < maxRetries) {
@@ -347,7 +349,7 @@ export async function autoApprovePermission(
       /permission.*required/i,
     ];
 
-    const hasPermissionPrompt = permissionPatterns.some(pattern => pattern.test(output));
+    const hasPermissionPrompt = permissionPatterns.some((pattern) => pattern.test(output));
 
     if (!hasPermissionPrompt) {
       // No permission prompt detected
@@ -358,11 +360,11 @@ export async function autoApprovePermission(
     await execa('tmux', ['send-keys', '-t', sessionName, 'y', 'Enter']);
 
     // Wait for response to process
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     // Check if the prompt is gone (approval succeeded)
     const newOutput = await captureTmuxPane(sessionName, 100);
-    const promptGone = !permissionPatterns.some(pattern => pattern.test(newOutput));
+    const promptGone = !permissionPatterns.some((pattern) => pattern.test(newOutput));
 
     if (promptGone) {
       return true; // Successfully approved
@@ -398,16 +400,13 @@ export async function startManager(interval = 60): Promise<boolean> {
   }
 
   // Start the manager in a detached tmux session
-  await execa('tmux', [
-    'new-session',
-    '-d',
-    '-s', MANAGER_SESSION,
-  ]);
+  await execa('tmux', ['new-session', '-d', '-s', MANAGER_SESSION]);
 
   // Send the manager command
   await execa('tmux', [
     'send-keys',
-    '-t', MANAGER_SESSION,
+    '-t',
+    MANAGER_SESSION,
     `hive manager start -i ${interval}`,
     'Enter',
   ]);
@@ -416,7 +415,7 @@ export async function startManager(interval = 60): Promise<boolean> {
 }
 
 export async function stopManager(): Promise<boolean> {
-  if (!await isManagerRunning()) {
+  if (!(await isManagerRunning())) {
     return false; // Not running
   }
 

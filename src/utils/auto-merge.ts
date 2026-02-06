@@ -53,7 +53,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
       let repoCwd = root;
 
       if (teamId) {
-        const team = getAllTeams(db.db).find(t => t.id === teamId);
+        const team = getAllTeams(db.db).find((t) => t.id === teamId);
         if (team?.repo_path) {
           repoCwd = join(root, team.repo_path);
         }
@@ -76,12 +76,15 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         let prState: any;
         let mergeableStatus: boolean;
         try {
-          const prViewOutput = execSync(`gh pr view ${pr.github_pr_number} --json state,mergeable`, {
-            stdio: 'pipe',
-            cwd: repoCwd,
-            encoding: 'utf-8',
-            timeout: 30000 // 30 second timeout for state check
-          });
+          const prViewOutput = execSync(
+            `gh pr view ${pr.github_pr_number} --json state,mergeable`,
+            {
+              stdio: 'pipe',
+              cwd: repoCwd,
+              encoding: 'utf-8',
+              timeout: 30000, // 30 second timeout for state check
+            }
+          );
           prState = JSON.parse(prViewOutput);
           mergeableStatus = prState.mergeable === 'MERGEABLE';
         } catch {
@@ -134,7 +137,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, {
           stdio: 'pipe',
           cwd: repoCwd,
-          timeout: 60000 // 60 second timeout for GitHub operations
+          timeout: 60000, // 60 second timeout for GitHub operations
         });
 
         // Update PR and story status, create logs (atomic transaction)

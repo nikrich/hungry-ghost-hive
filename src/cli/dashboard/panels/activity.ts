@@ -3,7 +3,6 @@ import blessed, { type Widgets } from 'blessed';
 import { getRecentLogs } from '../../../db/queries/logs.js';
 
 export function createActivityPanel(screen: Widgets.Screen, db: Database): Widgets.BoxElement {
-
   const box = blessed.box({
     parent: screen,
     top: '55%+5',
@@ -28,7 +27,9 @@ export function createActivityPanel(screen: Widgets.Screen, db: Database): Widge
     },
   });
 
-  updateActivityPanel(box, db).catch(err => console.error('Failed to update activity panel:', err));
+  updateActivityPanel(box, db).catch((err) =>
+    console.error('Failed to update activity panel:', err)
+  );
 
   return box;
 }

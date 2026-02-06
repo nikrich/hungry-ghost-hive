@@ -2,23 +2,11 @@ import { CliRuntimeBuilder } from './types.js';
 
 export class ClaudeRuntimeBuilder implements CliRuntimeBuilder {
   buildSpawnCommand(model: string): string[] {
-    return [
-      'claude',
-      '--dangerously-skip-permissions',
-      '--model',
-      model,
-    ];
+    return ['claude', '--dangerously-skip-permissions', '--model', model];
   }
 
   buildResumeCommand(model: string, sessionId: string): string[] {
-    return [
-      'claude',
-      '--dangerously-skip-permissions',
-      '--model',
-      model,
-      '--resume',
-      sessionId,
-    ];
+    return ['claude', '--dangerously-skip-permissions', '--model', model, '--resume', sessionId];
   }
 
   getAutoApprovalFlag(): string {

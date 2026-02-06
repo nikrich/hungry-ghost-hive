@@ -56,13 +56,15 @@ ${qualityChecks}
 ${buildCommand}
 \`\`\`
 
-${config.qa?.test_command
+${
+  config.qa?.test_command
     ? `### Test Command
 
 \`\`\`bash
 ${config.qa.test_command}
 \`\`\``
-    : ''}
+    : ''
+}
 
 ## Development Workflow
 
@@ -143,13 +145,15 @@ ${qualityChecks}
 ${buildCommand}
 \`\`\`
 
-${config.qa?.test_command
+${
+  config.qa?.test_command
     ? `### Test Suite
 
 \`\`\`bash
 ${config.qa.test_command}
 \`\`\``
-    : ''}
+    : ''
+}
 
 ## Implementation Standards
 
@@ -232,13 +236,15 @@ ${qualityChecks}
 ${buildCommand}
 \`\`\`
 
-${config.qa?.test_command
+${
+  config.qa?.test_command
     ? `### Testing
 
 \`\`\`bash
 ${config.qa.test_command}
 \`\`\``
-    : ''}
+    : ''
+}
 
 ## Development Process
 

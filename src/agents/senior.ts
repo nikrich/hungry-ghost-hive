@@ -20,8 +20,9 @@ export class SeniorAgent extends BaseAgent {
     super(context);
     if (context.teamId) {
       this.team = getTeamById(this.db, context.teamId) || null;
-      this.assignedStories = getStoriesByTeam(this.db, context.teamId)
-        .filter(s => ['planned', 'in_progress', 'review'].includes(s.status));
+      this.assignedStories = getStoriesByTeam(this.db, context.teamId).filter((s) =>
+        ['planned', 'in_progress', 'review'].includes(s.status)
+      );
     }
   }
 
@@ -30,9 +31,12 @@ export class SeniorAgent extends BaseAgent {
       ? `Team: ${this.team.name}\nRepository: ${this.team.repo_url}\nPath: ${this.team.repo_path}`
       : 'No team assigned';
 
-    const storiesInfo = this.assignedStories.length > 0
-      ? this.assignedStories.map(s => `- ${s.id}: ${s.title} (${s.status}, complexity: ${s.complexity_score})`).join('\n')
-      : 'No stories assigned';
+    const storiesInfo =
+      this.assignedStories.length > 0
+        ? this.assignedStories
+            .map((s) => `- ${s.id}: ${s.title} (${s.status}, complexity: ${s.complexity_score})`)
+            .join('\n')
+        : 'No stories assigned';
 
     return `You are a Senior Developer responsible for a specific team and repository.
 
@@ -127,7 +131,10 @@ This will help with story estimation and implementation.`;
     }
   }
 
-  private async delegateStory(story: StoryRow, agentType: 'junior' | 'intermediate'): Promise<void> {
+  private async delegateStory(
+    story: StoryRow,
+    agentType: 'junior' | 'intermediate'
+  ): Promise<void> {
     this.log('STORY_ASSIGNED', `Delegating to ${agentType}`, {
       storyId: story.id,
       agentType,
@@ -182,9 +189,13 @@ This will help with story estimation and implementation.`;
       });
     } catch (err) {
       // If delegation fails, handle it ourselves
-      this.log('STORY_PROGRESS_UPDATE', `Failed to delegate, handling directly: ${err instanceof Error ? err.message : 'Unknown error'}`, {
-        storyId: story.id,
-      });
+      this.log(
+        'STORY_PROGRESS_UPDATE',
+        `Failed to delegate, handling directly: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        {
+          storyId: story.id,
+        }
+      );
       await this.implementStory(story);
     }
   }
@@ -198,7 +209,10 @@ This will help with story estimation and implementation.`;
     updateAgent(this.db, this.agentId, { currentStoryId: story.id });
 
     // Create feature branch
-    const branchName = `feature/${story.id.toLowerCase()}-${story.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 30)}`;
+    const branchName = `feature/${story.id.toLowerCase()}-${story.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .substring(0, 30)}`;
 
     this.log('STORY_STARTED', `Implementing: ${story.title}`, { branchName });
 
@@ -269,9 +283,10 @@ If issues found, describe them. If approved, confirm.`;
     const review = await this.chat(prompt);
 
     // Parse review result (simplified)
-    const hasIssues = review.toLowerCase().includes('issue') ||
-                      review.toLowerCase().includes('problem') ||
-                      review.toLowerCase().includes('fix');
+    const hasIssues =
+      review.toLowerCase().includes('issue') ||
+      review.toLowerCase().includes('problem') ||
+      review.toLowerCase().includes('fix');
 
     if (hasIssues) {
       // Send back for fixes

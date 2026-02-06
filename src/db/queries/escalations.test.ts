@@ -122,8 +122,8 @@ describe('escalations queries', () => {
       const escalations = getEscalationsByStory(db, storyId);
 
       expect(escalations).toHaveLength(2);
-      expect(escalations.map(e => e.id)).toContain(esc1.id);
-      expect(escalations.map(e => e.id)).toContain(esc2.id);
+      expect(escalations.map((e) => e.id)).toContain(esc1.id);
+      expect(escalations.map((e) => e.id)).toContain(esc2.id);
     });
 
     it('should return empty array when no escalations for story', () => {
@@ -139,8 +139,8 @@ describe('escalations queries', () => {
 
       expect(escalations).toHaveLength(2);
       // Verify both escalations are present
-      expect(escalations.map(e => e.id)).toContain(esc1.id);
-      expect(escalations.map(e => e.id)).toContain(esc2.id);
+      expect(escalations.map((e) => e.id)).toContain(esc1.id);
+      expect(escalations.map((e) => e.id)).toContain(esc2.id);
     });
   });
 
@@ -155,8 +155,8 @@ describe('escalations queries', () => {
       const escalations = getEscalationsByFromAgent(db, agentId);
 
       expect(escalations).toHaveLength(2);
-      expect(escalations.map(e => e.id)).toContain(esc1.id);
-      expect(escalations.map(e => e.id)).toContain(esc2.id);
+      expect(escalations.map((e) => e.id)).toContain(esc1.id);
+      expect(escalations.map((e) => e.id)).toContain(esc2.id);
     });
   });
 
@@ -225,8 +225,8 @@ describe('escalations queries', () => {
       const pending = getPendingEscalations(db);
 
       expect(pending).toHaveLength(2);
-      expect(pending.map(e => e.id)).toContain(esc1.id);
-      expect(pending.map(e => e.id)).toContain(esc2.id);
+      expect(pending.map((e) => e.id)).toContain(esc1.id);
+      expect(pending.map((e) => e.id)).toContain(esc2.id);
     });
   });
 
@@ -273,8 +273,8 @@ describe('escalations queries', () => {
 
       expect(escalations).toHaveLength(2);
       // Verify both escalations are present
-      expect(escalations.map(e => e.id)).toContain(esc1.id);
-      expect(escalations.map(e => e.id)).toContain(esc2.id);
+      expect(escalations.map((e) => e.id)).toContain(esc1.id);
+      expect(escalations.map((e) => e.id)).toContain(esc2.id);
     });
   });
 
@@ -370,7 +370,7 @@ describe('escalations queries', () => {
     });
 
     it('should handle special characters in reason', () => {
-      const reason = "Reason with 'quotes' and \"double\" and\nnewlines";
+      const reason = 'Reason with \'quotes\' and "double" and\nnewlines';
       const esc = createEscalation(db, { reason });
 
       const retrieved = getEscalationById(db, esc.id);
@@ -396,8 +396,8 @@ describe('escalations queries', () => {
       const recent = getRecentEscalationsForAgent(db, agentId, 30);
 
       expect(recent).toHaveLength(2);
-      expect(recent.map(e => e.id)).toContain(esc1.id);
-      expect(recent.map(e => e.id)).toContain(esc2.id);
+      expect(recent.map((e) => e.id)).toContain(esc1.id);
+      expect(recent.map((e) => e.id)).toContain(esc2.id);
     });
 
     it('should return empty array for agent with no recent escalations', () => {
@@ -413,8 +413,8 @@ describe('escalations queries', () => {
 
       expect(recent).toHaveLength(2);
       // Both escalations should be present
-      expect(recent.map(e => e.id)).toContain(esc1.id);
-      expect(recent.map(e => e.id)).toContain(esc2.id);
+      expect(recent.map((e) => e.id)).toContain(esc1.id);
+      expect(recent.map((e) => e.id)).toContain(esc2.id);
     });
   });
 
@@ -430,9 +430,9 @@ describe('escalations queries', () => {
       const active = getActiveEscalationsForAgent(db, agentId);
 
       expect(active).toHaveLength(2);
-      expect(active.map(e => e.id)).toContain(esc1.id);
-      expect(active.map(e => e.id)).toContain(esc2.id);
-      expect(active.map(e => e.id)).not.toContain(esc3.id);
+      expect(active.map((e) => e.id)).toContain(esc1.id);
+      expect(active.map((e) => e.id)).toContain(esc2.id);
+      expect(active.map((e) => e.id)).not.toContain(esc3.id);
     });
 
     it('should not return resolved escalations', () => {

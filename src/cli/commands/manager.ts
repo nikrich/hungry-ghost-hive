@@ -5,10 +5,35 @@ import { getDatabase, withTransaction } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
-import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession, sendMessageWithConfirmation, autoApprovePermission, forceBypassMode } from '../../tmux/manager.js';
-import { getMergeQueue, getPullRequestsByStatus, backfillGithubPrNumbers } from '../../db/queries/pull-requests.js';
-import { markMessagesRead, getAllPendingMessages, type MessageRow } from '../../db/queries/messages.js';
-import { createEscalation, getPendingEscalations, getRecentEscalationsForAgent, getActiveEscalationsForAgent, updateEscalation } from '../../db/queries/escalations.js';
+import {
+  getHiveSessions,
+  sendToTmuxSession,
+  sendEnterToTmuxSession,
+  captureTmuxPane,
+  isManagerRunning,
+  stopManager as stopManagerSession,
+  killTmuxSession,
+  sendMessageWithConfirmation,
+  autoApprovePermission,
+  forceBypassMode,
+} from '../../tmux/manager.js';
+import {
+  getMergeQueue,
+  getPullRequestsByStatus,
+  backfillGithubPrNumbers,
+} from '../../db/queries/pull-requests.js';
+import {
+  markMessagesRead,
+  getAllPendingMessages,
+  type MessageRow,
+} from '../../db/queries/messages.js';
+import {
+  createEscalation,
+  getPendingEscalations,
+  getRecentEscalationsForAgent,
+  getActiveEscalationsForAgent,
+  updateEscalation,
+} from '../../db/queries/escalations.js';
 import { getAgentById, updateAgent, getAllAgents } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { queryAll } from '../../db/client.js';
@@ -19,8 +44,16 @@ import { execa } from 'execa';
 import { createPullRequest, type PullRequestRow } from '../../db/queries/pull-requests.js';
 import { acquireLock } from '../../db/lock.js';
 import { join } from 'path';
-import { detectClaudeCodeState, getStateDescription, ClaudeCodeState } from '../../utils/claude-code-state.js';
-import { getAvailableCommands, buildAutoRecoveryReminder, type CLITool } from '../../utils/cli-commands.js';
+import {
+  detectClaudeCodeState,
+  getStateDescription,
+  ClaudeCodeState,
+} from '../../utils/claude-code-state.js';
+import {
+  getAvailableCommands,
+  buildAutoRecoveryReminder,
+  type CLITool,
+} from '../../utils/cli-commands.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
 import { extractStoryIdFromBranch } from '../../utils/story-id.js';
 
@@ -34,8 +67,9 @@ interface AgentStateTracking {
 // In-memory state tracking per agent session
 const agentStates = new Map<string, AgentStateTracking>();
 
-export const managerCommand = new Command('manager')
-  .description('Micromanager daemon that keeps agents productive');
+export const managerCommand = new Command('manager').description(
+  'Micromanager daemon that keeps agents productive'
+);
 
 // Start the manager daemon
 managerCommand
@@ -63,8 +97,14 @@ managerCommand
       releaseLock = await acquireLock(lockPath, { stale: config.manager.lock_stale_ms });
       console.log(chalk.gray('Manager lock acquired'));
     } catch (err) {
-      console.error(chalk.red('Failed to acquire manager lock - another manager instance may be running.'), err);
-      console.error(chalk.gray('If you are sure no other manager is running, remove:'), lockPath + '.lock');
+      console.error(
+        chalk.red('Failed to acquire manager lock - another manager instance may be running.'),
+        err
+      );
+      console.error(
+        chalk.gray('If you are sure no other manager is running, remove:'),
+        lockPath + '.lock'
+      );
       process.exit(1);
     }
 
@@ -274,15 +314,23 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
 
     const healthResult = await scheduler.healthCheck();
     if (healthResult.terminated > 0) {
-      console.log(chalk.yellow(`  Health check: ${healthResult.terminated} dead agent(s) cleaned up`));
+      console.log(
+        chalk.yellow(`  Health check: ${healthResult.terminated} dead agent(s) cleaned up`)
+      );
       if (healthResult.revived.length > 0) {
-        console.log(chalk.yellow(`  Stories returned to queue: ${healthResult.revived.join(', ')}`));
+        console.log(
+          chalk.yellow(`  Stories returned to queue: ${healthResult.revived.join(', ')}`)
+        );
       }
       db.save();
     }
 
     if (healthResult.orphanedRecovered.length > 0) {
-      console.log(chalk.green(`  Recovered ${healthResult.orphanedRecovered.length} orphaned story(ies): ${healthResult.orphanedRecovered.join(', ')}`));
+      console.log(
+        chalk.green(
+          `  Recovered ${healthResult.orphanedRecovered.length} orphaned story(ies): ${healthResult.orphanedRecovered.join(', ')}`
+        )
+      );
       db.save();
     }
 
@@ -313,9 +361,7 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     }
 
     const sessions = await getHiveSessions();
-    const hiveSessions = sessions.filter(s =>
-      s.name.startsWith('hive-')
-    );
+    const hiveSessions = sessions.filter((s) => s.name.startsWith('hive-'));
 
     if (hiveSessions.length === 0) {
       console.log(chalk.gray('  No agent sessions found'));
@@ -330,16 +376,12 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     // Get existing pending escalations to avoid duplicates
     const existingEscalations = getPendingEscalations(db.db);
     const escalatedSessions = new Set(
-      existingEscalations
-        .filter(e => e.from_agent_id)
-        .map(e => e.from_agent_id)
+      existingEscalations.filter((e) => e.from_agent_id).map((e) => e.from_agent_id)
     );
 
     // Optimization: Batch fetch all agents and messages instead of per-session queries
     const allAgents = getAllAgents(db.db);
-    const agentsBySessionName = new Map(
-      allAgents.map(a => [`hive-${a.id}`, a])
-    );
+    const agentsBySessionName = new Map(allAgents.map((a) => [`hive-${a.id}`, a]));
 
     const allPendingMessages = getAllPendingMessages(db.db);
     const messagesBySessionName = new Map<string, MessageRow[]>();
@@ -366,7 +408,7 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
         await forwardMessages(session.name, unread, agentCliTool);
         messagesForwarded += unread.length;
         // Collect message IDs to mark as read in batch
-        messagesToMarkRead.push(...unread.map(msg => msg.id));
+        messagesToMarkRead.push(...unread.map((msg) => msg.id));
       }
 
       // Check if agent appears stuck (capture last output)
@@ -424,7 +466,9 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       if (stateResult.state === ClaudeCodeState.PLAN_APPROVAL) {
         const restored = await forceBypassMode(session.name);
         if (restored) {
-          console.log(chalk.green(`  BYPASS MODE RESTORED: ${session.name} cycled out of plan mode`));
+          console.log(
+            chalk.green(`  BYPASS MODE RESTORED: ${session.name} cycled out of plan mode`)
+          );
           // Update tracked state since bypass was restored
           const tracked = agentStates.get(session.name);
           if (tracked) {
@@ -442,7 +486,8 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       };
 
       // Check for recent escalations from this agent to improve dedup (avoid duplicates even after restart)
-      const hasRecentEscalation = escalatedSessions.has(session.name) ||
+      const hasRecentEscalation =
+        escalatedSessions.has(session.name) ||
         getRecentEscalationsForAgent(db.db, session.name, 30).length > 0;
 
       if (waitingInfo.needsHuman && !hasRecentEscalation) {
@@ -476,7 +521,11 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
         }
         if (activeEscalations.length > 0) {
           db.save();
-          console.log(chalk.green(`  AUTO-RESOLVED: ${session.name} recovered, resolved ${activeEscalations.length} escalation(s)`));
+          console.log(
+            chalk.green(
+              `  AUTO-RESOLVED: ${session.name} recovered, resolved ${activeEscalations.length} escalation(s)`
+            )
+          );
         }
       } else if (waitingInfo.isWaiting && stateResult.state !== ClaudeCodeState.THINKING) {
         // Agent is idle/waiting but doesn't need human
@@ -499,9 +548,20 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
             const recheckState = detectClaudeCodeState(recheckOutput);
 
             // Only proceed if still in a waiting state and not THINKING
-            if (recheckState.isWaiting && !recheckState.needsHuman && recheckState.state !== ClaudeCodeState.THINKING) {
+            if (
+              recheckState.isWaiting &&
+              !recheckState.needsHuman &&
+              recheckState.state !== ClaudeCodeState.THINKING
+            ) {
               const agentType = getAgentType(session.name);
-              await nudgeAgent(root, session.name, undefined, agentType, waitingInfo.reason, agentCliTool);
+              await nudgeAgent(
+                root,
+                session.name,
+                undefined,
+                agentType,
+                waitingInfo.reason,
+                agentCliTool
+              );
               currentTrackedState.lastNudgeTime = now;
               nudged++;
             }
@@ -520,9 +580,10 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     // Check for PRs needing QA attention
     const queuedPRs = getMergeQueue(db.db);
     if (queuedPRs.length > 0) {
-      const qaSessions = hiveSessions.filter(s => s.name.includes('-qa-'));
+      const qaSessions = hiveSessions.filter((s) => s.name.includes('-qa-'));
       for (const qa of qaSessions) {
-        await sendToTmuxSession(qa.name,
+        await sendToTmuxSession(
+          qa.name,
           `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
         );
       }
@@ -548,9 +609,10 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       }
 
       if (pr.submitted_by) {
-        const devSession = hiveSessions.find(s => s.name === pr.submitted_by);
+        const devSession = hiveSessions.find((s) => s.name === pr.submitted_by);
         if (devSession) {
-          await sendToTmuxSession(devSession.name,
+          await sendToTmuxSession(
+            devSession.name,
             `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
 # Story: ${pr.story_id || 'Unknown'}
 # Reason: ${pr.review_notes || 'See review comments'}
@@ -576,22 +638,27 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     // Nudge developers who have qa_failed stories - they need to fix and resubmit
     // Filter out merged/completed stories to avoid nudging about finished work
     const qaFailedStories = getStoriesByStatus(db.db, 'qa_failed').filter(
-      story => !['merged', 'completed'].includes(story.status)
+      (story) => !['merged', 'completed'].includes(story.status)
     );
     for (const story of qaFailedStories) {
       if (story.assigned_agent_id) {
         const agent = getAgentById(db.db, story.assigned_agent_id);
         if (agent && agent.status === 'working') {
-          const agentSession = hiveSessions.find(s =>
-            s.name === agent.tmux_session || s.name.includes(agent.id)
+          const agentSession = hiveSessions.find(
+            (s) => s.name === agent.tmux_session || s.name.includes(agent.id)
           );
           if (agentSession) {
             // Check if agent is idle before nudging
             const output = await captureTmuxPane(agentSession.name, 30);
             const stateResult = detectClaudeCodeState(output);
             // Only nudge if idle and not thinking (thinking is productive work)
-            if (stateResult.isWaiting && !stateResult.needsHuman && stateResult.state !== ClaudeCodeState.THINKING) {
-              await sendToTmuxSession(agentSession.name,
+            if (
+              stateResult.isWaiting &&
+              !stateResult.needsHuman &&
+              stateResult.state !== ClaudeCodeState.THINKING
+            ) {
+              await sendToTmuxSession(
+                agentSession.name,
                 `# REMINDER: Story ${story.id} failed QA review!
 # You must fix the issues and resubmit the PR.
 # Check the QA feedback and address all concerns.
@@ -606,7 +673,8 @@ hive pr queue`
 
     // Spin down agents whose stories have been merged
     // Find merged stories that still have assigned agents
-    const mergedStoriesWithAgents = queryAll<StoryRow>(db.db,
+    const mergedStoriesWithAgents = queryAll<StoryRow>(
+      db.db,
       `SELECT * FROM stories WHERE status = 'merged' AND assigned_agent_id IS NOT NULL`
     );
     let agentsSpunDown = 0;
@@ -615,17 +683,18 @@ hive pr queue`
         const agent = getAgentById(db.db, story.assigned_agent_id);
         if (agent && agent.status !== 'terminated') {
           // Find and kill the agent's tmux session
-          const agentSession = hiveSessions.find(s =>
-            s.name === agent.tmux_session || s.name.includes(agent.id)
+          const agentSession = hiveSessions.find(
+            (s) => s.name === agent.tmux_session || s.name.includes(agent.id)
           );
 
           if (agentSession) {
             // Thank the agent and terminate
-            await sendToTmuxSession(agentSession.name,
+            await sendToTmuxSession(
+              agentSession.name,
               `# Congratulations! Your story ${story.id} has been merged.
 # Your work is complete. Spinning down...`
             );
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise((resolve) => setTimeout(resolve, 1000));
             await killTmuxSession(agentSession.name);
           }
 
@@ -640,7 +709,7 @@ hive pr queue`
               message: `Agent spun down after story ${story.id} was merged`,
             });
 
-            db.db.run("UPDATE stories SET assigned_agent_id = NULL WHERE id = ?", [story.id]);
+            db.db.run('UPDATE stories SET assigned_agent_id = NULL WHERE id = ?', [story.id]);
           });
 
           agentsSpunDown++;
@@ -653,22 +722,25 @@ hive pr queue`
     }
 
     // Spin down all non-tech-lead agents when no work remains in the pipeline
-    const activeStories = queryAll<StoryRow>(db.db,
+    const activeStories = queryAll<StoryRow>(
+      db.db,
       `SELECT * FROM stories WHERE status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')`
     );
     if (activeStories.length === 0) {
       // No active work - spin down all agents except tech lead
-      const workingAgents = queryAll<{ id: string; tmux_session: string | null; type: string }>(db.db,
+      const workingAgents = queryAll<{ id: string; tmux_session: string | null; type: string }>(
+        db.db,
         `SELECT id, tmux_session, type FROM agents WHERE status = 'working' AND type != 'tech_lead'`
       );
       let idleSpunDown = 0;
       for (const agent of workingAgents) {
-        const agentSession = hiveSessions.find(s => s.name === agent.tmux_session);
+        const agentSession = hiveSessions.find((s) => s.name === agent.tmux_session);
         if (agentSession) {
-          await sendToTmuxSession(agentSession.name,
+          await sendToTmuxSession(
+            agentSession.name,
             `# All work complete. No stories in pipeline. Spinning down...`
           );
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
           await killTmuxSession(agentSession.name);
         }
         // Update agent and log spindown (atomic transaction)
@@ -690,18 +762,20 @@ hive pr queue`
 
     // Check for stories stuck in "in_progress" for too long (> 30 min without activity)
     // Only nudge stories that haven't been merged or completed
-    const stuckStories = queryAll<StoryRow>(db.db,
+    const stuckStories = queryAll<StoryRow>(
+      db.db,
       `SELECT * FROM stories
        WHERE status = 'in_progress'
        AND updated_at < datetime('now', '-30 minutes')`
-    ).filter(story => !['merged', 'completed'].includes(story.status));
+    ).filter((story) => !['merged', 'completed'].includes(story.status));
     for (const story of stuckStories) {
       if (story.assigned_agent_id) {
-        const agentSession = hiveSessions.find(s =>
+        const agentSession = hiveSessions.find((s) =>
           s.name.includes(story.assigned_agent_id?.replace(/^hive-/, '') || '')
         );
         if (agentSession) {
-          await sendToTmuxSession(agentSession.name,
+          await sendToTmuxSession(
+            agentSession.name,
             `# REMINDER: Story ${story.id} has been in progress for a while.
 # If stuck, escalate to your Senior or Tech Lead.
 # If done, submit your PR: hive pr submit -b <branch> -s ${story.id} --from ${agentSession.name}
@@ -712,14 +786,16 @@ hive pr queue`
     }
 
     // Check for unassigned planned stories
-    const plannedStories = queryAll<StoryRow>(db.db,
+    const plannedStories = queryAll<StoryRow>(
+      db.db,
       "SELECT * FROM stories WHERE status = 'planned' AND assigned_agent_id IS NULL"
     );
     if (plannedStories.length > 0) {
       // Notify seniors about unassigned work
-      const seniorSessions = hiveSessions.filter(s => s.name.includes('-senior-'));
+      const seniorSessions = hiveSessions.filter((s) => s.name.includes('-senior-'));
       for (const senior of seniorSessions) {
-        await sendToTmuxSession(senior.name,
+        await sendToTmuxSession(
+          senior.name,
           `# ${plannedStories.length} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
         );
       }
@@ -738,14 +814,14 @@ hive pr queue`
     } else {
       console.log(chalk.green('  All agents productive'));
     }
-
   } finally {
     db.close();
   }
 }
 
-
-function getAgentType(sessionName: string): 'senior' | 'intermediate' | 'junior' | 'qa' | 'unknown' {
+function getAgentType(
+  sessionName: string
+): 'senior' | 'intermediate' | 'junior' | 'qa' | 'unknown' {
   if (sessionName.includes('-senior-')) return 'senior';
   if (sessionName.includes('-intermediate-')) return 'intermediate';
   if (sessionName.includes('-junior-')) return 'junior';
@@ -767,7 +843,7 @@ async function nudgeAgent(
   }
 
   const type = agentType || getAgentType(sessionName);
-  const cliTool = agentCliTool || 'claude' as CLITool;
+  const cliTool = agentCliTool || ('claude' as CLITool);
   const commands = getAvailableCommands(cliTool);
 
   // Build contextual nudge message based on agent type and reason
@@ -803,11 +879,15 @@ hive status`;
   await sendToTmuxSession(sessionName, nudge);
 
   // Also send Enter to ensure prompt is activated
-  await new Promise(resolve => setTimeout(resolve, 100));
+  await new Promise((resolve) => setTimeout(resolve, 100));
   await sendEnterToTmuxSession(sessionName);
 }
 
-async function forwardMessages(sessionName: string, messages: MessageRow[], cliTool: CLITool = 'claude'): Promise<void> {
+async function forwardMessages(
+  sessionName: string,
+  messages: MessageRow[],
+  cliTool: CLITool = 'claude'
+): Promise<void> {
   const commands = getAvailableCommands(cliTool);
   for (const msg of messages) {
     const notification = `# New message from ${msg.from_session}${msg.subject ? ` - ${msg.subject}` : ''}
@@ -818,12 +898,14 @@ async function forwardMessages(sessionName: string, messages: MessageRow[], cliT
     const delivered = await sendMessageWithConfirmation(sessionName, notification);
 
     if (!delivered) {
-      console.warn(`Failed to confirm delivery of message ${msg.id} to ${sessionName} after retries`);
+      console.warn(
+        `Failed to confirm delivery of message ${msg.id} to ${sessionName} after retries`
+      );
       // Continue to next message even if delivery not confirmed to avoid blocking the manager
     }
 
     // Small delay between messages to allow recipient time to read
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
 
@@ -845,10 +927,24 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
 
     try {
       // Get recently merged PRs from GitHub
-      const result = await execa('gh', ['pr', 'list', '--json', 'number,headRefName,mergedAt', '--state', 'merged', '--limit', '20'], {
-        cwd: repoDir,
-      });
-      const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> = JSON.parse(result.stdout);
+      const result = await execa(
+        'gh',
+        [
+          'pr',
+          'list',
+          '--json',
+          'number,headRefName,mergedAt',
+          '--state',
+          'merged',
+          '--limit',
+          '20',
+        ],
+        {
+          cwd: repoDir,
+        }
+      );
+      const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> =
+        JSON.parse(result.stdout);
 
       for (const pr of mergedPRs) {
         // Extract story ID from branch name using unified pattern
@@ -856,7 +952,8 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
         if (!storyId) continue;
 
         // Check if story exists and isn't already merged
-        const story = queryAll<StoryRow>(db.db,
+        const story = queryAll<StoryRow>(
+          db.db,
           "SELECT * FROM stories WHERE id = ? AND status != 'merged'",
           [storyId]
         );
@@ -864,7 +961,10 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
         if (story.length > 0) {
           // Update story to merged (atomic transaction)
           await withTransaction(db.db, () => {
-            db.db.run("UPDATE stories SET status = 'merged', assigned_agent_id = NULL, updated_at = datetime('now') WHERE id = ?", [storyId]);
+            db.db.run(
+              "UPDATE stories SET status = 'merged', assigned_agent_id = NULL, updated_at = datetime('now') WHERE id = ?",
+              [storyId]
+            );
 
             // Log the sync
             createLog(db.db, {
@@ -896,12 +996,10 @@ async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string)
   if (teams.length === 0) return 0;
 
   // Get ALL existing PRs (including merged/closed) to prevent duplicate imports
-  const existingPRs = queryAll<PullRequestRow>(db.db,
-    "SELECT * FROM pull_requests"
-  );
+  const existingPRs = queryAll<PullRequestRow>(db.db, 'SELECT * FROM pull_requests');
   // Include ALL branch names to prevent duplicate entries for merged/closed PRs
-  const existingBranches = new Set(existingPRs.map(pr => pr.branch_name));
-  const existingPrNumbers = new Set(existingPRs.map(pr => pr.github_pr_number).filter(Boolean));
+  const existingBranches = new Set(existingPRs.map((pr) => pr.branch_name));
+  const existingPrNumbers = new Set(existingPRs.map((pr) => pr.github_pr_number).filter(Boolean));
 
   let synced = 0;
 
@@ -911,10 +1009,15 @@ async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string)
     const repoDir = `${root}/${team.repo_path}`;
 
     try {
-      const result = await execa('gh', ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'], {
-        cwd: repoDir,
-      });
-      const ghPRs: Array<{ number: number; headRefName: string; url: string; title: string }> = JSON.parse(result.stdout);
+      const result = await execa(
+        'gh',
+        ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'],
+        {
+          cwd: repoDir,
+        }
+      );
+      const ghPRs: Array<{ number: number; headRefName: string; url: string; title: string }> =
+        JSON.parse(result.stdout);
 
       for (const ghPR of ghPRs) {
         // Skip if already in queue

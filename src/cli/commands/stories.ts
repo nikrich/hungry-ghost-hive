@@ -2,11 +2,16 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
-import { getAllStories, getStoryById, getStoriesByStatus, getStoryDependencies, type StoryStatus } from '../../db/queries/stories.js';
+import {
+  getAllStories,
+  getStoryById,
+  getStoriesByStatus,
+  getStoryDependencies,
+  type StoryStatus,
+} from '../../db/queries/stories.js';
 import { statusColor } from '../../utils/logger.js';
 
-export const storiesCommand = new Command('stories')
-  .description('Manage stories');
+export const storiesCommand = new Command('stories').description('Manage stories');
 
 storiesCommand
   .command('list')
@@ -121,7 +126,9 @@ storiesCommand
       if (dependencies.length > 0) {
         console.log(chalk.bold('\nDependencies:'));
         for (const dep of dependencies) {
-          console.log(`  ${chalk.cyan(dep.id)} - ${dep.title.substring(0, 40)}... - ${statusColor(dep.status)}`);
+          console.log(
+            `  ${chalk.cyan(dep.id)} - ${dep.title.substring(0, 40)}... - ${statusColor(dep.status)}`
+          );
         }
       }
       console.log();

@@ -84,7 +84,8 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
     left: 0,
     width: '100%',
     height: 1,
-    content: ' Tab: Switch panels | ↑↓: Navigate | Enter: Attach to tmux | Ctrl+B,D: Detach | Q: Quit',
+    content:
+      ' Tab: Switch panels | ↑↓: Navigate | Enter: Attach to tmux | Ctrl+B,D: Detach | Q: Quit',
     style: {
       bg: 'blue',
       fg: 'white',
@@ -107,7 +108,11 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
 
         // Get new database connection first, then close old one
         const newDb = await getDatabase(paths.hiveDir);
-        try { db.db.close(); } catch { /* ignore close errors */ }
+        try {
+          db.db.close();
+        } catch {
+          /* ignore close errors */
+        }
         db = newDb;
       }
 
@@ -138,7 +143,11 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   // Key bindings
   screen.key(['q', 'C-c', 'escape'], () => {
     if (currentTimeout) clearTimeout(currentTimeout);
-    try { db.db.close(); } catch { /* ignore */ }
+    try {
+      db.db.close();
+    } catch {
+      /* ignore */
+    }
     screen.destroy();
     process.exit(0);
   });

@@ -48,9 +48,13 @@ export const addRepoCommand = new Command('add-repo')
       // Add git submodule
       spinner.text = 'Adding git submodule...';
       try {
-        await execa('git', ['submodule', 'add', '-b', options.branch, options.url, relativeRepoPath], {
-          cwd: root,
-        });
+        await execa(
+          'git',
+          ['submodule', 'add', '-b', options.branch, options.url, relativeRepoPath],
+          {
+            cwd: root,
+          }
+        );
       } catch (gitErr: unknown) {
         // If submodule already exists, try to init/update instead
         const error = gitErr as { stderr?: string };

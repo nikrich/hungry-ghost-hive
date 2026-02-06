@@ -14,6 +14,8 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "lint": "eslint src/",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -50,6 +52,7 @@
     "@types/node": "^20.0.0",
     "eslint": "^9.39.2",
     "husky": "^9.1.7",
+    "prettier": "^3.8.1",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "typescript-eslint": "^8.54.0",

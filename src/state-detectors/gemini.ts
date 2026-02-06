@@ -22,12 +22,7 @@ const GEMINI_STATE_INDICATORS: StateIndicator[] = [
   // High priority: Active work states
   {
     state: AgentState.THINKING,
-    patterns: [
-      /thinking\.\.\./i,
-      /processing your request/i,
-      /analyzing/i,
-      /generating/i,
-    ],
+    patterns: [/thinking\.\.\./i, /processing your request/i, /analyzing/i, /generating/i],
     priority: 100,
   },
   {
@@ -42,11 +37,7 @@ const GEMINI_STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: AgentState.PROCESSING,
-    patterns: [
-      /processing/i,
-      /computing/i,
-      /working on it/i,
-    ],
+    patterns: [/processing/i, /computing/i, /working on it/i],
     priority: 90,
   },
 
@@ -73,34 +64,19 @@ const GEMINI_STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: AgentState.PERMISSION_REQUIRED,
-    patterns: [
-      /permission required/i,
-      /authorization/i,
-      /confirm action/i,
-      /\(y\/n\)/i,
-    ],
+    patterns: [/permission required/i, /authorization/i, /confirm action/i, /\(y\/n\)/i],
     priority: 90,
   },
   {
     state: AgentState.USER_DECLINED,
-    patterns: [
-      /declined/i,
-      /rejected/i,
-      /cancelled by user/i,
-      /aborted/i,
-    ],
+    patterns: [/declined/i, /rejected/i, /cancelled by user/i, /aborted/i],
     priority: 85,
   },
 
   // Lower priority: Ready/idle states
   {
     state: AgentState.WORK_COMPLETE,
-    patterns: [
-      /task complete/i,
-      /done/i,
-      /finished successfully/i,
-      /completed/i,
-    ],
+    patterns: [/task complete/i, /done/i, /finished successfully/i, /completed/i],
     priority: 50,
   },
   {
@@ -186,11 +162,7 @@ export class GeminiStateDetector implements StateDetector {
    * Check if a state represents active work (not waiting)
    */
   isActiveState(state: AgentState): boolean {
-    return [
-      AgentState.THINKING,
-      AgentState.TOOL_RUNNING,
-      AgentState.PROCESSING,
-    ].includes(state);
+    return [AgentState.THINKING, AgentState.TOOL_RUNNING, AgentState.PROCESSING].includes(state);
   }
 
   /**
@@ -209,7 +181,9 @@ export class GeminiStateDetector implements StateDetector {
   /**
    * Map a state to waiting status flags
    */
-  private mapStateToWaitingStatus(state: AgentState): Omit<StateDetectionResult, 'confidence' | 'reason'> {
+  private mapStateToWaitingStatus(
+    state: AgentState
+  ): Omit<StateDetectionResult, 'confidence' | 'reason'> {
     switch (state) {
       // Active states - not waiting
       case AgentState.THINKING:

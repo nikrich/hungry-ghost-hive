@@ -17,11 +17,41 @@ const mockConfig = {
     senior_capacity: 50,
   },
   models: {
-    tech_lead: { provider: 'anthropic', model: 'claude-opus-4-20250514', max_tokens: 16000, temperature: 0.7, cli_tool: 'claude' },
-    senior: { provider: 'anthropic', model: 'claude-sonnet-4-20250514', max_tokens: 8000, temperature: 0.5, cli_tool: 'claude' },
-    intermediate: { provider: 'anthropic', model: 'claude-haiku-3-5-20241022', max_tokens: 4000, temperature: 0.3, cli_tool: 'claude' },
-    junior: { provider: 'openai', model: 'gpt-4o-mini', max_tokens: 4000, temperature: 0.2, cli_tool: 'claude' },
-    qa: { provider: 'anthropic', model: 'claude-sonnet-4-20250514', max_tokens: 8000, temperature: 0.2, cli_tool: 'claude' },
+    tech_lead: {
+      provider: 'anthropic',
+      model: 'claude-opus-4-20250514',
+      max_tokens: 16000,
+      temperature: 0.7,
+      cli_tool: 'claude',
+    },
+    senior: {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      temperature: 0.5,
+      cli_tool: 'claude',
+    },
+    intermediate: {
+      provider: 'anthropic',
+      model: 'claude-haiku-3-5-20241022',
+      max_tokens: 4000,
+      temperature: 0.3,
+      cli_tool: 'claude',
+    },
+    junior: {
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      max_tokens: 4000,
+      temperature: 0.2,
+      cli_tool: 'claude',
+    },
+    qa: {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      temperature: 0.2,
+      cli_tool: 'claude',
+    },
   },
   rootDir: '/tmp',
 };
@@ -112,7 +142,11 @@ beforeEach(async () => {
 
 describe('Scheduler Topological Sort', () => {
   it('should handle stories with no dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const story1 = createStory(db, { teamId: team.id, title: 'Story 1', description: 'Test' });
     const story2 = createStory(db, { teamId: team.id, title: 'Story 2', description: 'Test' });
 
@@ -125,7 +159,11 @@ describe('Scheduler Topological Sort', () => {
   });
 
   it('should respect linear dependencies (A -> B -> C)', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
     const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
     const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
@@ -146,7 +184,11 @@ describe('Scheduler Topological Sort', () => {
   });
 
   it('should respect diamond dependencies (A -> B, A -> C, B -> D, C -> D)', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
     const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
     const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
@@ -177,7 +219,11 @@ describe('Scheduler Topological Sort', () => {
   });
 
   it('should detect circular dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
     const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
 
@@ -194,9 +240,17 @@ describe('Scheduler Topological Sort', () => {
 
 describe('Scheduler Dependency Satisfaction', () => {
   it('should consider merged stories as satisfying dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const depStory = createStory(db, { teamId: team.id, title: 'Dependency', description: 'Test' });
-    const mainStory = createStory(db, { teamId: team.id, title: 'Main Story', description: 'Test' });
+    const mainStory = createStory(db, {
+      teamId: team.id,
+      title: 'Main Story',
+      description: 'Test',
+    });
 
     addStoryDependency(db, mainStory.id, depStory.id);
 
@@ -211,9 +265,17 @@ describe('Scheduler Dependency Satisfaction', () => {
   });
 
   it('should consider in-progress stories as satisfying dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const depStory = createStory(db, { teamId: team.id, title: 'Dependency', description: 'Test' });
-    const mainStory = createStory(db, { teamId: team.id, title: 'Main Story', description: 'Test' });
+    const mainStory = createStory(db, {
+      teamId: team.id,
+      title: 'Main Story',
+      description: 'Test',
+    });
 
     addStoryDependency(db, mainStory.id, depStory.id);
 
@@ -224,9 +286,17 @@ describe('Scheduler Dependency Satisfaction', () => {
   });
 
   it('should not consider planned stories as satisfying dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const depStory = createStory(db, { teamId: team.id, title: 'Dependency', description: 'Test' });
-    const mainStory = createStory(db, { teamId: team.id, title: 'Main Story', description: 'Test' });
+    const mainStory = createStory(db, {
+      teamId: team.id,
+      title: 'Main Story',
+      description: 'Test',
+    });
 
     addStoryDependency(db, mainStory.id, depStory.id);
 
@@ -238,10 +308,18 @@ describe('Scheduler Dependency Satisfaction', () => {
   });
 
   it('should handle multiple dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const dep1 = createStory(db, { teamId: team.id, title: 'Dep 1', description: 'Test' });
     const dep2 = createStory(db, { teamId: team.id, title: 'Dep 2', description: 'Test' });
-    const mainStory = createStory(db, { teamId: team.id, title: 'Main Story', description: 'Test' });
+    const mainStory = createStory(db, {
+      teamId: team.id,
+      title: 'Main Story',
+      description: 'Test',
+    });
 
     addStoryDependency(db, mainStory.id, dep1.id);
     addStoryDependency(db, mainStory.id, dep2.id);
@@ -260,7 +338,11 @@ describe('Scheduler Dependency Satisfaction', () => {
 
 describe('Scheduler Build Dependency Graph', () => {
   it('should correctly build a dependency graph', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
     const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
     const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
@@ -281,7 +363,11 @@ describe('Scheduler Build Dependency Graph', () => {
   });
 
   it('should include only stories in the input list', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
     const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
     const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
@@ -339,7 +425,11 @@ describe('Scheduler Worktree Removal', () => {
 describe('Scheduler Orphaned Story Recovery', () => {
   it('should recover orphaned stories assigned to terminated agents', async () => {
     // Setup: Create team, agents, and a story
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
     // Create a terminated agent in the database
     const terminatedAgentId = 'agent-terminated-1';
@@ -350,10 +440,14 @@ describe('Scheduler Orphaned Story Recovery', () => {
     );
 
     // Create a story assigned to the terminated agent
-    const story = createStory(db, { teamId: team.id, title: 'Orphaned Story', description: 'Test' });
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Orphaned Story',
+      description: 'Test',
+    });
     updateStory(db, story.id, {
       assignedAgentId: terminatedAgentId,
-      status: 'in_progress'
+      status: 'in_progress',
     });
 
     // Get the recovery method
@@ -375,7 +469,11 @@ describe('Scheduler Orphaned Story Recovery', () => {
   });
 
   it('should not affect stories assigned to active agents', async () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
     // Create an active (non-terminated) agent
     const activeAgentId = 'agent-active-1';
@@ -389,7 +487,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     const story = createStory(db, { teamId: team.id, title: 'Active Story', description: 'Test' });
     updateStory(db, story.id, {
       assignedAgentId: activeAgentId,
-      status: 'in_progress'
+      status: 'in_progress',
     });
 
     // Get the recovery method
@@ -410,7 +508,11 @@ describe('Scheduler Orphaned Story Recovery', () => {
   });
 
   it('should recover multiple orphaned stories', async () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
     // Create a terminated agent
     const terminatedAgentId = 'agent-terminated-2';
@@ -421,16 +523,24 @@ describe('Scheduler Orphaned Story Recovery', () => {
     );
 
     // Create multiple stories assigned to the terminated agent
-    const story1 = createStory(db, { teamId: team.id, title: 'Orphaned Story 1', description: 'Test' });
-    const story2 = createStory(db, { teamId: team.id, title: 'Orphaned Story 2', description: 'Test' });
+    const story1 = createStory(db, {
+      teamId: team.id,
+      title: 'Orphaned Story 1',
+      description: 'Test',
+    });
+    const story2 = createStory(db, {
+      teamId: team.id,
+      title: 'Orphaned Story 2',
+      description: 'Test',
+    });
 
     updateStory(db, story1.id, {
       assignedAgentId: terminatedAgentId,
-      status: 'in_progress'
+      status: 'in_progress',
     });
     updateStory(db, story2.id, {
       assignedAgentId: terminatedAgentId,
-      status: 'review'
+      status: 'review',
     });
 
     // Get the recovery method

@@ -154,8 +154,8 @@ describe('stories queries', () => {
       const stories = getStoriesByRequirement(db, requirementId);
 
       expect(stories).toHaveLength(2);
-      expect(stories.map(s => s.id)).toContain(story1.id);
-      expect(stories.map(s => s.id)).toContain(story2.id);
+      expect(stories.map((s) => s.id)).toContain(story1.id);
+      expect(stories.map((s) => s.id)).toContain(story2.id);
     });
 
     it('should order by created_at', () => {
@@ -251,8 +251,8 @@ describe('stories queries', () => {
       const stories = getStoriesByAgent(db, agentId);
 
       expect(stories).toHaveLength(2);
-      expect(stories.map(s => s.id)).toContain(story1.id);
-      expect(stories.map(s => s.id)).toContain(story2.id);
+      expect(stories.map((s) => s.id)).toContain(story1.id);
+      expect(stories.map((s) => s.id)).toContain(story2.id);
     });
   });
 
@@ -299,8 +299,8 @@ describe('stories queries', () => {
 
       expect(stories).toHaveLength(2);
       // Verify both stories are present
-      expect(stories.map(s => s.id)).toContain(story1.id);
-      expect(stories.map(s => s.id)).toContain(story2.id);
+      expect(stories.map((s) => s.id)).toContain(story1.id);
+      expect(stories.map((s) => s.id)).toContain(story2.id);
     });
   });
 
@@ -354,9 +354,9 @@ describe('stories queries', () => {
       const inProgress = getInProgressStories(db);
 
       expect(inProgress).toHaveLength(2);
-      expect(inProgress.map(s => s.id)).toContain(story1.id);
-      expect(inProgress.map(s => s.id)).toContain(story2.id);
-      expect(inProgress.map(s => s.id)).not.toContain(story3.id);
+      expect(inProgress.map((s) => s.id)).toContain(story1.id);
+      expect(inProgress.map((s) => s.id)).toContain(story2.id);
+      expect(inProgress.map((s) => s.id)).not.toContain(story3.id);
     });
   });
 
@@ -631,8 +631,8 @@ describe('stories queries', () => {
       const dependents = getStoriesDependingOn(db, story1.id);
 
       expect(dependents).toHaveLength(2);
-      expect(dependents.map(s => s.id)).toContain(story2.id);
-      expect(dependents.map(s => s.id)).toContain(story3.id);
+      expect(dependents.map((s) => s.id)).toContain(story2.id);
+      expect(dependents.map((s) => s.id)).toContain(story3.id);
     });
   });
 
@@ -693,7 +693,7 @@ describe('stories queries', () => {
         description: 'Description',
       });
 
-      statuses.forEach(status => {
+      statuses.forEach((status) => {
         const updated = updateStory(db, story.id, { status });
         expect(updated?.status).toBe(status);
       });
@@ -713,12 +713,12 @@ describe('stories queries', () => {
 
     it('should handle special characters', () => {
       const story = createStory(db, {
-        title: "Title with 'quotes' and \"double\"",
+        title: 'Title with \'quotes\' and "double"',
         description: 'Description with\nnewlines\tand\ttabs',
       });
 
       const retrieved = getStoryById(db, story.id);
-      expect(retrieved?.title).toBe("Title with 'quotes' and \"double\"");
+      expect(retrieved?.title).toBe('Title with \'quotes\' and "double"');
       expect(retrieved?.description).toBe('Description with\nnewlines\tand\ttabs');
     });
   });

@@ -9,12 +9,14 @@ export class AnthropicProvider implements LLMProvider {
   private defaultMaxTokens: number;
   private defaultTemperature: number;
 
-  constructor(options: {
-    apiKey?: string;
-    model?: string;
-    maxTokens?: number;
-    temperature?: number;
-  } = {}) {
+  constructor(
+    options: {
+      apiKey?: string;
+      model?: string;
+      maxTokens?: number;
+      temperature?: number;
+    } = {}
+  ) {
     this.client = new Anthropic({
       apiKey: options.apiKey || process.env.ANTHROPIC_API_KEY,
     });
@@ -25,8 +27,8 @@ export class AnthropicProvider implements LLMProvider {
 
   async complete(messages: Message[], options?: CompletionOptions): Promise<CompletionResult> {
     // Extract system message if present
-    const systemMessage = messages.find(m => m.role === 'system');
-    const conversationMessages = messages.filter(m => m.role !== 'system');
+    const systemMessage = messages.find((m) => m.role === 'system');
+    const conversationMessages = messages.filter((m) => m.role !== 'system');
 
     const apiCall = async () => {
       const response = await this.client.messages.create({
@@ -34,7 +36,7 @@ export class AnthropicProvider implements LLMProvider {
         max_tokens: options?.maxTokens ?? this.defaultMaxTokens,
         temperature: options?.temperature ?? this.defaultTemperature,
         system: systemMessage?.content,
-        messages: conversationMessages.map(m => ({
+        messages: conversationMessages.map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
         })),
@@ -67,8 +69,8 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async *streamComplete(messages: Message[], options?: CompletionOptions): AsyncIterable<string> {
-    const systemMessage = messages.find(m => m.role === 'system');
-    const conversationMessages = messages.filter(m => m.role !== 'system');
+    const systemMessage = messages.find((m) => m.role === 'system');
+    const conversationMessages = messages.filter((m) => m.role !== 'system');
     // Capture instance properties to avoid 'this' binding issues in generator
     const client = this.client;
     const model = this.model;
@@ -81,7 +83,7 @@ export class AnthropicProvider implements LLMProvider {
         max_tokens: options?.maxTokens ?? defaultMaxTokens,
         temperature: options?.temperature ?? defaultTemperature,
         system: systemMessage?.content,
-        messages: conversationMessages.map(m => ({
+        messages: conversationMessages.map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
         })),
@@ -106,10 +108,7 @@ export class AnthropicProvider implements LLMProvider {
       const generator = streamGenerator();
 
       while (true) {
-        const result = await Promise.race([
-          generator.next(),
-          timeoutPromise
-        ]);
+        const result = await Promise.race([generator.next(), timeoutPromise]);
 
         if (result.done) break;
         yield result.value;

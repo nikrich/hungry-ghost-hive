@@ -23,17 +23,21 @@ export function createEscalation(db: Database, input: CreateEscalationInput): Es
   const id = `ESC-${nanoid(6).toUpperCase()}`;
   const now = new Date().toISOString();
 
-  run(db, `
+  run(
+    db,
+    `
     INSERT INTO escalations (id, story_id, from_agent_id, to_agent_id, reason, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
-  `, [
-    id,
-    input.storyId || null,
-    input.fromAgentId || null,
-    input.toAgentId || null,
-    input.reason,
-    now
-  ]);
+  `,
+    [
+      id,
+      input.storyId || null,
+      input.fromAgentId || null,
+      input.toAgentId || null,
+      input.reason,
+      now,
+    ]
+  );
 
   return getEscalationById(db, id)!;
 }
@@ -43,42 +47,61 @@ export function getEscalationById(db: Database, id: string): EscalationRow | und
 }
 
 export function getEscalationsByStory(db: Database, storyId: string): EscalationRow[] {
-  return queryAll<EscalationRow>(db, `
+  return queryAll<EscalationRow>(
+    db,
+    `
     SELECT * FROM escalations
     WHERE story_id = ?
     ORDER BY created_at DESC
-  `, [storyId]);
+  `,
+    [storyId]
+  );
 }
 
 export function getEscalationsByFromAgent(db: Database, agentId: string): EscalationRow[] {
-  return queryAll<EscalationRow>(db, `
+  return queryAll<EscalationRow>(
+    db,
+    `
     SELECT * FROM escalations
     WHERE from_agent_id = ?
     ORDER BY created_at DESC
-  `, [agentId]);
+  `,
+    [agentId]
+  );
 }
 
 export function getEscalationsByToAgent(db: Database, agentId: string | null): EscalationRow[] {
   if (agentId === null) {
-    return queryAll<EscalationRow>(db, `
+    return queryAll<EscalationRow>(
+      db,
+      `
       SELECT * FROM escalations
       WHERE to_agent_id IS NULL
       ORDER BY created_at DESC
-    `);
+    `
+    );
   }
-  return queryAll<EscalationRow>(db, `
+  return queryAll<EscalationRow>(
+    db,
+    `
     SELECT * FROM escalations
     WHERE to_agent_id = ?
     ORDER BY created_at DESC
-  `, [agentId]);
+  `,
+    [agentId]
+  );
 }
 
 export function getEscalationsByStatus(db: Database, status: EscalationStatus): EscalationRow[] {
-  return queryAll<EscalationRow>(db, `
+  return queryAll<EscalationRow>(
+    db,
+    `
     SELECT * FROM escalations
     WHERE status = ?
     ORDER BY created_at DESC
-  `, [status]);
+  `,
+    [status]
+  );
 }
 
 export function getPendingEscalations(db: Database): EscalationRow[] {
@@ -86,36 +109,55 @@ export function getPendingEscalations(db: Database): EscalationRow[] {
 }
 
 export function getPendingHumanEscalations(db: Database): EscalationRow[] {
-  return queryAll<EscalationRow>(db, `
+  return queryAll<EscalationRow>(
+    db,
+    `
     SELECT * FROM escalations
     WHERE status = 'pending' AND to_agent_id IS NULL
     ORDER BY created_at
-  `);
+  `
+  );
 }
 
-export function getRecentEscalationsForAgent(db: Database, agentId: string, minutesBack: number = 30): EscalationRow[] {
-  return queryAll<EscalationRow>(db, `
+export function getRecentEscalationsForAgent(
+  db: Database,
+  agentId: string,
+  minutesBack: number = 30
+): EscalationRow[] {
+  return queryAll<EscalationRow>(
+    db,
+    `
     SELECT * FROM escalations
     WHERE from_agent_id = ?
     AND created_at > datetime('now', ?)
     ORDER BY created_at DESC
-  `, [agentId, `-${minutesBack} minutes`]);
+  `,
+    [agentId, `-${minutesBack} minutes`]
+  );
 }
 
 export function getActiveEscalationsForAgent(db: Database, agentId: string): EscalationRow[] {
-  return queryAll<EscalationRow>(db, `
+  return queryAll<EscalationRow>(
+    db,
+    `
     SELECT * FROM escalations
     WHERE from_agent_id = ?
     AND status IN ('pending', 'acknowledged')
     ORDER BY created_at DESC
-  `, [agentId]);
+  `,
+    [agentId]
+  );
 }
 
 export function getAllEscalations(db: Database): EscalationRow[] {
   return queryAll<EscalationRow>(db, 'SELECT * FROM escalations ORDER BY created_at DESC');
 }
 
-export function updateEscalation(db: Database, id: string, input: UpdateEscalationInput): EscalationRow | undefined {
+export function updateEscalation(
+  db: Database,
+  id: string,
+  input: UpdateEscalationInput
+): EscalationRow | undefined {
   const updates: string[] = [];
   const values: (string | null)[] = [];
 
@@ -145,7 +187,11 @@ export function updateEscalation(db: Database, id: string, input: UpdateEscalati
   return getEscalationById(db, id);
 }
 
-export function resolveEscalation(db: Database, id: string, resolution: string): EscalationRow | undefined {
+export function resolveEscalation(
+  db: Database,
+  id: string,
+  resolution: string
+): EscalationRow | undefined {
   return updateEscalation(db, id, { status: 'resolved', resolution });
 }
 

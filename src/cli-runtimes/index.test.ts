@@ -55,12 +55,7 @@ describe('CLI Runtime Builders', () => {
       const builder = new CodexRuntimeBuilder();
       const command = builder.buildSpawnCommand('gpt-4o-mini');
 
-      expect(command).toEqual([
-        'codex',
-        '--full-auto',
-        '--model',
-        'gpt-4o-mini',
-      ]);
+      expect(command).toEqual(['codex', '--full-auto', '--model', 'gpt-4o-mini']);
     });
 
     it('should build resume command with session ID', () => {
@@ -93,13 +88,7 @@ describe('CLI Runtime Builders', () => {
       const builder = new GeminiRuntimeBuilder();
       const command = builder.buildSpawnCommand('gemini-2.0-flash-exp');
 
-      expect(command).toEqual([
-        'gemini',
-        '--model',
-        'gemini-2.0-flash-exp',
-        '--sandbox',
-        'none',
-      ]);
+      expect(command).toEqual(['gemini', '--model', 'gemini-2.0-flash-exp', '--sandbox', 'none']);
     });
 
     it('should build resume command with session ID', () => {
@@ -349,15 +338,15 @@ describe('CLI Runtime Builders', () => {
       it('should provide helpful error message with suggestions', () => {
         expect(() => {
           validateModelCliCompatibility('gpt-4o-mini', 'claude');
-        }).toThrow('For OpenAI models, use cli_tool: \'codex\'');
+        }).toThrow("For OpenAI models, use cli_tool: 'codex'");
 
         expect(() => {
           validateModelCliCompatibility('claude-sonnet-4-5-20250929', 'codex');
-        }).toThrow('For Claude models, use cli_tool: \'claude\'');
+        }).toThrow("For Claude models, use cli_tool: 'claude'");
 
         expect(() => {
           validateModelCliCompatibility('gemini-pro', 'claude');
-        }).toThrow('For Google Gemini models, use cli_tool: \'gemini\'');
+        }).toThrow("For Google Gemini models, use cli_tool: 'gemini'");
       });
     });
   });

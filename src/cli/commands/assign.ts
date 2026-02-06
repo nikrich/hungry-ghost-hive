@@ -119,7 +119,7 @@ export const assignCommand = new Command('assign')
 
       // Auto-start the manager if work was assigned and it's not running
       if (result.assigned > 0) {
-        if (!await isManagerRunning()) {
+        if (!(await isManagerRunning())) {
           spinner.start('Starting manager daemon...');
           const started = await startManager(60);
           if (started) {

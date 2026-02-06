@@ -3,11 +3,7 @@ import type { Database } from 'sql.js';
 import { createTestDatabase } from './test-helpers.js';
 import { createTeam } from './teams.js';
 import { createAgent } from './agents.js';
-import {
-  updateAgentHeartbeat,
-  getStaleAgents,
-  isAgentHeartbeatCurrent,
-} from './heartbeat.js';
+import { updateAgentHeartbeat, getStaleAgents, isAgentHeartbeatCurrent } from './heartbeat.js';
 
 describe('heartbeat queries', () => {
   let db: Database;
@@ -143,8 +139,8 @@ describe('heartbeat queries', () => {
       const staleAgents = getStaleAgents(db, 15);
 
       // Should only include working/idle agents
-      expect(staleAgents.some(a => a.id === workingAgent.id)).toBe(true);
-      expect(staleAgents.some(a => a.id === terminatedAgent.id)).toBe(false);
+      expect(staleAgents.some((a) => a.id === workingAgent.id)).toBe(true);
+      expect(staleAgents.some((a) => a.id === terminatedAgent.id)).toBe(false);
     });
 
     it('should handle agents with null last_seen after grace period', () => {
@@ -163,7 +159,7 @@ describe('heartbeat queries', () => {
       const staleAgents = getStaleAgents(db, 15);
 
       // Should be detected as stale (older than 60 + 15 = 75 seconds)
-      expect(staleAgents.some(a => a.id === agent.id)).toBe(true);
+      expect(staleAgents.some((a) => a.id === agent.id)).toBe(true);
     });
 
     it('should not return recently created agents with null last_seen', () => {
@@ -178,7 +174,7 @@ describe('heartbeat queries', () => {
       const staleAgents = getStaleAgents(db, 15);
 
       // Should not be stale (within grace period)
-      expect(staleAgents.some(a => a.id === agent.id)).toBe(false);
+      expect(staleAgents.some((a) => a.id === agent.id)).toBe(false);
     });
 
     it('should calculate seconds_since_heartbeat correctly', () => {
@@ -193,7 +189,7 @@ describe('heartbeat queries', () => {
 
       const staleAgents = getStaleAgents(db, 15);
 
-      const staleAgent = staleAgents.find(a => a.id === agent.id);
+      const staleAgent = staleAgents.find((a) => a.id === agent.id);
       expect(staleAgent).toBeDefined();
       // Should be approximately 30 seconds (allow some variance)
       expect(staleAgent!.seconds_since_heartbeat).toBeGreaterThanOrEqual(25);

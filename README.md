@@ -279,9 +279,9 @@ models:
 
 # Complexity thresholds for delegation
 scaling:
-  junior_max_complexity: 3      # 1-3 → Junior
+  junior_max_complexity: 3 # 1-3 → Junior
   intermediate_max_complexity: 5 # 4-5 → Intermediate
-  senior_capacity: 20           # Story points before scaling up
+  senior_capacity: 20 # Story points before scaling up
 
 # QA checks
 qa:
@@ -301,11 +301,13 @@ Junior → Senior → Tech Lead → YOU
 ```
 
 Check escalations:
+
 ```bash
 hive escalations list
 ```
 
 Resolve with guidance:
+
 ```bash
 hive escalations resolve ESC-001 --message "Use OAuth2 with PKCE flow"
 ```
@@ -320,23 +322,27 @@ hive escalations resolve ESC-001 --message "Use OAuth2 with PKCE flow"
 ## Troubleshooting
 
 ### Agents seem stuck
+
 ```bash
 hive manager check   # Nudge all agents
 hive manager health  # Sync status with tmux
 ```
 
 ### Agent session died
+
 ```bash
 hive manager health  # Cleans up dead agents, respawns as needed
 ```
 
 ### View agent logs
+
 ```bash
 tmux attach -t hive-senior-alpha  # Attach to see what agent is doing
 # Detach with Ctrl+B, D
 ```
 
 ### Reset everything
+
 ```bash
 hive nuke --all  # WARNING: Deletes all data
 ```

@@ -9,12 +9,14 @@ export class OpenAIProvider implements LLMProvider {
   private defaultMaxTokens: number;
   private defaultTemperature: number;
 
-  constructor(options: {
-    apiKey?: string;
-    model?: string;
-    maxTokens?: number;
-    temperature?: number;
-  } = {}) {
+  constructor(
+    options: {
+      apiKey?: string;
+      model?: string;
+      maxTokens?: number;
+      temperature?: number;
+    } = {}
+  ) {
     this.client = new OpenAI({
       apiKey: options.apiKey || process.env.OPENAI_API_KEY,
     });
@@ -29,7 +31,7 @@ export class OpenAIProvider implements LLMProvider {
         model: this.model,
         max_tokens: options?.maxTokens ?? this.defaultMaxTokens,
         temperature: options?.temperature ?? this.defaultTemperature,
-        messages: messages.map(m => ({
+        messages: messages.map((m) => ({
           role: m.role,
           content: m.content,
         })),
@@ -72,7 +74,7 @@ export class OpenAIProvider implements LLMProvider {
         model: model,
         max_tokens: options?.maxTokens ?? defaultMaxTokens,
         temperature: options?.temperature ?? defaultTemperature,
-        messages: messages.map(m => ({
+        messages: messages.map((m) => ({
           role: m.role,
           content: m.content,
         })),
@@ -99,10 +101,7 @@ export class OpenAIProvider implements LLMProvider {
       const generator = streamGenerator();
 
       while (true) {
-        const result = await Promise.race([
-          generator.next(),
-          timeoutPromise
-        ]);
+        const result = await Promise.race([generator.next(), timeoutPromise]);
 
         if (result.done) break;
         yield result.value;

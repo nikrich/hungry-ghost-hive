@@ -1,7 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(sqlite3:*)"
-    ]
+    "allow": ["Bash(sqlite3:*)"]
   }
 }

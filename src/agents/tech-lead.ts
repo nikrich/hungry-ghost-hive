@@ -1,6 +1,10 @@
 import { BaseAgent, type AgentContext } from './base-agent.js';
 import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
-import { getRequirementById, updateRequirement, type RequirementRow } from '../db/queries/requirements.js';
+import {
+  getRequirementById,
+  updateRequirement,
+  type RequirementRow,
+} from '../db/queries/requirements.js';
 import { createStory, updateStory, getStoryById } from '../db/queries/stories.js';
 import { createAgent, getAgentsByType, updateAgent } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
@@ -32,7 +36,7 @@ export class TechLeadAgent extends BaseAgent {
 
   getSystemPrompt(): string {
     const teamList = this.teams
-      .map(t => `- ${t.name} (${t.repo_path}): ${t.repo_url}`)
+      .map((t) => `- ${t.name} (${t.repo_path}): ${t.repo_url}`)
       .join('\n');
 
     return `You are the Tech Lead of Hive, an AI development team orchestrator.
@@ -123,7 +127,7 @@ Description:
 ${this.requirement!.description}
 
 ## Available Teams
-${this.teams.map(t => `- ${t.name}: ${t.repo_path}`).join('\n')}
+${this.teams.map((t) => `- ${t.name}: ${t.repo_path}`).join('\n')}
 
 ## Instructions
 1. Identify which teams are affected
@@ -174,12 +178,14 @@ Respond in JSON format:
     };
   }
 
-  private async createStories(analysis: Awaited<ReturnType<typeof this.analyzeRequirement>>): Promise<string[]> {
+  private async createStories(
+    analysis: Awaited<ReturnType<typeof this.analyzeRequirement>>
+  ): Promise<string[]> {
     const storyIds: string[] = [];
     const storyIdMap: Record<string, string> = {};
 
     for (const story of analysis.stories) {
-      const team = this.teams.find(t => t.name === story.teamName);
+      const team = this.teams.find((t) => t.name === story.teamName);
 
       const storyRow = createStory(this.db, {
         requirementId: this.requirement!.id,
@@ -234,11 +240,11 @@ Respond in JSON format:
 
     // Spawn or assign Senior for each team
     for (const teamId of teamIds) {
-      const team = this.teams.find(t => t.id === teamId);
+      const team = this.teams.find((t) => t.id === teamId);
       if (!team) continue;
 
       // Check if Senior already exists for this team
-      let seniors = getAgentsByType(this.db, 'senior').filter(s => s.team_id === teamId);
+      let seniors = getAgentsByType(this.db, 'senior').filter((s) => s.team_id === teamId);
 
       if (seniors.length === 0) {
         // Create a new Senior agent
@@ -284,17 +290,25 @@ Respond in JSON format:
             tmuxSession: sessionName,
           });
         } catch (err) {
-          this.log('AGENT_SPAWNED', `Failed to spawn Senior tmux session: ${err instanceof Error ? err.message : 'Unknown error'}`, {
-            agentId: senior.id,
-            teamId,
-          });
+          this.log(
+            'AGENT_SPAWNED',
+            `Failed to spawn Senior tmux session: ${err instanceof Error ? err.message : 'Unknown error'}`,
+            {
+              agentId: senior.id,
+              teamId,
+            }
+          );
         }
       }
 
       // Assign stories to the Senior
-      const teamStories = queryAll<{ id: string }>(this.db, `
+      const teamStories = queryAll<{ id: string }>(
+        this.db,
+        `
         SELECT id FROM stories WHERE team_id = ? AND status = 'estimated'
-      `, [teamId]);
+      `,
+        [teamId]
+      );
 
       for (const story of teamStories) {
         updateStory(this.db, story.id, { status: 'planned' });

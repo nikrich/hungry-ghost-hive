@@ -2,12 +2,17 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
-import { getAllAgents, getAgentById, getActiveAgents, getAgentsByStatus, deleteAgent } from '../../db/queries/agents.js';
+import {
+  getAllAgents,
+  getAgentById,
+  getActiveAgents,
+  getAgentsByStatus,
+  deleteAgent,
+} from '../../db/queries/agents.js';
 import { getLogsByAgent } from '../../db/queries/logs.js';
 import { statusColor } from '../../utils/logger.js';
 
-export const agentsCommand = new Command('agents')
-  .description('Manage agents');
+export const agentsCommand = new Command('agents').description('Manage agents');
 
 agentsCommand
   .command('list')
@@ -200,10 +205,13 @@ agentsCommand
       console.log(chalk.yellow(`\nFound ${terminatedAgents.length} terminated agent(s):\n`));
 
       // Group by type for summary
-      const byType = terminatedAgents.reduce((acc, agent) => {
-        acc[agent.type] = (acc[agent.type] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+      const byType = terminatedAgents.reduce(
+        (acc, agent) => {
+          acc[agent.type] = (acc[agent.type] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
 
       for (const [type, count] of Object.entries(byType)) {
         console.log(chalk.gray(`  ${type}: ${count}`));
@@ -229,14 +237,22 @@ agentsCommand
                 stdio: 'pipe',
               });
             } catch (err) {
-              console.error(chalk.yellow(`Warning: Failed to remove worktree for ${agent.id}: ${err instanceof Error ? err.message : 'Unknown error'}`));
+              console.error(
+                chalk.yellow(
+                  `Warning: Failed to remove worktree for ${agent.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
+                )
+              );
             }
           }
 
           deleteAgent(db.db, agent.id);
           deleted++;
         } catch (err) {
-          console.error(chalk.red(`Failed to delete ${agent.id}: ${err instanceof Error ? err.message : 'Unknown error'}`));
+          console.error(
+            chalk.red(
+              `Failed to delete ${agent.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
+            )
+          );
         }
       }
 

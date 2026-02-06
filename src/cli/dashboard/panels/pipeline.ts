@@ -3,7 +3,6 @@ import blessed, { type Widgets } from 'blessed';
 import { getStoryCounts } from '../../../db/queries/stories.js';
 
 export function createPipelinePanel(screen: Widgets.Screen, db: Database): Widgets.BoxElement {
-
   const box = blessed.box({
     parent: screen,
     top: '55%',
@@ -18,7 +17,9 @@ export function createPipelinePanel(screen: Widgets.Screen, db: Database): Widge
     tags: true,
   });
 
-  updatePipelinePanel(box, db).catch(err => console.error('Failed to update pipeline panel:', err));
+  updatePipelinePanel(box, db).catch((err) =>
+    console.error('Failed to update pipeline panel:', err)
+  );
 
   return box;
 }
@@ -48,7 +49,10 @@ export async function updatePipelinePanel(box: Widgets.BoxElement, db: Database)
 
   // Middle row: counts
   for (const stage of stages) {
-    const count = stage.count.toString().padStart(Math.floor((width + stage.count.toString().length) / 2)).padEnd(width);
+    const count = stage.count
+      .toString()
+      .padStart(Math.floor((width + stage.count.toString().length) / 2))
+      .padEnd(width);
     content += `{${stage.color}-fg}${count}{/}`;
   }
   content += '\n';

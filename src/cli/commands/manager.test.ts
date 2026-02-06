@@ -18,7 +18,8 @@ vi.mock('../../tmux/manager.js', () => ({
 }));
 vi.mock('../../utils/cli-commands.js', () => ({
   getAvailableCommands: vi.fn(() => ({
-    msgReply: (id: string, msg: string, session: string) => `hive msg reply ${id} "${msg}" --to ${session}`,
+    msgReply: (id: string, msg: string, session: string) =>
+      `hive msg reply ${id} "${msg}" --to ${session}`,
   })),
 }));
 

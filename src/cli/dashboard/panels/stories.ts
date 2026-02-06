@@ -24,12 +24,19 @@ export function createStoriesPanel(screen: Widgets.Screen, db: Database): Widget
     tags: true,
   });
 
-  updateStoriesPanel(table, db).catch(err => console.error('Failed to update stories panel:', err));
+  updateStoriesPanel(table, db).catch((err) =>
+    console.error('Failed to update stories panel:', err)
+  );
   return table;
 }
 
-export async function updateStoriesPanel(table: Widgets.ListTableElement, db: Database): Promise<void> {
-  const stories = queryAll<StoryRow>(db, `
+export async function updateStoriesPanel(
+  table: Widgets.ListTableElement,
+  db: Database
+): Promise<void> {
+  const stories = queryAll<StoryRow>(
+    db,
+    `
     SELECT * FROM stories
     ORDER BY
       CASE status
@@ -43,7 +50,8 @@ export async function updateStoriesPanel(table: Widgets.ListTableElement, db: Da
       END,
       created_at DESC
     LIMIT 20
-  `);
+  `
+  );
 
   const headers = ['ID', 'Title', 'Status', 'Complexity', 'Assigned To'];
 

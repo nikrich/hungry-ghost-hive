@@ -188,9 +188,9 @@ describe('pull-requests queries', () => {
       const queue = getMergeQueue(db);
 
       expect(queue).toHaveLength(2);
-      expect(queue.map(p => p.id)).toContain(pr1.id);
-      expect(queue.map(p => p.id)).toContain(pr2.id);
-      expect(queue.map(p => p.id)).not.toContain(pr3.id);
+      expect(queue.map((p) => p.id)).toContain(pr1.id);
+      expect(queue.map((p) => p.id)).toContain(pr2.id);
+      expect(queue.map((p) => p.id)).not.toContain(pr3.id);
     });
 
     it('should filter by team when teamId provided', () => {
@@ -305,8 +305,8 @@ describe('pull-requests queries', () => {
 
       expect(queued).toHaveLength(2);
       // Verify both PRs are present
-      expect(queued.map(p => p.id)).toContain(pr1.id);
-      expect(queued.map(p => p.id)).toContain(pr2.id);
+      expect(queued.map((p) => p.id)).toContain(pr1.id);
+      expect(queued.map((p) => p.id)).toContain(pr2.id);
     });
   });
 
@@ -321,8 +321,8 @@ describe('pull-requests queries', () => {
       const approved = getApprovedPullRequests(db);
 
       expect(approved).toHaveLength(2);
-      expect(approved.map(p => p.id)).toContain(pr2.id);
-      expect(approved.map(p => p.id)).toContain(pr3.id);
+      expect(approved.map((p) => p.id)).toContain(pr2.id);
+      expect(approved.map((p) => p.id)).toContain(pr3.id);
     });
 
     it('should order by created_at ASC', () => {
@@ -347,8 +347,8 @@ describe('pull-requests queries', () => {
 
       expect(prs).toHaveLength(2);
       // Verify both PRs are present
-      expect(prs.map(p => p.id)).toContain(pr1.id);
-      expect(prs.map(p => p.id)).toContain(pr2.id);
+      expect(prs.map((p) => p.id)).toContain(pr1.id);
+      expect(prs.map((p) => p.id)).toContain(pr2.id);
     });
   });
 
@@ -516,13 +516,9 @@ describe('pull-requests queries', () => {
     });
 
     it('should return true only if status is exactly reviewing', () => {
-      const statuses: Array<'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed'> = [
-        'queued',
-        'approved',
-        'merged',
-        'rejected',
-        'closed',
-      ];
+      const statuses: Array<
+        'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed'
+      > = ['queued', 'approved', 'merged', 'rejected', 'closed'];
 
       for (const status of statuses) {
         const pr = createPullRequest(db, { branchName: `test-${status}` });
@@ -554,18 +550,13 @@ describe('pull-requests queries', () => {
 
   describe('edge cases', () => {
     it('should handle all PR statuses', () => {
-      const statuses: Array<'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed'> = [
-        'queued',
-        'reviewing',
-        'approved',
-        'merged',
-        'rejected',
-        'closed',
-      ];
+      const statuses: Array<
+        'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed'
+      > = ['queued', 'reviewing', 'approved', 'merged', 'rejected', 'closed'];
 
       const pr = createPullRequest(db, { branchName: 'test' });
 
-      statuses.forEach(status => {
+      statuses.forEach((status) => {
         const updated = updatePullRequest(db, pr.id, { status });
         expect(updated?.status).toBe(status);
       });
@@ -667,8 +658,8 @@ describe('pull-requests queries', () => {
       // Actually: dependencies satisfied > no dependencies
       // So: pr2 should be LAST (unsatisfied), pr3 and pr2_before_merge should be by age
 
-      const indexIndependent = queue.findIndex(p => p.id === pr3.id);
-      const indexUnsatisfied = queue.findIndex(p => p.id === pr2_unsatisfied.id);
+      const indexIndependent = queue.findIndex((p) => p.id === pr3.id);
+      const indexUnsatisfied = queue.findIndex((p) => p.id === pr2_unsatisfied.id);
 
       // Independent PR should come before dependent PR with unsatisfied dependencies
       expect(indexIndependent).toBeLessThan(indexUnsatisfied);

@@ -23,7 +23,9 @@ export function loadConfig(hiveDir: string): HiveConfig {
   const result = HiveConfigSchema.safeParse(rawConfig);
 
   if (!result.success) {
-    const errors = result.error.errors.map(e => `  - ${e.path.join('.')}: ${e.message}`).join('\n');
+    const errors = result.error.errors
+      .map((e) => `  - ${e.path.join('.')}: ${e.message}`)
+      .join('\n');
     throw new ConfigError(`Invalid configuration:\n${errors}`);
   }
 
@@ -81,7 +83,9 @@ export function setConfigValue(config: HiveConfig, path: string, value: unknown)
   // Validate the new config
   const result = HiveConfigSchema.safeParse(newConfig);
   if (!result.success) {
-    const errors = result.error.errors.map(e => `  - ${e.path.join('.')}: ${e.message}`).join('\n');
+    const errors = result.error.errors
+      .map((e) => `  - ${e.path.join('.')}: ${e.message}`)
+      .join('\n');
     throw new ConfigError(`Invalid configuration after update:\n${errors}`);
   }
 

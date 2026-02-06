@@ -159,7 +159,7 @@ describe('logs queries', () => {
       const logs = getLogsByAgent(db, agentId);
 
       expect(logs).toHaveLength(3);
-      logs.forEach(log => {
+      logs.forEach((log) => {
         expect(log.agent_id).toBe(agentId);
       });
     });
@@ -223,7 +223,7 @@ describe('logs queries', () => {
       const logs = getLogsByStory(db, storyId);
 
       expect(logs).toHaveLength(3);
-      logs.forEach(log => {
+      logs.forEach((log) => {
         expect(log.story_id).toBe(storyId);
       });
     });
@@ -262,7 +262,7 @@ describe('logs queries', () => {
       const logs = getLogsByEventType(db, 'STORY_STARTED');
 
       expect(logs).toHaveLength(2);
-      logs.forEach(log => {
+      logs.forEach((log) => {
         expect(log.event_type).toBe('STORY_STARTED');
       });
     });
@@ -336,7 +336,7 @@ describe('logs queries', () => {
 
       // Should only get logs created after sinceTime
       expect(logs.length).toBeGreaterThanOrEqual(0);
-      logs.forEach(log => {
+      logs.forEach((log) => {
         expect(log.timestamp > sinceTime).toBe(true);
       });
     });
@@ -374,10 +374,13 @@ describe('logs queries', () => {
       oldDate.setDate(oldDate.getDate() - 100);
 
       // We need to manually insert to set a past timestamp
-      db.run(`
+      db.run(
+        `
         INSERT INTO agent_logs (agent_id, event_type, timestamp)
         VALUES (?, ?, ?)
-      `, [agentId, 'AGENT_SPAWNED', oldDate.toISOString()]);
+      `,
+        [agentId, 'AGENT_SPAWNED', oldDate.toISOString()]
+      );
 
       // Create a recent log
       createLog(db, { agentId, eventType: 'STORY_STARTED' });
@@ -407,15 +410,21 @@ describe('logs queries', () => {
       const date20DaysAgo = new Date();
       date20DaysAgo.setDate(date20DaysAgo.getDate() - 20);
 
-      db.run(`
+      db.run(
+        `
         INSERT INTO agent_logs (agent_id, event_type, timestamp)
         VALUES (?, ?, ?)
-      `, [agentId, 'AGENT_SPAWNED', date50DaysAgo.toISOString()]);
+      `,
+        [agentId, 'AGENT_SPAWNED', date50DaysAgo.toISOString()]
+      );
 
-      db.run(`
+      db.run(
+        `
         INSERT INTO agent_logs (agent_id, event_type, timestamp)
         VALUES (?, ?, ?)
-      `, [agentId, 'STORY_STARTED', date20DaysAgo.toISOString()]);
+      `,
+        [agentId, 'STORY_STARTED', date20DaysAgo.toISOString()]
+      );
 
       createLog(db, { agentId, eventType: 'STORY_COMPLETED' });
 

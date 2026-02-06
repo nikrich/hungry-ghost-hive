@@ -4,7 +4,12 @@ import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
 import { getAllTeams, getTeamByName } from '../../db/queries/teams.js';
 import { getAllAgents, getActiveAgents } from '../../db/queries/agents.js';
-import { getStoryCounts, getStoryById, getStoriesByTeam, getStoryDependencies } from '../../db/queries/stories.js';
+import {
+  getStoryCounts,
+  getStoryById,
+  getStoriesByTeam,
+  getStoryDependencies,
+} from '../../db/queries/stories.js';
 import { getPendingRequirements } from '../../db/queries/requirements.js';
 import { getPendingEscalations } from '../../db/queries/escalations.js';
 import { getRecentLogs, getLogsByStory } from '../../db/queries/logs.js';
@@ -47,16 +52,16 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
   const escalations = getPendingEscalations(db);
   const recentLogs = getRecentLogs(db, 5);
 
-  const terminatedAgents = allAgents.filter(a => a.status === 'terminated').length;
+  const terminatedAgents = allAgents.filter((a) => a.status === 'terminated').length;
 
   const status = {
     teams: teams.length,
     agents: {
       total: activeAgents.length,
       active: activeAgents.length,
-      working: activeAgents.filter(a => a.status === 'working').length,
-      idle: activeAgents.filter(a => a.status === 'idle').length,
-      blocked: activeAgents.filter(a => a.status === 'blocked').length,
+      working: activeAgents.filter((a) => a.status === 'working').length,
+      idle: activeAgents.filter((a) => a.status === 'idle').length,
+      blocked: activeAgents.filter((a) => a.status === 'blocked').length,
       terminated: terminatedAgents,
     },
     stories: storyCounts,
@@ -66,7 +71,7 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
     escalations: {
       pending: escalations.length,
     },
-    recentActivity: recentLogs.map(l => ({
+    recentActivity: recentLogs.map((l) => ({
       timestamp: l.timestamp,
       agent: l.agent_id,
       event: l.event_type,
@@ -90,9 +95,10 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
 
   // Agents
   console.log(chalk.bold('Agents:'));
-  const totalDisplay = status.agents.terminated > 0
-    ? `${status.agents.total} (${status.agents.terminated} terminated)`
-    : status.agents.total.toString();
+  const totalDisplay =
+    status.agents.terminated > 0
+      ? `${status.agents.total} (${status.agents.terminated} terminated)`
+      : status.agents.total.toString();
   console.log(`  Total:   ${totalDisplay}`);
   console.log(`  Working: ${chalk.yellow(status.agents.working.toString())}`);
   console.log(`  Idle:    ${chalk.gray(status.agents.idle.toString())}`);
@@ -148,7 +154,7 @@ function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: 
   }
 
   const stories = getStoriesByTeam(db, team.id);
-  const activeAgents = getActiveAgents(db).filter(a => a.team_id === team.id);
+  const activeAgents = getActiveAgents(db).filter((a) => a.team_id === team.id);
 
   const storyCounts: Record<string, number> = {};
   for (const story of stories) {
@@ -162,7 +168,7 @@ function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: 
       repo_url: team.repo_url,
       repo_path: team.repo_path,
     },
-    agents: activeAgents.map(a => ({
+    agents: activeAgents.map((a) => ({
       id: a.id,
       type: a.type,
       status: a.status,
@@ -190,7 +196,9 @@ function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: 
   } else {
     for (const agent of activeAgents) {
       const storyInfo = agent.current_story_id ? ` → ${agent.current_story_id}` : '';
-      console.log(`  ${agent.id.padEnd(25)} ${agent.type.padEnd(12)} ${statusColor(agent.status)}${storyInfo}`);
+      console.log(
+        `  ${agent.id.padEnd(25)} ${agent.type.padEnd(12)} ${statusColor(agent.status)}${storyInfo}`
+      );
     }
   }
   console.log();
@@ -224,8 +232,8 @@ function showStoryStatus(db: import('sql.js').Database, storyId: string, json?: 
       prUrl: story.pr_url,
       acceptanceCriteria: story.acceptance_criteria ? JSON.parse(story.acceptance_criteria) : [],
     },
-    dependencies: dependencies.map(d => ({ id: d.id, title: d.title, status: d.status })),
-    recentLogs: logs.map(l => ({
+    dependencies: dependencies.map((d) => ({ id: d.id, title: d.title, status: d.status })),
+    recentLogs: logs.map((l) => ({
       timestamp: l.timestamp,
       agent: l.agent_id,
       event: l.event_type,

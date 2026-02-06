@@ -21,10 +21,7 @@ const CLAUDE_STATE_INDICATORS: StateIndicator[] = [
   // High priority: Active work states
   {
     state: AgentState.THINKING,
-    patterns: [
-      /\(thinking\)/i,
-      /Concocting|Twisting|Considering|Analyzing/i,
-    ],
+    patterns: [/\(thinking\)/i, /Concocting|Twisting|Considering|Analyzing/i],
     priority: 100,
   },
   {
@@ -38,21 +35,14 @@ const CLAUDE_STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: AgentState.PROCESSING,
-    patterns: [
-      /Processing|Analyzing|Generating/i,
-      /Please wait/i,
-    ],
+    patterns: [/Processing|Analyzing|Generating/i, /Please wait/i],
     priority: 90,
   },
 
   // High priority: Blocked states requiring human intervention
   {
     state: AgentState.AWAITING_SELECTION,
-    patterns: [
-      /Enter to select.*↑\/↓/i,
-      /Use arrows to navigate/i,
-      /Select an option/i,
-    ],
+    patterns: [/Enter to select.*↑\/↓/i, /Use arrows to navigate/i, /Select an option/i],
     priority: 90,
   },
   {
@@ -67,42 +57,24 @@ const CLAUDE_STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: AgentState.PLAN_APPROVAL,
-    patterns: [
-      /approve.*plan/i,
-      /review.*plan/i,
-      /proceed.*plan/i,
-      /ExitPlanMode/i,
-    ],
+    patterns: [/approve.*plan/i, /review.*plan/i, /proceed.*plan/i, /ExitPlanMode/i],
     priority: 90,
   },
   {
     state: AgentState.PERMISSION_REQUIRED,
-    patterns: [
-      /permission.*required/i,
-      /authorize/i,
-      /Allow.*\[y\/n\]/i,
-      /Approve.*\[y\/n\]/i,
-    ],
+    patterns: [/permission.*required/i, /authorize/i, /Allow.*\[y\/n\]/i, /Approve.*\[y\/n\]/i],
     priority: 90,
   },
   {
     state: AgentState.USER_DECLINED,
-    patterns: [
-      /declined/i,
-      /permission denied/i,
-      /User chose not to/i,
-    ],
+    patterns: [/declined/i, /permission denied/i, /User chose not to/i],
     priority: 85,
   },
 
   // Lower priority: Ready/idle states
   {
     state: AgentState.WORK_COMPLETE,
-    patterns: [
-      /done|complete|finished/i,
-      /successfully/i,
-      /All.*tests passed/i,
-    ],
+    patterns: [/done|complete|finished/i, /successfully/i, /All.*tests passed/i],
     priority: 50,
   },
   {
@@ -187,11 +159,7 @@ export class ClaudeStateDetector implements StateDetector {
    * Check if a state represents active work (not waiting)
    */
   isActiveState(state: AgentState): boolean {
-    return [
-      AgentState.THINKING,
-      AgentState.TOOL_RUNNING,
-      AgentState.PROCESSING,
-    ].includes(state);
+    return [AgentState.THINKING, AgentState.TOOL_RUNNING, AgentState.PROCESSING].includes(state);
   }
 
   /**
@@ -210,7 +178,9 @@ export class ClaudeStateDetector implements StateDetector {
   /**
    * Map a state to waiting status flags
    */
-  private mapStateToWaitingStatus(state: AgentState): Omit<StateDetectionResult, 'confidence' | 'reason'> {
+  private mapStateToWaitingStatus(
+    state: AgentState
+  ): Omit<StateDetectionResult, 'confidence' | 'reason'> {
     switch (state) {
       // Active states - not waiting
       case AgentState.THINKING:

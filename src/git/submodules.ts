@@ -106,10 +106,11 @@ export async function listSubmodules(rootDir: string): Promise<SubmoduleInfo[]> 
  */
 export async function getSubmoduleUrl(rootDir: string, path: string): Promise<string> {
   try {
-    const { stdout } = await execa('git', [
-      'config', '--file', '.gitmodules',
-      `submodule.${path}.url`,
-    ], { cwd: rootDir });
+    const { stdout } = await execa(
+      'git',
+      ['config', '--file', '.gitmodules', `submodule.${path}.url`],
+      { cwd: rootDir }
+    );
     return stdout.trim();
   } catch {
     return '';
@@ -121,7 +122,7 @@ export async function getSubmoduleUrl(rootDir: string, path: string): Promise<st
  */
 export async function isSubmodule(rootDir: string, path: string): Promise<boolean> {
   const submodules = await listSubmodules(rootDir);
-  return submodules.some(s => s.path === path);
+  return submodules.some((s) => s.path === path);
 }
 
 /**

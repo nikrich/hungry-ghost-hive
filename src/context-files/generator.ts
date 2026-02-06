@@ -43,15 +43,19 @@ export function formatStoriesForContext(stories: StoryRow[]): string {
   }
 
   return stories
-    .map(story => `
+    .map(
+      (story) => `
 ### ${story.id}: ${story.title}
 - **Status**: ${story.status}
 - **Complexity**: ${story.complexity_score || 'Not estimated'}
 - **Story Points**: ${story.story_points || 'Not estimated'}
 - **Description**: ${story.description}
-${story.acceptance_criteria && story.acceptance_criteria.length > 0
-        ? `**Acceptance Criteria**:\n${(Array.isArray(story.acceptance_criteria) ? story.acceptance_criteria : JSON.parse(story.acceptance_criteria || '[]')).map((c: string) => `  - ${c}`).join('\n')}`
-        : ''}`)
+${
+  story.acceptance_criteria && story.acceptance_criteria.length > 0
+    ? `**Acceptance Criteria**:\n${(Array.isArray(story.acceptance_criteria) ? story.acceptance_criteria : JSON.parse(story.acceptance_criteria || '[]')).map((c: string) => `  - ${c}`).join('\n')}`
+    : ''
+}`
+    )
     .join('\n\n');
 }
 
@@ -59,7 +63,7 @@ ${story.acceptance_criteria && story.acceptance_criteria.length > 0
  * Format quality check commands for display
  */
 export function formatQualityChecks(commands: string[]): string {
-  return commands.map(cmd => `\`${cmd}\``).join('\n');
+  return commands.map((cmd) => `\`${cmd}\``).join('\n');
 }
 
 /**

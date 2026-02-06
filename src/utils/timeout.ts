@@ -3,7 +3,10 @@
  */
 
 export class TimeoutError extends Error {
-  constructor(message: string, public readonly timeoutMs: number) {
+  constructor(
+    message: string,
+    public readonly timeoutMs: number
+  ) {
     super(message);
     this.name = 'TimeoutError';
   }
@@ -43,10 +46,7 @@ export function withTimeout<T>(
 /**
  * Retries a function with exponential backoff
  */
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  options: RetryOptions
-): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions): Promise<T> {
   const { maxRetries, baseDelayMs = 1000, maxDelayMs = 30000 } = options;
   let lastError: Error | undefined;
 
@@ -77,8 +77,5 @@ export async function withTimeoutAndRetry<T>(
   retryOptions: RetryOptions,
   errorMessage = 'Operation timed out'
 ): Promise<T> {
-  return withRetry(
-    () => withTimeout(fn(), timeoutMs, errorMessage),
-    retryOptions
-  );
+  return withRetry(() => withTimeout(fn(), timeoutMs, errorMessage), retryOptions);
 }

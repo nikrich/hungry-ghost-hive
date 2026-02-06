@@ -66,26 +66,25 @@ export function getWorkflowState(db: Database, requirementId?: string): Workflow
     params.push(requirementId);
   }
 
-  const stories = queryAll<{ status: StoryStatus; count: number }>(db, `
+  const stories = queryAll<{ status: StoryStatus; count: number }>(
+    db,
+    `
     SELECT status, COUNT(*) as count
     FROM stories
     ${whereClause}
     GROUP BY status
-  `, params);
+  `,
+    params
+  );
 
   const counts: Record<string, number> = {};
   for (const row of stories) {
     counts[row.status] = row.count;
   }
 
-  const activeStories =
-    (counts.in_progress || 0) +
-    (counts.review || 0) +
-    (counts.qa || 0);
+  const activeStories = (counts.in_progress || 0) + (counts.review || 0) + (counts.qa || 0);
 
-  const completedStories =
-    (counts.pr_submitted || 0) +
-    (counts.merged || 0);
+  const completedStories = (counts.pr_submitted || 0) + (counts.merged || 0);
 
   const blockedStories = counts.qa_failed || 0;
 
@@ -110,7 +109,9 @@ export function getWorkflowState(db: Database, requirementId?: string): Workflow
     phase = 'planning';
   } else if (requirementId) {
     // Check requirement status
-    const req = queryOne<{ status: string }>(db, 'SELECT status FROM requirements WHERE id = ?', [requirementId]);
+    const req = queryOne<{ status: string }>(db, 'SELECT status FROM requirements WHERE id = ?', [
+      requirementId,
+    ]);
     if (req) {
       if (req.status === 'planning') phase = 'planning';
       else if (req.status === 'pending') phase = 'requirement_intake';
