@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.3](https://github.com/nikrich/hungry-ghost-hive/compare/v0.6.2...v0.6.3) (2026-02-06)
+
+
+### Bug Fixes
+
+* populate github_pr_number when PRs are submitted ([8be832a](https://github.com/nikrich/hungry-ghost-hive/commit/8be832a511ade86b5c7a3368fd4ba9f0a8c6edab))
+
+
+### Performance Improvements
+
+* eliminate N+1 queries in dependency graph building ([b8f093f](https://github.com/nikrich/hungry-ghost-hive/commit/b8f093f27e92dfbd54d6bc99b8676c45df83fb64))
+* eliminate N+1 queries in dependency graph building ([efa7af4](https://github.com/nikrich/hungry-ghost-hive/commit/efa7af4ea0eefc45e2a6945388dbd352a78eedb5))
+
 ## [0.6.2](https://github.com/nikrich/hungry-ghost-hive/compare/v0.6.1...v0.6.2) (2026-02-06)
 
 
