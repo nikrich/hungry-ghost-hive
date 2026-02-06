@@ -6,6 +6,52 @@ import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { startManager, isManagerRunning } from '../../tmux/manager.js';
+import { getPlannedStories } from '../../db/queries/stories.js';
+import { getAgentsByTeam } from '../../db/queries/agents.js';
+import { getAllTeams } from '../../db/queries/teams.js';
+
+function simulateAssignments(db: any, config: any) {
+  const plannedStories = getPlannedStories(db);
+  const teams = getAllTeams(db);
+  const assignments: Array<{ storyId: string; storyName: string; teamName: string; agentType: string; complexity: number }> = [];
+  const teamSummary: Array<{ teamName: string; plannedCount: number; idleAgents: number }> = [];
+
+  // Analyze each team
+  for (const team of teams) {
+    const teamStories = plannedStories.filter(s => s.team_id === team.id);
+    const idleAgents = getAgentsByTeam(db, team.id).filter(a => a.status === 'idle' && a.type !== 'qa');
+
+    if (teamStories.length > 0) {
+      teamSummary.push({
+        teamName: team.name,
+        plannedCount: teamStories.length,
+        idleAgents: idleAgents.length,
+      });
+
+      // Simulate assignments for each story
+      for (const story of teamStories) {
+        const complexity = story.complexity_score || 5;
+        let agentType = 'senior';
+
+        if (complexity <= config.scaling.junior_max_complexity) {
+          agentType = 'junior';
+        } else if (complexity <= config.scaling.intermediate_max_complexity) {
+          agentType = 'intermediate';
+        }
+
+        assignments.push({
+          storyId: story.id,
+          storyName: story.title || story.id,
+          teamName: team.name,
+          agentType,
+          complexity,
+        });
+      }
+    }
+  }
+
+  return { assignments, teamSummary };
+}
 
 export const assignCommand = new Command('assign')
   .description('Assign planned stories to agents (spawns Seniors as needed)')
@@ -25,8 +71,38 @@ export const assignCommand = new Command('assign')
       const config = loadConfig(paths.hiveDir);
 
       if (options.dryRun) {
-        spinner.info(chalk.yellow('Dry run - no changes will be made'));
-        // TODO: Add dry run logic
+        spinner.stop();
+        console.log(chalk.yellow('\n📋 Dry run - no changes will be made\n'));
+
+        const { assignments, teamSummary } = simulateAssignments(db.db, config);
+
+        if (assignments.length === 0) {
+          console.log(chalk.gray('No planned stories to assign'));
+          console.log();
+          return;
+        }
+
+        // Show team summary
+        if (teamSummary.length > 0) {
+          console.log(chalk.cyan('Team Summary:'));
+          for (const team of teamSummary) {
+            console.log(chalk.gray(`  ${team.teamName}: ${team.plannedCount} planned stories, ${team.idleAgents} idle agents`));
+          }
+          console.log();
+        }
+
+        // Show what would be assigned
+        console.log(chalk.cyan('Would assign:'));
+        for (const assignment of assignments) {
+          const icon = assignment.agentType === 'junior' ? '👶' : assignment.agentType === 'intermediate' ? '👨‍💼' : '👔';
+          console.log(
+            chalk.gray(`  ${icon} [${assignment.storyId}] ${assignment.storyName}`)
+            + ` → ${chalk.yellow(assignment.agentType)} (complexity: ${assignment.complexity})`
+          );
+        }
+        console.log();
+        console.log(chalk.green(`Total: ${assignments.length} stories would be assigned`));
+        console.log();
         return;
       }
 
