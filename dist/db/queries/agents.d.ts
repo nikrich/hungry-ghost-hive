@@ -8,12 +8,14 @@ export interface CreateAgentInput {
     teamId?: string | null;
     tmuxSession?: string | null;
     model?: string | null;
+    worktreePath?: string | null;
 }
 export interface UpdateAgentInput {
     status?: AgentStatus;
     tmuxSession?: string | null;
     currentStoryId?: string | null;
     memoryState?: string | null;
+    worktreePath?: string | null;
 }
 export declare function createAgent(db: Database, input: CreateAgentInput): AgentRow;
 export declare function getAgentById(db: Database, id: string): AgentRow | undefined;

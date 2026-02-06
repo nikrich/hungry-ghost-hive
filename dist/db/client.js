@@ -302,6 +302,18 @@ function runMigrations(db) {
         }
         db.run("INSERT INTO migrations (name) VALUES ('005-add-agent-last-seen.sql')");
     }
+    // Migration 006: Add worktree_path column to agents for git worktree isolation
+    const result006 = db.exec("SELECT name FROM migrations WHERE name = '006-add-agent-worktree.sql'");
+    const migration006Applied = result006.length > 0 && result006[0].values.length > 0;
+    if (!migration006Applied) {
+        const columns = db.exec("PRAGMA table_info(agents)");
+        const hasWorktreePathColumn = columns.length > 0 &&
+            columns[0].values.some((col) => col[1] === 'worktree_path');
+        if (!hasWorktreePathColumn) {
+            db.run("ALTER TABLE agents ADD COLUMN worktree_path TEXT");
+        }
+        db.run("INSERT INTO migrations (name) VALUES ('006-add-agent-worktree.sql')");
+    }
 }
 export async function getDatabase(hiveDir) {
     const dbPath = join(hiveDir, 'hive.db');

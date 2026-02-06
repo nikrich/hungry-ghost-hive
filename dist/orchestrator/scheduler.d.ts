@@ -11,6 +11,15 @@ export declare class Scheduler {
     private config;
     constructor(db: Database, config: SchedulerConfig);
     /**
+     * Create a git worktree for an agent
+     * Returns the worktree path
+     */
+    private createWorktree;
+    /**
+     * Remove a git worktree for an agent
+     */
+    private removeWorktree;
+    /**
      * Build a dependency graph for stories
      * Returns a map of story ID to its direct dependencies
      */
@@ -68,6 +77,7 @@ export declare class Scheduler {
      * - Count stories with status 'pr_submitted' or 'qa'
      * - Calculate needed QA agents: 1 QA per 2-3 pending PRs, max 5
      * - Spawn QA agents in parallel with unique session names
+     * - Scale down excess QA agents when queue shrinks
      */
     private scaleQAAgents;
     private spawnQA;

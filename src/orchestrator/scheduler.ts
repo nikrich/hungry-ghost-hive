@@ -4,7 +4,7 @@ import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow 
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
-import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode } from '../tmux/manager.js';
+import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode, killTmuxSession } from '../tmux/manager.js';
 import type { ScalingConfig, ModelsConfig } from '../config/schema.js';
 import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
 
@@ -447,6 +447,7 @@ export class Scheduler {
    * - Count stories with status 'pr_submitted' or 'qa'
    * - Calculate needed QA agents: 1 QA per 2-3 pending PRs, max 5
    * - Spawn QA agents in parallel with unique session names
+   * - Scale down excess QA agents when queue shrinks
    */
   private async scaleQAAgents(teamId: string, teamName: string, repoPath: string): Promise<void> {
     // Count pending QA work: stories in 'qa' or 'pr_submitted' status
@@ -456,10 +457,10 @@ export class Scheduler {
     `, [teamId]);
 
     const pendingCount = qaStories.length;
-    if (pendingCount === 0) return;
 
     // Calculate needed QA agents: 1 per 2-3 pending PRs, max 5
-    const neededQAs = Math.min(Math.ceil(pendingCount / 2.5), 5);
+    // If no pending work, scale down to 0 agents
+    const neededQAs = pendingCount > 0 ? Math.min(Math.ceil(pendingCount / 2.5), 5) : 0;
 
     // Get currently active QA agents for this team
     const activeQAs = getAgentsByTeam(this.db, teamId)
@@ -491,6 +492,62 @@ export class Scheduler {
           eventType: 'AGENT_SPAWNED',
           status: 'error',
           message: `Failed to scale QA agents for team ${teamName}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          metadata: { teamId, agentType: 'qa', error: String(err) },
+        });
+      }
+    } else if (neededQAs < currentQACount) {
+      // Scale down: terminate excess QA agents
+      const toTerminate = currentQACount - neededQAs;
+
+      // Identify QA agents to terminate (remove the ones with highest indices first)
+      const sortedAgents = activeQAs.sort((a, b) => {
+        const aIndex = parseInt(a.id.split('-').pop() || '0', 10);
+        const bIndex = parseInt(b.id.split('-').pop() || '0', 10);
+        return bIndex - aIndex; // Descending order to remove highest indices first
+      });
+
+      const qaAgentsToTerminate = sortedAgents.slice(0, toTerminate);
+
+      try {
+        for (const agent of qaAgentsToTerminate) {
+          // Kill tmux session
+          if (agent.tmux_session) {
+            await killTmuxSession(agent.tmux_session);
+          }
+
+          // Remove worktree
+          if (agent.worktree_path) {
+            await this.removeWorktree(agent.worktree_path);
+          }
+
+          // Update database
+          updateAgent(this.db, agent.id, {
+            status: 'terminated',
+            currentStoryId: null,
+            worktreePath: null,
+          });
+
+          // Log the event
+          createLog(this.db, {
+            agentId: agent.id,
+            eventType: 'AGENT_TERMINATED',
+            message: 'QA agent scaled down due to reduced PR queue',
+            metadata: { teamId, agentType: 'qa', reason: 'queue_shrink', pendingCount },
+          });
+        }
+
+        createLog(this.db, {
+          agentId: 'scheduler',
+          eventType: 'TEAM_SCALED_DOWN',
+          message: `Scaled down QA agents for team ${teamName}: ${currentQACount} → ${neededQAs} (${pendingCount} pending stories)`,
+          metadata: { teamId, agentType: 'qa', previousCount: currentQACount, newCount: neededQAs, pendingCount },
+        });
+      } catch (err) {
+        createLog(this.db, {
+          agentId: 'scheduler',
+          eventType: 'AGENT_TERMINATED',
+          status: 'error',
+          message: `Failed to scale down QA agents for team ${teamName}: ${err instanceof Error ? err.message : 'Unknown error'}`,
           metadata: { teamId, agentType: 'qa', error: String(err) },
         });
       }
