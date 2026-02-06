@@ -399,9 +399,12 @@ export class Scheduler {
       WHERE team_id = ? AND status IN ('qa', 'pr_submitted')
     `, [teamId]);
         const pendingCount = qaStories.length;
-        // Calculate needed QA agents: 1 per 2-3 pending PRs, max 5
+        // Calculate needed QA agents using configurable values
+        const qaScaling = this.config.qa?.scaling || { pending_per_agent: 2.5, max_agents: 5 };
+        const pendingPerAgent = qaScaling.pending_per_agent || 2.5;
+        const maxAgents = qaScaling.max_agents || 5;
         // If no pending work, scale down to 0 agents
-        const neededQAs = pendingCount > 0 ? Math.min(Math.ceil(pendingCount / 2.5), 5) : 0;
+        const neededQAs = pendingCount > 0 ? Math.min(Math.ceil(pendingCount / pendingPerAgent), maxAgents) : 0;
         // Get currently active QA agents for this team
         const activeQAs = getAgentsByTeam(this.db, teamId)
             .filter(a => a.type === 'qa' && a.status !== 'terminated');

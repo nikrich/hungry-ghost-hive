@@ -11,21 +11,21 @@ const ModelConfigSchema = z.object({
 const ModelsConfigSchema = z.object({
     tech_lead: ModelConfigSchema.default({
         provider: 'anthropic',
-        model: 'claude-opus-4-20250514',
+        model: 'claude-opus-4-6',
         max_tokens: 16000,
         temperature: 0.7,
         cli_tool: 'claude',
     }),
     senior: ModelConfigSchema.default({
         provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 8000,
         temperature: 0.5,
         cli_tool: 'claude',
     }),
     intermediate: ModelConfigSchema.default({
         provider: 'anthropic',
-        model: 'claude-haiku-3-5-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 4000,
         temperature: 0.3,
         cli_tool: 'claude',
@@ -39,7 +39,7 @@ const ModelsConfigSchema = z.object({
     }),
     qa: ModelConfigSchema.default({
         provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 8000,
         temperature: 0.2,
         cli_tool: 'claude',
@@ -77,6 +77,13 @@ const QAConfigSchema = z.object({
     build_command: z.string().default('npm run build'),
     // Test command (optional)
     test_command: z.string().optional(),
+    // QA agent scaling configuration
+    scaling: z.object({
+        // Pending PRs per QA agent (e.g., 2.5 means 1 QA per 2.5 pending)
+        pending_per_agent: z.number().positive().default(2.5),
+        // Maximum number of QA agents per team
+        max_agents: z.number().int().positive().default(5),
+    }).optional(),
 });
 // Agent behavior configuration
 const AgentsConfigSchema = z.object({
@@ -125,7 +132,7 @@ version: "1.0"
 models:
   tech_lead:
     provider: anthropic
-    model: claude-opus-4-20250514
+    model: claude-opus-4-6
     max_tokens: 16000
     temperature: 0.7
     # CLI tool used to spawn agents (claude, codex, or gemini)
@@ -133,14 +140,14 @@ models:
 
   senior:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-5-20250929
     max_tokens: 8000
     temperature: 0.5
     cli_tool: claude
 
   intermediate:
     provider: anthropic
-    model: claude-haiku-3-5-20241022
+    model: claude-haiku-4-5-20251001
     max_tokens: 4000
     temperature: 0.3
     cli_tool: claude
@@ -154,7 +161,7 @@ models:
 
   qa:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-5-20250929
     max_tokens: 8000
     temperature: 0.2
     cli_tool: claude

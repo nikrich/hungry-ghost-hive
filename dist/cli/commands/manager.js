@@ -138,6 +138,7 @@ managerCommand
         const scheduler = new Scheduler(db.db, {
             scaling: config.scaling,
             models: config.models,
+            qa: config.qa,
             rootDir: root,
         });
         console.log(chalk.cyan('Running health check...'));
@@ -225,6 +226,7 @@ async function managerCheck(root) {
         const scheduler = new Scheduler(db.db, {
             scaling: config.scaling,
             models: config.models,
+            qa: config.qa,
             rootDir: root,
         });
         const healthResult = await scheduler.healthCheck();

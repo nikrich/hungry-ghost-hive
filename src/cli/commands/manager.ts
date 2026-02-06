@@ -162,6 +162,7 @@ managerCommand
       const scheduler = new Scheduler(db.db, {
         scaling: config.scaling,
         models: config.models,
+        qa: config.qa,
         rootDir: root,
       });
 
@@ -254,6 +255,7 @@ async function managerCheck(root: string): Promise<void> {
     const scheduler = new Scheduler(db.db, {
       scaling: config.scaling,
       models: config.models,
+      qa: config.qa,
       rootDir: root,
     });
 

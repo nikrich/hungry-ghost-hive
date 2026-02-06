@@ -33,6 +33,7 @@ export const assignCommand = new Command('assign')
       const scheduler = new Scheduler(db.db, {
         scaling: config.scaling,
         models: config.models,
+        qa: config.qa,
         rootDir: root,
       });
 
