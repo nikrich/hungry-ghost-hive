@@ -3,7 +3,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/nikrich/hungry-ghost-hive/ci.yml?branch=main&style=flat-square)](https://github.com/nikrich/hungry-ghost-hive/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/hungry-ghost-hive?style=flat-square)](https://www.npmjs.com/package/hungry-ghost-hive)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=flat-square)](https://nodejs.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-Proprietary-blue?style=flat-square)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/language-TypeScript-blue?style=flat-square)](https://www.typescriptlang.org/)
 [![Codecov](https://img.shields.io/codecov/c/github/nikrich/hungry-ghost-hive?style=flat-square)](https://codecov.io/gh/nikrich/hungry-ghost-hive)
 
@@ -448,4 +448,4 @@ git status  # MUST show "up to date with origin"
 
 ## License
 
-MIT
+See [LICENSE](LICENSE) file for details. This project uses a proprietary Hungry Ghost Hive License.
