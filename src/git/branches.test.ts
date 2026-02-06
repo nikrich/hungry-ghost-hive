@@ -307,7 +307,7 @@ feature/test|def5678|
 
       await branches.pushBranch(workDir, branchName, 'origin', true);
 
-      const callArgs = mockedExeca.mock.calls[0][1];
+      const callArgs = mockedExeca.mock.calls[0]?.[1] as string[];
       expect(callArgs[0]).toBe('push');
       expect(callArgs).toContain('-u');
       expect(callArgs).toContain('origin');
