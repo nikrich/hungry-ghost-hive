@@ -9,6 +9,8 @@ import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.j
 import { getAllTeams } from '../../db/queries/teams.js';
 import { createLog } from '../../db/queries/logs.js';
 import { spawnTmuxSession, isTmuxAvailable, sendToTmuxSession, waitForTmuxSessionReady } from '../../tmux/manager.js';
+import { loadConfig } from '../../config/loader.js';
+import { getCliRuntimeBuilder } from '../../cli-runtimes/index.js';
 
 export const reqCommand = new Command('req')
   .description('Submit a requirement')
@@ -102,10 +104,17 @@ export const reqCommand = new Command('req')
       const techLeadPrompt = generateTechLeadPrompt(req.id, title, description, teams);
 
       try {
+        // Build CLI command using the configured runtime for Tech Lead
+        const config = loadConfig(paths.hiveDir);
+        const cliTool = config.models.tech_lead.cli_tool;
+        const model = 'opus';
+        const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
+        const command = commandArgs.join(' ');
+
         await spawnTmuxSession({
           sessionName,
           workDir: root,
-          command: `claude --dangerously-skip-permissions --model opus`,
+          command,
         });
 
         // Wait for Claude to be ready before sending the prompt
