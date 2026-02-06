@@ -1,5 +1,5 @@
 import type { Database } from 'sql.js';
-import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, getBatchStoryDependencies, getStoryById, getStoriesWithOrphanedAssignments, updateStoryAssignment, type StoryRow } from '../db/queries/stories.js';
+import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, getBatchStoryDependencies, getStoryById, getStoriesWithOrphanedAssignments, type StoryRow } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll, withTransaction } from '../db/client.js';
@@ -422,8 +422,11 @@ export class Scheduler {
 
     for (const assignment of orphanedAssignments) {
       try {
-        updateStoryAssignment(this.db, assignment.id, null);
-        updateStory(this.db, assignment.id, { status: 'planned' });
+        // Update story in single atomic operation
+        updateStory(this.db, assignment.id, {
+          assignedAgentId: null,
+          status: 'planned',
+        });
         createLog(this.db, {
           agentId: 'scheduler',
           storyId: assignment.id,
