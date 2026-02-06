@@ -84,6 +84,7 @@ git checkout -b feature/your-feature-name
 ```
 
 Branch naming conventions:
+
 - `feature/` - For new features
 - `fix/` - For bug fixes
 - `docs/` - For documentation updates
@@ -136,6 +137,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 ```
 
 **Types:**
+
 - `feat:` - A new feature
 - `fix:` - A bug fix
 - `docs:` - Documentation changes
@@ -145,6 +147,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 - `chore:` - Build process, dependencies, or tooling changes
 
 **Examples:**
+
 ```
 feat(commands): add new hive init command
 fix(scheduler): resolve race condition in agent assignment
@@ -264,6 +267,7 @@ gh pr create --title "feat: brief description" \
 ```
 
 **PR Title Format:**
+
 - Keep titles under 72 characters
 - Follow conventional commit format
 - Be specific about what changed
@@ -273,17 +277,21 @@ Include the following in your PR description:
 
 ```markdown
 ## Description
+
 Brief summary of the changes
 
 ## Related Issues
+
 Closes #123
 
 ## Testing
+
 - [ ] Unit tests added/updated
 - [ ] Manual testing performed
 - [ ] No breaking changes
 
 ## Checklist
+
 - [ ] Code follows style guidelines
 - [ ] No new linting warnings
 - [ ] Tests pass
@@ -339,26 +347,32 @@ When creating an issue, include:
 
 ```markdown
 ## Description
+
 Clear description of the issue
 
 ## Steps to Reproduce
+
 1. Step one
 2. Step two
 3. ...
 
 ## Expected Behavior
+
 What should happen
 
 ## Actual Behavior
+
 What actually happens
 
 ## Environment
+
 - Node.js version: `node -v`
 - npm version: `npm -v`
 - OS: macOS / Linux / Windows
 - Hive version: `hive --version`
 
 ## Additional Context
+
 Any other relevant information
 ```
 

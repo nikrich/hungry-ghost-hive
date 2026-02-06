@@ -1,22 +1,40 @@
-import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run } from '../../client.js';
+import type {
+  AgentRow,
+  AgentStatus,
+  AgentType,
+  CreateAgentInput,
+  UpdateAgentInput,
+} from '../../queries/agents.js';
 import type { AgentDao, StaleAgent } from '../interfaces/agent.dao.js';
-import type { AgentRow, CreateAgentInput, UpdateAgentInput, AgentType, AgentStatus } from '../../queries/agents.js';
 
 export class SqliteAgentDao implements AgentDao {
   constructor(private readonly db: Database) {}
 
   async createAgent(input: CreateAgentInput): Promise<AgentRow> {
-    const id = input.type === 'tech_lead'
-      ? 'tech-lead'
-      : `${input.type}-${nanoid(8)}`;
+    const id = input.type === 'tech_lead' ? 'tech-lead' : `${input.type}-${nanoid(8)}`;
     const now = new Date().toISOString();
 
-    run(this.db, `
+    run(
+      this.db,
+      `
       INSERT INTO agents (id, type, team_id, tmux_session, model, status, worktree_path, created_at, updated_at, last_seen)
       VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?)
-    `, [id, input.type, input.teamId || null, input.tmuxSession || null, input.model || null, input.worktreePath || null, now, now, now]);
+    `,
+      [
+        id,
+        input.type,
+        input.teamId || null,
+        input.tmuxSession || null,
+        input.model || null,
+        input.worktreePath || null,
+        now,
+        now,
+        now,
+      ]
+    );
 
     return (await this.getAgentById(id))!;
   }
@@ -42,11 +60,14 @@ export class SqliteAgentDao implements AgentDao {
   }
 
   async getActiveAgents(): Promise<AgentRow[]> {
-    return queryAll<AgentRow>(this.db, `
+    return queryAll<AgentRow>(
+      this.db,
+      `
       SELECT * FROM agents
       WHERE status IN ('idle', 'working', 'blocked')
       ORDER BY type, team_id
-    `);
+    `
+    );
   }
 
   async getTechLead(): Promise<AgentRow | undefined> {
@@ -96,10 +117,7 @@ export class SqliteAgentDao implements AgentDao {
   }
 
   async updateAgentHeartbeat(agentId: string): Promise<void> {
-    run(this.db,
-      "UPDATE agents SET last_seen = CURRENT_TIMESTAMP WHERE id = ?",
-      [agentId]
-    );
+    run(this.db, 'UPDATE agents SET last_seen = CURRENT_TIMESTAMP WHERE id = ?', [agentId]);
   }
 
   async getStaleAgents(timeoutSeconds: number = 15): Promise<StaleAgent[]> {

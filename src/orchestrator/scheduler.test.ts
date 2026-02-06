@@ -576,15 +576,31 @@ describe('Scheduler Refactor Capacity Policy', () => {
   }
 
   it('should enforce refactor budget based on feature workload', () => {
-    const team = createTeam(db, { name: 'Refactor Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Refactor Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
-    const feature = createStory(db, { teamId: team.id, title: 'Add endpoint', description: 'Feature story' });
+    const feature = createStory(db, {
+      teamId: team.id,
+      title: 'Add endpoint',
+      description: 'Feature story',
+    });
     updateStory(db, feature.id, { status: 'planned', storyPoints: 10, complexityScore: 10 });
 
-    const refactorA = createStory(db, { teamId: team.id, title: 'Refactor: clean parser', description: 'Refactor A' });
+    const refactorA = createStory(db, {
+      teamId: team.id,
+      title: 'Refactor: clean parser',
+      description: 'Refactor A',
+    });
     updateStory(db, refactorA.id, { status: 'planned', storyPoints: 1, complexityScore: 1 });
 
-    const refactorB = createStory(db, { teamId: team.id, title: 'Refactor: simplify auth flow', description: 'Refactor B' });
+    const refactorB = createStory(db, {
+      teamId: team.id,
+      title: 'Refactor: simplify auth flow',
+      description: 'Refactor B',
+    });
     updateStory(db, refactorB.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
 
     const localScheduler = createSchedulerWithRefactorConfig({
@@ -606,8 +622,16 @@ describe('Scheduler Refactor Capacity Policy', () => {
   });
 
   it('should allow refactor-only queues when policy permits', () => {
-    const team = createTeam(db, { name: 'Maintenance Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
-    const refactor = createStory(db, { teamId: team.id, title: 'Refactor: remove dead code', description: 'Maintenance' });
+    const team = createTeam(db, {
+      name: 'Maintenance Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+    const refactor = createStory(db, {
+      teamId: team.id,
+      title: 'Refactor: remove dead code',
+      description: 'Maintenance',
+    });
     updateStory(db, refactor.id, { status: 'planned', storyPoints: 3, complexityScore: 3 });
 
     const localScheduler = createSchedulerWithRefactorConfig({
@@ -617,15 +641,25 @@ describe('Scheduler Refactor Capacity Policy', () => {
     });
 
     const selectMethod = (localScheduler as any).selectStoriesForCapacity;
-    const selected = selectMethod.call(localScheduler, [getStoryById(db, refactor.id)!]) as StoryRow[];
+    const selected = selectMethod.call(localScheduler, [
+      getStoryById(db, refactor.id)!,
+    ]) as StoryRow[];
 
     expect(selected).toHaveLength(1);
     expect(selected[0].id).toBe(refactor.id);
   });
 
   it('should block refactor-only queues when policy disallows it', () => {
-    const team = createTeam(db, { name: 'Strict Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
-    const refactor = createStory(db, { teamId: team.id, title: 'Refactor: rename internals', description: 'Maintenance' });
+    const team = createTeam(db, {
+      name: 'Strict Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+    const refactor = createStory(db, {
+      teamId: team.id,
+      title: 'Refactor: rename internals',
+      description: 'Maintenance',
+    });
     updateStory(db, refactor.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
 
     const localScheduler = createSchedulerWithRefactorConfig({
@@ -635,7 +669,9 @@ describe('Scheduler Refactor Capacity Policy', () => {
     });
 
     const selectMethod = (localScheduler as any).selectStoriesForCapacity;
-    const selected = selectMethod.call(localScheduler, [getStoryById(db, refactor.id)!]) as StoryRow[];
+    const selected = selectMethod.call(localScheduler, [
+      getStoryById(db, refactor.id)!,
+    ]) as StoryRow[];
 
     expect(selected).toHaveLength(0);
   });
@@ -644,7 +680,11 @@ describe('Scheduler Refactor Capacity Policy', () => {
 describe('Scheduler Refactor Policy Test Matrix', () => {
   let storyCounter = 0;
 
-  function mkStory(title: string, storyPoints: number | null = null, complexity: number | null = null): StoryRow {
+  function mkStory(
+    title: string,
+    storyPoints: number | null = null,
+    complexity: number | null = null
+  ): StoryRow {
     storyCounter++;
     return {
       id: `STORY-MATRIX-${storyCounter}`,
@@ -697,7 +737,7 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     '  Refactor : simplify parser',
     '\tRefactor: simplify parser',
     'Refactor:',
-  ])('should detect refactor story title: %s', (title) => {
+  ])('should detect refactor story title: %s', title => {
     const localScheduler = mkSchedulerWithRefactor();
     const isRefactor = (localScheduler as any).isRefactorStory.bind(localScheduler);
     expect(isRefactor(mkStory(title))).toBe(true);
@@ -709,7 +749,7 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     'Feature Refactor : simplify parser',
     'Maintenance task',
     '',
-  ])('should not detect non-refactor story title: %s', (title) => {
+  ])('should not detect non-refactor story title: %s', title => {
     const localScheduler = mkSchedulerWithRefactor();
     const isRefactor = (localScheduler as any).isRefactorStory.bind(localScheduler);
     expect(isRefactor(mkStory(title))).toBe(false);
@@ -833,7 +873,13 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     const refactorA = mkStory('Refactor: A', 1, 1);
     const refactorB = mkStory('Refactor: B', 1, 1);
     const refactorC = mkStory('Refactor: C', 1, 1);
-    const selected = selectStories([featureA, featureB, refactorA, refactorB, refactorC]) as StoryRow[];
+    const selected = selectStories([
+      featureA,
+      featureB,
+      refactorA,
+      refactorB,
+      refactorC,
+    ]) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([featureA.id, featureB.id, refactorA.id, refactorB.id]);
   });
@@ -1023,12 +1069,22 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
 
 describe('Scheduler Agent Selection', () => {
   it('should select agent with least workload from multiple agents', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
     // Create three junior agents with different workloads
-    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('junior-1', 'junior', '${team.id}', 'idle')`);
-    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('junior-2', 'junior', '${team.id}', 'idle')`);
-    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('junior-3', 'junior', '${team.id}', 'idle')`);
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status) VALUES ('junior-1', 'junior', '${team.id}', 'idle')`
+    );
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status) VALUES ('junior-2', 'junior', '${team.id}', 'idle')`
+    );
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status) VALUES ('junior-3', 'junior', '${team.id}', 'idle')`
+    );
 
     // Give junior-1 two stories, junior-2 one story, junior-3 zero stories
     const story1 = createStory(db, { teamId: team.id, title: 'Story 1', description: 'Test' });
@@ -1039,9 +1095,45 @@ describe('Scheduler Agent Selection', () => {
     updateStory(db, story3.id, { assignedAgentId: 'junior-2', status: 'in_progress' });
 
     const agents = [
-      { id: 'junior-1', type: 'junior' as const, team_id: team.id, tmux_session: null, model: null, status: 'idle' as const, current_story_id: null, memory_state: null, last_seen: null, created_at: '', updated_at: '' },
-      { id: 'junior-2', type: 'junior' as const, team_id: team.id, tmux_session: null, model: null, status: 'idle' as const, current_story_id: null, memory_state: null, last_seen: null, created_at: '', updated_at: '' },
-      { id: 'junior-3', type: 'junior' as const, team_id: team.id, tmux_session: null, model: null, status: 'idle' as const, current_story_id: null, memory_state: null, last_seen: null, created_at: '', updated_at: '' },
+      {
+        id: 'junior-1',
+        type: 'junior' as const,
+        team_id: team.id,
+        tmux_session: null,
+        model: null,
+        status: 'idle' as const,
+        current_story_id: null,
+        memory_state: null,
+        last_seen: null,
+        created_at: '',
+        updated_at: '',
+      },
+      {
+        id: 'junior-2',
+        type: 'junior' as const,
+        team_id: team.id,
+        tmux_session: null,
+        model: null,
+        status: 'idle' as const,
+        current_story_id: null,
+        memory_state: null,
+        last_seen: null,
+        created_at: '',
+        updated_at: '',
+      },
+      {
+        id: 'junior-3',
+        type: 'junior' as const,
+        team_id: team.id,
+        tmux_session: null,
+        model: null,
+        status: 'idle' as const,
+        current_story_id: null,
+        memory_state: null,
+        last_seen: null,
+        created_at: '',
+        updated_at: '',
+      },
     ];
 
     const selectMethod = (scheduler as any).selectAgentWithLeastWorkload;
@@ -1052,11 +1144,39 @@ describe('Scheduler Agent Selection', () => {
   });
 
   it('should select first agent when all have equal workload', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
     const agents = [
-      { id: 'agent-1', type: 'junior' as const, team_id: team.id, tmux_session: null, model: null, status: 'idle' as const, current_story_id: null, memory_state: null, last_seen: null, created_at: '', updated_at: '' },
-      { id: 'agent-2', type: 'junior' as const, team_id: team.id, tmux_session: null, model: null, status: 'idle' as const, current_story_id: null, memory_state: null, last_seen: null, created_at: '', updated_at: '' },
+      {
+        id: 'agent-1',
+        type: 'junior' as const,
+        team_id: team.id,
+        tmux_session: null,
+        model: null,
+        status: 'idle' as const,
+        current_story_id: null,
+        memory_state: null,
+        last_seen: null,
+        created_at: '',
+        updated_at: '',
+      },
+      {
+        id: 'agent-2',
+        type: 'junior' as const,
+        team_id: team.id,
+        tmux_session: null,
+        model: null,
+        status: 'idle' as const,
+        current_story_id: null,
+        memory_state: null,
+        last_seen: null,
+        created_at: '',
+        updated_at: '',
+      },
     ];
 
     const selectMethod = (scheduler as any).selectAgentWithLeastWorkload;
@@ -1066,8 +1186,14 @@ describe('Scheduler Agent Selection', () => {
   });
 
   it('should calculate agent workload correctly', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
-    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`);
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`
+    );
 
     const story1 = createStory(db, { teamId: team.id, title: 'Story 1', description: 'Test' });
     const story2 = createStory(db, { teamId: team.id, title: 'Story 2', description: 'Test' });
@@ -1081,8 +1207,14 @@ describe('Scheduler Agent Selection', () => {
   });
 
   it('should return zero workload for agent with no stories', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
-    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`);
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`
+    );
 
     const workloadMethod = (scheduler as any).getAgentWorkload;
     const workload = workloadMethod.call(scheduler, 'agent-1');
@@ -1139,8 +1271,14 @@ describe('Scheduler Complexity Routing', () => {
 
 describe('Scheduler Story Assignment Prevention', () => {
   it('should prevent duplicate story assignments', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
-    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`);
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`
+    );
 
     // Create a story and assign it
     const story = createStory(db, {
@@ -1159,7 +1297,11 @@ describe('Scheduler Story Assignment Prevention', () => {
   });
 
   it('should verify story assignment changes status', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
     const story = createStory(db, {
       teamId: team.id,
@@ -1177,7 +1319,11 @@ describe('Scheduler Story Assignment Prevention', () => {
   });
 
   it('should skip stories with unsatisfied dependencies', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
     updateStory(db, storyA.id, { status: 'planned' });
     const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
@@ -1192,7 +1338,11 @@ describe('Scheduler Story Assignment Prevention', () => {
   });
 
   it('should allow stories when dependencies are in terminal states', () => {
-    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
 
     // Test with merged status (terminal state)
     const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });

@@ -1,6 +1,6 @@
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { InitializationError } from '../errors/index.js';
 
 export interface DatabaseClient {

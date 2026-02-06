@@ -1,7 +1,12 @@
-import type { AgentRow } from '../../queries/agents.js';
-import type { CreateAgentInput, UpdateAgentInput, AgentType, AgentStatus } from '../../queries/agents.js';
+import type {
+  AgentRow,
+  AgentStatus,
+  AgentType,
+  CreateAgentInput,
+  UpdateAgentInput,
+} from '../../queries/agents.js';
 
-export type { AgentRow, CreateAgentInput, UpdateAgentInput, AgentType, AgentStatus };
+export type { AgentRow, AgentStatus, AgentType, CreateAgentInput, UpdateAgentInput };
 
 export interface StaleAgent {
   id: string;

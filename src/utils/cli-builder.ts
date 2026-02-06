@@ -4,7 +4,7 @@
  */
 
 import type { ModelsConfig } from '../config/schema.js';
-import { UnsupportedFeatureError, ConfigurationError } from '../errors/index.js';
+import { ConfigurationError, UnsupportedFeatureError } from '../errors/index.js';
 
 export type AgentType = 'senior' | 'intermediate' | 'junior' | 'qa' | 'tech_lead';
 

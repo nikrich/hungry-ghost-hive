@@ -1,9 +1,9 @@
 import { execa } from 'execa';
-import { CliRuntimeType, CliRuntimeBuilder } from './types.js';
+import { UnsupportedFeatureError, ValidationError } from '../errors/index.js';
 import { ClaudeRuntimeBuilder } from './claude.js';
 import { CodexRuntimeBuilder } from './codex.js';
 import { GeminiRuntimeBuilder } from './gemini.js';
-import { UnsupportedFeatureError, ValidationError } from '../errors/index.js';
+import { CliRuntimeBuilder, CliRuntimeType } from './types.js';
 
 /**
  * Factory function to get the appropriate CLI runtime builder
@@ -90,7 +90,7 @@ export function validateModelCliCompatibility(model: string, cliTool: CliRuntime
   }
 }
 
-export type { CliRuntimeType, CliRuntimeBuilder };
 export { ClaudeRuntimeBuilder } from './claude.js';
 export { CodexRuntimeBuilder } from './codex.js';
 export { GeminiRuntimeBuilder } from './gemini.js';
+export type { CliRuntimeBuilder, CliRuntimeType };

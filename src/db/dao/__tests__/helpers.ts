@@ -155,7 +155,9 @@ export async function createTestDb(): Promise<Database> {
   db.run('CREATE INDEX IF NOT EXISTS idx_stories_requirement_id ON stories(requirement_id)');
   db.run('CREATE INDEX IF NOT EXISTS idx_agents_team_id ON agents(team_id)');
   db.run('CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_pull_requests_team_status ON pull_requests(team_id, status)');
+  db.run(
+    'CREATE INDEX IF NOT EXISTS idx_pull_requests_team_status ON pull_requests(team_id, status)'
+  );
   db.run('CREATE INDEX IF NOT EXISTS idx_pull_requests_story_id ON pull_requests(story_id)');
   db.run('CREATE INDEX IF NOT EXISTS idx_messages_to_session ON messages(to_session)');
   db.run('CREATE INDEX IF NOT EXISTS idx_escalations_status ON escalations(status)');

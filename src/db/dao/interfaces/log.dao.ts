@@ -1,5 +1,4 @@
-import type { AgentLogRow } from '../../queries/logs.js';
-import type { CreateLogInput, EventType } from '../../queries/logs.js';
+import type { AgentLogRow, CreateLogInput, EventType } from '../../queries/logs.js';
 
 export type { AgentLogRow, CreateLogInput, EventType };
 

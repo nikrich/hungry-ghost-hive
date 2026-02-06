@@ -1,8 +1,13 @@
-import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run } from '../../client.js';
+import type {
+  CreatePullRequestInput,
+  PullRequestRow,
+  PullRequestStatus,
+  UpdatePullRequestInput,
+} from '../../queries/pull-requests.js';
 import type { PullRequestDao } from '../interfaces/pull-request.dao.js';
-import type { PullRequestRow, CreatePullRequestInput, UpdatePullRequestInput, PullRequestStatus } from '../../queries/pull-requests.js';
 
 export class SqlitePullRequestDao implements PullRequestDao {
   constructor(private readonly db: Database) {}
@@ -11,20 +16,24 @@ export class SqlitePullRequestDao implements PullRequestDao {
     const id = `pr-${nanoid(8)}`;
     const now = new Date().toISOString();
 
-    run(this.db, `
+    run(
+      this.db,
+      `
       INSERT INTO pull_requests (id, story_id, team_id, branch_name, github_pr_number, github_pr_url, submitted_by, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)
-    `, [
-      id,
-      input.storyId || null,
-      input.teamId || null,
-      input.branchName,
-      input.githubPrNumber || null,
-      input.githubPrUrl || null,
-      input.submittedBy || null,
-      now,
-      now,
-    ]);
+    `,
+      [
+        id,
+        input.storyId || null,
+        input.teamId || null,
+        input.branchName,
+        input.githubPrNumber || null,
+        input.githubPrUrl || null,
+        input.submittedBy || null,
+        now,
+        now,
+      ]
+    );
 
     return (await this.getPullRequestById(id))!;
   }
@@ -34,43 +43,63 @@ export class SqlitePullRequestDao implements PullRequestDao {
   }
 
   async getPullRequestByStory(storyId: string): Promise<PullRequestRow | undefined> {
-    return queryOne<PullRequestRow>(this.db, 'SELECT * FROM pull_requests WHERE story_id = ?', [storyId]);
+    return queryOne<PullRequestRow>(this.db, 'SELECT * FROM pull_requests WHERE story_id = ?', [
+      storyId,
+    ]);
   }
 
   async getPullRequestByGithubNumber(prNumber: number): Promise<PullRequestRow | undefined> {
-    return queryOne<PullRequestRow>(this.db, 'SELECT * FROM pull_requests WHERE github_pr_number = ?', [prNumber]);
+    return queryOne<PullRequestRow>(
+      this.db,
+      'SELECT * FROM pull_requests WHERE github_pr_number = ?',
+      [prNumber]
+    );
   }
 
   async getMergeQueue(teamId?: string): Promise<PullRequestRow[]> {
     if (teamId) {
-      return queryAll<PullRequestRow>(this.db, `
+      return queryAll<PullRequestRow>(
+        this.db,
+        `
         SELECT * FROM pull_requests
         WHERE team_id = ? AND status IN ('queued', 'reviewing')
         ORDER BY created_at ASC
-      `, [teamId]);
+      `,
+        [teamId]
+      );
     }
-    return queryAll<PullRequestRow>(this.db, `
+    return queryAll<PullRequestRow>(
+      this.db,
+      `
       SELECT * FROM pull_requests
       WHERE status IN ('queued', 'reviewing')
       ORDER BY created_at ASC
-    `);
+    `
+    );
   }
 
   async getNextInQueue(teamId?: string): Promise<PullRequestRow | undefined> {
     if (teamId) {
-      return queryOne<PullRequestRow>(this.db, `
+      return queryOne<PullRequestRow>(
+        this.db,
+        `
         SELECT * FROM pull_requests
         WHERE team_id = ? AND status = 'queued'
         ORDER BY created_at ASC
         LIMIT 1
-      `, [teamId]);
+      `,
+        [teamId]
+      );
     }
-    return queryOne<PullRequestRow>(this.db, `
+    return queryOne<PullRequestRow>(
+      this.db,
+      `
       SELECT * FROM pull_requests
       WHERE status = 'queued'
       ORDER BY created_at ASC
       LIMIT 1
-    `);
+    `
+    );
   }
 
   async getQueuePosition(prId: string): Promise<number> {
@@ -82,34 +111,51 @@ export class SqlitePullRequestDao implements PullRequestDao {
   }
 
   async getPullRequestsByStatus(status: PullRequestStatus): Promise<PullRequestRow[]> {
-    return queryAll<PullRequestRow>(this.db, `
+    return queryAll<PullRequestRow>(
+      this.db,
+      `
       SELECT * FROM pull_requests
       WHERE status = ?
       ORDER BY created_at DESC
-    `, [status]);
+    `,
+      [status]
+    );
   }
 
   async getApprovedPullRequests(): Promise<PullRequestRow[]> {
-    return queryAll<PullRequestRow>(this.db, `
+    return queryAll<PullRequestRow>(
+      this.db,
+      `
       SELECT * FROM pull_requests
       WHERE status = 'approved'
       ORDER BY created_at ASC
-    `);
+    `
+    );
   }
 
   async getAllPullRequests(): Promise<PullRequestRow[]> {
-    return queryAll<PullRequestRow>(this.db, 'SELECT * FROM pull_requests ORDER BY created_at DESC');
+    return queryAll<PullRequestRow>(
+      this.db,
+      'SELECT * FROM pull_requests ORDER BY created_at DESC'
+    );
   }
 
   async getPullRequestsByTeam(teamId: string): Promise<PullRequestRow[]> {
-    return queryAll<PullRequestRow>(this.db, `
+    return queryAll<PullRequestRow>(
+      this.db,
+      `
       SELECT * FROM pull_requests
       WHERE team_id = ?
       ORDER BY created_at DESC
-    `, [teamId]);
+    `,
+      [teamId]
+    );
   }
 
-  async updatePullRequest(id: string, input: UpdatePullRequestInput): Promise<PullRequestRow | undefined> {
+  async updatePullRequest(
+    id: string,
+    input: UpdatePullRequestInput
+  ): Promise<PullRequestRow | undefined> {
     const updates: string[] = ['updated_at = ?'];
     const values: (string | number | null)[] = [new Date().toISOString()];
 

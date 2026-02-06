@@ -1,6 +1,11 @@
 import { nanoid } from 'nanoid';
+import type {
+  CreateEscalationInput,
+  EscalationRow,
+  EscalationStatus,
+  UpdateEscalationInput,
+} from '../../queries/escalations.js';
 import type { EscalationDao } from '../interfaces/escalation.dao.js';
-import type { EscalationRow, CreateEscalationInput, UpdateEscalationInput, EscalationStatus } from '../../queries/escalations.js';
 import { LevelDbStore, type NowProvider, defaultNow } from './leveldb-store.js';
 import { compareIsoAsc, compareIsoDesc } from './sort.js';
 
@@ -9,7 +14,10 @@ const ESC_PREFIX = 'escalation:';
 export class LevelDbEscalationDao implements EscalationDao {
   private readonly now: NowProvider;
 
-  constructor(private readonly store: LevelDbStore, now: NowProvider = defaultNow) {
+  constructor(
+    private readonly store: LevelDbStore,
+    now: NowProvider = defaultNow
+  ) {
     this.now = now;
   }
 
@@ -76,7 +84,10 @@ export class LevelDbEscalationDao implements EscalationDao {
     return escalations.sort(compareIsoDesc);
   }
 
-  async updateEscalation(id: string, input: UpdateEscalationInput): Promise<EscalationRow | undefined> {
+  async updateEscalation(
+    id: string,
+    input: UpdateEscalationInput
+  ): Promise<EscalationRow | undefined> {
     const existing = await this.getEscalationById(id);
     if (!existing) return undefined;
 

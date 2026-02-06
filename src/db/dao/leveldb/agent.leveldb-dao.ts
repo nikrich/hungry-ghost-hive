@@ -1,6 +1,12 @@
 import { nanoid } from 'nanoid';
+import type {
+  AgentRow,
+  AgentStatus,
+  AgentType,
+  CreateAgentInput,
+  UpdateAgentInput,
+} from '../../queries/agents.js';
 import type { AgentDao, StaleAgent } from '../interfaces/agent.dao.js';
-import type { AgentRow, CreateAgentInput, UpdateAgentInput, AgentType, AgentStatus } from '../../queries/agents.js';
 import { LevelDbStore, type NowProvider, defaultNow } from './leveldb-store.js';
 
 const AGENT_PREFIX = 'agent:';
@@ -10,14 +16,15 @@ const ACTIVE_STATUSES: AgentStatus[] = ['idle', 'working', 'blocked'];
 export class LevelDbAgentDao implements AgentDao {
   private readonly now: NowProvider;
 
-  constructor(private readonly store: LevelDbStore, now: NowProvider = defaultNow) {
+  constructor(
+    private readonly store: LevelDbStore,
+    now: NowProvider = defaultNow
+  ) {
     this.now = now;
   }
 
   async createAgent(input: CreateAgentInput): Promise<AgentRow> {
-    const id = input.type === 'tech_lead'
-      ? 'tech-lead'
-      : `${input.type}-${nanoid(8)}`;
+    const id = input.type === 'tech_lead' ? 'tech-lead' : `${input.type}-${nanoid(8)}`;
     const now = this.now();
 
     const agent: AgentRow = {
@@ -146,7 +153,7 @@ export class LevelDbAgentDao implements AgentDao {
       const secondsSince = Math.floor((nowMs - baseTime) / 1000);
 
       if (lastSeen === null) {
-        if (secondsSince > (60 + timeoutSeconds)) {
+        if (secondsSince > 60 + timeoutSeconds) {
           stale.push({
             id: agent.id,
             type: agent.type,

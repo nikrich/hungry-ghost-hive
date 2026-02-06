@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDb } from './helpers.js';
-import { SqliteMessageDao } from '../sqlite/message.sqlite-dao.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { run } from '../../client.js';
+import { SqliteMessageDao } from '../sqlite/message.sqlite-dao.js';
+import { createTestDb } from './helpers.js';
 
 describe('SqliteMessageDao', () => {
   let db: Database;
@@ -18,10 +18,14 @@ describe('SqliteMessageDao', () => {
   });
 
   function insertMessage(id: string, from: string, to: string, body: string, status = 'pending') {
-    run(db, `
+    run(
+      db,
+      `
       INSERT INTO messages (id, from_session, to_session, body, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [id, from, to, body, status, new Date().toISOString()]);
+    `,
+      [id, from, to, body, status, new Date().toISOString()]
+    );
   }
 
   it('message.sqlite-dao case 1', async () => {

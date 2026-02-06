@@ -1,7 +1,11 @@
-import type { StoryRow } from '../../queries/stories.js';
-import type { CreateStoryInput, UpdateStoryInput, StoryStatus } from '../../queries/stories.js';
+import type {
+  CreateStoryInput,
+  StoryRow,
+  StoryStatus,
+  UpdateStoryInput,
+} from '../../queries/stories.js';
 
-export type { StoryRow, CreateStoryInput, UpdateStoryInput, StoryStatus };
+export type { CreateStoryInput, StoryRow, StoryStatus, UpdateStoryInput };
 
 export interface StoryDao {
   createStory(input: CreateStoryInput): Promise<StoryRow>;

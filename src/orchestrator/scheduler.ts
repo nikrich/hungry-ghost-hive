@@ -23,6 +23,7 @@ import {
   type StoryRow,
 } from '../db/queries/stories.js';
 import { getAllTeams, getTeamById } from '../db/queries/teams.js';
+import { FileSystemError, OperationalError } from '../errors/index.js';
 import {
   generateSessionName,
   getHiveSessions,
@@ -38,7 +39,6 @@ import {
   generateQAPrompt,
   generateSeniorPrompt,
 } from './prompt-templates.js';
-import { FileSystemError, OperationalError } from '../errors/index.js';
 
 export interface SchedulerConfig {
   scaling: ScalingConfig;
@@ -297,7 +297,10 @@ export class Scheduler {
     }
 
     const featureStories = stories.filter(story => !this.isRefactorStory(story));
-    const featurePoints = featureStories.reduce((sum, story) => sum + this.getCapacityPoints(story), 0);
+    const featurePoints = featureStories.reduce(
+      (sum, story) => sum + this.getCapacityPoints(story),
+      0
+    );
     const hasFeatureWork = featureStories.length > 0;
 
     if (!hasFeatureWork && !refactorConfig.allow_without_feature_work) {
@@ -661,11 +664,7 @@ export class Scheduler {
    * - Spawn QA agents in parallel with unique session names
    * - Scale down excess QA agents when queue shrinks
    */
-  private async scaleQAAgents(
-    teamId: string,
-    teamName: string,
-    repoPath: string
-  ): Promise<void> {
+  private async scaleQAAgents(teamId: string, teamName: string, repoPath: string): Promise<void> {
     // Count pending QA work: stories in 'qa', 'pr_submitted', or 'qa_failed' status
     const qaStories = queryAll<StoryRow>(
       this.db,

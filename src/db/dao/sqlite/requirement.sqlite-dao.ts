@@ -1,8 +1,13 @@
-import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run } from '../../client.js';
+import type {
+  CreateRequirementInput,
+  RequirementRow,
+  RequirementStatus,
+  UpdateRequirementInput,
+} from '../../queries/requirements.js';
 import type { RequirementDao } from '../interfaces/requirement.dao.js';
-import type { RequirementRow, CreateRequirementInput, UpdateRequirementInput, RequirementStatus } from '../../queries/requirements.js';
 
 export class SqliteRequirementDao implements RequirementDao {
   constructor(private readonly db: Database) {}
@@ -11,10 +16,14 @@ export class SqliteRequirementDao implements RequirementDao {
     const id = `REQ-${nanoid(8).toUpperCase()}`;
     const now = new Date().toISOString();
 
-    run(this.db, `
+    run(
+      this.db,
+      `
       INSERT INTO requirements (id, title, description, submitted_by, created_at)
       VALUES (?, ?, ?, ?, ?)
-    `, [id, input.title, input.description, input.submittedBy || 'human', now]);
+    `,
+      [id, input.title, input.description, input.submittedBy || 'human', now]
+    );
 
     return (await this.getRequirementById(id))!;
   }
@@ -24,22 +33,35 @@ export class SqliteRequirementDao implements RequirementDao {
   }
 
   async getAllRequirements(): Promise<RequirementRow[]> {
-    return queryAll<RequirementRow>(this.db, 'SELECT * FROM requirements ORDER BY created_at DESC, rowid DESC');
+    return queryAll<RequirementRow>(
+      this.db,
+      'SELECT * FROM requirements ORDER BY created_at DESC, rowid DESC'
+    );
   }
 
   async getRequirementsByStatus(status: RequirementStatus): Promise<RequirementRow[]> {
-    return queryAll<RequirementRow>(this.db, 'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC, rowid DESC', [status]);
+    return queryAll<RequirementRow>(
+      this.db,
+      'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC, rowid DESC',
+      [status]
+    );
   }
 
   async getPendingRequirements(): Promise<RequirementRow[]> {
-    return queryAll<RequirementRow>(this.db, `
+    return queryAll<RequirementRow>(
+      this.db,
+      `
       SELECT * FROM requirements
       WHERE status IN ('pending', 'planning', 'in_progress')
       ORDER BY created_at, rowid
-    `);
+    `
+    );
   }
 
-  async updateRequirement(id: string, input: UpdateRequirementInput): Promise<RequirementRow | undefined> {
+  async updateRequirement(
+    id: string,
+    input: UpdateRequirementInput
+  ): Promise<RequirementRow | undefined> {
     const updates: string[] = [];
     const values: string[] = [];
 

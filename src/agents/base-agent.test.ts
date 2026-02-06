@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
-import { BaseAgent, type AgentContext, type MemoryState } from './base-agent.js';
-import type { LLMProvider, Message, CompletionResult, CompletionOptions } from '../llm/provider.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { queryAll, queryOne } from '../db/client.js';
 import type { AgentRow } from '../db/queries/agents.js';
-import { queryOne, queryAll } from '../db/client.js';
+import type { CompletionOptions, CompletionResult, LLMProvider, Message } from '../llm/provider.js';
+import { BaseAgent, type AgentContext, type MemoryState } from './base-agent.js';
 
 // Mock LLM Provider
 class MockLLMProvider implements LLMProvider {
@@ -93,10 +93,12 @@ CREATE TABLE IF NOT EXISTS agent_logs (
     };
 
     // Insert the agent into the database
-    db.run(
-      `INSERT INTO agents (id, type, team_id, status) VALUES (?, ?, ?, ?)`,
-      [agentRow.id, agentRow.type, agentRow.team_id, agentRow.status]
-    );
+    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES (?, ?, ?, ?)`, [
+      agentRow.id,
+      agentRow.type,
+      agentRow.team_id,
+      agentRow.status,
+    ]);
 
     context = {
       db,
@@ -143,10 +145,10 @@ CREATE TABLE IF NOT EXISTS agent_logs (
         checkpointTokens: 5000,
       };
       agentRow.memory_state = JSON.stringify(existingMemory);
-      db.run(
-        `UPDATE agents SET memory_state = ? WHERE id = ?`,
-        [agentRow.memory_state, agentRow.id]
-      );
+      db.run(`UPDATE agents SET memory_state = ? WHERE id = ?`, [
+        agentRow.memory_state,
+        agentRow.id,
+      ]);
 
       const agent = new TestAgent(context);
       const agentAny = agent as any;
@@ -183,7 +185,9 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       const agent = new TestAgent(context);
       await agent.run();
 
-      const result = queryOne<{ status: string }>(db, 'SELECT status FROM agents WHERE id = ?', [agentRow.id]);
+      const result = queryOne<{ status: string }>(db, 'SELECT status FROM agents WHERE id = ?', [
+        agentRow.id,
+      ]);
       expect(result?.status).toBe('working');
     });
 
@@ -193,7 +197,9 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 
       await expect(agent.run()).rejects.toThrow('Test error');
 
-      const result = queryOne<{ status: string }>(db, 'SELECT status FROM agents WHERE id = ?', [agentRow.id]);
+      const result = queryOne<{ status: string }>(db, 'SELECT status FROM agents WHERE id = ?', [
+        agentRow.id,
+      ]);
       expect(result?.status).toBe('blocked');
     });
 
@@ -201,7 +207,11 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       const agent = new TestAgent(context);
       await agent.run();
 
-      const events = queryAll<{ event_type: string; message: string }>(db, 'SELECT event_type, message FROM agent_logs WHERE agent_id = ?', [agentRow.id]);
+      const events = queryAll<{ event_type: string; message: string }>(
+        db,
+        'SELECT event_type, message FROM agent_logs WHERE agent_id = ?',
+        [agentRow.id]
+      );
       expect(events).toContainEqual(
         expect.objectContaining({
           event_type: 'AGENT_SPAWNED',
@@ -216,7 +226,11 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 
       await expect(agent.run()).rejects.toThrow();
 
-      const events = queryAll<{ event_type: string; message: string }>(db, 'SELECT event_type, message FROM agent_logs WHERE agent_id = ?', [agentRow.id]);
+      const events = queryAll<{ event_type: string; message: string }>(
+        db,
+        'SELECT event_type, message FROM agent_logs WHERE agent_id = ?',
+        [agentRow.id]
+      );
       expect(events).toContainEqual(
         expect.objectContaining({
           event_type: 'AGENT_TERMINATED',
@@ -258,7 +272,8 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 
   describe('Checkpointing', () => {
     it('should trigger checkpoint when token threshold is exceeded', async () => {
-      provider.complete = vi.fn()
+      provider.complete = vi
+        .fn()
         .mockResolvedValueOnce({
           content: 'Response 1',
           usage: { inputTokens: 6000, outputTokens: 5000 },
@@ -278,7 +293,8 @@ CREATE TABLE IF NOT EXISTS agent_logs (
     });
 
     it('should save checkpoint to database', async () => {
-      provider.complete = vi.fn()
+      provider.complete = vi
+        .fn()
         .mockResolvedValueOnce({
           content: 'Response',
           usage: { inputTokens: 6000, outputTokens: 5000 },
@@ -292,14 +308,19 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       const agentAny = agent as any;
       await agentAny.chat('Test message');
 
-      const result = queryOne<{ memory_state: string }>(db, 'SELECT memory_state FROM agents WHERE id = ?', [agentRow.id]);
+      const result = queryOne<{ memory_state: string }>(
+        db,
+        'SELECT memory_state FROM agents WHERE id = ?',
+        [agentRow.id]
+      );
       const memoryState = JSON.parse(result!.memory_state);
       expect(memoryState.conversationSummary).toBe('Checkpoint summary');
       expect(memoryState.checkpointTokens).toBe(11000);
     });
 
     it('should reset messages after checkpoint but keep context', async () => {
-      provider.complete = vi.fn()
+      provider.complete = vi
+        .fn()
         .mockResolvedValueOnce({
           content: 'Response',
           usage: { inputTokens: 6000, outputTokens: 5000 },
@@ -397,7 +418,11 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 
       await expect(agentAny.chat('Test')).rejects.toThrow();
 
-      const events = queryAll<{ event_type: string }>(db, 'SELECT event_type FROM agent_logs WHERE agent_id = ?', [agentRow.id]);
+      const events = queryAll<{ event_type: string }>(
+        db,
+        'SELECT event_type FROM agent_logs WHERE agent_id = ?',
+        [agentRow.id]
+      );
       expect(events.map(e => e.event_type)).toContain('AGENT_TERMINATED');
     });
 
@@ -407,10 +432,7 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       const agentAny = agent as any;
       await agentAny.chat('Test');
 
-      expect(completeSpy).toHaveBeenCalledWith(
-        expect.any(Array),
-        { timeoutMs: 30000 }
-      );
+      expect(completeSpy).toHaveBeenCalledWith(expect.any(Array), { timeoutMs: 30000 });
     });
   });
 
@@ -420,7 +442,11 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       new TestAgent(context);
 
       // Check that last_seen was updated
-      const result = queryOne<{ last_seen: string | null }>(db, 'SELECT last_seen FROM agents WHERE id = ?', [agentRow.id]);
+      const result = queryOne<{ last_seen: string | null }>(
+        db,
+        'SELECT last_seen FROM agents WHERE id = ?',
+        [agentRow.id]
+      );
       expect(result?.last_seen).toBeTruthy();
     });
 

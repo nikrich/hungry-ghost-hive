@@ -2,80 +2,69 @@
 
 ## [0.15.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.14.2...v0.15.0) (2026-02-06)
 
-
 ### Features
 
-* create typed error classes for structured error handling ([5a6a026](https://github.com/nikrich/hungry-ghost-hive/commit/5a6a026c1af79899a51105e9f36cb6c2088d7837))
-
+- create typed error classes for structured error handling ([5a6a026](https://github.com/nikrich/hungry-ghost-hive/commit/5a6a026c1af79899a51105e9f36cb6c2088d7837))
 
 ### Bug Fixes
 
-* add missing import and install eslint-config-prettier ([3606a2f](https://github.com/nikrich/hungry-ghost-hive/commit/3606a2f44624e0ab700fddfa1d053ea0fa07b1f3))
+- add missing import and install eslint-config-prettier ([3606a2f](https://github.com/nikrich/hungry-ghost-hive/commit/3606a2f44624e0ab700fddfa1d053ea0fa07b1f3))
 
 ## [0.14.2](https://github.com/nikrich/hungry-ghost-hive/compare/v0.14.1...v0.14.2) (2026-02-06)
 
-
 ### Bug Fixes
 
-* replace any type with proper GitHubPRState interface ([2cab62f](https://github.com/nikrich/hungry-ghost-hive/commit/2cab62f7d412af1fcb2b7bba93305a27fefa747c))
+- replace any type with proper GitHubPRState interface ([2cab62f](https://github.com/nikrich/hungry-ghost-hive/commit/2cab62f7d412af1fcb2b7bba93305a27fefa747c))
 
 ## [0.14.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.14.0...v0.14.1) (2026-02-06)
 
-
 ### Bug Fixes
 
-* use actual repo contributors from GitHub API ([#172](https://github.com/nikrich/hungry-ghost-hive/issues/172)) ([019fa40](https://github.com/nikrich/hungry-ghost-hive/commit/019fa40cb18be6afe87fd1f5dff56f28d9a8e6dd))
+- use actual repo contributors from GitHub API ([#172](https://github.com/nikrich/hungry-ghost-hive/issues/172)) ([019fa40](https://github.com/nikrich/hungry-ghost-hive/commit/019fa40cb18be6afe87fd1f5dff56f28d9a8e6dd))
 
 ## [0.14.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.13.1...v0.14.0) (2026-02-06)
 
-
 ### Features
 
-* add GitHub PR template, issue templates, and CODE_OF_CONDUCT ([#167](https://github.com/nikrich/hungry-ghost-hive/issues/167)) ([b465148](https://github.com/nikrich/hungry-ghost-hive/commit/b465148c7cd4f4ec0756c12310a6d6b4bb164ebe))
+- add GitHub PR template, issue templates, and CODE_OF_CONDUCT ([#167](https://github.com/nikrich/hungry-ghost-hive/issues/167)) ([b465148](https://github.com/nikrich/hungry-ghost-hive/commit/b465148c7cd4f4ec0756c12310a6d6b4bb164ebe))
 
 ## [0.13.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.13.0...v0.13.1) (2026-02-06)
 
-
 ### Bug Fixes
 
-* correct license from MIT to Proprietary across README ([a1b9a08](https://github.com/nikrich/hungry-ghost-hive/commit/a1b9a08792032c30327f88784b3a9c2213462586))
-* Correct license references from MIT to Proprietary ([e80ddb5](https://github.com/nikrich/hungry-ghost-hive/commit/e80ddb57c7da68867b0d76546395a58b1edfd664))
+- correct license from MIT to Proprietary across README ([a1b9a08](https://github.com/nikrich/hungry-ghost-hive/commit/a1b9a08792032c30327f88784b3a9c2213462586))
+- Correct license references from MIT to Proprietary ([e80ddb5](https://github.com/nikrich/hungry-ghost-hive/commit/e80ddb57c7da68867b0d76546395a58b1edfd664))
 
 ## [0.13.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.12.0...v0.13.0) (2026-02-06)
 
-
 ### Features
 
-* **db:** add DAO abstraction with sqlite + leveldb implementations ([146b364](https://github.com/nikrich/hungry-ghost-hive/commit/146b36410bdca9053a2034a4432ea8eb09efe24f))
+- **db:** add DAO abstraction with sqlite + leveldb implementations ([146b364](https://github.com/nikrich/hungry-ghost-hive/commit/146b36410bdca9053a2034a4432ea8eb09efe24f))
 
 ## [0.12.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.11.1...v0.12.0) (2026-02-06)
 
-
 ### Features
 
-* Configure Vitest code coverage and enhance CI test reporting ([5e01ddb](https://github.com/nikrich/hungry-ghost-hive/commit/5e01ddbf52091d33cc2ca9abbfdd655776b09224))
+- Configure Vitest code coverage and enhance CI test reporting ([5e01ddb](https://github.com/nikrich/hungry-ghost-hive/commit/5e01ddbf52091d33cc2ca9abbfdd655776b09224))
 
 ## [0.11.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.11.0...v0.11.1) (2026-02-06)
 
-
 ### Bug Fixes
 
-* resolve TypeScript error in branches.test.ts ([6d74870](https://github.com/nikrich/hungry-ghost-hive/commit/6d7487099de30e334e626f46146f1580a634e612))
+- resolve TypeScript error in branches.test.ts ([6d74870](https://github.com/nikrich/hungry-ghost-hive/commit/6d7487099de30e334e626f46146f1580a634e612))
 
 ## [0.11.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.10.3...v0.11.0) (2026-02-06)
 
-
 ### Features
 
-* add shields.io badges to README header ([2e89556](https://github.com/nikrich/hungry-ghost-hive/commit/2e89556692761db2c4b95efbaa8094a82e77a235))
+- add shields.io badges to README header ([2e89556](https://github.com/nikrich/hungry-ghost-hive/commit/2e89556692761db2c4b95efbaa8094a82e77a235))
 
 ## [0.10.3](https://github.com/nikrich/hungry-ghost-hive/compare/v0.10.2...v0.10.3) (2026-02-06)
 
-
 ### Bug Fixes
 
-* deliver initial prompts via CLI arg instead of tmux send-keys ([9a8b0a5](https://github.com/nikrich/hungry-ghost-hive/commit/9a8b0a561eb0c77a3b03da0a5fed9e55fbe67f3e))
-* deliver initial prompts via CLI positional argument instead of tmux send-keys ([b388d31](https://github.com/nikrich/hungry-ghost-hive/commit/b388d31c246174f92caeea60c311d94ce9a26341))
+- deliver initial prompts via CLI arg instead of tmux send-keys ([9a8b0a5](https://github.com/nikrich/hungry-ghost-hive/commit/9a8b0a561eb0c77a3b03da0a5fed9e55fbe67f3e))
+- deliver initial prompts via CLI positional argument instead of tmux send-keys ([b388d31](https://github.com/nikrich/hungry-ghost-hive/commit/b388d31c246174f92caeea60c311d94ce9a26341))
 
 ## [0.10.2](https://github.com/nikrich/hungry-ghost-hive/compare/v0.10.1...v0.10.2) (2026-02-06)
 

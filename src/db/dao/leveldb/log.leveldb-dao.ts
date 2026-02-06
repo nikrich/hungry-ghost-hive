@@ -1,5 +1,5 @@
-import type { LogDao } from '../interfaces/log.dao.js';
 import type { AgentLogRow, CreateLogInput, EventType } from '../../queries/logs.js';
+import type { LogDao } from '../interfaces/log.dao.js';
 import { LevelDbStore, type NowProvider, defaultNow } from './leveldb-store.js';
 import { compareIsoAscByTimestamp, compareIsoDescByTimestamp } from './sort.js';
 
@@ -8,7 +8,10 @@ const LOG_PREFIX = 'log:';
 export class LevelDbLogDao implements LogDao {
   private readonly now: NowProvider;
 
-  constructor(private readonly store: LevelDbStore, now: NowProvider = defaultNow) {
+  constructor(
+    private readonly store: LevelDbStore,
+    now: NowProvider = defaultNow
+  ) {
     this.now = now;
   }
 
@@ -46,9 +49,7 @@ export class LevelDbLogDao implements LogDao {
 
   async getLogsByStory(storyId: string): Promise<AgentLogRow[]> {
     const logs = await this.store.listValues<AgentLogRow>(LOG_PREFIX);
-    return logs
-      .filter(log => log.story_id === storyId)
-      .sort(compareIsoDescByTimestamp);
+    return logs.filter(log => log.story_id === storyId).sort(compareIsoDescByTimestamp);
   }
 
   async getLogsByEventType(eventType: EventType, limit = 100): Promise<AgentLogRow[]> {
@@ -66,9 +67,7 @@ export class LevelDbLogDao implements LogDao {
 
   async getLogsSince(since: string): Promise<AgentLogRow[]> {
     const logs = await this.store.listValues<AgentLogRow>(LOG_PREFIX);
-    return logs
-      .filter(log => log.timestamp > since)
-      .sort(compareIsoAscByTimestamp);
+    return logs.filter(log => log.timestamp > since).sort(compareIsoAscByTimestamp);
   }
 
   async pruneOldLogs(retentionDays: number): Promise<number> {

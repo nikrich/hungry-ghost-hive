@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDb } from './helpers.js';
-import { SqliteLogDao } from '../sqlite/log.sqlite-dao.js';
-import { SqliteTeamDao } from '../sqlite/team.sqlite-dao.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SqliteAgentDao } from '../sqlite/agent.sqlite-dao.js';
+import { SqliteLogDao } from '../sqlite/log.sqlite-dao.js';
 import { SqliteStoryDao } from '../sqlite/story.sqlite-dao.js';
+import { SqliteTeamDao } from '../sqlite/team.sqlite-dao.js';
+import { createTestDb } from './helpers.js';
 
 describe('SqliteLogDao', () => {
   let db: Database;
@@ -23,7 +23,11 @@ describe('SqliteLogDao', () => {
     const team = await teamDao.createTeam({ repoUrl: 'url', repoPath: '/p', name: 'Team' });
     const agent = await agentDao.createAgent({ type: 'senior', teamId: team.id });
     agentId = agent.id;
-    const story = await storyDao.createStory({ title: 'Story', description: 'Desc', teamId: team.id });
+    const story = await storyDao.createStory({
+      title: 'Story',
+      description: 'Desc',
+      teamId: team.id,
+    });
     storyId = story.id;
   });
 
@@ -158,14 +162,20 @@ describe('SqliteLogDao', () => {
 
   it('log.sqlite-dao case 15', async () => {
     // Create logs with old timestamps manually
-    db.run(`
+    db.run(
+      `
       INSERT INTO agent_logs (agent_id, event_type, timestamp)
       VALUES (?, 'AGENT_SPAWNED', '2020-01-01T00:00:00.000Z')
-    `, [agentId]);
-    db.run(`
+    `,
+      [agentId]
+    );
+    db.run(
+      `
       INSERT INTO agent_logs (agent_id, event_type, timestamp)
       VALUES (?, 'AGENT_SPAWNED', '2020-01-02T00:00:00.000Z')
-    `, [agentId]);
+    `,
+      [agentId]
+    );
 
     // Create a recent log
     await dao.createLog({ agentId, eventType: 'AGENT_CHECKPOINT' });
