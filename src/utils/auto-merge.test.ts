@@ -1,20 +1,17 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
 import { createTeam } from '../db/queries/teams.js';
 import { createStory } from '../db/queries/stories.js';
 import { createPullRequest, updatePullRequest, getApprovedPullRequests } from '../db/queries/pull-requests.js';
-import type { DatabaseClient } from '../db/client.js';
 
 describe('auto-merge functionality', () => {
   let db: Database;
-  let dbClient: DatabaseClient;
   let teamId: string;
   let storyId: string;
 
   beforeEach(async () => {
     db = await createTestDatabase();
-    dbClient = { db, save: vi.fn() };
     
     const team = createTeam(db, {
       repoUrl: 'https://github.com/test/repo.git',
