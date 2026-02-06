@@ -40,10 +40,11 @@ export class Scheduler {
     const branchName = `agent/${agentId}`;
 
     try {
-      // Create worktree from main branch
+      // Create worktree from main branch (30s timeout for git operations)
       execSync(`git worktree add "${fullWorktreePath}" -b "${branchName}"`, {
         cwd: fullRepoPath,
         stdio: 'pipe',
+        timeout: 30000, // 30 second timeout for git operations
       });
     } catch (err) {
       // If worktree or branch already exists, try to add without creating branch
@@ -51,6 +52,7 @@ export class Scheduler {
         execSync(`git worktree add "${fullWorktreePath}" "${branchName}"`, {
           cwd: fullRepoPath,
           stdio: 'pipe',
+          timeout: 30000, // 30 second timeout for git operations
         });
       } catch {
         // If that fails too, log and throw
@@ -74,6 +76,7 @@ export class Scheduler {
       execSync(`git worktree remove "${fullWorktreePath}" --force`, {
         cwd: this.config.rootDir,
         stdio: 'pipe',
+        timeout: 30000, // 30 second timeout for git operations
       });
     } catch (err) {
       // Log error but don't throw - worktree might already be removed

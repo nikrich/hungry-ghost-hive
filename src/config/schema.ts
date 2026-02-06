@@ -112,6 +112,10 @@ const ManagerConfigSchema = z.object({
   stuck_threshold_ms: z.number().int().positive().default(120000),
   nudge_cooldown_ms: z.number().int().positive().default(300000),
   lock_stale_ms: z.number().int().positive().default(120000),
+  // Shell command timeouts to prevent manager hangs
+  git_timeout_ms: z.number().int().positive().default(30000), // 30s for git operations
+  gh_timeout_ms: z.number().int().positive().default(60000), // 60s for GitHub API calls
+  tmux_timeout_ms: z.number().int().positive().default(10000), // 10s for tmux commands
 });
 
 // Logging configuration
@@ -251,6 +255,12 @@ manager:
   nudge_cooldown_ms: 300000
   # Time before manager lock is considered stale (ms)
   lock_stale_ms: 120000
+  # Timeout for git operations to prevent manager hangs (ms)
+  git_timeout_ms: 30000
+  # Timeout for GitHub CLI operations to prevent manager hangs (ms)
+  gh_timeout_ms: 60000
+  # Timeout for tmux operations to prevent manager hangs (ms)
+  tmux_timeout_ms: 10000
 
 # Logging
 logging:
