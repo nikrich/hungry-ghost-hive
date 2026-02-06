@@ -1,1 +1,0 @@
-{"version":3,"file":"factory.d.ts","sourceRoot":"","sources":["../../src/state-detectors/factory.ts"],"names":[],"mappings":"AAAA;;;;GAIG;AAEH,OAAO,EAAE,OAAO,EAAE,aAAa,EAAE,MAAM,YAAY,CAAC;AAKpD;;;;;;GAMG;AACH,wBAAgB,gBAAgB,CAAC,OAAO,EAAE,OAAO,GAAG,aAAa,CAWhE;AAED;;;;;GAKG;AACH,wBAAgB,cAAc,CAAC,OAAO,EAAE,MAAM,GAAG,OAAO,IAAI,OAAO,CAElE"}

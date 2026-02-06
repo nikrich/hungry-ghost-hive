@@ -1,1 +1,0 @@
-{"version":3,"file":"claude.d.ts","sourceRoot":"","sources":["../../src/cli-runtimes/claude.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,iBAAiB,EAAE,MAAM,YAAY,CAAC;AAE/C,qBAAa,oBAAqB,YAAW,iBAAiB;IAC5D,iBAAiB,CAAC,KAAK,EAAE,MAAM,GAAG,MAAM,EAAE;IAS1C,kBAAkB,CAAC,KAAK,EAAE,MAAM,EAAE,SAAS,EAAE,MAAM,GAAG,MAAM,EAAE;IAW9D,mBAAmB,IAAI,MAAM;IAI7B,YAAY,IAAI,MAAM;CAGvB"}
