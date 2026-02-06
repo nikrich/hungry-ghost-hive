@@ -404,6 +404,32 @@ export function run(db: SqlJsDatabase, sql: string, params: unknown[] = []): voi
   db.run(sql, params);
 }
 
+/**
+ * Execute a function within a database transaction
+ * Automatically commits on success, rolls back on error
+ * @param db Database instance
+ * @param fn Function to execute within transaction
+ * @returns Result of the function
+ */
+export async function withTransaction<T>(
+  db: SqlJsDatabase,
+  fn: () => Promise<T> | T,
+): Promise<T> {
+  try {
+    db.run('BEGIN TRANSACTION');
+    const result = await fn();
+    db.run('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      db.run('ROLLBACK');
+    } catch {
+      // Ignore rollback errors - transaction may have already been rolled back
+    }
+    throw error;
+  }
+}
+
 // Type definitions for database rows
 export interface TeamRow {
   id: string;

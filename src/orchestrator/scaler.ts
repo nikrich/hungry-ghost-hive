@@ -3,6 +3,7 @@ import { getStoryPointsByTeam } from '../db/queries/stories.js';
 import { getAgentsByTeam, getTechLead, terminateAgent, type AgentRow } from '../db/queries/agents.js';
 import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
 import { createLog } from '../db/queries/logs.js';
+import { withTransaction } from '../db/client.js';
 import { killTmuxSession } from '../tmux/manager.js';
 import type { ScalingConfig } from '../config/schema.js';
 
@@ -136,14 +137,14 @@ export class Scaler {
       }
     }
 
-    // Mark as terminated
-    terminateAgent(this.db, agent.id);
-
-    // Log the event
-    createLog(this.db, {
-      agentId: agent.id,
-      eventType: 'AGENT_TERMINATED',
-      message: 'Scaled down due to reduced workload',
+    // Mark as terminated and log event (atomic transaction)
+    await withTransaction(this.db, () => {
+      terminateAgent(this.db, agent.id);
+      createLog(this.db, {
+        agentId: agent.id,
+        eventType: 'AGENT_TERMINATED',
+        message: 'Scaled down due to reduced workload',
+      });
     });
   }
 

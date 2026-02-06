@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
-import { getDatabase } from '../../db/client.js';
+import { getDatabase, withTransaction } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
@@ -465,12 +465,15 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     for (const pr of rejectedPRs) {
       // Update the story status to qa_failed so developer knows they need to act
       if (pr.story_id) {
-        updateStory(db.db, pr.story_id, { status: 'qa_failed' });
-        createLog(db.db, {
-          agentId: 'manager',
-          eventType: 'STORY_QA_FAILED',
-          message: `Story ${pr.story_id} QA failed: ${pr.review_notes || 'See review comments'}`,
-          storyId: pr.story_id,
+        const storyId = pr.story_id;
+        await withTransaction(db.db, () => {
+          updateStory(db.db, storyId, { status: 'qa_failed' });
+          createLog(db.db, {
+            agentId: 'manager',
+            eventType: 'STORY_QA_FAILED',
+            message: `Story ${storyId} QA failed: ${pr.review_notes || 'See review comments'}`,
+            storyId: storyId,
+          });
         });
       }
 
@@ -554,19 +557,19 @@ hive pr queue`
             await killTmuxSession(agentSession.name);
           }
 
-          // Mark agent as terminated
-          updateAgent(db.db, agent.id, { status: 'terminated', currentStoryId: null });
+          // Mark agent as terminated, log termination, and clear story assignment (atomic transaction)
+          await withTransaction(db.db, () => {
+            updateAgent(db.db, agent.id, { status: 'terminated', currentStoryId: null });
 
-          // Log the termination
-          createLog(db.db, {
-            agentId: agent.id,
-            storyId: story.id,
-            eventType: 'AGENT_TERMINATED',
-            message: `Agent spun down after story ${story.id} was merged`,
+            createLog(db.db, {
+              agentId: agent.id,
+              storyId: story.id,
+              eventType: 'AGENT_TERMINATED',
+              message: `Agent spun down after story ${story.id} was merged`,
+            });
+
+            db.db.run("UPDATE stories SET assigned_agent_id = NULL WHERE id = ?", [story.id]);
           });
-
-          // Clear the story assignment
-          db.db.run("UPDATE stories SET assigned_agent_id = NULL WHERE id = ?", [story.id]);
 
           agentsSpunDown++;
         }
@@ -596,11 +599,14 @@ hive pr queue`
           await new Promise(resolve => setTimeout(resolve, 500));
           await killTmuxSession(agentSession.name);
         }
-        updateAgent(db.db, agent.id, { status: 'terminated', currentStoryId: null });
-        createLog(db.db, {
-          agentId: agent.id,
-          eventType: 'AGENT_TERMINATED',
-          message: 'Agent spun down - no work remaining in pipeline',
+        // Update agent and log spindown (atomic transaction)
+        await withTransaction(db.db, () => {
+          updateAgent(db.db, agent.id, { status: 'terminated', currentStoryId: null });
+          createLog(db.db, {
+            agentId: agent.id,
+            eventType: 'AGENT_TERMINATED',
+            message: 'Agent spun down - no work remaining in pipeline',
+          });
         });
         idleSpunDown++;
       }
@@ -902,26 +908,28 @@ async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Promise<n
       try {
         execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
 
-        // Update PR status to merged
-        updatePullRequest(db.db, pr.id, { status: 'merged' });
+        // Update PR and story status, create logs (atomic transaction)
+        const storyId = pr.story_id;
+        await withTransaction(db.db, () => {
+          updatePullRequest(db.db, pr.id, { status: 'merged' });
 
-        // Update story status if linked
-        if (pr.story_id) {
-          updateStory(db.db, pr.story_id, { status: 'merged' });
-          createLog(db.db, {
-            agentId: 'manager',
-            storyId: pr.story_id,
-            eventType: 'STORY_MERGED',
-            message: `Story auto-merged from GitHub PR #${pr.github_pr_number}`,
-          });
-        } else {
-          createLog(db.db, {
-            agentId: 'manager',
-            eventType: 'PR_MERGED',
-            message: `PR ${pr.id} auto-merged (GitHub PR #${pr.github_pr_number})`,
-            metadata: { pr_id: pr.id },
-          });
-        }
+          if (storyId) {
+            updateStory(db.db, storyId, { status: 'merged' });
+            createLog(db.db, {
+              agentId: 'manager',
+              storyId: storyId,
+              eventType: 'STORY_MERGED',
+              message: `Story auto-merged from GitHub PR #${pr.github_pr_number}`,
+            });
+          } else {
+            createLog(db.db, {
+              agentId: 'manager',
+              eventType: 'PR_MERGED',
+              message: `PR ${pr.id} auto-merged (GitHub PR #${pr.github_pr_number})`,
+              metadata: { pr_id: pr.id },
+            });
+          }
+        });
 
         mergedCount++;
       } catch (mergeErr) {

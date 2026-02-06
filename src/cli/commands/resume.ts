@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
-import { getDatabase } from '../../db/client.js';
+import { getDatabase, withTransaction } from '../../db/client.js';
 import { getAllAgents, getAgentById, updateAgent, type AgentRow } from '../../db/queries/agents.js';
 import { getTeamById } from '../../db/queries/teams.js';
 import { createLog } from '../../db/queries/logs.js';
@@ -98,19 +98,20 @@ export const resumeCommand = new Command('resume')
             command,
           });
 
-          // Update agent state
-          updateAgent(db.db, agent.id, {
-            status: 'working',
-            tmuxSession: sessionName,
-          });
+          // Update agent state and log event (atomic transaction)
+          await withTransaction(db.db, () => {
+            updateAgent(db.db, agent.id, {
+              status: 'working',
+              tmuxSession: sessionName,
+            });
 
-          // Log the resume event
-          createLog(db.db, {
-            agentId: agent.id,
-            storyId: agent.current_story_id,
-            eventType: 'AGENT_RESUMED',
-            message: `Resumed from checkpoint`,
-            metadata: { tmux_session: sessionName },
+            createLog(db.db, {
+              agentId: agent.id,
+              storyId: agent.current_story_id,
+              eventType: 'AGENT_RESUMED',
+              message: `Resumed from checkpoint`,
+              metadata: { tmux_session: sessionName },
+            });
           });
 
           spinner.succeed(chalk.green(`${agent.id} resumed: ${sessionName}`));
