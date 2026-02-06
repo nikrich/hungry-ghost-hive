@@ -1,30 +1,29 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
+import { Command } from 'commander';
 import { execa } from 'execa';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { join } from 'path';
+import { loadConfig } from '../../config/loader.js';
 import { getDatabase, queryAll } from '../../db/client.js';
+import { createLog } from '../../db/queries/logs.js';
 import {
   createPullRequest,
   getMergeQueue,
   getNextInQueue,
-  getPullRequestById,
-  updatePullRequest,
-  getQueuePosition,
   getOpenPullRequestsByStory,
+  getPullRequestById,
+  getQueuePosition,
+  updatePullRequest,
   type PullRequestRow,
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
-import { createLog } from '../../db/queries/logs.js';
-import { join } from 'path';
-import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
-import { sendToTmuxSession, isTmuxSessionRunning } from '../../tmux/manager.js';
+import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
+import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { extractStoryIdFromBranch, normalizeStoryId } from '../../utils/story-id.js';
 
-export const prCommand = new Command('pr')
-  .description('Manage pull requests and merge queue');
+export const prCommand = new Command('pr').description('Manage pull requests and merge queue');
 
 // Submit a PR to the merge queue
 prCommand
@@ -36,104 +35,106 @@ prCommand
   .option('--pr-number <number>', 'GitHub PR number')
   .option('--pr-url <url>', 'GitHub PR URL')
   .option('--from <session>', 'Submitting agent session')
-  .action(async (options: {
-    branch: string;
-    story: string;
-    team?: string;
-    prNumber?: string;
-    prUrl?: string;
-    from?: string;
-  }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
-      // Story ID is now required - normalize it
-      const storyId = normalizeStoryId(options.story);
-
-      // Get team from story
-      let teamId = options.team || null;
-      const story = getStoryById(db.db, storyId);
-      if (!story) {
-        console.error(chalk.red(`Story not found: ${storyId}`));
+  .action(
+    async (options: {
+      branch: string;
+      story: string;
+      team?: string;
+      prNumber?: string;
+      prUrl?: string;
+      from?: string;
+    }) => {
+      const root = findHiveRoot();
+      if (!root) {
+        console.error(chalk.red('Not in a Hive workspace.'));
         process.exit(1);
       }
 
-      teamId = story.team_id;
+      const paths = getHivePaths(root);
+      const db = await getDatabase(paths.hiveDir);
 
-      // Auto-close any existing open PRs for this story
-      const existingPRs = getOpenPullRequestsByStory(db.db, storyId);
-      for (const existingPR of existingPRs) {
-        updatePullRequest(db.db, existingPR.id, { status: 'closed' });
-        createLog(db.db, {
-          agentId: options.from || 'system',
-          storyId,
-          eventType: 'PR_CLOSED',
-          message: `Auto-closed duplicate PR ${existingPR.id}`,
-          metadata: { pr_id: existingPR.id, reason: 'duplicate' },
-        });
-      }
-
-      // Update story status
-      updateStory(db.db, storyId, { status: 'pr_submitted' });
-
-      const pr = createPullRequest(db.db, {
-        storyId,
-        teamId,
-        branchName: options.branch,
-        githubPrNumber: options.prNumber ? parseInt(options.prNumber, 10) : null,
-        githubPrUrl: options.prUrl || null,
-        submittedBy: options.from || null,
-      });
-
-      db.save();
-
-      const position = getQueuePosition(db.db, pr.id);
-
-      console.log(chalk.green(`PR submitted to merge queue`));
-      console.log(chalk.gray(`  ID: ${pr.id}`));
-      console.log(chalk.gray(`  Branch: ${pr.branch_name}`));
-      console.log(chalk.gray(`  Queue position: ${position}`));
-      if (pr.github_pr_url) {
-        console.log(chalk.gray(`  GitHub: ${pr.github_pr_url}`));
-      }
-
-      if (options.from) {
-        createLog(db.db, {
-          agentId: options.from,
-          storyId: storyId || undefined,
-          eventType: 'PR_SUBMITTED',
-          message: `Submitted PR for branch ${options.branch}`,
-          metadata: { pr_id: pr.id, queue_position: position },
-        });
-        db.save();
-      }
-
-      // Check if QA agents need to be spawned for the merge queue
       try {
-        const config = loadConfig(paths.hiveDir);
-        const scheduler = new Scheduler(db.db, {
-          scaling: config.scaling,
-          models: config.models,
-          qa: config.qa,
-          rootDir: root,
+        // Story ID is now required - normalize it
+        const storyId = normalizeStoryId(options.story);
+
+        // Get team from story
+        let teamId = options.team || null;
+        const story = getStoryById(db.db, storyId);
+        if (!story) {
+          console.error(chalk.red(`Story not found: ${storyId}`));
+          process.exit(1);
+        }
+
+        teamId = story.team_id;
+
+        // Auto-close any existing open PRs for this story
+        const existingPRs = getOpenPullRequestsByStory(db.db, storyId);
+        for (const existingPR of existingPRs) {
+          updatePullRequest(db.db, existingPR.id, { status: 'closed' });
+          createLog(db.db, {
+            agentId: options.from || 'system',
+            storyId,
+            eventType: 'PR_CLOSED',
+            message: `Auto-closed duplicate PR ${existingPR.id}`,
+            metadata: { pr_id: existingPR.id, reason: 'duplicate' },
+          });
+        }
+
+        // Update story status
+        updateStory(db.db, storyId, { status: 'pr_submitted' });
+
+        const pr = createPullRequest(db.db, {
+          storyId,
+          teamId,
+          branchName: options.branch,
+          githubPrNumber: options.prNumber ? parseInt(options.prNumber, 10) : null,
+          githubPrUrl: options.prUrl || null,
+          submittedBy: options.from || null,
         });
-        await scheduler.checkMergeQueue();
+
         db.save();
-        console.log(chalk.gray('  QA agents notified'));
-      } catch {
-        // Non-fatal - QA can be triggered manually
+
+        const position = getQueuePosition(db.db, pr.id);
+
+        console.log(chalk.green(`PR submitted to merge queue`));
+        console.log(chalk.gray(`  ID: ${pr.id}`));
+        console.log(chalk.gray(`  Branch: ${pr.branch_name}`));
+        console.log(chalk.gray(`  Queue position: ${position}`));
+        if (pr.github_pr_url) {
+          console.log(chalk.gray(`  GitHub: ${pr.github_pr_url}`));
+        }
+
+        if (options.from) {
+          createLog(db.db, {
+            agentId: options.from,
+            storyId: storyId || undefined,
+            eventType: 'PR_SUBMITTED',
+            message: `Submitted PR for branch ${options.branch}`,
+            metadata: { pr_id: pr.id, queue_position: position },
+          });
+          db.save();
+        }
+
+        // Check if QA agents need to be spawned for the merge queue
+        try {
+          const config = loadConfig(paths.hiveDir);
+          const scheduler = new Scheduler(db.db, {
+            scaling: config.scaling,
+            models: config.models,
+            qa: config.qa,
+            rootDir: root,
+          });
+          await scheduler.checkMergeQueue();
+          db.save();
+          console.log(chalk.gray('  QA agents notified'));
+        } catch {
+          // Non-fatal - QA can be triggered manually
+        }
+      } finally {
+        db.close();
       }
-    } finally {
-      db.close();
     }
-  });
+  );
 
 // View merge queue
 prCommand
@@ -165,19 +166,21 @@ prCommand
       }
 
       console.log(chalk.bold('\nMerge Queue:\n'));
-      console.log(chalk.gray(
-        `${'#'.padEnd(4)} ${'ID'.padEnd(15)} ${'Branch'.padEnd(30)} ${'Status'.padEnd(12)} ${'Story'}`
-      ));
+      console.log(
+        chalk.gray(
+          `${'#'.padEnd(4)} ${'ID'.padEnd(15)} ${'Branch'.padEnd(30)} ${'Status'.padEnd(12)} ${'Story'}`
+        )
+      );
       console.log(chalk.gray('─'.repeat(80)));
 
       queue.forEach((pr, index) => {
         const statusColor = pr.status === 'reviewing' ? chalk.yellow : chalk.blue;
         console.log(
           `${String(index + 1).padEnd(4)} ` +
-          `${chalk.cyan(pr.id.padEnd(15))} ` +
-          `${pr.branch_name.padEnd(30)} ` +
-          `${statusColor(pr.status.toUpperCase().padEnd(12))} ` +
-          `${pr.story_id || '-'}`
+            `${chalk.cyan(pr.id.padEnd(15))} ` +
+            `${pr.branch_name.padEnd(30)} ` +
+            `${statusColor(pr.status.toUpperCase().padEnd(12))} ` +
+            `${pr.story_id || '-'}`
         );
       });
       console.log();
@@ -343,12 +346,18 @@ prCommand
           const { execSync } = await import('child_process');
           // First approve the PR on GitHub
           try {
-            execSync(`gh pr review ${pr.github_pr_number} --approve`, { stdio: 'pipe', cwd: repoCwd });
+            execSync(`gh pr review ${pr.github_pr_number} --approve`, {
+              stdio: 'pipe',
+              cwd: repoCwd,
+            });
           } catch {
             // May fail if already approved or if it's our own PR - continue
           }
           // Then merge
-          execSync(`gh pr merge ${pr.github_pr_number} --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
+          execSync(`gh pr merge ${pr.github_pr_number} --squash --delete-branch`, {
+            stdio: 'pipe',
+            cwd: repoCwd,
+          });
           actuallyMerged = true;
           console.log(chalk.green(`PR ${prId} approved and merged on GitHub!`));
         } catch (mergeErr: unknown) {
@@ -457,17 +466,26 @@ prCommand
       if (pr.submitted_by) {
         try {
           if (await isTmuxSessionRunning(pr.submitted_by)) {
-            await sendToTmuxSession(pr.submitted_by,
+            await sendToTmuxSession(
+              pr.submitted_by,
               `# PR REJECTED: ${prId}\n# Reason: ${options.reason}\n# Please fix the issues and resubmit.`
             );
             console.log(chalk.green(`Developer ${pr.submitted_by} notified via tmux`));
           } else {
             console.log(chalk.cyan(`\nNotify the developer:`));
-            console.log(chalk.gray(`  hive msg send ${pr.submitted_by} "PR rejected: ${options.reason}" --from ${options.from || 'qa'}`));
+            console.log(
+              chalk.gray(
+                `  hive msg send ${pr.submitted_by} "PR rejected: ${options.reason}" --from ${options.from || 'qa'}`
+              )
+            );
           }
         } catch {
           console.log(chalk.cyan(`\nNotify the developer:`));
-          console.log(chalk.gray(`  hive msg send ${pr.submitted_by} "PR rejected: ${options.reason}" --from ${options.from || 'qa'}`));
+          console.log(
+            chalk.gray(
+              `  hive msg send ${pr.submitted_by} "PR rejected: ${options.reason}" --from ${options.from || 'qa'}`
+            )
+          );
         }
       }
 
@@ -503,25 +521,29 @@ prCommand
 
     try {
       // Get ALL existing PRs (including merged/closed) to prevent duplicate imports
-      const existingPRs = queryAll<PullRequestRow>(db.db,
-        'SELECT * FROM pull_requests'
+      const existingPRs = queryAll<PullRequestRow>(db.db, 'SELECT * FROM pull_requests');
+      const existingBranches = new Set(
+        existingPRs
+          .filter(pr => !['merged', 'closed'].includes(pr.status))
+          .map(pr => pr.branch_name)
       );
-      const existingBranches = new Set(existingPRs.filter(pr => !['merged', 'closed'].includes(pr.status)).map(pr => pr.branch_name));
       const existingPrNumbers = new Set(existingPRs.map(pr => pr.github_pr_number).filter(Boolean));
 
       // Find repo directories
-      const repoDir = options.repo
-        ? `${root}/repos/${options.repo}`
-        : process.cwd();
+      const repoDir = options.repo ? `${root}/repos/${options.repo}` : process.cwd();
 
       console.log(chalk.cyan(`Checking for open PRs in ${repoDir}...`));
 
       // Get open PRs from GitHub
       let ghPRs: Array<{ number: number; headRefName: string; url: string; title: string }> = [];
       try {
-        const result = await execa('gh', ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'], {
-          cwd: repoDir,
-        });
+        const result = await execa(
+          'gh',
+          ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'],
+          {
+            cwd: repoDir,
+          }
+        );
         ghPRs = JSON.parse(result.stdout);
       } catch (err) {
         console.error(chalk.red('Failed to list GitHub PRs. Is gh CLI authenticated?'), err);
@@ -537,7 +559,9 @@ prCommand
       for (const ghPR of ghPRs) {
         // Skip if already in queue
         if (existingBranches.has(ghPR.headRefName) || existingPrNumbers.has(ghPR.number)) {
-          console.log(chalk.gray(`  Skipping PR #${ghPR.number} (${ghPR.headRefName}) - already in queue`));
+          console.log(
+            chalk.gray(`  Skipping PR #${ghPR.number} (${ghPR.headRefName}) - already in queue`)
+          );
           continue;
         }
 

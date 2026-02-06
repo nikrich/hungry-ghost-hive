@@ -1,15 +1,15 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDatabase } from './test-helpers.js';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createRequirement,
-  getRequirementById,
-  getAllRequirements,
-  getRequirementsByStatus,
-  getPendingRequirements,
-  updateRequirement,
   deleteRequirement,
+  getAllRequirements,
+  getPendingRequirements,
+  getRequirementById,
+  getRequirementsByStatus,
+  updateRequirement,
 } from './requirements.js';
+import { createTestDatabase } from './test-helpers.js';
 
 describe('requirements queries', () => {
   let db: Database;
@@ -289,12 +289,12 @@ describe('requirements queries', () => {
 
     it('should handle special characters', () => {
       const req = createRequirement(db, {
-        title: "Title with 'quotes' and \"double\" quotes",
+        title: 'Title with \'quotes\' and "double" quotes',
         description: 'Description with\nnewlines\tand\ttabs',
       });
 
       const retrieved = getRequirementById(db, req.id);
-      expect(retrieved?.title).toBe("Title with 'quotes' and \"double\" quotes");
+      expect(retrieved?.title).toBe('Title with \'quotes\' and "double" quotes');
       expect(retrieved?.description).toBe('Description with\nnewlines\tand\ttabs');
     });
   });

@@ -1,6 +1,6 @@
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 
 export interface DatabaseClient {
   db: SqlJsDatabase;
@@ -227,12 +227,12 @@ function runMigrations(db: SqlJsDatabase): void {
 
   if (!migration002Applied) {
     // Check if column already exists (might be new DB with updated initial migration)
-    const columns = db.exec("PRAGMA table_info(agents)");
-    const hasModelColumn = columns.length > 0 &&
-      columns[0].values.some((col: unknown[]) => col[1] === 'model');
+    const columns = db.exec('PRAGMA table_info(agents)');
+    const hasModelColumn =
+      columns.length > 0 && columns[0].values.some((col: unknown[]) => col[1] === 'model');
 
     if (!hasModelColumn) {
-      db.run("ALTER TABLE agents ADD COLUMN model TEXT");
+      db.run('ALTER TABLE agents ADD COLUMN model TEXT');
     }
     db.run("INSERT INTO migrations (name) VALUES ('002-add-agent-model.sql')");
   }
@@ -243,8 +243,9 @@ function runMigrations(db: SqlJsDatabase): void {
 
   if (!migration003Applied) {
     // Check if table needs migration (missing branch_name column)
-    const prColumns = db.exec("PRAGMA table_info(pull_requests)");
-    const hasBranchName = prColumns.length > 0 &&
+    const prColumns = db.exec('PRAGMA table_info(pull_requests)');
+    const hasBranchName =
+      prColumns.length > 0 &&
       prColumns[0].values.some((col: unknown[]) => col[1] === 'branch_name');
 
     if (!hasBranchName) {
@@ -287,8 +288,8 @@ function runMigrations(db: SqlJsDatabase): void {
       `);
 
       // Drop old table and rename new one
-      db.run("DROP TABLE pull_requests");
-      db.run("ALTER TABLE pull_requests_new RENAME TO pull_requests");
+      db.run('DROP TABLE pull_requests');
+      db.run('ALTER TABLE pull_requests_new RENAME TO pull_requests');
     }
 
     db.run("INSERT INTO migrations (name) VALUES ('003-fix-pull-requests.sql')");
@@ -323,32 +324,36 @@ function runMigrations(db: SqlJsDatabase): void {
   }
 
   // Migration 005: Add last_seen column to agents for heartbeat mechanism
-  const result005 = db.exec("SELECT name FROM migrations WHERE name = '005-add-agent-last-seen.sql'");
+  const result005 = db.exec(
+    "SELECT name FROM migrations WHERE name = '005-add-agent-last-seen.sql'"
+  );
   const migration005Applied = result005.length > 0 && result005[0].values.length > 0;
 
   if (!migration005Applied) {
-    const columns = db.exec("PRAGMA table_info(agents)");
-    const hasLastSeenColumn = columns.length > 0 &&
-      columns[0].values.some((col: unknown[]) => col[1] === 'last_seen');
+    const columns = db.exec('PRAGMA table_info(agents)');
+    const hasLastSeenColumn =
+      columns.length > 0 && columns[0].values.some((col: unknown[]) => col[1] === 'last_seen');
 
     if (!hasLastSeenColumn) {
       // sql.js doesn't support non-constant defaults in ALTER TABLE
-      db.run("ALTER TABLE agents ADD COLUMN last_seen TIMESTAMP");
+      db.run('ALTER TABLE agents ADD COLUMN last_seen TIMESTAMP');
     }
     db.run("INSERT INTO migrations (name) VALUES ('005-add-agent-last-seen.sql')");
   }
 
   // Migration 006: Add worktree_path column to agents for git worktree isolation
-  const result006 = db.exec("SELECT name FROM migrations WHERE name = '006-add-agent-worktree.sql'");
+  const result006 = db.exec(
+    "SELECT name FROM migrations WHERE name = '006-add-agent-worktree.sql'"
+  );
   const migration006Applied = result006.length > 0 && result006[0].values.length > 0;
 
   if (!migration006Applied) {
-    const columns = db.exec("PRAGMA table_info(agents)");
-    const hasWorktreePathColumn = columns.length > 0 &&
-      columns[0].values.some((col: unknown[]) => col[1] === 'worktree_path');
+    const columns = db.exec('PRAGMA table_info(agents)');
+    const hasWorktreePathColumn =
+      columns.length > 0 && columns[0].values.some((col: unknown[]) => col[1] === 'worktree_path');
 
     if (!hasWorktreePathColumn) {
-      db.run("ALTER TABLE agents ADD COLUMN worktree_path TEXT");
+      db.run('ALTER TABLE agents ADD COLUMN worktree_path TEXT');
     }
     db.run("INSERT INTO migrations (name) VALUES ('006-add-agent-worktree.sql')");
   }
@@ -359,16 +364,20 @@ function runMigrations(db: SqlJsDatabase): void {
 
   if (!migration007Applied) {
     // Create indexes on frequently-queried columns
-    db.run("CREATE INDEX IF NOT EXISTS idx_stories_status ON stories(status)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_stories_team_id ON stories(team_id)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_stories_assigned_agent_id ON stories(assigned_agent_id)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_stories_requirement_id ON stories(requirement_id)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_agents_team_id ON agents(team_id)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_pull_requests_team_status ON pull_requests(team_id, status)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_pull_requests_story_id ON pull_requests(story_id)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_messages_to_session ON messages(to_session)");
-    db.run("CREATE INDEX IF NOT EXISTS idx_escalations_status ON escalations(status)");
+    db.run('CREATE INDEX IF NOT EXISTS idx_stories_status ON stories(status)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_stories_team_id ON stories(team_id)');
+    db.run(
+      'CREATE INDEX IF NOT EXISTS idx_stories_assigned_agent_id ON stories(assigned_agent_id)'
+    );
+    db.run('CREATE INDEX IF NOT EXISTS idx_stories_requirement_id ON stories(requirement_id)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_agents_team_id ON agents(team_id)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)');
+    db.run(
+      'CREATE INDEX IF NOT EXISTS idx_pull_requests_team_status ON pull_requests(team_id, status)'
+    );
+    db.run('CREATE INDEX IF NOT EXISTS idx_pull_requests_story_id ON pull_requests(story_id)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_messages_to_session ON messages(to_session)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_escalations_status ON escalations(status)');
 
     db.run("INSERT INTO migrations (name) VALUES ('007-add-indexes.sql')");
   }
@@ -411,10 +420,7 @@ export function run(db: SqlJsDatabase, sql: string, params: unknown[] = []): voi
  * @param fn Function to execute within transaction
  * @returns Result of the function
  */
-export async function withTransaction<T>(
-  db: SqlJsDatabase,
-  fn: () => Promise<T> | T,
-): Promise<T> {
+export async function withTransaction<T>(db: SqlJsDatabase, fn: () => Promise<T> | T): Promise<T> {
   try {
     db.run('BEGIN IMMEDIATE');
     const result = await fn();
@@ -473,7 +479,16 @@ export interface StoryRow {
   acceptance_criteria: string | null;
   complexity_score: number | null;
   story_points: number | null;
-  status: 'draft' | 'estimated' | 'planned' | 'in_progress' | 'review' | 'qa' | 'qa_failed' | 'pr_submitted' | 'merged';
+  status:
+    | 'draft'
+    | 'estimated'
+    | 'planned'
+    | 'in_progress'
+    | 'review'
+    | 'qa'
+    | 'qa_failed'
+    | 'pr_submitted'
+    | 'merged';
   assigned_agent_id: string | null;
   branch_name: string | null;
   pr_url: string | null;

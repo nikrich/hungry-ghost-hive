@@ -1,13 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDatabase } from './test-helpers.js';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { run } from '../client.js';
 import {
+  getAllPendingMessages,
+  getMessageById,
   getUnreadMessages,
   markMessageRead,
-  getMessageById,
-  getAllPendingMessages,
 } from './messages.js';
+import { createTestDatabase } from './test-helpers.js';
 
 describe('messages queries', () => {
   let db: Database;
@@ -26,10 +26,14 @@ describe('messages queries', () => {
     subject?: string | null
   ): void {
     const now = new Date().toISOString();
-    run(db, `
+    run(
+      db,
+      `
       INSERT INTO messages (id, from_session, to_session, subject, body, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [id, fromSession, toSession, subject || null, body, status, now]);
+    `,
+      [id, fromSession, toSession, subject || null, body, status, now]
+    );
   }
 
   describe('getUnreadMessages', () => {
@@ -196,7 +200,7 @@ describe('messages queries', () => {
     });
 
     it('should handle special characters in message content', () => {
-      const specialBody = "Message with 'quotes' \"double\" and\nnewlines\ttabs";
+      const specialBody = 'Message with \'quotes\' "double" and\nnewlines\ttabs';
       createMessage('msg1', 'session-a', 'session-b', specialBody, 'pending', 'Special chars');
 
       const message = getMessageById(db, 'msg1');
@@ -204,7 +208,13 @@ describe('messages queries', () => {
     });
 
     it('should handle session names with special characters', () => {
-      createMessage('msg1', 'session-with-dashes', 'session_with_underscores', 'Message', 'pending');
+      createMessage(
+        'msg1',
+        'session-with-dashes',
+        'session_with_underscores',
+        'Message',
+        'pending'
+      );
 
       const unread = getUnreadMessages(db, 'session_with_underscores');
       expect(unread).toHaveLength(1);
@@ -213,10 +223,14 @@ describe('messages queries', () => {
 
     it('should handle reply and replied_at fields', () => {
       const now = new Date().toISOString();
-      run(db, `
+      run(
+        db,
+        `
         INSERT INTO messages (id, from_session, to_session, body, status, reply, replied_at, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `, ['msg1', 'session-a', 'session-b', 'Original message', 'replied', 'Reply text', now, now]);
+      `,
+        ['msg1', 'session-a', 'session-b', 'Original message', 'replied', 'Reply text', now, now]
+      );
 
       const message = getMessageById(db, 'msg1');
       expect(message?.status).toBe('replied');

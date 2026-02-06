@@ -1,10 +1,10 @@
 import { join } from 'path';
 import type { DatabaseClient } from '../db/client.js';
-import { withTransaction, queryOne } from '../db/client.js';
-import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-requests.js';
-import { getAllTeams } from '../db/queries/teams.js';
-import { updateStory } from '../db/queries/stories.js';
+import { queryOne, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
+import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-requests.js';
+import { updateStory } from '../db/queries/stories.js';
+import { getAllTeams } from '../db/queries/teams.js';
 
 interface GitHubPRState {
   state: string;
@@ -81,12 +81,15 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         let prState: GitHubPRState;
         let mergeableStatus: boolean;
         try {
-          const prViewOutput = execSync(`gh pr view ${pr.github_pr_number} --json state,mergeable`, {
-            stdio: 'pipe',
-            cwd: repoCwd,
-            encoding: 'utf-8',
-            timeout: 30000 // 30 second timeout for state check
-          });
+          const prViewOutput = execSync(
+            `gh pr view ${pr.github_pr_number} --json state,mergeable`,
+            {
+              stdio: 'pipe',
+              cwd: repoCwd,
+              encoding: 'utf-8',
+              timeout: 30000, // 30 second timeout for state check
+            }
+          );
           prState = JSON.parse(prViewOutput);
           mergeableStatus = prState.mergeable === 'MERGEABLE';
         } catch {
@@ -139,7 +142,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, {
           stdio: 'pipe',
           cwd: repoCwd,
-          timeout: 60000 // 60 second timeout for GitHub operations
+          timeout: 60000, // 60 second timeout for GitHub operations
         });
 
         // Update PR and story status, create logs (atomic transaction)

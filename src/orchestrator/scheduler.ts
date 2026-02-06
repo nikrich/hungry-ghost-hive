@@ -1,15 +1,43 @@
 import type { Database } from 'sql.js';
-import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, getBatchStoryDependencies, getStoryById, getStoriesWithOrphanedAssignments, type StoryRow } from '../db/queries/stories.js';
-import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow } from '../db/queries/agents.js';
-import { getTeamById, getAllTeams } from '../db/queries/teams.js';
-import { queryOne, queryAll, withTransaction } from '../db/client.js';
-import { createLog } from '../db/queries/logs.js';
-import { createEscalation } from '../db/queries/escalations.js';
-import { isAgentReviewingPR } from '../db/queries/pull-requests.js';
-import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, startManager, isManagerRunning, getHiveSessions, killTmuxSession } from '../tmux/manager.js';
-import type { ScalingConfig, ModelsConfig, QAConfig } from '../config/schema.js';
 import { getCliRuntimeBuilder, validateModelCliCompatibility } from '../cli-runtimes/index.js';
-import { generateSeniorPrompt, generateIntermediatePrompt, generateJuniorPrompt, generateQAPrompt } from './prompt-templates.js';
+import type { ModelsConfig, QAConfig, ScalingConfig } from '../config/schema.js';
+import { queryAll, queryOne, withTransaction } from '../db/client.js';
+import {
+  createAgent,
+  getAgentById,
+  getAgentsByTeam,
+  updateAgent,
+  type AgentRow,
+} from '../db/queries/agents.js';
+import { createEscalation } from '../db/queries/escalations.js';
+import { createLog } from '../db/queries/logs.js';
+import { isAgentReviewingPR } from '../db/queries/pull-requests.js';
+import {
+  getBatchStoryDependencies,
+  getPlannedStories,
+  getStoriesWithOrphanedAssignments,
+  getStoryById,
+  getStoryDependencies,
+  getStoryPointsByTeam,
+  updateStory,
+  type StoryRow,
+} from '../db/queries/stories.js';
+import { getAllTeams, getTeamById } from '../db/queries/teams.js';
+import {
+  generateSessionName,
+  getHiveSessions,
+  isManagerRunning,
+  isTmuxSessionRunning,
+  killTmuxSession,
+  spawnTmuxSession,
+  startManager,
+} from '../tmux/manager.js';
+import {
+  generateIntermediatePrompt,
+  generateJuniorPrompt,
+  generateQAPrompt,
+  generateSeniorPrompt,
+} from './prompt-templates.js';
 
 export interface SchedulerConfig {
   scaling: ScalingConfig;
@@ -59,7 +87,9 @@ export class Scheduler {
         });
       } catch {
         // If that fails too, log and throw
-        throw new Error(`Failed to create worktree at ${fullWorktreePath}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        throw new Error(
+          `Failed to create worktree at ${fullWorktreePath}: ${err instanceof Error ? err.message : 'Unknown error'}`
+        );
       }
     }
 
@@ -187,7 +217,14 @@ export class Scheduler {
 
     for (const dep of dependencies) {
       // Check if dependency is in a terminal or in-progress state
-      if (dep.status !== 'merged' && dep.status !== 'pr_submitted' && dep.status !== 'in_progress' && dep.status !== 'review' && dep.status !== 'qa' && dep.status !== 'qa_failed') {
+      if (
+        dep.status !== 'merged' &&
+        dep.status !== 'pr_submitted' &&
+        dep.status !== 'in_progress' &&
+        dep.status !== 'review' &&
+        dep.status !== 'qa' &&
+        dep.status !== 'qa_failed'
+      ) {
         return false;
       }
     }
@@ -218,11 +255,15 @@ export class Scheduler {
    * Calculate queue depth for an agent (number of active stories)
    */
   private getAgentWorkload(agentId: string): number {
-    const result = queryOne<{ count: number }>(this.db, `
+    const result = queryOne<{ count: number }>(
+      this.db,
+      `
       SELECT COUNT(*) as count FROM stories
       WHERE assigned_agent_id = ?
         AND status IN ('in_progress', 'review', 'qa', 'qa_failed')
-    `, [agentId]);
+    `,
+      [agentId]
+    );
     return result?.count || 0;
   }
 
@@ -294,7 +335,11 @@ export class Scheduler {
   /**
    * Assign planned stories to available agents
    */
-  async assignStories(): Promise<{ assigned: number; errors: string[]; preventedDuplicates: number }> {
+  async assignStories(): Promise<{
+    assigned: number;
+    errors: string[];
+    preventedDuplicates: number;
+  }> {
     const plannedStories = getPlannedStories(this.db);
     const errors: string[] = [];
     let assigned = 0;
@@ -322,8 +367,9 @@ export class Scheduler {
       if (!team) continue;
 
       // Get available agents for this team
-      const agents = getAgentsByTeam(this.db, teamId)
-        .filter(a => a.status === 'idle' && a.type !== 'qa');
+      const agents = getAgentsByTeam(this.db, teamId).filter(
+        a => a.status === 'idle' && a.type !== 'qa'
+      );
 
       // Find or create a Senior for delegation
       let senior = agents.find(a => a.type === 'senior');
@@ -331,7 +377,9 @@ export class Scheduler {
         try {
           senior = await this.spawnSenior(teamId, team.name, team.repo_path);
         } catch (err) {
-          errors.push(`Failed to spawn Senior for team ${team.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          errors.push(
+            `Failed to spawn Senior for team ${team.name}: ${err instanceof Error ? err.message : 'Unknown error'}`
+          );
           continue;
         }
       }
@@ -369,14 +417,22 @@ export class Scheduler {
               targetAgent = await this.spawnJunior(teamId, team.name, team.repo_path);
             } catch {
               // Fall back to Intermediate or Senior
-              const intermediates = agents.filter(a => a.type === 'intermediate' && a.status === 'idle');
-              targetAgent = intermediates.length > 0 ? this.selectAgentWithLeastWorkload(intermediates) : senior;
+              const intermediates = agents.filter(
+                a => a.type === 'intermediate' && a.status === 'idle'
+              );
+              targetAgent =
+                intermediates.length > 0
+                  ? this.selectAgentWithLeastWorkload(intermediates)
+                  : senior;
             }
           }
         } else if (complexity <= this.config.scaling.intermediate_max_complexity) {
           // Assign to Intermediate with least workload
-          const intermediates = agents.filter(a => a.type === 'intermediate' && a.status === 'idle');
-          targetAgent = intermediates.length > 0 ? this.selectAgentWithLeastWorkload(intermediates) : undefined;
+          const intermediates = agents.filter(
+            a => a.type === 'intermediate' && a.status === 'idle'
+          );
+          targetAgent =
+            intermediates.length > 0 ? this.selectAgentWithLeastWorkload(intermediates) : undefined;
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnIntermediate(teamId, team.name, team.repo_path);
@@ -417,7 +473,9 @@ export class Scheduler {
           });
           assigned++;
         } catch (err) {
-          errors.push(`Failed to assign story ${story.id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          errors.push(
+            `Failed to assign story ${story.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
+          );
         }
       }
     }
@@ -433,14 +491,18 @@ export class Scheduler {
     if (!agent || !agent.team_id) return null;
 
     // Find an unassigned planned story for this team
-    const story = queryOne<StoryRow>(this.db, `
+    const story = queryOne<StoryRow>(
+      this.db,
+      `
       SELECT * FROM stories
       WHERE team_id = ?
         AND status = 'planned'
         AND assigned_agent_id IS NULL
       ORDER BY story_points DESC, created_at
       LIMIT 1
-    `, [agent.team_id]);
+    `,
+      [agent.team_id]
+    );
 
     return story || null;
   }
@@ -453,7 +515,9 @@ export class Scheduler {
 
     for (const team of teams) {
       const storyPoints = getStoryPointsByTeam(this.db, team.id);
-      const seniors = getAgentsByTeam(this.db, team.id).filter(a => a.type === 'senior' && a.status !== 'terminated');
+      const seniors = getAgentsByTeam(this.db, team.id).filter(
+        a => a.type === 'senior' && a.status !== 'terminated'
+      );
 
       // Calculate needed seniors
       const seniorCapacity = this.config.scaling.senior_capacity;
@@ -503,7 +567,9 @@ export class Scheduler {
         });
         recovered.push(assignment.id);
       } catch (err) {
-        console.error(`Failed to recover orphaned story ${assignment.id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        console.error(
+          `Failed to recover orphaned story ${assignment.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
+        );
       }
     }
 
@@ -514,10 +580,17 @@ export class Scheduler {
    * Health check: sync agent status with actual tmux sessions
    * Returns number of agents whose status was corrected
    */
-  async healthCheck(): Promise<{ terminated: number; revived: string[]; orphanedRecovered: string[] }> {
-    const allAgents = queryAll<AgentRow>(this.db, `
+  async healthCheck(): Promise<{
+    terminated: number;
+    revived: string[];
+    orphanedRecovered: string[];
+  }> {
+    const allAgents = queryAll<AgentRow>(
+      this.db,
+      `
       SELECT * FROM agents WHERE status != 'terminated'
-    `);
+    `
+    );
 
     const liveSessions = await getHiveSessions();
     const liveSessionNames = new Set(liveSessions.map(s => s.name));
@@ -539,7 +612,11 @@ export class Scheduler {
           await this.removeWorktree(agent.worktree_path, agent.id);
         }
 
-        updateAgent(this.db, agent.id, { status: 'terminated', currentStoryId: null, worktreePath: null });
+        updateAgent(this.db, agent.id, {
+          status: 'terminated',
+          currentStoryId: null,
+          worktreePath: null,
+        });
         createLog(this.db, {
           agentId: agent.id,
           eventType: 'AGENT_TERMINATED',
@@ -583,12 +660,20 @@ export class Scheduler {
    * - Spawn QA agents in parallel with unique session names
    * - Scale down excess QA agents when queue shrinks
    */
-  private async scaleQAAgents(teamId: string, teamName: string, repoPath: string): Promise<void> {
+  private async scaleQAAgents(
+    teamId: string,
+    teamName: string,
+    repoPath: string
+  ): Promise<void> {
     // Count pending QA work: stories in 'qa', 'pr_submitted', or 'qa_failed' status
-    const qaStories = queryAll<StoryRow>(this.db, `
+    const qaStories = queryAll<StoryRow>(
+      this.db,
+      `
       SELECT * FROM stories
       WHERE team_id = ? AND status IN ('qa', 'pr_submitted', 'qa_failed')
-    `, [teamId]);
+    `,
+      [teamId]
+    );
 
     const pendingCount = qaStories.length;
 
@@ -598,11 +683,13 @@ export class Scheduler {
     const maxAgents = qaScaling.max_agents || 5;
 
     // If no pending work, scale down to 0 agents
-    const neededQAs = pendingCount > 0 ? Math.min(Math.ceil(pendingCount / pendingPerAgent), maxAgents) : 0;
+    const neededQAs =
+      pendingCount > 0 ? Math.min(Math.ceil(pendingCount / pendingPerAgent), maxAgents) : 0;
 
     // Get currently active QA agents for this team
-    const activeQAs = getAgentsByTeam(this.db, teamId)
-      .filter(a => a.type === 'qa' && a.status !== 'terminated');
+    const activeQAs = getAgentsByTeam(this.db, teamId).filter(
+      a => a.type === 'qa' && a.status !== 'terminated'
+    );
 
     const currentQACount = activeQAs.length;
 
@@ -622,7 +709,13 @@ export class Scheduler {
           agentId: 'scheduler',
           eventType: 'TEAM_SCALED_UP',
           message: `Scaled QA agents for team ${teamName}: ${currentQACount} → ${neededQAs} (${pendingCount} pending stories)`,
-          metadata: { teamId, agentType: 'qa', previousCount: currentQACount, newCount: neededQAs, pendingCount },
+          metadata: {
+            teamId,
+            agentType: 'qa',
+            previousCount: currentQACount,
+            newCount: neededQAs,
+            pendingCount,
+          },
         });
       } catch (err) {
         createLog(this.db, {
@@ -681,7 +774,13 @@ export class Scheduler {
           agentId: 'scheduler',
           eventType: 'TEAM_SCALED_DOWN',
           message: `Scaled down QA agents for team ${teamName}: ${currentQACount} → ${neededQAs} (${pendingCount} pending stories)`,
-          metadata: { teamId, agentType: 'qa', previousCount: currentQACount, newCount: neededQAs, pendingCount },
+          metadata: {
+            teamId,
+            agentType: 'qa',
+            previousCount: currentQACount,
+            newCount: neededQAs,
+            pendingCount,
+          },
         });
       } catch (err) {
         createLog(this.db, {
@@ -696,7 +795,7 @@ export class Scheduler {
   }
 
   private async ensureManagerRunning(): Promise<void> {
-    if (!await isManagerRunning()) {
+    if (!(await isManagerRunning())) {
       await startManager(60);
     }
   }
@@ -717,8 +816,10 @@ export class Scheduler {
     // Prevent creating duplicate agents on same tmux session (for senior agents)
     if (type === 'senior') {
       const existingSeniors = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'senior');
-      const existingOnSession = existingSeniors.find(a => a.tmux_session === sessionName && a.status !== 'terminated');
-      if (existingOnSession && await isTmuxSessionRunning(sessionName)) {
+      const existingOnSession = existingSeniors.find(
+        a => a.tmux_session === sessionName && a.status !== 'terminated'
+      );
+      if (existingOnSession && (await isTmuxSessionRunning(sessionName))) {
         return existingOnSession;
       }
     }
@@ -743,7 +844,13 @@ export class Scheduler {
         eventType: 'AGENT_SPAWN_FAILED',
         status: 'error',
         message: `Failed to spawn ${type} agent for team ${teamName}: ${errorMessage}. Created escalation for human review.`,
-        metadata: { teamId, agentType: type, model: modelConfig.model, cliTool, error: errorMessage },
+        metadata: {
+          teamId,
+          agentType: type,
+          model: modelConfig.model,
+          cliTool,
+          error: errorMessage,
+        },
       });
 
       // Throw the error to prevent agent creation
@@ -760,7 +867,7 @@ export class Scheduler {
     const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
     const workDir = `${this.config.rootDir}/${worktreePath}`;
 
-    if (!await isTmuxSessionRunning(sessionName)) {
+    if (!(await isTmuxSessionRunning(sessionName))) {
       // Build the initial prompt for this agent type
       const team = getTeamById(this.db, teamId);
       let prompt: string;
@@ -769,7 +876,12 @@ export class Scheduler {
         const stories = this.getTeamStories(teamId);
         prompt = generateSeniorPrompt(teamName, team?.repo_url || '', worktreePath, stories);
       } else if (type === 'intermediate') {
-        prompt = generateIntermediatePrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
+        prompt = generateIntermediatePrompt(
+          teamName,
+          team?.repo_url || '',
+          worktreePath,
+          sessionName
+        );
       } else if (type === 'junior') {
         prompt = generateJuniorPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
       } else {
@@ -815,15 +927,29 @@ export class Scheduler {
     return 'haiku'; // default fallback
   }
 
-  private async spawnQA(teamId: string, teamName: string, repoPath: string, index: number = 1): Promise<AgentRow> {
+  private async spawnQA(
+    teamId: string,
+    teamName: string,
+    repoPath: string,
+    index: number = 1
+  ): Promise<AgentRow> {
     return this.spawnAgent('qa', teamId, teamName, repoPath, index);
   }
 
-  private async spawnSenior(teamId: string, teamName: string, repoPath: string, index?: number): Promise<AgentRow> {
+  private async spawnSenior(
+    teamId: string,
+    teamName: string,
+    repoPath: string,
+    index?: number
+  ): Promise<AgentRow> {
     return this.spawnAgent('senior', teamId, teamName, repoPath, index);
   }
 
-  private async spawnIntermediate(teamId: string, teamName: string, repoPath: string): Promise<AgentRow> {
+  private async spawnIntermediate(
+    teamId: string,
+    teamName: string,
+    repoPath: string
+  ): Promise<AgentRow> {
     const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'intermediate');
     const index = existing.length + 1;
     return this.spawnAgent('intermediate', teamId, teamName, repoPath, index);
@@ -836,10 +962,14 @@ export class Scheduler {
   }
 
   private getTeamStories(teamId: string): StoryRow[] {
-    return queryAll<StoryRow>(this.db, `
+    return queryAll<StoryRow>(
+      this.db,
+      `
       SELECT * FROM stories
       WHERE team_id = ? AND status IN ('planned', 'estimated')
       ORDER BY complexity_score DESC
-    `, [teamId]);
+    `,
+      [teamId]
+    );
   }
 }

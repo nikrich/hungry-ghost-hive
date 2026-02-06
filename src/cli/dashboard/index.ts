@@ -1,8 +1,14 @@
 import blessed from 'blessed';
-import { appendFileSync, statSync, existsSync, renameSync } from 'fs';
+import { appendFileSync, existsSync, renameSync, statSync } from 'fs';
 import { join } from 'path';
 import { getDatabase, type DatabaseClient } from '../../db/client.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { createActivityPanel, updateActivityPanel } from './panels/activity.js';
+import { createAgentsPanel, updateAgentsPanel } from './panels/agents.js';
+import { createEscalationsPanel, updateEscalationsPanel } from './panels/escalations.js';
+import { createMergeQueuePanel, updateMergeQueuePanel } from './panels/merge-queue.js';
+import { createPipelinePanel, updatePipelinePanel } from './panels/pipeline.js';
+import { createStoriesPanel, updateStoriesPanel } from './panels/stories.js';
 
 const DEBUG_LOG_PATH = '/tmp/hive-dashboard-debug.log';
 const DEBUG_LOG_MAX_SIZE = 10 * 1024 * 1024; // 10MB
@@ -23,12 +29,6 @@ function debugLog(msg: string) {
     // Silently fail if we can't write to debug log
   }
 }
-import { createAgentsPanel, updateAgentsPanel } from './panels/agents.js';
-import { createStoriesPanel, updateStoriesPanel } from './panels/stories.js';
-import { createPipelinePanel, updatePipelinePanel } from './panels/pipeline.js';
-import { createActivityPanel, updateActivityPanel } from './panels/activity.js';
-import { createMergeQueuePanel, updateMergeQueuePanel } from './panels/merge-queue.js';
-import { createEscalationsPanel, updateEscalationsPanel } from './panels/escalations.js';
 
 export interface DashboardOptions {
   refreshInterval?: number;
@@ -84,7 +84,8 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
     left: 0,
     width: '100%',
     height: 1,
-    content: ' Tab: Switch panels | ↑↓: Navigate | Enter: Attach to tmux | Ctrl+B,D: Detach | Q: Quit',
+    content:
+      ' Tab: Switch panels | ↑↓: Navigate | Enter: Attach to tmux | Ctrl+B,D: Detach | Q: Quit',
     style: {
       bg: 'blue',
       fg: 'white',
@@ -107,7 +108,11 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
 
         // Get new database connection first, then close old one
         const newDb = await getDatabase(paths.hiveDir);
-        try { db.db.close(); } catch { /* ignore close errors */ }
+        try {
+          db.db.close();
+        } catch {
+          /* ignore close errors */
+        }
         db = newDb;
       }
 
@@ -138,7 +143,11 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   // Key bindings
   screen.key(['q', 'C-c', 'escape'], () => {
     if (currentTimeout) clearTimeout(currentTimeout);
-    try { db.db.close(); } catch { /* ignore */ }
+    try {
+      db.db.close();
+    } catch {
+      /* ignore */
+    }
     screen.destroy();
     process.exit(0);
   });

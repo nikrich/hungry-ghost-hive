@@ -1,13 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { createTeam, deleteTeam, getAllTeams, getTeamById, getTeamByName } from './teams.js';
 import { createTestDatabase } from './test-helpers.js';
-import {
-  createTeam,
-  getTeamById,
-  getTeamByName,
-  getAllTeams,
-  deleteTeam,
-} from './teams.js';
 
 describe('teams queries', () => {
   let db: Database;
@@ -140,11 +134,11 @@ describe('teams queries', () => {
       const team = createTeam(db, {
         repoUrl: 'https://github.com/test/repo.git',
         repoPath: '/path/to/repo',
-        name: "Team with 'quotes' and \"double quotes\"",
+        name: 'Team with \'quotes\' and "double quotes"',
       });
 
       const retrieved = getTeamById(db, team.id);
-      expect(retrieved?.name).toBe("Team with 'quotes' and \"double quotes\"");
+      expect(retrieved?.name).toBe('Team with \'quotes\' and "double quotes"');
     });
 
     it('should handle very long team names', () => {

@@ -1,26 +1,26 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
 import chalk from 'chalk';
 import { spawnSync } from 'child_process';
+import { Command } from 'commander';
 import {
-  initCommand,
-  configCommand,
   addRepoCommand,
-  teamsCommand,
-  reqCommand,
-  statusCommand,
   agentsCommand,
-  storiesCommand,
-  escalationsCommand,
-  resumeCommand,
   assignCommand,
-  nukeCommand,
+  cleanupCommand,
+  configCommand,
+  escalationsCommand,
+  initCommand,
+  managerCommand,
   msgCommand,
   myStoriesCommand,
+  nukeCommand,
   prCommand,
-  managerCommand,
-  cleanupCommand,
+  reqCommand,
+  resumeCommand,
+  statusCommand,
+  storiesCommand,
+  teamsCommand,
   versionCommand,
 } from './cli/commands/index.js';
 import { getVersion } from './utils/version.js';
@@ -80,7 +80,13 @@ program
       const desiredMb = parseInt(process.env.HIVE_DASHBOARD_HEAP_MB || '4096', 10);
 
       if (!hasHeapFlag) {
-        const args = [`--max-old-space-size=${desiredMb}`, process.argv[1], 'dashboard', '--refresh', String(options.refresh)];
+        const args = [
+          `--max-old-space-size=${desiredMb}`,
+          process.argv[1],
+          'dashboard',
+          '--refresh',
+          String(options.refresh),
+        ];
         const result = spawnSync(process.execPath, args, { stdio: 'inherit', env: process.env });
         process.exit(result.status === null ? 1 : result.status);
       }

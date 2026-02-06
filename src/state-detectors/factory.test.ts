@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { getStateDetector, isSupportedCLI } from './factory.js';
+import { describe, expect, it } from 'vitest';
 import { ClaudeStateDetector } from './claude.js';
 import { CodexStateDetector } from './codex.js';
+import { getStateDetector, isSupportedCLI } from './factory.js';
 import { GeminiStateDetector } from './gemini.js';
 
 describe('getStateDetector', () => {

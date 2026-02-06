@@ -1,5 +1,5 @@
-import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run, type AgentRow } from '../client.js';
 
 export type { AgentRow };
@@ -24,15 +24,27 @@ export interface UpdateAgentInput {
 }
 
 export function createAgent(db: Database, input: CreateAgentInput): AgentRow {
-  const id = input.type === 'tech_lead'
-    ? 'tech-lead'
-    : `${input.type}-${nanoid(8)}`;
+  const id = input.type === 'tech_lead' ? 'tech-lead' : `${input.type}-${nanoid(8)}`;
   const now = new Date().toISOString();
 
-  run(db, `
+  run(
+    db,
+    `
     INSERT INTO agents (id, type, team_id, tmux_session, model, status, worktree_path, created_at, updated_at, last_seen)
     VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?)
-  `, [id, input.type, input.teamId || null, input.tmuxSession || null, input.model || null, input.worktreePath || null, now, now, now]);
+  `,
+    [
+      id,
+      input.type,
+      input.teamId || null,
+      input.tmuxSession || null,
+      input.model || null,
+      input.worktreePath || null,
+      now,
+      now,
+      now,
+    ]
+  );
 
   return getAgentById(db, id)!;
 }
@@ -58,18 +70,25 @@ export function getAllAgents(db: Database): AgentRow[] {
 }
 
 export function getActiveAgents(db: Database): AgentRow[] {
-  return queryAll<AgentRow>(db, `
+  return queryAll<AgentRow>(
+    db,
+    `
     SELECT * FROM agents
     WHERE status IN ('idle', 'working', 'blocked')
     ORDER BY type, team_id
-  `);
+  `
+  );
 }
 
 export function getTechLead(db: Database): AgentRow | undefined {
   return queryOne<AgentRow>(db, `SELECT * FROM agents WHERE type = 'tech_lead'`);
 }
 
-export function updateAgent(db: Database, id: string, input: UpdateAgentInput): AgentRow | undefined {
+export function updateAgent(
+  db: Database,
+  id: string,
+  input: UpdateAgentInput
+): AgentRow | undefined {
   const updates: string[] = ['updated_at = ?'];
   const values: (string | null)[] = [new Date().toISOString()];
 

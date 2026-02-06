@@ -1,21 +1,21 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDatabase } from './test-helpers.js';
-import { createTeam } from './teams.js';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createAgent } from './agents.js';
-import { createStory } from './stories.js';
 import {
+  countQaFailuresByStory,
   createLog,
   getLogById,
   getLogsByAgent,
-  getLogsByStory,
   getLogsByEventType,
-  getRecentLogs,
+  getLogsByStory,
   getLogsSince,
+  getRecentLogs,
   pruneOldLogs,
-  countQaFailuresByStory,
   type EventType,
 } from './logs.js';
+import { createStory } from './stories.js';
+import { createTeam } from './teams.js';
+import { createTestDatabase } from './test-helpers.js';
 
 describe('logs queries', () => {
   let db: Database;
@@ -374,10 +374,13 @@ describe('logs queries', () => {
       oldDate.setDate(oldDate.getDate() - 100);
 
       // We need to manually insert to set a past timestamp
-      db.run(`
+      db.run(
+        `
         INSERT INTO agent_logs (agent_id, event_type, timestamp)
         VALUES (?, ?, ?)
-      `, [agentId, 'AGENT_SPAWNED', oldDate.toISOString()]);
+      `,
+        [agentId, 'AGENT_SPAWNED', oldDate.toISOString()]
+      );
 
       // Create a recent log
       createLog(db, { agentId, eventType: 'STORY_STARTED' });
@@ -407,15 +410,21 @@ describe('logs queries', () => {
       const date20DaysAgo = new Date();
       date20DaysAgo.setDate(date20DaysAgo.getDate() - 20);
 
-      db.run(`
+      db.run(
+        `
         INSERT INTO agent_logs (agent_id, event_type, timestamp)
         VALUES (?, ?, ?)
-      `, [agentId, 'AGENT_SPAWNED', date50DaysAgo.toISOString()]);
+      `,
+        [agentId, 'AGENT_SPAWNED', date50DaysAgo.toISOString()]
+      );
 
-      db.run(`
+      db.run(
+        `
         INSERT INTO agent_logs (agent_id, event_type, timestamp)
         VALUES (?, ?, ?)
-      `, [agentId, 'STORY_STARTED', date20DaysAgo.toISOString()]);
+      `,
+        [agentId, 'STORY_STARTED', date20DaysAgo.toISOString()]
+      );
 
       createLog(db, { agentId, eventType: 'STORY_COMPLETED' });
 

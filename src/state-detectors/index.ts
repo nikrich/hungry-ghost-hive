@@ -13,8 +13,8 @@
  */
 
 // Export types and interfaces
-export type { StateDetector, StateDetectionResult, CLIType } from './types.js';
 export { AgentState } from './types.js';
+export type { CLIType, StateDetectionResult, StateDetector } from './types.js';
 
 // Export state detector implementations
 export { ClaudeStateDetector } from './claude.js';

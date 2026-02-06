@@ -1,14 +1,19 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { Command } from 'commander';
 import { getDatabase } from '../../db/client.js';
-import { getAllTeams, getTeamByName } from '../../db/queries/teams.js';
-import { getAllAgents, getActiveAgents } from '../../db/queries/agents.js';
-import { getStoryCounts, getStoryById, getStoriesByTeam, getStoryDependencies } from '../../db/queries/stories.js';
-import { getPendingRequirements } from '../../db/queries/requirements.js';
+import { getActiveAgents, getAllAgents } from '../../db/queries/agents.js';
 import { getPendingEscalations } from '../../db/queries/escalations.js';
-import { getRecentLogs, getLogsByStory } from '../../db/queries/logs.js';
+import { getLogsByStory, getRecentLogs } from '../../db/queries/logs.js';
+import { getPendingRequirements } from '../../db/queries/requirements.js';
+import {
+  getStoriesByTeam,
+  getStoryById,
+  getStoryCounts,
+  getStoryDependencies,
+} from '../../db/queries/stories.js';
+import { getAllTeams, getTeamByName } from '../../db/queries/teams.js';
 import { statusColor } from '../../utils/logger.js';
+import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 
 export const statusCommand = new Command('status')
   .description('Show Hive status')
@@ -90,9 +95,10 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
 
   // Agents
   console.log(chalk.bold('Agents:'));
-  const totalDisplay = status.agents.terminated > 0
-    ? `${status.agents.total} (${status.agents.terminated} terminated)`
-    : status.agents.total.toString();
+  const totalDisplay =
+    status.agents.terminated > 0
+      ? `${status.agents.total} (${status.agents.terminated} terminated)`
+      : status.agents.total.toString();
   console.log(`  Total:   ${totalDisplay}`);
   console.log(`  Working: ${chalk.yellow(status.agents.working.toString())}`);
   console.log(`  Idle:    ${chalk.gray(status.agents.idle.toString())}`);
@@ -190,7 +196,9 @@ function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: 
   } else {
     for (const agent of activeAgents) {
       const storyInfo = agent.current_story_id ? ` → ${agent.current_story_id}` : '';
-      console.log(`  ${agent.id.padEnd(25)} ${agent.type.padEnd(12)} ${statusColor(agent.status)}${storyInfo}`);
+      console.log(
+        `  ${agent.id.padEnd(25)} ${agent.type.padEnd(12)} ${statusColor(agent.status)}${storyInfo}`
+      );
     }
   }
   console.log();

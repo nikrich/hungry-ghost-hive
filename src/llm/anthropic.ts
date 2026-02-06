@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { LLMProvider, Message, CompletionOptions, CompletionResult } from './provider.js';
 import { withTimeout } from '../utils/timeout.js';
+import type { CompletionOptions, CompletionResult, LLMProvider, Message } from './provider.js';
 
 export class AnthropicProvider implements LLMProvider {
   name = 'anthropic';
@@ -9,12 +9,14 @@ export class AnthropicProvider implements LLMProvider {
   private defaultMaxTokens: number;
   private defaultTemperature: number;
 
-  constructor(options: {
-    apiKey?: string;
-    model?: string;
-    maxTokens?: number;
-    temperature?: number;
-  } = {}) {
+  constructor(
+    options: {
+      apiKey?: string;
+      model?: string;
+      maxTokens?: number;
+      temperature?: number;
+    } = {}
+  ) {
     this.client = new Anthropic({
       apiKey: options.apiKey || process.env.ANTHROPIC_API_KEY,
     });
@@ -106,10 +108,7 @@ export class AnthropicProvider implements LLMProvider {
       const generator = streamGenerator();
 
       while (true) {
-        const result = await Promise.race([
-          generator.next(),
-          timeoutPromise
-        ]);
+        const result = await Promise.race([generator.next(), timeoutPromise]);
 
         if (result.done) break;
         yield result.value;

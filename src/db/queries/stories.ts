@@ -1,5 +1,5 @@
-import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run, type StoryRow } from '../client.js';
 
 export type { StoryRow };
@@ -43,10 +43,23 @@ export function createStory(db: Database, input: CreateStoryInput): StoryRow {
     : null;
   const now = new Date().toISOString();
 
-  run(db, `
+  run(
+    db,
+    `
     INSERT INTO stories (id, requirement_id, team_id, title, description, acceptance_criteria, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, [id, input.requirementId || null, input.teamId || null, input.title, input.description, acceptanceCriteria, now, now]);
+  `,
+    [
+      id,
+      input.requirementId || null,
+      input.teamId || null,
+      input.title,
+      input.description,
+      acceptanceCriteria,
+      now,
+      now,
+    ]
+  );
 
   return getStoryById(db, id)!;
 }
@@ -56,28 +69,44 @@ export function getStoryById(db: Database, id: string): StoryRow | undefined {
 }
 
 export function getStoriesByRequirement(db: Database, requirementId: string): StoryRow[] {
-  return queryAll<StoryRow>(db, 'SELECT * FROM stories WHERE requirement_id = ? ORDER BY created_at', [requirementId]);
+  return queryAll<StoryRow>(
+    db,
+    'SELECT * FROM stories WHERE requirement_id = ? ORDER BY created_at',
+    [requirementId]
+  );
 }
 
 export function getStoriesByTeam(db: Database, teamId: string): StoryRow[] {
-  return queryAll<StoryRow>(db, 'SELECT * FROM stories WHERE team_id = ? ORDER BY created_at', [teamId]);
+  return queryAll<StoryRow>(db, 'SELECT * FROM stories WHERE team_id = ? ORDER BY created_at', [
+    teamId,
+  ]);
 }
 
 export function getStoriesByStatus(db: Database, status: StoryStatus): StoryRow[] {
-  return queryAll<StoryRow>(db, 'SELECT * FROM stories WHERE status = ? ORDER BY created_at', [status]);
+  return queryAll<StoryRow>(db, 'SELECT * FROM stories WHERE status = ? ORDER BY created_at', [
+    status,
+  ]);
 }
 
 export function getStoriesByAgent(db: Database, agentId: string): StoryRow[] {
-  return queryAll<StoryRow>(db, 'SELECT * FROM stories WHERE assigned_agent_id = ? ORDER BY created_at', [agentId]);
+  return queryAll<StoryRow>(
+    db,
+    'SELECT * FROM stories WHERE assigned_agent_id = ? ORDER BY created_at',
+    [agentId]
+  );
 }
 
 export function getActiveStoriesByAgent(db: Database, agentId: string): StoryRow[] {
-  return queryAll<StoryRow>(db, `
+  return queryAll<StoryRow>(
+    db,
+    `
     SELECT * FROM stories
     WHERE assigned_agent_id = ?
     AND status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')
     ORDER BY created_at
-  `, [agentId]);
+  `,
+    [agentId]
+  );
 }
 
 export function getAllStories(db: Database): StoryRow[] {
@@ -85,31 +114,45 @@ export function getAllStories(db: Database): StoryRow[] {
 }
 
 export function getPlannedStories(db: Database): StoryRow[] {
-  return queryAll<StoryRow>(db, `
+  return queryAll<StoryRow>(
+    db,
+    `
     SELECT * FROM stories
     WHERE status = 'planned'
     ORDER BY story_points DESC, created_at
-  `);
+  `
+  );
 }
 
 export function getInProgressStories(db: Database): StoryRow[] {
-  return queryAll<StoryRow>(db, `
+  return queryAll<StoryRow>(
+    db,
+    `
     SELECT * FROM stories
     WHERE status IN ('in_progress', 'review', 'qa', 'qa_failed')
     ORDER BY created_at
-  `);
+  `
+  );
 }
 
 export function getStoryPointsByTeam(db: Database, teamId: string): number {
-  const result = queryOne<{ total: number }>(db, `
+  const result = queryOne<{ total: number }>(
+    db,
+    `
     SELECT COALESCE(SUM(story_points), 0) as total
     FROM stories
     WHERE team_id = ? AND status IN ('planned', 'in_progress', 'review', 'qa')
-  `, [teamId]);
+  `,
+    [teamId]
+  );
   return result?.total || 0;
 }
 
-export function updateStory(db: Database, id: string, input: UpdateStoryInput): StoryRow | undefined {
+export function updateStory(
+  db: Database,
+  id: string,
+  input: UpdateStoryInput
+): StoryRow | undefined {
   const updates: string[] = ['updated_at = ?'];
   const values: (string | number | null)[] = [new Date().toISOString()];
 
@@ -170,30 +213,49 @@ export function deleteStory(db: Database, id: string): void {
 
 // Story dependencies
 export function addStoryDependency(db: Database, storyId: string, dependsOnStoryId: string): void {
-  run(db, `
+  run(
+    db,
+    `
     INSERT OR IGNORE INTO story_dependencies (story_id, depends_on_story_id)
     VALUES (?, ?)
-  `, [storyId, dependsOnStoryId]);
+  `,
+    [storyId, dependsOnStoryId]
+  );
 }
 
-export function removeStoryDependency(db: Database, storyId: string, dependsOnStoryId: string): void {
-  run(db, 'DELETE FROM story_dependencies WHERE story_id = ? AND depends_on_story_id = ?', [storyId, dependsOnStoryId]);
+export function removeStoryDependency(
+  db: Database,
+  storyId: string,
+  dependsOnStoryId: string
+): void {
+  run(db, 'DELETE FROM story_dependencies WHERE story_id = ? AND depends_on_story_id = ?', [
+    storyId,
+    dependsOnStoryId,
+  ]);
 }
 
 export function getStoryDependencies(db: Database, storyId: string): StoryRow[] {
-  return queryAll<StoryRow>(db, `
+  return queryAll<StoryRow>(
+    db,
+    `
     SELECT s.* FROM stories s
     JOIN story_dependencies sd ON s.id = sd.depends_on_story_id
     WHERE sd.story_id = ?
-  `, [storyId]);
+  `,
+    [storyId]
+  );
 }
 
 export function getStoriesDependingOn(db: Database, storyId: string): StoryRow[] {
-  return queryAll<StoryRow>(db, `
+  return queryAll<StoryRow>(
+    db,
+    `
     SELECT s.* FROM stories s
     JOIN story_dependencies sd ON s.id = sd.story_id
     WHERE sd.depends_on_story_id = ?
-  `, [storyId]);
+  `,
+    [storyId]
+  );
 }
 
 /**
@@ -232,11 +294,14 @@ export function getBatchStoryDependencies(db: Database, storyIds: string[]): Map
 }
 
 export function getStoryCounts(db: Database): Record<StoryStatus, number> {
-  const rows = queryAll<{ status: StoryStatus; count: number }>(db, `
+  const rows = queryAll<{ status: StoryStatus; count: number }>(
+    db,
+    `
     SELECT status, COUNT(*) as count
     FROM stories
     GROUP BY status
-  `);
+  `
+  );
 
   const counts: Record<StoryStatus, number> = {
     draft: 0,
@@ -273,11 +338,7 @@ export function getStoriesWithOrphanedAssignments(
   );
 }
 
-export function updateStoryAssignment(
-  db: Database,
-  storyId: string,
-  agentId: string | null
-): void {
+export function updateStoryAssignment(db: Database, storyId: string, agentId: string | null): void {
   run(db, 'UPDATE stories SET assigned_agent_id = ?, updated_at = ? WHERE id = ?', [
     agentId,
     new Date().toISOString(),

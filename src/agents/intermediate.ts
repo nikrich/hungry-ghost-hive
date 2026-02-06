@@ -1,8 +1,8 @@
-import { BaseAgent, type AgentContext } from './base-agent.js';
-import { getTeamById, type TeamRow } from '../db/queries/teams.js';
-import { updateStory, getStoryById, type StoryRow } from '../db/queries/stories.js';
 import { getAgentsByTeam } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
+import { getStoryById, updateStory, type StoryRow } from '../db/queries/stories.js';
+import { getTeamById, type TeamRow } from '../db/queries/teams.js';
+import { BaseAgent, type AgentContext } from './base-agent.js';
 
 export interface IntermediateContext extends AgentContext {
   storyId?: string;
@@ -75,11 +75,17 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
     } catch (err) {
       this.retryCount++;
       if (this.retryCount >= this.config.maxRetries) {
-        await this.escalateToSenior(`Failed after ${this.retryCount} attempts: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        await this.escalateToSenior(
+          `Failed after ${this.retryCount} attempts: ${err instanceof Error ? err.message : 'Unknown error'}`
+        );
       } else {
-        this.log('STORY_PROGRESS_UPDATE', `Retry ${this.retryCount}: ${err instanceof Error ? err.message : 'Unknown error'}`, {
-          storyId: this.story.id,
-        });
+        this.log(
+          'STORY_PROGRESS_UPDATE',
+          `Retry ${this.retryCount}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          {
+            storyId: this.story.id,
+          }
+        );
         // Retry
         await this.execute();
       }
@@ -89,8 +95,12 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
   private async implementStory(): Promise<void> {
     if (!this.story) return;
 
-    const branchName = this.story.branch_name ||
-      `feature/${this.story.id.toLowerCase()}-${this.story.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 30)}`;
+    const branchName =
+      this.story.branch_name ||
+      `feature/${this.story.id.toLowerCase()}-${this.story.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .substring(0, 30)}`;
 
     // Update story with branch name if not set
     if (!this.story.branch_name) {
@@ -126,7 +136,8 @@ Begin implementation.`;
     this.log('STORY_PROGRESS_UPDATE', response.substring(0, 200), { storyId: this.story.id });
 
     // Continue implementation (simplified - in reality this would be iterative)
-    const continuePrompt = 'Continue with the implementation. Show me the code changes you would make.';
+    const continuePrompt =
+      'Continue with the implementation. Show me the code changes you would make.';
     await this.chat(continuePrompt);
     this.log('STORY_PROGRESS_UPDATE', 'Code changes proposed', { storyId: this.story.id });
 
@@ -140,8 +151,9 @@ Begin implementation.`;
 
   private async escalateToSenior(reason: string): Promise<void> {
     // Find Senior for this team
-    const seniors = getAgentsByTeam(this.db, this.teamId!)
-      .filter(a => a.type === 'senior' && a.status !== 'terminated');
+    const seniors = getAgentsByTeam(this.db, this.teamId!).filter(
+      a => a.type === 'senior' && a.status !== 'terminated'
+    );
 
     const seniorId = seniors[0]?.id;
 

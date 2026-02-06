@@ -1,11 +1,11 @@
-import { BaseAgent, type AgentContext } from './base-agent.js';
-import { getTeamById, type TeamRow } from '../db/queries/teams.js';
-import { getStoriesByStatus, updateStory, type StoryRow } from '../db/queries/stories.js';
-import { createPullRequest, getPullRequestByStory } from '../db/queries/pull-requests.js';
-import { countQaFailuresByStory } from '../db/queries/logs.js';
-import { createEscalation } from '../db/queries/escalations.js';
-import { getAgentsByType } from '../db/queries/agents.js';
 import { execa } from 'execa';
+import { getAgentsByType } from '../db/queries/agents.js';
+import { createEscalation } from '../db/queries/escalations.js';
+import { countQaFailuresByStory } from '../db/queries/logs.js';
+import { createPullRequest, getPullRequestByStory } from '../db/queries/pull-requests.js';
+import { getStoriesByStatus, updateStory, type StoryRow } from '../db/queries/stories.js';
+import { getTeamById, type TeamRow } from '../db/queries/teams.js';
+import { BaseAgent, type AgentContext } from './base-agent.js';
 
 export interface QAContext extends AgentContext {
   qaConfig: {
@@ -26,8 +26,9 @@ export class QAAgent extends BaseAgent {
 
     if (context.agentRow.team_id) {
       this.team = getTeamById(this.db, context.agentRow.team_id) || null;
-      this.pendingStories = getStoriesByStatus(this.db, 'qa')
-        .filter(s => s.team_id === context.agentRow.team_id);
+      this.pendingStories = getStoriesByStatus(this.db, 'qa').filter(
+        s => s.team_id === context.agentRow.team_id
+      );
     }
   }
 
@@ -88,9 +89,13 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       try {
         await execa('git', ['checkout', story.branch_name], { cwd: this.workDir });
       } catch (err) {
-        this.log('STORY_QA_FAILED', `Failed to checkout branch: ${err instanceof Error ? err.message : 'Unknown error'}`, {
-          storyId: story.id,
-        });
+        this.log(
+          'STORY_QA_FAILED',
+          `Failed to checkout branch: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          {
+            storyId: story.id,
+          }
+        );
         updateStory(this.db, story.id, { status: 'qa_failed' });
         this.checkAndEscalate(story);
         return;
@@ -211,13 +216,22 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       const title = `${story.id}: ${story.title}`;
       const body = this.generatePRBody(story);
 
-      const { stdout } = await execa('gh', [
-        'pr', 'create',
-        '--title', title,
-        '--body', body,
-        '--base', 'main',
-        '--head', story.branch_name,
-      ], { cwd: this.workDir });
+      const { stdout } = await execa(
+        'gh',
+        [
+          'pr',
+          'create',
+          '--title',
+          title,
+          '--body',
+          body,
+          '--base',
+          'main',
+          '--head',
+          story.branch_name,
+        ],
+        { cwd: this.workDir }
+      );
 
       // Extract PR URL from output
       const prUrl = stdout.trim();
@@ -283,7 +297,9 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
 
   private generatePRBody(story: StoryRow): string {
     const acceptanceCriteria = story.acceptance_criteria
-      ? JSON.parse(story.acceptance_criteria).map((c: string) => `- [ ] ${c}`).join('\n')
+      ? JSON.parse(story.acceptance_criteria)
+          .map((c: string) => `- [ ] ${c}`)
+          .join('\n')
       : 'N/A';
 
     return `## Story: ${story.id}

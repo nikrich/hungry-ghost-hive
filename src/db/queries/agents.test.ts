@@ -1,20 +1,20 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDatabase } from './test-helpers.js';
-import { createTeam } from './teams.js';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createAgent,
+  deleteAgent,
+  getActiveAgents,
   getAgentById,
+  getAgentsByStatus,
   getAgentsByTeam,
   getAgentsByType,
-  getAgentsByStatus,
   getAllAgents,
-  getActiveAgents,
   getTechLead,
-  updateAgent,
-  deleteAgent,
   terminateAgent,
+  updateAgent,
 } from './agents.js';
+import { createTeam } from './teams.js';
+import { createTestDatabase } from './test-helpers.js';
 
 describe('agents queries', () => {
   let db: Database;

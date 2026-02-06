@@ -47,11 +47,16 @@ export async function createPullRequest(
   options: PRCreateOptions
 ): Promise<{ number: number; url: string }> {
   const args = [
-    'pr', 'create',
-    '--title', options.title,
-    '--body', options.body,
-    '--base', options.baseBranch,
-    '--head', options.headBranch,
+    'pr',
+    'create',
+    '--title',
+    options.title,
+    '--body',
+    options.body,
+    '--base',
+    options.baseBranch,
+    '--head',
+    options.headBranch,
   ];
 
   if (options.draft) {
@@ -80,10 +85,17 @@ export async function createPullRequest(
  * Get pull request information
  */
 export async function getPullRequest(workDir: string, prNumber: number): Promise<PRInfo> {
-  const { stdout } = await execa('gh', [
-    'pr', 'view', prNumber.toString(),
-    '--json', 'number,url,title,state,headRefName,baseRefName,additions,deletions,changedFiles',
-  ], { cwd: workDir });
+  const { stdout } = await execa(
+    'gh',
+    [
+      'pr',
+      'view',
+      prNumber.toString(),
+      '--json',
+      'number,url,title,state,headRefName,baseRefName,additions,deletions,changedFiles',
+    ],
+    { cwd: workDir }
+  );
 
   const data = JSON.parse(stdout);
 
@@ -103,12 +115,22 @@ export async function getPullRequest(workDir: string, prNumber: number): Promise
 /**
  * List open pull requests
  */
-export async function listPullRequests(workDir: string, state: 'open' | 'closed' | 'all' = 'open'): Promise<PRInfo[]> {
-  const { stdout } = await execa('gh', [
-    'pr', 'list',
-    '--state', state,
-    '--json', 'number,url,title,state,headRefName,baseRefName,additions,deletions,changedFiles',
-  ], { cwd: workDir });
+export async function listPullRequests(
+  workDir: string,
+  state: 'open' | 'closed' | 'all' = 'open'
+): Promise<PRInfo[]> {
+  const { stdout } = await execa(
+    'gh',
+    [
+      'pr',
+      'list',
+      '--state',
+      state,
+      '--json',
+      'number,url,title,state,headRefName,baseRefName,additions,deletions,changedFiles',
+    ],
+    { cwd: workDir }
+  );
 
   const data = JSON.parse(stdout) as Array<{
     number: number;
@@ -143,10 +165,7 @@ export async function commentOnPullRequest(
   prNumber: number,
   body: string
 ): Promise<void> {
-  await execa('gh', [
-    'pr', 'comment', prNumber.toString(),
-    '--body', body,
-  ], { cwd: workDir });
+  await execa('gh', ['pr', 'comment', prNumber.toString(), '--body', body], { cwd: workDir });
 }
 
 /**
@@ -157,9 +176,7 @@ export async function reviewPullRequest(
   prNumber: number,
   review: PRReview
 ): Promise<void> {
-  const args = [
-    'pr', 'review', prNumber.toString(),
-  ];
+  const args = ['pr', 'review', prNumber.toString()];
 
   switch (review.state) {
     case 'APPROVED':
@@ -222,9 +239,7 @@ export async function closePullRequest(workDir: string, prNumber: number): Promi
  * Get PR diff
  */
 export async function getPullRequestDiff(workDir: string, prNumber: number): Promise<string> {
-  const { stdout } = await execa('gh', [
-    'pr', 'diff', prNumber.toString(),
-  ], { cwd: workDir });
+  const { stdout } = await execa('gh', ['pr', 'diff', prNumber.toString()], { cwd: workDir });
 
   return stdout;
 }
@@ -232,15 +247,19 @@ export async function getPullRequestDiff(workDir: string, prNumber: number): Pro
 /**
  * Get PR reviews
  */
-export async function getPullRequestReviews(workDir: string, prNumber: number): Promise<Array<{
-  author: string;
-  state: string;
-  body: string;
-}>> {
-  const { stdout } = await execa('gh', [
-    'pr', 'view', prNumber.toString(),
-    '--json', 'reviews',
-  ], { cwd: workDir });
+export async function getPullRequestReviews(
+  workDir: string,
+  prNumber: number
+): Promise<
+  Array<{
+    author: string;
+    state: string;
+    body: string;
+  }>
+> {
+  const { stdout } = await execa('gh', ['pr', 'view', prNumber.toString(), '--json', 'reviews'], {
+    cwd: workDir,
+  });
 
   const data = JSON.parse(stdout);
   return data.reviews || [];

@@ -1,5 +1,5 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
+import { Command } from 'commander';
 import { getVersion } from '../../utils/version.js';
 
 export const versionCommand = new Command('version')

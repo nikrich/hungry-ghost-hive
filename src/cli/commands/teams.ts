@@ -1,13 +1,12 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { Command } from 'commander';
 import { getDatabase } from '../../db/client.js';
-import { getAllTeams, getTeamByName, deleteTeam } from '../../db/queries/teams.js';
 import { getAgentsByTeam } from '../../db/queries/agents.js';
 import { getStoriesByTeam, getStoryPointsByTeam } from '../../db/queries/stories.js';
+import { deleteTeam, getAllTeams, getTeamByName } from '../../db/queries/teams.js';
+import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 
-export const teamsCommand = new Command('teams')
-  .description('Manage teams');
+export const teamsCommand = new Command('teams').description('Manage teams');
 
 teamsCommand
   .command('list')
@@ -93,7 +92,12 @@ teamsCommand
       if (agents.length > 0) {
         console.log(chalk.bold('Agents:'));
         for (const agent of agents) {
-          const statusColor = agent.status === 'working' ? chalk.yellow : agent.status === 'idle' ? chalk.gray : chalk.red;
+          const statusColor =
+            agent.status === 'working'
+              ? chalk.yellow
+              : agent.status === 'idle'
+                ? chalk.gray
+                : chalk.red;
           console.log(`  ${chalk.cyan(agent.id)} - ${agent.type} - ${statusColor(agent.status)}`);
         }
         console.log();
@@ -102,8 +106,15 @@ teamsCommand
       if (stories.length > 0) {
         console.log(chalk.bold('Stories:'));
         for (const story of stories) {
-          const statusColor = story.status === 'merged' ? chalk.green : story.status === 'in_progress' ? chalk.yellow : chalk.gray;
-          console.log(`  ${chalk.cyan(story.id)} - ${story.title.substring(0, 40)}... - ${statusColor(story.status)}`);
+          const statusColor =
+            story.status === 'merged'
+              ? chalk.green
+              : story.status === 'in_progress'
+                ? chalk.yellow
+                : chalk.gray;
+          console.log(
+            `  ${chalk.cyan(story.id)} - ${story.title.substring(0, 40)}... - ${statusColor(story.status)}`
+          );
         }
         console.log();
       }
@@ -143,13 +154,19 @@ teamsCommand
       const activeStories = stories.filter(s => !['merged', 'draft'].includes(s.status));
 
       if (activeStories.length > 0 && !options.force) {
-        console.error(chalk.red(`Team has ${activeStories.length} active stories. Use --force to remove anyway.`));
+        console.error(
+          chalk.red(
+            `Team has ${activeStories.length} active stories. Use --force to remove anyway.`
+          )
+        );
         process.exit(1);
       }
 
       deleteTeam(db.db, team.id);
       console.log(chalk.green(`Team "${name}" removed successfully.`));
-      console.log(chalk.yellow('Note: Git submodule was not removed. Run the following to remove it:'));
+      console.log(
+        chalk.yellow('Note: Git submodule was not removed. Run the following to remove it:')
+      );
       console.log(chalk.gray(`  git submodule deinit -f ${team.repo_path}`));
       console.log(chalk.gray(`  git rm -f ${team.repo_path}`));
     } finally {

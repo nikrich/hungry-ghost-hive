@@ -66,7 +66,7 @@ export function getModelForAgentType(agentType: AgentType, modelsConfig: ModelsC
 export function buildAgentSpawnCommand(
   agentType: AgentType,
   modelsConfig: ModelsConfig,
-  options?: { cliTool?: string; skipPermissions?: boolean },
+  options?: { cliTool?: string; skipPermissions?: boolean }
 ): string {
   const model = getModelForAgentType(agentType, modelsConfig);
   return buildCLICommand({

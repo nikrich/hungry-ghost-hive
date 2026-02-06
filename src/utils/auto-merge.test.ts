@@ -1,9 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDatabase } from '../db/queries/test-helpers.js';
-import { createTeam } from '../db/queries/teams.js';
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  createPullRequest,
+  getApprovedPullRequests,
+  updatePullRequest,
+} from '../db/queries/pull-requests.js';
 import { createStory } from '../db/queries/stories.js';
-import { createPullRequest, updatePullRequest, getApprovedPullRequests } from '../db/queries/pull-requests.js';
+import { createTeam } from '../db/queries/teams.js';
+import { createTestDatabase } from '../db/queries/test-helpers.js';
 
 describe('auto-merge functionality', () => {
   let db: Database;
@@ -12,7 +16,7 @@ describe('auto-merge functionality', () => {
 
   beforeEach(async () => {
     db = await createTestDatabase();
-    
+
     const team = createTeam(db, {
       repoUrl: 'https://github.com/test/repo.git',
       repoPath: '/path/to/repo',
@@ -42,7 +46,7 @@ describe('auto-merge functionality', () => {
         githubPrNumber: 111,
         githubPrUrl: 'https://github.com/test/repo/pull/111',
       });
-      
+
       const pr2 = createPullRequest(db, {
         storyId,
         teamId,
@@ -55,7 +59,7 @@ describe('auto-merge functionality', () => {
       updatePullRequest(db, pr2.id, { status: 'reviewing' });
 
       const approved = getApprovedPullRequests(db);
-      
+
       expect(approved).toHaveLength(1);
       expect(approved[0].id).toBe(pr1.id);
       expect(approved[0].status).toBe('approved');
@@ -68,7 +72,7 @@ describe('auto-merge functionality', () => {
         branchName: 'feature/test-1',
         githubPrNumber: 111,
       });
-      
+
       const pr2 = createPullRequest(db, {
         storyId,
         teamId,
@@ -80,7 +84,7 @@ describe('auto-merge functionality', () => {
       updatePullRequest(db, pr2.id, { status: 'approved' });
 
       const approved = getApprovedPullRequests(db);
-      
+
       expect(approved).toHaveLength(2);
       expect(approved[0].id).toBe(pr1.id);
       expect(approved[1].id).toBe(pr2.id);
@@ -104,7 +108,7 @@ describe('auto-merge functionality', () => {
       updatePullRequest(db, prWithoutNumber.id, { status: 'approved' });
 
       const approved = getApprovedPullRequests(db);
-      
+
       expect(approved).toHaveLength(2);
       expect(approved.filter(p => p.github_pr_number)).toHaveLength(1);
     });

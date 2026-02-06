@@ -1,12 +1,17 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { Command } from 'commander';
 import { getDatabase } from '../../db/client.js';
-import { getAllEscalations, getPendingEscalations, getEscalationById, resolveEscalation, acknowledgeEscalation } from '../../db/queries/escalations.js';
+import {
+  acknowledgeEscalation,
+  getAllEscalations,
+  getEscalationById,
+  getPendingEscalations,
+  resolveEscalation,
+} from '../../db/queries/escalations.js';
 import { createLog } from '../../db/queries/logs.js';
+import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 
-export const escalationsCommand = new Command('escalations')
-  .description('Manage escalations');
+export const escalationsCommand = new Command('escalations').description('Manage escalations');
 
 escalationsCommand
   .command('list')
@@ -39,7 +44,12 @@ escalationsCommand
       console.log(chalk.bold('\nEscalations:\n'));
 
       for (const esc of escalations) {
-        const statusIcon = esc.status === 'pending' ? chalk.yellow('⚠') : esc.status === 'acknowledged' ? chalk.blue('◉') : chalk.green('✓');
+        const statusIcon =
+          esc.status === 'pending'
+            ? chalk.yellow('⚠')
+            : esc.status === 'acknowledged'
+              ? chalk.blue('◉')
+              : chalk.green('✓');
         const toAgent = esc.to_agent_id || chalk.red('HUMAN');
 
         console.log(`${statusIcon} ${chalk.cyan(esc.id)}`);

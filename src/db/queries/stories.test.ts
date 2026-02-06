@@ -1,29 +1,29 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDatabase } from './test-helpers.js';
-import { createTeam } from './teams.js';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createAgent } from './agents.js';
 import { createRequirement } from './requirements.js';
 import {
+  addStoryDependency,
   createStory,
-  getStoryById,
-  getStoriesByRequirement,
-  getStoriesByTeam,
-  getStoriesByStatus,
-  getStoriesByAgent,
+  deleteStory,
   getActiveStoriesByAgent,
   getAllStories,
-  getPlannedStories,
   getInProgressStories,
-  getStoryPointsByTeam,
-  updateStory,
-  deleteStory,
-  addStoryDependency,
-  removeStoryDependency,
-  getStoryDependencies,
+  getPlannedStories,
+  getStoriesByAgent,
+  getStoriesByRequirement,
+  getStoriesByStatus,
+  getStoriesByTeam,
   getStoriesDependingOn,
+  getStoryById,
   getStoryCounts,
+  getStoryDependencies,
+  getStoryPointsByTeam,
+  removeStoryDependency,
+  updateStory,
 } from './stories.js';
+import { createTeam } from './teams.js';
+import { createTestDatabase } from './test-helpers.js';
 
 describe('stories queries', () => {
   let db: Database;
@@ -713,12 +713,12 @@ describe('stories queries', () => {
 
     it('should handle special characters', () => {
       const story = createStory(db, {
-        title: "Title with 'quotes' and \"double\"",
+        title: 'Title with \'quotes\' and "double"',
         description: 'Description with\nnewlines\tand\ttabs',
       });
 
       const retrieved = getStoryById(db, story.id);
-      expect(retrieved?.title).toBe("Title with 'quotes' and \"double\"");
+      expect(retrieved?.title).toBe('Title with \'quotes\' and "double"');
       expect(retrieved?.description).toBe('Description with\nnewlines\tand\ttabs');
     });
   });

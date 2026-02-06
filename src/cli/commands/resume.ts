@@ -1,14 +1,14 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
+import { Command } from 'commander';
 import ora from 'ora';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
-import { getDatabase, withTransaction } from '../../db/client.js';
-import { getAllAgents, getAgentById, updateAgent, type AgentRow } from '../../db/queries/agents.js';
-import { getTeamById } from '../../db/queries/teams.js';
-import { createLog } from '../../db/queries/logs.js';
-import { spawnTmuxSession, isTmuxAvailable, isTmuxSessionRunning } from '../../tmux/manager.js';
-import { loadConfig } from '../../config/index.js';
 import { getCliRuntimeBuilder } from '../../cli-runtimes/index.js';
+import { loadConfig } from '../../config/index.js';
+import { getDatabase, withTransaction } from '../../db/client.js';
+import { getAgentById, getAllAgents, updateAgent, type AgentRow } from '../../db/queries/agents.js';
+import { createLog } from '../../db/queries/logs.js';
+import { getTeamById } from '../../db/queries/teams.js';
+import { isTmuxAvailable, isTmuxSessionRunning, spawnTmuxSession } from '../../tmux/manager.js';
+import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 
 export const resumeCommand = new Command('resume')
   .description('Resume agents from saved state')
@@ -21,7 +21,7 @@ export const resumeCommand = new Command('resume')
       process.exit(1);
     }
 
-    if (!await isTmuxAvailable()) {
+    if (!(await isTmuxAvailable())) {
       console.error(chalk.red('tmux is not available. Please install tmux to use agent features.'));
       process.exit(1);
     }
@@ -65,7 +65,8 @@ export const resumeCommand = new Command('resume')
 
         try {
           // Check if session is already running
-          const sessionName = agent.tmux_session || `hive-${agent.type}${agent.team_id ? `-${agent.team_id}` : ''}`;
+          const sessionName =
+            agent.tmux_session || `hive-${agent.type}${agent.team_id ? `-${agent.team_id}` : ''}`;
 
           if (await isTmuxSessionRunning(sessionName)) {
             spinner.info(chalk.yellow(`${agent.id} session already running: ${sessionName}`));

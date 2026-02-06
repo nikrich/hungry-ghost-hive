@@ -1,26 +1,26 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDatabase } from './test-helpers.js';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createAgent } from './agents.js';
-import { createTeam } from './teams.js';
-import { createStory } from './stories.js';
 import {
+  acknowledgeEscalation,
   createEscalation,
+  deleteEscalation,
+  getActiveEscalationsForAgent,
+  getAllEscalations,
   getEscalationById,
-  getEscalationsByStory,
   getEscalationsByFromAgent,
-  getEscalationsByToAgent,
   getEscalationsByStatus,
+  getEscalationsByStory,
+  getEscalationsByToAgent,
   getPendingEscalations,
   getPendingHumanEscalations,
-  getAllEscalations,
-  updateEscalation,
-  resolveEscalation,
-  acknowledgeEscalation,
-  deleteEscalation,
   getRecentEscalationsForAgent,
-  getActiveEscalationsForAgent,
+  resolveEscalation,
+  updateEscalation,
 } from './escalations.js';
+import { createStory } from './stories.js';
+import { createTeam } from './teams.js';
+import { createTestDatabase } from './test-helpers.js';
 
 describe('escalations queries', () => {
   let db: Database;
@@ -370,7 +370,7 @@ describe('escalations queries', () => {
     });
 
     it('should handle special characters in reason', () => {
-      const reason = "Reason with 'quotes' and \"double\" and\nnewlines";
+      const reason = 'Reason with \'quotes\' and "double" and\nnewlines';
       const esc = createEscalation(db, { reason });
 
       const retrieved = getEscalationById(db, esc.id);

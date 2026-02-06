@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
-import type { LLMProvider, Message, CompletionOptions, CompletionResult } from './provider.js';
 import { withTimeout } from '../utils/timeout.js';
+import type { CompletionOptions, CompletionResult, LLMProvider, Message } from './provider.js';
 
 export class OpenAIProvider implements LLMProvider {
   name = 'openai';
@@ -9,12 +9,14 @@ export class OpenAIProvider implements LLMProvider {
   private defaultMaxTokens: number;
   private defaultTemperature: number;
 
-  constructor(options: {
-    apiKey?: string;
-    model?: string;
-    maxTokens?: number;
-    temperature?: number;
-  } = {}) {
+  constructor(
+    options: {
+      apiKey?: string;
+      model?: string;
+      maxTokens?: number;
+      temperature?: number;
+    } = {}
+  ) {
     this.client = new OpenAI({
       apiKey: options.apiKey || process.env.OPENAI_API_KEY,
     });
@@ -99,10 +101,7 @@ export class OpenAIProvider implements LLMProvider {
       const generator = streamGenerator();
 
       while (true) {
-        const result = await Promise.race([
-          generator.next(),
-          timeoutPromise
-        ]);
+        const result = await Promise.race([generator.next(), timeoutPromise]);
 
         if (result.done) break;
         yield result.value;

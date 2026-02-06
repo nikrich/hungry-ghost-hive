@@ -1,8 +1,13 @@
 import type { Database } from 'sql.js';
-import type { LLMProvider, Message } from '../llm/provider.js';
-import { createLog, type EventType } from '../db/queries/logs.js';
-import { updateAgent, type AgentRow, type AgentType, type AgentStatus } from '../db/queries/agents.js';
+import {
+  updateAgent,
+  type AgentRow,
+  type AgentStatus,
+  type AgentType,
+} from '../db/queries/agents.js';
 import { updateAgentHeartbeat } from '../db/queries/heartbeat.js';
+import { createLog, type EventType } from '../db/queries/logs.js';
+import type { LLMProvider, Message } from '../llm/provider.js';
 
 export interface MemoryState {
   conversationSummary: string;
@@ -71,9 +76,7 @@ export abstract class BaseAgent {
     }
 
     // Initialize messages with system prompt
-    this.messages = [
-      { role: 'system', content: this.getSystemPrompt() },
-    ];
+    this.messages = [{ role: 'system', content: this.getSystemPrompt() }];
 
     // Add memory context if resuming
     if (this.memoryState.conversationSummary) {
@@ -115,11 +118,7 @@ export abstract class BaseAgent {
     }
   }
 
-  protected log(
-    eventType: EventType,
-    message?: string,
-    metadata?: Record<string, unknown>
-  ): void {
+  protected log(eventType: EventType, message?: string, metadata?: Record<string, unknown>): void {
     createLog(this.db, {
       agentId: this.agentId,
       storyId: this.memoryState.currentTask?.storyId,
@@ -160,9 +159,13 @@ export abstract class BaseAgent {
       return result.content;
     } catch (err) {
       // Log timeout/error event
-      this.log('AGENT_TERMINATED', `LLM call failed: ${err instanceof Error ? err.message : String(err)}`, {
-        error: err instanceof Error ? err.stack : String(err),
-      });
+      this.log(
+        'AGENT_TERMINATED',
+        `LLM call failed: ${err instanceof Error ? err.message : String(err)}`,
+        {
+          error: err instanceof Error ? err.stack : String(err),
+        }
+      );
       throw err;
     }
   }
@@ -191,7 +194,10 @@ Keep it under 500 words.`;
     // Reset messages but keep context
     this.messages = [
       { role: 'system', content: this.getSystemPrompt() },
-      { role: 'user', content: `Previous context:\n${this.memoryState.conversationSummary}\n\nContinue from where you left off.` },
+      {
+        role: 'user',
+        content: `Previous context:\n${this.memoryState.conversationSummary}\n\nContinue from where you left off.`,
+      },
     ];
     this.totalTokens = 0;
   }
@@ -241,9 +247,13 @@ Keep it under 500 words.`;
       await this.execute();
     } catch (err) {
       this.updateStatus('blocked');
-      this.log('AGENT_TERMINATED', `Error: ${err instanceof Error ? err.message : 'Unknown error'}`, {
-        error: err instanceof Error ? err.stack : String(err),
-      });
+      this.log(
+        'AGENT_TERMINATED',
+        `Error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        {
+          error: err instanceof Error ? err.stack : String(err),
+        }
+      );
       throw err;
     } finally {
       // Stop heartbeat when agent completes or fails
