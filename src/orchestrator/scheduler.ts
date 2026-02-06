@@ -64,7 +64,7 @@ export class Scheduler {
   /**
    * Remove a git worktree for an agent
    */
-  private async removeWorktree(worktreePath: string): Promise<void> {
+  private async removeWorktree(worktreePath: string, agentId: string): Promise<void> {
     if (!worktreePath) return;
 
     const { execSync } = await import('child_process');
@@ -76,8 +76,15 @@ export class Scheduler {
         stdio: 'pipe',
       });
     } catch (err) {
-      // Log error but don't throw - worktree might already be removed
-      console.error(`Warning: Failed to remove worktree at ${fullWorktreePath}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      // Log failure to database for tracking and potential recovery
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      createLog(this.db, {
+        agentId,
+        eventType: 'WORKTREE_REMOVAL_FAILED',
+        status: 'error',
+        message: `Failed to remove worktree at ${fullWorktreePath}: ${errorMessage}`,
+        metadata: { worktreePath, fullWorktreePath },
+      });
     }
   }
 
@@ -427,7 +434,7 @@ export class Scheduler {
       if (!sessionAlive && agent.status !== 'terminated') {
         // Remove worktree if exists
         if (agent.worktree_path) {
-          await this.removeWorktree(agent.worktree_path);
+          await this.removeWorktree(agent.worktree_path, agent.id);
         }
 
         updateAgent(this.db, agent.id, { status: 'terminated', currentStoryId: null, worktreePath: null });
@@ -543,7 +550,7 @@ export class Scheduler {
 
           // Remove worktree
           if (agent.worktree_path) {
-            await this.removeWorktree(agent.worktree_path);
+            await this.removeWorktree(agent.worktree_path, agent.id);
           }
 
           // Update database
