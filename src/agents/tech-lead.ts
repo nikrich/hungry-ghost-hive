@@ -7,6 +7,9 @@ import { createEscalation } from '../db/queries/escalations.js';
 import { spawnTmuxSession, generateSessionName } from '../tmux/manager.js';
 import { queryAll } from '../db/client.js';
 import { addStoryDependency } from '../db/queries/stories.js';
+import { loadConfig } from '../config/index.js';
+import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
+import { findHiveRoot, getHivePaths } from '../utils/paths.js';
 
 export interface TechLeadContext extends AgentContext {
   requirementId?: string;
@@ -248,10 +251,26 @@ Respond in JSON format:
         // Spawn tmux session for the Senior
         const sessionName = generateSessionName('senior', team.name);
         try {
+          // Load config and get CLI runtime settings for the senior agent type
+          const hiveRoot = findHiveRoot(this.workDir);
+          if (!hiveRoot) {
+            throw new Error('Hive root not found');
+          }
+          const paths = getHivePaths(hiveRoot);
+          const config = loadConfig(paths.hiveDir);
+          const agentConfig = config.models.senior;
+          const cliTool = agentConfig.cli_tool;
+          const model = agentConfig.model;
+
+          // Build spawn command using CLI runtime builder (spawn fresh session, will be resumed later)
+          const runtimeBuilder = getCliRuntimeBuilder(cliTool);
+          const commandArray = runtimeBuilder.buildSpawnCommand(model);
+          const command = commandArray.join(' ');
+
           await spawnTmuxSession({
             sessionName,
             workDir: `${this.workDir}/${team.repo_path}`,
-            command: `claude --resume ${sessionName}`,
+            command,
           });
 
           updateAgent(this.db, senior.id, {
