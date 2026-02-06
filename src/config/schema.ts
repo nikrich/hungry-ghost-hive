@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // Model configuration for each agent type
 const ModelConfigSchema = z.object({
-  provider: z.enum(['anthropic', 'openai']),
+  provider: z.enum(['anthropic', 'openai', 'google']),
   model: z.string(),
   max_tokens: z.number().int().positive().default(8000),
   temperature: z.number().min(0).max(2).default(0.5),

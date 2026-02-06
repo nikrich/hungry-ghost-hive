@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(npm run lint:*)"
     ]
   }
 }

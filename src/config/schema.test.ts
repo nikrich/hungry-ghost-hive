@@ -100,6 +100,21 @@ describe('HiveConfigSchema', () => {
     }
   });
 
+  it('should accept google provider for gemini CLI tool', () => {
+    const config = {
+      models: {
+        junior: {
+          provider: 'google',
+          model: 'gemini-2.0-flash-exp',
+          cli_tool: 'gemini',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+  });
+
   it('should reject invalid cli_tool values', () => {
     const config = {
       models: {
