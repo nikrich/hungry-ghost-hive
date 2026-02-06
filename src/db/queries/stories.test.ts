@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
 import { createTestDatabase } from './test-helpers.js';
 import { createTeam } from './teams.js';
-import { createAgent } from './agents.js';
+import { createAgent, updateAgent } from './agents.js';
 import { createRequirement } from './requirements.js';
 import {
   createStory,
@@ -23,6 +23,9 @@ import {
   getStoryDependencies,
   getStoriesDependingOn,
   getStoryCounts,
+  getBatchStoryDependencies,
+  getStoriesWithOrphanedAssignments,
+  updateStoryAssignment,
 } from './stories.js';
 
 describe('stories queries', () => {
@@ -720,6 +723,204 @@ describe('stories queries', () => {
       const retrieved = getStoryById(db, story.id);
       expect(retrieved?.title).toBe("Title with 'quotes' and \"double\"");
       expect(retrieved?.description).toBe('Description with\nnewlines\tand\ttabs');
+    });
+  });
+
+  describe('getBatchStoryDependencies', () => {
+    it('should return empty map for empty story IDs', () => {
+      const deps = getBatchStoryDependencies(db, []);
+      expect(deps.size).toBe(0);
+    });
+
+    it('should return map with empty arrays for stories with no dependencies', () => {
+      const story1 = createStory(db, { title: 'Story 1', description: 'Desc 1' });
+      const story2 = createStory(db, { title: 'Story 2', description: 'Desc 2' });
+
+      const deps = getBatchStoryDependencies(db, [story1.id, story2.id]);
+
+      expect(deps.get(story1.id)).toEqual([]);
+      expect(deps.get(story2.id)).toEqual([]);
+    });
+
+    it('should return dependencies for stories with dependencies', () => {
+      const story1 = createStory(db, { title: 'Story 1', description: 'Desc 1' });
+      const story2 = createStory(db, { title: 'Story 2', description: 'Desc 2' });
+      const story3 = createStory(db, { title: 'Story 3', description: 'Desc 3' });
+
+      addStoryDependency(db, story1.id, story2.id);
+      addStoryDependency(db, story1.id, story3.id);
+
+      const deps = getBatchStoryDependencies(db, [story1.id]);
+
+      expect(deps.get(story1.id)).toContain(story2.id);
+      expect(deps.get(story1.id)).toContain(story3.id);
+      expect(deps.get(story1.id)).toHaveLength(2);
+    });
+
+    it('should handle multiple stories in batch', () => {
+      const story1 = createStory(db, { title: 'Story 1', description: 'Desc 1' });
+      const story2 = createStory(db, { title: 'Story 2', description: 'Desc 2' });
+      const story3 = createStory(db, { title: 'Story 3', description: 'Desc 3' });
+      const story4 = createStory(db, { title: 'Story 4', description: 'Desc 4' });
+
+      addStoryDependency(db, story1.id, story2.id);
+      addStoryDependency(db, story3.id, story4.id);
+
+      const deps = getBatchStoryDependencies(db, [story1.id, story3.id]);
+
+      expect(deps.get(story1.id)).toEqual([story2.id]);
+      expect(deps.get(story3.id)).toEqual([story4.id]);
+    });
+
+    it('should not return duplicate dependencies', () => {
+      const story1 = createStory(db, { title: 'Story 1', description: 'Desc 1' });
+      const story2 = createStory(db, { title: 'Story 2', description: 'Desc 2' });
+
+      addStoryDependency(db, story1.id, story2.id);
+      addStoryDependency(db, story1.id, story2.id); // Try to add duplicate
+
+      const deps = getBatchStoryDependencies(db, [story1.id]);
+
+      // Should only have one entry (INSERT OR IGNORE prevents duplicates)
+      expect(deps.get(story1.id)?.length).toBe(1);
+    });
+  });
+
+  describe('getStoriesWithOrphanedAssignments', () => {
+    it('should return empty array when no stories have orphaned assignments', () => {
+      const orphaned = getStoriesWithOrphanedAssignments(db);
+      expect(orphaned).toEqual([]);
+    });
+
+    it('should return stories assigned to terminated agents', () => {
+      const team = createTeam(db, {
+        repoUrl: 'https://github.com/test/repo.git',
+        repoPath: '/path/to/repo',
+        name: 'Test Team',
+      });
+      const agent = createAgent(db, { type: 'senior', teamId: team.id });
+      const story = createStory(db, {
+        title: 'Story',
+        description: 'Desc',
+        teamId: team.id,
+      });
+
+      updateStoryAssignment(db, story.id, agent.id);
+      updateAgent(db, agent.id, { status: 'terminated' });
+
+      const orphaned = getStoriesWithOrphanedAssignments(db);
+
+      expect(orphaned).toHaveLength(1);
+      expect(orphaned[0].id).toBe(story.id);
+      expect(orphaned[0].agent_id).toBe(agent.id);
+    });
+
+    it('should not return stories assigned to active agents', () => {
+      const team = createTeam(db, {
+        repoUrl: 'https://github.com/test/repo.git',
+        repoPath: '/path/to/repo',
+        name: 'Test Team',
+      });
+      const agent = createAgent(db, { type: 'senior', teamId: team.id });
+      const story = createStory(db, {
+        title: 'Story',
+        description: 'Desc',
+        teamId: team.id,
+      });
+
+      updateStoryAssignment(db, story.id, agent.id);
+
+      const orphaned = getStoriesWithOrphanedAssignments(db);
+
+      expect(orphaned).toEqual([]);
+    });
+
+    it('should return multiple stories with orphaned assignments', () => {
+      const team = createTeam(db, {
+        repoUrl: 'https://github.com/test/repo.git',
+        repoPath: '/path/to/repo',
+        name: 'Test Team',
+      });
+      const agent1 = createAgent(db, { type: 'senior', teamId: team.id });
+      const agent2 = createAgent(db, { type: 'junior', teamId: team.id });
+      const story1 = createStory(db, { title: 'Story 1', description: 'Desc 1' });
+      const story2 = createStory(db, { title: 'Story 2', description: 'Desc 2' });
+
+      updateStoryAssignment(db, story1.id, agent1.id);
+      updateStoryAssignment(db, story2.id, agent2.id);
+      updateAgent(db, agent1.id, { status: 'terminated' });
+      updateAgent(db, agent2.id, { status: 'terminated' });
+
+      const orphaned = getStoriesWithOrphanedAssignments(db);
+
+      expect(orphaned).toHaveLength(2);
+      expect(orphaned.map(o => o.id)).toContain(story1.id);
+      expect(orphaned.map(o => o.id)).toContain(story2.id);
+    });
+  });
+
+  describe('updateStoryAssignment', () => {
+    it('should assign story to an agent', () => {
+      const team = createTeam(db, {
+        repoUrl: 'https://github.com/test/repo.git',
+        repoPath: '/path/to/repo',
+        name: 'Test Team',
+      });
+      const agent = createAgent(db, { type: 'senior', teamId: team.id });
+      const story = createStory(db, { title: 'Story', description: 'Desc' });
+
+      updateStoryAssignment(db, story.id, agent.id);
+
+      const updated = getStoryById(db, story.id);
+      expect(updated?.assigned_agent_id).toBe(agent.id);
+    });
+
+    it('should update agent assignment', () => {
+      const team = createTeam(db, {
+        repoUrl: 'https://github.com/test/repo.git',
+        repoPath: '/path/to/repo',
+        name: 'Test Team',
+      });
+      const agent1 = createAgent(db, { type: 'senior', teamId: team.id });
+      const agent2 = createAgent(db, { type: 'junior', teamId: team.id });
+      const story = createStory(db, { title: 'Story', description: 'Desc' });
+
+      updateStoryAssignment(db, story.id, agent1.id);
+      updateStoryAssignment(db, story.id, agent2.id);
+
+      const updated = getStoryById(db, story.id);
+      expect(updated?.assigned_agent_id).toBe(agent2.id);
+    });
+
+    it('should clear assignment by setting to null', () => {
+      const team = createTeam(db, {
+        repoUrl: 'https://github.com/test/repo.git',
+        repoPath: '/path/to/repo',
+        name: 'Test Team',
+      });
+      const agent = createAgent(db, { type: 'senior', teamId: team.id });
+      const story = createStory(db, { title: 'Story', description: 'Desc' });
+
+      updateStoryAssignment(db, story.id, agent.id);
+      updateStoryAssignment(db, story.id, null);
+
+      const updated = getStoryById(db, story.id);
+      expect(updated?.assigned_agent_id).toBeNull();
+    });
+
+    it('should update the updated_at timestamp', () => {
+      const story = createStory(db, { title: 'Story', description: 'Desc' });
+
+      // Wait a tiny bit to ensure timestamp difference
+      const beforeUpdate = new Date();
+      updateStoryAssignment(db, story.id, null);
+      const afterUpdate = new Date();
+
+      const updated = getStoryById(db, story.id);
+      const updatedTimestamp = new Date(updated?.updated_at || '');
+
+      expect(updatedTimestamp.getTime()).toBeGreaterThanOrEqual(beforeUpdate.getTime());
+      expect(updatedTimestamp.getTime()).toBeLessThanOrEqual(afterUpdate.getTime() + 1000);
     });
   });
 });
