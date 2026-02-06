@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.2.0...v0.3.0) (2026-02-06)
+
+
+### Features
+
+* add npm publish step to release workflow ([de0b11e](https://github.com/nikrich/hungry-ghost-hive/commit/de0b11eb60c0e4534c2fc5a5b5ea41db016ed4b3))
+* Add npm publish step to release workflow (STORY-REL-004) ([047f1db](https://github.com/nikrich/hungry-ghost-hive/commit/047f1db18ab6117ee2e303e3687c9175aa10cdfc))
+
 ## [0.2.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.1.4...v0.2.0) (2026-02-06)
 
 
