@@ -2,6 +2,9 @@ import { BaseAgent, type AgentContext } from './base-agent.js';
 import { getTeamById, type TeamRow } from '../db/queries/teams.js';
 import { getStoriesByStatus, updateStory, type StoryRow } from '../db/queries/stories.js';
 import { createPullRequest, getPullRequestByStory } from '../db/queries/pull-requests.js';
+import { countQaFailuresByStory } from '../db/queries/logs.js';
+import { createEscalation } from '../db/queries/escalations.js';
+import { getAgentsByType } from '../db/queries/agents.js';
 import { execa } from 'execa';
 
 export interface QAContext extends AgentContext {
@@ -89,6 +92,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
           storyId: story.id,
         });
         updateStory(this.db, story.id, { status: 'qa_failed' });
+        this.checkAndEscalate(story);
         return;
       }
     }
@@ -97,6 +101,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
     const qualityPassed = await this.runQualityChecks(story.id);
     if (!qualityPassed) {
       updateStory(this.db, story.id, { status: 'qa_failed' });
+      this.checkAndEscalate(story);
       return;
     }
 
@@ -104,6 +109,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
     const buildPassed = await this.runBuild(story.id);
     if (!buildPassed) {
       updateStory(this.db, story.id, { status: 'qa_failed' });
+      this.checkAndEscalate(story);
       return;
     }
 
@@ -112,6 +118,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       const testsPassed = await this.runTests(story.id);
       if (!testsPassed) {
         updateStory(this.db, story.id, { status: 'qa_failed' });
+        this.checkAndEscalate(story);
         return;
       }
     }
@@ -245,6 +252,32 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
 
       // Still mark as pr_submitted since QA passed
       updateStory(this.db, story.id, { status: 'pr_submitted' });
+    }
+  }
+
+  private checkAndEscalate(story: StoryRow): void {
+    const failureCount = countQaFailuresByStory(this.db, story.id);
+
+    if (failureCount >= 3) {
+      // Find the senior agent for the team
+      const seniorAgents = getAgentsByType(this.db, 'senior').filter(
+        a => a.team_id === story.team_id
+      );
+
+      if (seniorAgents.length > 0) {
+        const escalation = createEscalation(this.db, {
+          storyId: story.id,
+          fromAgentId: this.agentId,
+          toAgentId: seniorAgents[0].id,
+          reason: `Story failed QA ${failureCount} times. Needs senior review and assistance.`,
+        });
+
+        this.log('ESCALATION_CREATED', `Story escalated after ${failureCount} QA failures`, {
+          storyId: story.id,
+          escalationId: escalation.id,
+          failureCount,
+        });
+      }
     }
   }
 

@@ -416,7 +416,7 @@ export async function withTransaction<T>(
   fn: () => Promise<T> | T,
 ): Promise<T> {
   try {
-    db.run('BEGIN TRANSACTION');
+    db.run('BEGIN IMMEDIATE');
     const result = await fn();
     db.run('COMMIT');
     return result;

@@ -260,6 +260,113 @@ export async function forceBypassMode(
   return false;
 }
 
+/**
+ * Attempts to deliver a message to a tmux session with verification.
+ * Sends the message and verifies it appears in the session output before confirming delivery.
+ * Uses exponential backoff retry on failed verification attempts.
+ * @param sessionName - The tmux session name
+ * @param message - The message text to send
+ * @param maxRetries - Maximum number of retry attempts (default 3)
+ * @param initialWaitMs - Initial wait time before first verification check (default 300ms)
+ * @returns true if delivery confirmed, false if max retries exceeded
+ */
+export async function sendMessageWithConfirmation(
+  sessionName: string,
+  message: string,
+  maxRetries = 3,
+  initialWaitMs = 300
+): Promise<boolean> {
+  // Send the message to the session
+  await sendToTmuxSession(sessionName, message);
+
+  // Wait before first verification check
+  await new Promise(resolve => setTimeout(resolve, initialWaitMs));
+
+  // Try to verify delivery by checking if message appears in output
+  let retries = 0;
+  let waitTime = initialWaitMs;
+
+  while (retries < maxRetries) {
+    // Capture pane output to verify message was received
+    const output = await captureTmuxPane(sessionName, 100);
+
+    // Check if the first line of the message appears in the output
+    // Extract first meaningful part of message for verification
+    const messageLines = message.split('\n').filter(line => line.trim());
+    const verificationText = messageLines.length > 0 ? messageLines[0].substring(0, 50) : message.substring(0, 50);
+
+    if (output.includes(verificationText)) {
+      // Message verified in output - delivery confirmed
+      return true;
+    }
+
+    retries++;
+    if (retries < maxRetries) {
+      // Exponential backoff: double the wait time for next retry
+      waitTime = Math.min(waitTime * 2, 2000); // Cap at 2 seconds
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+
+  // Max retries exceeded - delivery not confirmed
+  return false;
+}
+
+/**
+ * Automatically approve permission prompts by sending 'y' or appropriate response.
+ * Detects permission prompts in tmux pane output and auto-approves them.
+ * @param sessionName - Tmux session name to auto-approve
+ * @param maxRetries - Maximum attempts to detect and approve prompt
+ * @returns true if permission was approved, false if approval failed or no prompt detected
+ */
+export async function autoApprovePermission(
+  sessionName: string,
+  maxRetries = 3
+): Promise<boolean> {
+  let retries = 0;
+
+  while (retries < maxRetries) {
+    // Capture pane output to check for permission prompts
+    const output = await captureTmuxPane(sessionName, 100);
+
+    // Check for common permission prompt patterns
+    const permissionPatterns = [
+      /Do you want to make this edit\?.*\[y\/n\]/i,
+      /Do you want to .+\?.*\[y\/n\]/i,
+      /Would you like to .+\?.*\[y\/n\]/i,
+      /Allow .+\?.*\[y\/n\]/i,
+      /Approve .+\?.*\[y\/n\]/i,
+      /permission.*required/i,
+    ];
+
+    const hasPermissionPrompt = permissionPatterns.some(pattern => pattern.test(output));
+
+    if (!hasPermissionPrompt) {
+      // No permission prompt detected
+      return false;
+    }
+
+    // Send 'y' to approve the permission
+    await execa('tmux', ['send-keys', '-t', sessionName, 'y', 'Enter']);
+
+    // Wait for response to process
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Check if the prompt is gone (approval succeeded)
+    const newOutput = await captureTmuxPane(sessionName, 100);
+    const promptGone = !permissionPatterns.some(pattern => pattern.test(newOutput));
+
+    if (promptGone) {
+      return true; // Successfully approved
+    }
+
+    retries++;
+  }
+
+  // Max retries exceeded
+  return false;
+}
+
 export function generateSessionName(agentType: string, teamName?: string, index?: number): string {
   let name = `hive-${agentType}`;
   if (teamName) {

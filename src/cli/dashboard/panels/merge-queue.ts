@@ -24,11 +24,11 @@ export function createMergeQueuePanel(screen: Widgets.Screen, db: Database): Wid
     tags: true,
   });
 
-  updateMergeQueuePanel(table, db);
+  updateMergeQueuePanel(table, db).catch(err => console.error('Failed to update merge queue panel:', err));
   return table;
 }
 
-export function updateMergeQueuePanel(table: Widgets.ListTableElement, db: Database): void {
+export async function updateMergeQueuePanel(table: Widgets.ListTableElement, db: Database): Promise<void> {
   const queue = getMergeQueue(db);
 
   const headers = ['#', 'Branch', 'Status'];

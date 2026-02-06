@@ -28,12 +28,12 @@ export function createActivityPanel(screen: Widgets.Screen, db: Database): Widge
     },
   });
 
-  updateActivityPanel(box, db);
+  updateActivityPanel(box, db).catch(err => console.error('Failed to update activity panel:', err));
 
   return box;
 }
 
-export function updateActivityPanel(box: Widgets.BoxElement, db: Database): void {
+export async function updateActivityPanel(box: Widgets.BoxElement, db: Database): Promise<void> {
   const logs = getRecentLogs(db, 50);
 
   const lines: string[] = [];

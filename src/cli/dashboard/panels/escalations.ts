@@ -84,12 +84,12 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Wi
     }
   });
 
-  updateEscalationsPanel(list, db);
+  updateEscalationsPanel(list, db).catch(err => console.error('Failed to update escalations panel:', err));
 
   return list;
 }
 
-export function updateEscalationsPanel(list: Widgets.ListElement, db: Database): void {
+export async function updateEscalationsPanel(list: Widgets.ListElement, db: Database): Promise<void> {
   const escalations = getPendingEscalations(db);
   currentEscalations = escalations; // Store for selection lookup
 
