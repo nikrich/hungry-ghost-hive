@@ -117,6 +117,21 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       replied_at TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS agent_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent_id TEXT NOT NULL REFERENCES agents(id),
+      story_id TEXT REFERENCES stories(id),
+      event_type TEXT NOT NULL,
+      status TEXT,
+      message TEXT,
+      metadata TEXT,
+      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_logs_agent ON agent_logs(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_logs_story ON agent_logs(story_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_logs_timestamp ON agent_logs(timestamp);
   `);
 
   return db;
