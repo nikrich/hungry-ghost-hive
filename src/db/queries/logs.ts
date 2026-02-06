@@ -40,7 +40,8 @@ export type EventType =
   | 'PR_REVIEW_STARTED'
   | 'PR_APPROVED'
   | 'PR_MERGED'
-  | 'PR_REJECTED';
+  | 'PR_REJECTED'
+  | 'PR_MERGE_FAILED';
 
 export interface CreateLogInput {
   agentId: string;
