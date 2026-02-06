@@ -99,6 +99,7 @@ prCommand
         const config = loadConfig(paths.hiveDir);
         const scheduler = new Scheduler(db.db, {
           scaling: config.scaling,
+          models: config.models,
           rootDir: root,
         });
         await scheduler.checkMergeQueue();
@@ -503,6 +504,7 @@ prCommand
           const config = loadConfig(paths.hiveDir);
           const scheduler = new Scheduler(db.db, {
             scaling: config.scaling,
+            models: config.models,
             rootDir: root,
           });
           await scheduler.checkMergeQueue();
