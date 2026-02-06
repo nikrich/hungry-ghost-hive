@@ -8,7 +8,7 @@ import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
 import { getMergeQueue, getPullRequestsByStatus, backfillGithubPrNumbers } from '../../db/queries/pull-requests.js';
 import { markMessagesRead, getAllPendingMessages, type MessageRow } from '../../db/queries/messages.js';
-import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
+import { createEscalation, getPendingEscalations, getRecentEscalationsForAgent, getActiveEscalationsForAgent, updateEscalation } from '../../db/queries/escalations.js';
 import { getAgentById, updateAgent, getAllAgents } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { queryAll } from '../../db/client.js';
@@ -319,6 +319,7 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     let nudged = 0;
     let messagesForwarded = 0;
     let escalationsCreated = 0;
+    let escalationsResolved = 0;
 
     // Get existing pending escalations to avoid duplicates
     const existingEscalations = getPendingEscalations(db.db);
@@ -390,7 +391,11 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
         reason: stateResult.needsHuman ? getStateDescription(stateResult.state) : undefined,
       };
 
-      if (waitingInfo.needsHuman && !escalatedSessions.has(session.name)) {
+      // Check for recent escalations from this agent to improve dedup (avoid duplicates even after restart)
+      const hasRecentEscalation = escalatedSessions.has(session.name) ||
+        getRecentEscalationsForAgent(db.db, session.name, 30).length > 0;
+
+      if (waitingInfo.needsHuman && !hasRecentEscalation) {
         // Create escalation for human attention
         const storyId = agent?.current_story_id || null;
 
@@ -409,6 +414,20 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
         await sendToTmuxSession(session.name, reminder);
 
         console.log(chalk.red(`  ESCALATION: ${session.name} needs human input`));
+      } else if (!waitingInfo.isWaiting && !waitingInfo.needsHuman) {
+        // Agent has recovered from the state that caused escalation - auto-resolve any active escalations
+        const activeEscalations = getActiveEscalationsForAgent(db.db, session.name);
+        for (const escalation of activeEscalations) {
+          updateEscalation(db.db, escalation.id, {
+            status: 'resolved',
+            resolution: `Agent recovered: no longer in waiting state`,
+          });
+          escalationsResolved++;
+        }
+        if (activeEscalations.length > 0) {
+          db.save();
+          console.log(chalk.green(`  AUTO-RESOLVED: ${session.name} recovered, resolved ${activeEscalations.length} escalation(s)`));
+        }
       } else if (waitingInfo.isWaiting && stateResult.state !== ClaudeCodeState.THINKING) {
         // Agent is idle/waiting but doesn't need human
         // Check if we should nudge based on state duration and cooldown
@@ -657,6 +676,7 @@ hive pr queue`
     // Summary
     const summary = [];
     if (escalationsCreated > 0) summary.push(`${escalationsCreated} escalations created`);
+    if (escalationsResolved > 0) summary.push(`${escalationsResolved} escalations auto-resolved`);
     if (nudged > 0) summary.push(`${nudged} nudged`);
     if (messagesForwarded > 0) summary.push(`${messagesForwarded} messages forwarded`);
     if (queuedPRs.length > 0) summary.push(`${queuedPRs.length} PRs queued`);
