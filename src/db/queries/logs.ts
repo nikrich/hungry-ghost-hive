@@ -41,6 +41,7 @@ export type EventType =
   | 'PR_APPROVED'
   | 'PR_MERGED'
   | 'PR_REJECTED'
+  | 'PR_CLOSED'
   | 'PR_MERGE_FAILED';
 
 export interface CreateLogInput {
