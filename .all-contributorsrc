@@ -8,20 +8,21 @@
   "contributors": [
     {
       "login": "nikrich",
-      "name": "Jannik Richter",
-      "avatar_url": "https://avatars.githubusercontent.com/u/12345678?v=4",
+      "name": "nikrich",
+      "avatar_url": "https://avatars.githubusercontent.com/u/8254123?v=4",
       "profile": "https://github.com/nikrich",
       "contributions": [
         "code",
         "doc",
-        "infra"
+        "infra",
+        "maintenance"
       ]
     },
     {
-      "login": "mayor-bot",
-      "name": "Mayor",
-      "avatar_url": "https://avatars.githubusercontent.com/u/87654321?v=4",
-      "profile": "https://github.com/mayor-bot",
+      "login": "aleeuwen73",
+      "name": "Alastair van Leeuwen",
+      "avatar_url": "https://avatars.githubusercontent.com/u/73424841?v=4",
+      "profile": "https://github.com/aleeuwen73",
       "contributions": [
         "code"
       ]
