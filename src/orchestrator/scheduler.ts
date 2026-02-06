@@ -2,7 +2,6 @@ import type { Database } from 'sql.js';
 import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, type StoryRow } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
-import { getMergeQueue } from '../db/queries/pull-requests.js';
 import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode } from '../tmux/manager.js';
@@ -371,43 +370,79 @@ export class Scheduler {
 
   /**
    * Check merge queue and spawn QA agents if needed
+   * Scales QA agents based on pending work: 1 QA per 2-3 pending PRs, max 5
    */
   async checkMergeQueue(): Promise<void> {
     const teams = getAllTeams(this.db);
 
     for (const team of teams) {
-      const queue = getMergeQueue(this.db, team.id);
-      if (queue.length === 0) continue;
+      await this.scaleQAAgents(team.id, team.name, team.repo_path);
+    }
+  }
 
-      // Check if there's an active QA agent for this team
-      const qaAgents = getAgentsByTeam(this.db, team.id)
-        .filter(a => a.type === 'qa' && a.status !== 'terminated');
+  /**
+   * Scale QA agents based on pending work
+   * - Count stories with status 'pr_submitted' or 'qa'
+   * - Calculate needed QA agents: 1 QA per 2-3 pending PRs, max 5
+   * - Spawn QA agents in parallel with unique session names
+   */
+  private async scaleQAAgents(teamId: string, teamName: string, repoPath: string): Promise<void> {
+    // Count pending QA work: stories in 'qa' or 'pr_submitted' status
+    const qaStories = queryAll<StoryRow>(this.db, `
+      SELECT * FROM stories
+      WHERE team_id = ? AND status IN ('qa', 'pr_submitted')
+    `, [teamId]);
 
-      if (qaAgents.length === 0) {
-        // Spawn a QA agent
-        try {
-          await this.spawnQA(team.id, team.name, team.repo_path);
-          createLog(this.db, {
-            agentId: 'scheduler',
-            eventType: 'QA_SPAWNED',
-            message: `Spawned QA agent for team ${team.name} (${queue.length} PRs in queue)`,
-            metadata: { teamId: team.id, queueLength: queue.length },
-          });
-        } catch {
-          // Log error but continue
-        }
+    const pendingCount = qaStories.length;
+    if (pendingCount === 0) return;
+
+    // Calculate needed QA agents: 1 per 2-3 pending PRs, max 5
+    const neededQAs = Math.min(Math.ceil(pendingCount / 2.5), 5);
+
+    // Get currently active QA agents for this team
+    const activeQAs = getAgentsByTeam(this.db, teamId)
+      .filter(a => a.type === 'qa' && a.status !== 'terminated');
+
+    const currentQACount = activeQAs.length;
+
+    if (neededQAs > currentQACount) {
+      // Scale up: spawn additional QA agents in parallel
+      const toSpawn = neededQAs - currentQACount;
+      const spawnPromises: Promise<AgentRow>[] = [];
+
+      for (let i = 0; i < toSpawn; i++) {
+        const index = currentQACount + i + 1;
+        spawnPromises.push(this.spawnQA(teamId, teamName, repoPath, index));
+      }
+
+      try {
+        await Promise.all(spawnPromises);
+        createLog(this.db, {
+          agentId: 'scheduler',
+          eventType: 'TEAM_SCALED_UP',
+          message: `Scaled QA agents for team ${teamName}: ${currentQACount} → ${neededQAs} (${pendingCount} pending stories)`,
+          metadata: { teamId, agentType: 'qa', previousCount: currentQACount, newCount: neededQAs, pendingCount },
+        });
+      } catch (err) {
+        createLog(this.db, {
+          agentId: 'scheduler',
+          eventType: 'AGENT_SPAWNED',
+          status: 'error',
+          message: `Failed to scale QA agents for team ${teamName}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          metadata: { teamId, agentType: 'qa', error: String(err) },
+        });
       }
     }
   }
 
-  private async spawnQA(teamId: string, teamName: string, repoPath: string): Promise<AgentRow> {
+  private async spawnQA(teamId: string, teamName: string, repoPath: string, index: number = 1): Promise<AgentRow> {
     const agent = createAgent(this.db, {
       type: 'qa',
       teamId,
       model: 'sonnet',
     });
 
-    const sessionName = generateSessionName('qa', teamName);
+    const sessionName = generateSessionName('qa', teamName, index);
     const workDir = `${this.config.rootDir}/${repoPath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
