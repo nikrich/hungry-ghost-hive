@@ -1,4 +1,7 @@
 import { execa } from 'execa';
+import { writeFileSync, unlinkSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 export interface TmuxSessionOptions {
   sessionName: string;
@@ -127,18 +130,21 @@ export async function sendToTmuxSession(sessionName: string, text: string, clear
   }
 
   if (text.includes('\n')) {
-    // For multi-line text, send each line separately to avoid buffer race conditions
-    const lines = text.split('\n');
-    for (const line of lines) {
-      if (line.trim()) {
-        // Use send-keys with literal flag to handle special characters
-        // '--' signals end of options, preventing lines starting with '-' from being parsed as flags
-        await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', line]);
-        // Send Enter as a key event, not as literal text, to ensure prompt receives it
-        await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
-        // Small delay between lines to ensure they're processed
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+    // For multi-line text, use tmux load-buffer/paste-buffer to paste the entire
+    // block as one unit. This avoids the previous bug where each line was sent
+    // separately with Enter, causing Claude Code to treat each line as a separate
+    // submitted message instead of one coherent prompt.
+    const tmpFile = join(tmpdir(), `hive-tmux-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
+    try {
+      writeFileSync(tmpFile, text, 'utf-8');
+      await execa('tmux', ['load-buffer', tmpFile]);
+      await execa('tmux', ['paste-buffer', '-p', '-t', sessionName]);
+      // Small delay to let the pasted text settle before submitting
+      await new Promise(resolve => setTimeout(resolve, 200));
+      // Send a single Enter to submit the entire pasted prompt
+      await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
+    } finally {
+      try { unlinkSync(tmpFile); } catch { /* ignore cleanup errors */ }
     }
   } else {
     // For single-line text, use send-keys with literal flag then Enter separately
