@@ -78,14 +78,17 @@ export const assignCommand = new Command('assign')
       // Check scaling first (spawns additional seniors if needed)
       spinner.text = 'Checking team scaling...';
       await scheduler.checkScaling();
+      db.save(); // Persist scaling changes immediately to prevent manager overwrite
 
       // Check merge queue (spawns QA agents if needed)
       spinner.text = 'Checking merge queue...';
       await scheduler.checkMergeQueue();
+      db.save(); // Persist merge queue changes immediately to prevent manager overwrite
 
       // Assign stories to agents
       spinner.text = 'Assigning stories to agents...';
       const result = await scheduler.assignStories();
+      db.save(); // Persist story assignments immediately to prevent manager overwrite
 
       if (result.errors.length > 0) {
         spinner.warn(chalk.yellow(`Assigned ${result.assigned} stories with ${result.errors.length} errors`));
