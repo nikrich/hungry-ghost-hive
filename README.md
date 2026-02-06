@@ -92,32 +92,17 @@ hive escalations list
 
 You provide high-level requirements. The AI team handles everything else:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    YOU (Product Owner)                       │
-│              "Add feature X to the system"                   │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  TECH LEAD (Claude Opus)                     │
-│  • Analyzes your requirement                                 │
-│  • Breaks it into stories                                    │
-│  • Coordinates teams                                         │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-          ┌───────────┴───────────┐
-          ▼                       ▼
-┌─────────────────┐     ┌─────────────────┐
-│   TEAM: Alpha    │     │   TEAM: Beta     │
-│                  │     │                  │
-│ Senior (Sonnet)  │     │ Senior (Sonnet)  │
-│      │           │     │      │           │
-│  ┌───┴───┐       │     │  ┌───┴───┐       │
-│  Int   Jr        │     │  Int   Jr        │
-│                  │     │                  │
-│ QA (Sonnet)      │     │ QA (Sonnet)      │
-└─────────────────┘     └─────────────────┘
+```mermaid
+graph TD
+    A["👤 YOU (Product Owner)<br/>Add feature X to the system"] --> B["🧠 TECH LEAD (Claude Opus)<br/>• Analyzes requirement<br/>• Breaks it into stories<br/>• Coordinates teams"]
+    B --> C["👥 TEAM: Alpha<br/>Senior (Sonnet)"]
+    B --> D["👥 TEAM: Beta<br/>Senior (Sonnet)"]
+    C --> C1["📊 Intermediate (Haiku)"]
+    C --> C2["🚀 Junior (GPT-4o-mini)"]
+    C --> C3["✅ QA (Sonnet)"]
+    D --> D1["📊 Intermediate (Haiku)"]
+    D --> D2["🚀 Junior (GPT-4o-mini)"]
+    D --> D3["✅ QA (Sonnet)"]
 ```
 
 ### The Workflow
@@ -266,10 +251,19 @@ hive-manager            # The micromanager daemon
 
 ### Story States
 
-```
-draft → estimated → planned → in_progress → review → qa → pr_submitted → merged
-                                              ↓
-                                          qa_failed (returns to developer)
+```mermaid
+stateDiagram-v2
+    [*] --> draft
+    draft --> estimated
+    estimated --> planned
+    planned --> in_progress
+    in_progress --> review
+    review --> qa
+    qa --> pr_submitted: All checks pass
+    qa --> qa_failed: Failed checks
+    qa_failed --> in_progress: Returns to developer
+    pr_submitted --> merged
+    merged --> [*]
 ```
 
 ## Configuration
@@ -314,8 +308,11 @@ qa:
 
 When agents get stuck, they escalate:
 
-```
-Junior → Senior → Tech Lead → YOU
+```mermaid
+graph LR
+    A["🚀 Junior<br/>Stuck on issue"] --> B["👔 Senior<br/>Cannot resolve"]
+    B --> C["🧠 Tech Lead<br/>Escalates higher"]
+    C --> D["👤 YOU<br/>Human guidance"]
 ```
 
 Check escalations:
