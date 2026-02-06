@@ -115,6 +115,14 @@ export function getApprovedPullRequests(db: Database): PullRequestRow[] {
   `);
 }
 
+export function getOpenPullRequestsByStory(db: Database, storyId: string): PullRequestRow[] {
+  return queryAll<PullRequestRow>(db, `
+    SELECT * FROM pull_requests
+    WHERE story_id = ? AND status IN ('queued', 'reviewing')
+    ORDER BY created_at ASC
+  `, [storyId]);
+}
+
 export function getAllPullRequests(db: Database): PullRequestRow[] {
   return queryAll<PullRequestRow>(db, 'SELECT * FROM pull_requests ORDER BY created_at DESC');
 }

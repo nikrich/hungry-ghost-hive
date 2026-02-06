@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { execa } from 'execa';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase, queryAll } from '../../db/client.js';
-import { createPullRequest, getMergeQueue, getNextInQueue, getPullRequestById, updatePullRequest, getQueuePosition, } from '../../db/queries/pull-requests.js';
+import { createPullRequest, getMergeQueue, getNextInQueue, getPullRequestById, updatePullRequest, getQueuePosition, getOpenPullRequestsByStory, } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
 import { createLog } from '../../db/queries/logs.js';
@@ -39,6 +39,18 @@ prCommand
             const story = getStoryById(db.db, storyId);
             if (story) {
                 teamId = story.team_id;
+                // Auto-close any existing open PRs for this story
+                const existingPRs = getOpenPullRequestsByStory(db.db, storyId);
+                for (const existingPR of existingPRs) {
+                    updatePullRequest(db.db, existingPR.id, { status: 'closed' });
+                    createLog(db.db, {
+                        agentId: options.from || 'system',
+                        storyId,
+                        eventType: 'PR_CLOSED',
+                        message: `Auto-closed duplicate PR ${existingPR.id}`,
+                        metadata: { pr_id: existingPR.id, reason: 'duplicate' },
+                    });
+                }
                 // Update story status
                 updateStory(db.db, storyId, { status: 'pr_submitted' });
             }

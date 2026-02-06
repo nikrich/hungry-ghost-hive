@@ -80,6 +80,13 @@ export function getApprovedPullRequests(db) {
     ORDER BY created_at ASC
   `);
 }
+export function getOpenPullRequestsByStory(db, storyId) {
+    return queryAll(db, `
+    SELECT * FROM pull_requests
+    WHERE story_id = ? AND status IN ('queued', 'reviewing')
+    ORDER BY created_at ASC
+  `, [storyId]);
+}
 export function getAllPullRequests(db) {
     return queryAll(db, 'SELECT * FROM pull_requests ORDER BY created_at DESC');
 }
