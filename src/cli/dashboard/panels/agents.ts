@@ -5,6 +5,9 @@ import { spawnSync } from 'child_process';
 import { getActiveAgents, getAllAgents, updateAgent, type AgentRow } from '../../../db/queries/agents.js';
 import { getTeamById } from '../../../db/queries/teams.js';
 import { getHiveSessions } from '../../../tmux/manager.js';
+import { loadConfig } from '../../../config/loader.js';
+import { findHiveRoot, getHivePaths } from '../../../utils/paths.js';
+import type { ModelsConfig } from '../../../config/schema.js';
 
 function debugLog(msg: string) {
   appendFileSync('/tmp/hive-dashboard-debug.log', `${new Date().toISOString()} ${msg}\n`);
@@ -91,6 +94,22 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
   const agents = getActiveAgents(db);
   debugLog(`updateAgentsPanel called, found ${agents.length} agents, currentSelection=${currentSelection}`);
 
+  // Load config to get model version info
+  let versionMap: Record<string, string> = {};
+  try {
+    const root = findHiveRoot();
+    if (root) {
+      const paths = getHivePaths(root);
+      const config = loadConfig(paths.hiveDir);
+      const modelKeys = Object.keys(config.models) as (keyof ModelsConfig)[];
+      for (const key of modelKeys) {
+        versionMap[key] = config.models[key].model;
+      }
+    }
+  } catch (err) {
+    debugLog(`Failed to load config for version info: ${err}`);
+  }
+
   // Check for manager session (not in DB)
   const hiveSessions = await getHiveSessions();
   const managerSession = hiveSessions.find(s => s.name === 'hive-manager');
@@ -134,7 +153,7 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
   currentAgents = displayAgents; // Store for selection lookup
 
   // Format header
-  const header = formatRow('TYPE', 'REPO', 'STATUS', 'STORY', 'TMUX SESSION', true);
+  const header = formatRow('TYPE', 'MODEL', 'VERSION', 'REPO', 'STATUS', 'STORY', 'TMUX SESSION', true);
 
   if (displayAgents.length === 0) {
     currentAgents = [];
@@ -143,16 +162,22 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
     return;
   }
 
-  const rows = displayAgents.map((agent: DisplayAgent) =>
-    formatRow(
+  const rows = displayAgents.map((agent: DisplayAgent) => {
+    const model = agent.model || '-';
+    const version = agent.type === ('manager' as AgentRow['type'])
+      ? '-'
+      : versionMap[agent.type] || '-';
+    return formatRow(
       agent.type.toUpperCase(),
+      model,
+      version,
       agent.repo || '-',
       agent.status,
       agent.current_story_id || '-',
       agent.tmux_session || '-',
       false
-    )
-  );
+    );
+  });
 
   debugLog(`Setting data with ${rows.length} rows`);
   list.setItems([header, ...rows]);
@@ -199,9 +224,11 @@ async function syncAgentStatusWithTmux(db: Database): Promise<void> {
   }
 }
 
-function formatRow(type: string, repo: string, status: string, story: string, tmux: string, isHeader: boolean): string {
+function formatRow(type: string, model: string, version: string, repo: string, status: string, story: string, tmux: string, isHeader: boolean): string {
   // Fixed column widths
   const COL_TYPE = 14;
+  const COL_MODEL = 10;
+  const COL_VERSION = 16;
   const COL_REPO = 18;
   const COL_STATUS = 12;
   const COL_STORY = 14;
@@ -211,11 +238,15 @@ function formatRow(type: string, repo: string, status: string, story: string, tm
   const coloredStatus = colorizeStatus(status, statusText);
 
   // Truncate long values
+  const modelDisplay = model.length > COL_MODEL - 1 ? model.substring(0, COL_MODEL - 2) + '…' : model;
+  const versionDisplay = version.length > COL_VERSION - 1 ? version.substring(0, COL_VERSION - 2) + '…' : version;
   const repoDisplay = repo.length > COL_REPO - 1 ? repo.substring(0, COL_REPO - 2) + '…' : repo;
   const storyDisplay = story.length > COL_STORY - 1 ? story.substring(0, COL_STORY - 2) + '…' : story;
 
   const cols = [
     type.padEnd(COL_TYPE),
+    modelDisplay.padEnd(COL_MODEL),
+    versionDisplay.padEnd(COL_VERSION),
     repoDisplay.padEnd(COL_REPO),
     coloredStatus,
     storyDisplay.padEnd(COL_STORY),
@@ -223,7 +254,7 @@ function formatRow(type: string, repo: string, status: string, story: string, tm
   ];
 
   if (isHeader) {
-    return `{cyan-fg}{bold}${type.padEnd(COL_TYPE)}${repo.padEnd(COL_REPO)}${status.toUpperCase().padEnd(COL_STATUS)}${story.padEnd(COL_STORY)}${tmux}{/}`;
+    return `{cyan-fg}{bold}${type.padEnd(COL_TYPE)}${model.padEnd(COL_MODEL)}${version.padEnd(COL_VERSION)}${repo.padEnd(COL_REPO)}${status.toUpperCase().padEnd(COL_STATUS)}${story.padEnd(COL_STORY)}${tmux}{/}`;
   }
   return cols.join('');
 }
