@@ -118,9 +118,10 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
       await updateMergeQueuePanel(mergeQueuePanel, db.db);
       await updateEscalationsPanel(escalationsPanel, db.db);
       screen.render();
-    } catch (err) {
-      debugLog(`Refresh error: ${err}`);
-      process.stderr.write(`Dashboard refresh error: ${err}\n`);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      debugLog(`Refresh error: ${errMsg}`);
+      process.stderr.write(`Dashboard refresh error: ${errMsg}\n`);
     }
   };
 
