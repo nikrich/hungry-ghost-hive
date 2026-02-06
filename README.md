@@ -14,21 +14,69 @@ npm install -g hungry-ghost-hive
 
 ### For Contributors (Development Setup)
 
-If you want to contribute or run from source:
+#### Prerequisites
+
+Before setting up the development environment, ensure you have:
+
+- **Node.js 20.x or higher** (check with `node --version`)
+  - Recommended: Node 20.x LTS or latest stable
+  - Minimum: Node 18.x (see `engines` in package.json)
+- **npm 10.x or higher** (comes with Node.js)
+- **Git 2.x or higher** (check with `git --version`)
+- **tmux 3.x or higher** (required for agent sessions, check with `tmux -V`)
+  - On macOS: `brew install tmux`
+  - On Ubuntu/Debian: `sudo apt-get install tmux`
+  - On other systems: [https://github.com/tmux/tmux/wiki/Installing](https://github.com/tmux/tmux/wiki/Installing)
+- **Bash or Zsh shell** (for tmux session management)
+
+#### Environment Variables
+
+Create a `.env` file in the project root or export in your shell:
+
+```bash
+# Required for Claude agents
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Required for GPT-based agents
+export OPENAI_API_KEY="sk-..."
+
+# Required for GitHub PR creation and actions
+export GITHUB_TOKEN="ghp_..."
+```
+
+Alternatively, add these to your shell profile (`.bashrc`, `.zshrc`, etc.) for persistence.
+
+#### Installation Steps
 
 ```bash
 # Clone the repository
 git clone https://github.com/nikrich/hungry-ghost-hive.git
 cd hungry-ghost-hive
 
-# Install dependencies
+# Install dependencies (uses npm ci for reproducible builds)
 npm ci
 
-# Build the project
+# Build the TypeScript project
 npm run build
 
-# Create a symlink
+# Create a symlink for global access (optional, for development)
 npm link
+
+# Verify installation
+hive --version
+hive --help
+```
+
+#### Development Workflow
+
+For development with TypeScript compilation watching:
+
+```bash
+# Run in development mode with tsx (faster builds than npm run build)
+npm run dev
+
+# In another terminal, watch and rebuild on changes
+npm run build  # or use a TypeScript watcher
 ```
 
 ## Quick Start
@@ -67,6 +115,72 @@ hive dashboard
 # Check for escalations (agents asking for help)
 hive escalations list
 ```
+
+## Testing
+
+### Running Tests
+
+The project uses [Vitest](https://vitest.dev/) for testing.
+
+```bash
+# Run all tests once
+npm test
+
+# Run tests in watch mode (reruns on file changes)
+npm run test:watch
+
+# Run specific test file
+npm test src/config/schema.test.ts
+
+# Run tests matching a pattern
+npm test -- --grep "config"
+```
+
+### Code Quality Checks
+
+Before committing code, verify quality:
+
+```bash
+# Type checking (no compilation)
+npm run type-check
+
+# Linting with ESLint
+npm run lint
+
+# Full build (TypeScript compilation)
+npm run build
+```
+
+### Pre-commit Hooks
+
+The repository uses Husky and commitlint for automated quality checks. When you commit:
+
+1. Husky runs pre-commit hooks
+2. Code is linted and type-checked
+3. Conventional commit format is enforced
+
+If a commit fails checks, fix the issues and try again:
+
+```bash
+# Fix linting issues
+npm run lint  # See what's wrong
+# Fix manually or with eslint --fix
+
+# Then retry your commit
+git add .
+git commit -m "your message"
+```
+
+### Continuous Integration
+
+The CI pipeline (GitHub Actions) runs on every push and PR:
+- Node.js 20.x
+- Build: `npm run build`
+- Type check: `npm run type-check`
+- Lint: `npm run lint`
+- Tests: `npm test`
+
+All checks must pass before merging.
 
 ## How It Works
 
@@ -319,27 +433,233 @@ hive escalations resolve ESC-001 --message "Use OAuth2 with PKCE flow"
 
 ## Troubleshooting
 
-### Agents seem stuck
+### Setup Issues
+
+**Installation fails with Node version error**
 ```bash
-hive manager check   # Nudge all agents
-hive manager health  # Sync status with tmux
+# Check your Node version
+node --version  # Should be 20.x or higher
+
+# If too old, upgrade Node.js
+# macOS (using Homebrew)
+brew install node@20
+
+# Or use nvm (Node Version Manager)
+nvm install 20
+nvm use 20
 ```
 
-### Agent session died
+**tmux not found or incompatible**
 ```bash
-hive manager health  # Cleans up dead agents, respawns as needed
+# Check tmux version
+tmux -V  # Should be 3.x or higher
+
+# Install or upgrade tmux
+# macOS
+brew install tmux
+# or
+brew upgrade tmux
+
+# Ubuntu/Debian
+sudo apt-get install tmux
 ```
 
-### View agent logs
+**npm ci fails with permission errors**
 ```bash
-tmux attach -t hive-senior-alpha  # Attach to see what agent is doing
-# Detach with Ctrl+B, D
+# Clear npm cache
+npm cache clean --force
+
+# Reinstall dependencies
+npm ci
+
+# If still failing, try
+rm -rf node_modules package-lock.json
+npm install
 ```
 
-### Reset everything
+### Runtime Issues
+
+**Agents seem stuck or not progressing**
 ```bash
-hive nuke --all  # WARNING: Deletes all data
+# Check if manager is running
+hive manager status
+
+# Nudge all agents to check for work
+hive manager check
+
+# Sync agent status with tmux sessions (cleans up dead sessions)
+hive manager health
+
+# Manually start the manager
+hive manager start
 ```
+
+**Agent session died or became unresponsive**
+```bash
+# Automatically clean up dead sessions and respawn as needed
+hive manager health
+
+# Or manually restart the manager
+hive manager stop
+hive manager start
+```
+
+**Cannot connect to an agent's tmux session**
+```bash
+# List all tmux sessions
+tmux list-sessions
+
+# Attach to a specific agent session
+tmux attach -t hive-senior-alpha
+# Or: tmux attach -t hive-junior-beta-1
+
+# Detach from the session (without terminating it)
+# Press: Ctrl+B, D
+
+# Kill a specific session if needed
+tmux kill-session -t hive-junior-alpha-1
+```
+
+**Environment variables not being recognized**
+```bash
+# Verify variables are set
+echo $ANTHROPIC_API_KEY
+echo $GITHUB_TOKEN
+
+# If empty, export them
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GITHUB_TOKEN="ghp_..."
+
+# Or add to ~/.bashrc or ~/.zshrc for persistence
+echo 'export ANTHROPIC_API_KEY="..."' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Database & State Issues
+
+**Database is corrupted or in a bad state**
+```bash
+# View database location (in your workspace)
+# Usually at: ~/.hive/hive.db
+
+# Backup the database first
+cp ~/.hive/hive.db ~/.hive/hive.db.backup
+
+# Reset everything (WARNING: Irreversible)
+hive nuke --all
+
+# Reinitialize
+hive init
+```
+
+**Workspace not found or inaccessible**
+```bash
+# Ensure you're in the correct directory
+pwd
+
+# Verify .hive directory exists
+ls -la .hive/
+
+# Check permissions
+ls -ld .hive/
+chmod 755 .hive/
+```
+
+### Testing & Build Issues
+
+**Tests failing unexpectedly**
+```bash
+# Ensure Node version is correct
+node --version
+
+# Clear dependencies and reinstall
+rm -rf node_modules
+npm ci
+
+# Run tests with verbose output
+npm test -- --reporter=verbose
+
+# Run specific test file to isolate issues
+npm test src/config/schema.test.ts
+```
+
+**Build fails with TypeScript errors**
+```bash
+# Check for type errors
+npm run type-check
+
+# Try rebuilding from scratch
+rm -rf dist
+npm run build
+
+# Check for linting issues
+npm run lint
+```
+
+**Linting issues blocking commits**
+```bash
+# See all linting errors
+npm run lint
+
+# Automatically fix fixable issues
+npm run lint -- --fix
+
+# Then commit your changes
+git add .
+git commit -m "your message"
+```
+
+### Git & PR Issues
+
+**Cannot create a PR (GitHub token issues)**
+```bash
+# Verify GitHub token is set
+echo $GITHUB_TOKEN
+
+# Create a new token if needed
+# https://github.com/settings/tokens/new
+# Required scopes: repo, workflow
+
+# Export the token
+export GITHUB_TOKEN="ghp_..."
+```
+
+**Merge conflicts when pulling from main**
+```bash
+# Abort the merge if needed
+git merge --abort
+
+# Pull with rebase instead
+git pull --rebase origin main
+
+# If conflicts remain, resolve them manually
+git status  # See conflicted files
+# Edit files, then:
+git add .
+git rebase --continue
+```
+
+### Getting Help
+
+If you're still stuck:
+
+1. **Check the logs**
+   ```bash
+   # Agent conversation logs
+   ls -la .hive/logs/
+
+   # View specific agent log
+   cat .hive/logs/hive-senior-alpha.log
+   ```
+
+2. **View configuration**
+   ```bash
+   cat .hive/hive.config.yaml
+   ```
+
+3. **Report an issue**
+   - GitHub Issues: https://github.com/nikrich/hungry-ghost-hive/issues
+   - Include: Node version, tmux version, error messages, recent logs
 
 ## Environment Variables
 
@@ -382,6 +702,160 @@ git status  # MUST show "up to date with origin"
 5. Clean up (stashes, prune remote branches)
 6. Verify all changes committed AND pushed
 7. Hand off with context for next session
+
+## Glossary
+
+### Core Concepts
+
+**Agent**
+An AI-powered team member (Claude, GPT, etc.) that works autonomously on assigned tasks. Each agent has a specific role (Senior, Intermediate, Junior, QA, Tech Lead) and runs in its own tmux session.
+
+**Story**
+A discrete unit of work broken down by the Tech Lead. Stories have complexity ratings (1-13 points) and are assigned to developers based on their level. Examples: "Implement user authentication", "Fix login bug".
+
+**Complexity (Story Points)**
+A measure of task difficulty:
+- **1-3 points**: Junior developer work
+- **4-5 points**: Intermediate developer work
+- **6-13+ points**: Senior developer work
+- Helps with capacity planning and workload distribution
+
+**Requirement**
+A high-level user request submitted to the system. The Tech Lead analyzes requirements and breaks them into stories. Example: "Add OAuth2 authentication to the system".
+
+**PR (Pull Request)**
+A GitHub pull request containing code changes. Created by developers, reviewed by QA agents, and merged when approved.
+
+**Merge Queue**
+A queue of PRs waiting for QA review and approval. The Manager tracks PR status and spawns QA agents as needed.
+
+### Team Roles
+
+**Product Owner (You)**
+Submits requirements and guides the team. You monitor progress via the dashboard and resolve escalations.
+
+**Tech Lead**
+Senior AI agent (Claude Opus) that:
+- Analyzes requirements
+- Breaks work into stories
+- Coordinates across teams
+- Resolves complex escalations
+
+**Senior Developer**
+Mid-tier AI agent (Claude Sonnet) that:
+- Estimates story complexity
+- Plans implementation approach
+- Mentors Intermediate and Junior developers
+- Handles complex technical decisions
+
+**Intermediate Developer**
+Entry-level AI agent (Claude Haiku) that:
+- Implements medium-complexity stories (4-5 points)
+- Writes code and tests
+- Escalates to Senior when stuck
+
+**Junior Developer**
+Trainee AI agent (GPT-4 mini) that:
+- Implements simple stories (1-3 points)
+- Writes basic code
+- Learns from Senior feedback
+
+**QA Agent**
+Quality assurance AI agent (Claude Sonnet) that:
+- Reviews code
+- Runs tests and checks
+- Validates PR quality
+- Approves or rejects PRs
+
+**Manager (Micromanager)**
+Daemon process that:
+- Monitors agent health
+- Nudges idle agents
+- Spawns QA agents when PRs are ready
+- Forwards messages between agents
+- Manages the merge queue
+
+### Workflow States
+
+**Draft**
+Initial story state, being prepared by Tech Lead.
+
+**Estimated**
+Story has been reviewed by Senior for complexity and feasibility.
+
+**Planned**
+Senior has created an implementation plan.
+
+**In Progress**
+Developer is actively working on the story.
+
+**Review**
+Code is ready for peer/QA review.
+
+**QA**
+Quality assurance agents are testing the PR.
+
+**QA Failed**
+QA found issues; PR returns to developer.
+
+**PR Submitted**
+PR is in the merge queue awaiting final approval.
+
+**Merged**
+PR has been merged to main; story is complete.
+
+### Technical Terms
+
+**tmux**
+Terminal multiplexer that allows multiple sessions to run simultaneously. Each agent runs in its own tmux session. Used for real-time monitoring and interaction.
+
+**Story State Database**
+SQLite database (`hive.db`) that tracks all story states, agent assignments, and workflow history.
+
+**Escalation**
+When an agent gets stuck and needs help:
+- Junior → Senior
+- Senior → Tech Lead
+- Tech Lead → Product Owner
+
+**Message Queue**
+System for asynchronous communication between agents. Agents can send messages and check their inbox.
+
+**Complexity Scaling**
+Automatic workload distribution based on story complexity and agent capacity. Ensures work is matched to appropriate skill levels.
+
+**Configuration (hive.config.yaml)**
+YAML file that defines:
+- AI model assignments for each role
+- Complexity thresholds
+- QA check commands
+- Build and test commands
+
+### Tools & Technologies
+
+**CLI**
+Command-line interface. The main way to interact with Hive system. Commands start with `hive`.
+
+**GitHub**
+Repository hosting and PR management platform. Hive creates PRs and manages code reviews via GitHub.
+
+**tmux Sessions**
+Named terminal sessions where agents run. Format: `hive-<role>-<team>-<instance>`. Example: `hive-senior-alpha`, `hive-junior-beta-1`.
+
+**Dashboard**
+Real-time TUI (Terminal User Interface) showing agent activity, story progress, and system status.
+
+**Vitest**
+Testing framework used for unit tests. Runs with `npm test`.
+
+**ESLint**
+Code linting tool that enforces code quality and style. Configured in `eslint.config.js`.
+
+**TypeScript**
+Strongly-typed JavaScript. Source code in `src/`, compiled to `dist/`.
+
+**Beads (bd)**
+Issue tracking tool. Complementary to story-based workflow for smaller tasks and bugs.
 
 ## License
 
