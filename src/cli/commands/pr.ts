@@ -20,6 +20,7 @@ import { join } from 'path';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { sendToTmuxSession, isTmuxSessionRunning } from '../../tmux/manager.js';
+import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
 
 export const prCommand = new Command('pr')
   .description('Manage pull requests and merge queue');
@@ -373,9 +374,22 @@ prCommand
 
       db.save();
 
+      // Immediately attempt to auto-merge approved PRs instead of waiting for manager daemon cycle
+      if (newStatus === 'approved') {
+        console.log(chalk.gray('Attempting immediate auto-merge...'));
+        const merged = await autoMergeApprovedPRs(root, db);
+        if (merged > 0) {
+          console.log(chalk.green(`✓ Auto-merged ${merged} approved PR(s) immediately`));
+        } else {
+          console.log(chalk.gray('Auto-merge will be retried by manager daemon'));
+        }
+      }
+
       if (!actuallyMerged && shouldMerge) {
         console.log(chalk.green(`PR ${prId} approved.`));
-        console.log(chalk.gray('Manual merge is needed on GitHub.'));
+        if (newStatus !== 'merged') {
+          console.log(chalk.gray('PR will be auto-merged when checks pass.'));
+        }
       } else if (!shouldMerge) {
         console.log(chalk.green(`PR ${prId} approved.`));
         console.log(chalk.gray('Manual merge is needed.'));

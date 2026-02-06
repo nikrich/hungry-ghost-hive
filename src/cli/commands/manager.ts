@@ -6,7 +6,7 @@ import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
-import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests, updatePullRequest, backfillGithubPrNumbers } from '../../db/queries/pull-requests.js';
+import { getMergeQueue, getPullRequestsByStatus, backfillGithubPrNumbers } from '../../db/queries/pull-requests.js';
 import { markMessagesRead, getAllPendingMessages, type MessageRow } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
 import { getAgentById, updateAgent, getAllAgents } from '../../db/queries/agents.js';
@@ -21,6 +21,7 @@ import { acquireLock } from '../../db/lock.js';
 import { join } from 'path';
 import { detectClaudeCodeState, getStateDescription, ClaudeCodeState } from '../../utils/claude-code-state.js';
 import { getAvailableCommands, buildAutoRecoveryReminder, type CLITool } from '../../utils/cli-commands.js';
+import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
 
 // Agent state tracking for nudge logic
 interface AgentStateTracking {
@@ -871,87 +872,4 @@ async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string)
   return synced;
 }
 
-async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Promise<number> {
-  const approvedPRs = getApprovedPullRequests(db.db);
-  if (approvedPRs.length === 0) return 0;
-
-  let mergedCount = 0;
-
-  for (const pr of approvedPRs) {
-    // Skip PRs without GitHub PR numbers
-    if (!pr.github_pr_number) continue;
-
-    try {
-      // Get team to find repo path
-      let teamId = pr.team_id;
-      let repoCwd = root;
-
-      if (teamId) {
-        const team = getAllTeams(db.db).find(t => t.id === teamId);
-        if (team?.repo_path) {
-          repoCwd = join(root, team.repo_path);
-        }
-      } else if (pr.branch_name) {
-        // Try to find team by matching branch name pattern
-        const teams = getAllTeams(db.db);
-        for (const team of teams) {
-          if (team.repo_path) {
-            repoCwd = join(root, team.repo_path);
-            teamId = team.id;
-            break;
-          }
-        }
-      }
-
-      // Attempt to merge on GitHub
-      const { execSync } = await import('child_process');
-      try {
-        execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
-
-        // Update PR and story status, create logs (atomic transaction)
-        const storyId = pr.story_id;
-        await withTransaction(db.db, () => {
-          updatePullRequest(db.db, pr.id, { status: 'merged' });
-
-          if (storyId) {
-            updateStory(db.db, storyId, { status: 'merged' });
-            createLog(db.db, {
-              agentId: 'manager',
-              storyId: storyId,
-              eventType: 'STORY_MERGED',
-              message: `Story auto-merged from GitHub PR #${pr.github_pr_number}`,
-            });
-          } else {
-            createLog(db.db, {
-              agentId: 'manager',
-              eventType: 'PR_MERGED',
-              message: `PR ${pr.id} auto-merged (GitHub PR #${pr.github_pr_number})`,
-              metadata: { pr_id: pr.id },
-            });
-          }
-        });
-
-        mergedCount++;
-      } catch (mergeErr) {
-        // Log merge failure but continue with other PRs
-        createLog(db.db, {
-          agentId: 'manager',
-          storyId: pr.story_id || undefined,
-          eventType: 'PR_MERGE_FAILED',
-          status: 'error',
-          message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${mergeErr instanceof Error ? mergeErr.message : 'Unknown error'}`,
-          metadata: { pr_id: pr.id },
-        });
-      }
-    } catch {
-      // Non-fatal - continue with other PRs
-      continue;
-    }
-  }
-
-  if (mergedCount > 0) {
-    db.save();
-  }
-
-  return mergedCount;
-}
+// autoMergeApprovedPRs moved to src/utils/auto-merge.ts for reuse in pr.ts
