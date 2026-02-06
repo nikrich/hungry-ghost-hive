@@ -95,7 +95,7 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
   debugLog(`updateAgentsPanel called, found ${agents.length} agents, currentSelection=${currentSelection}`);
 
   // Load config to get model version info
-  let versionMap: Record<string, string> = {};
+  const versionMap: Record<string, string> = {};
   try {
     const root = findHiveRoot();
     if (root) {
