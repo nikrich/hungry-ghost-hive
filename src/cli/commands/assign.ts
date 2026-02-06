@@ -85,14 +85,17 @@ export const assignCommand = new Command('assign')
       // Check scaling first (spawns additional seniors if needed)
       spinner.text = 'Checking team scaling...';
       await scheduler.checkScaling();
+      db.save(); // Save immediately to prevent race condition with manager daemon
 
       // Check merge queue (spawns QA agents if needed)
       spinner.text = 'Checking merge queue...';
       await scheduler.checkMergeQueue();
+      db.save(); // Save immediately to prevent race condition with manager daemon
 
       // Assign stories to agents
       spinner.text = 'Assigning stories to agents...';
       const result = await scheduler.assignStories();
+      db.save(); // Save immediately to prevent race condition with manager daemon
 
       if (result.errors.length > 0) {
         spinner.warn(chalk.yellow(`Assigned ${result.assigned} stories with ${result.errors.length} errors`));
