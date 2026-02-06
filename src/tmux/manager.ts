@@ -1,8 +1,5 @@
 import { execa } from 'execa';
 
-// Default timeout for tmux commands to prevent hangs (10 seconds)
-const TMUX_TIMEOUT_MS = 10000;
-
 export interface TmuxSessionOptions {
   sessionName: string;
   workDir: string;
@@ -19,7 +16,7 @@ export interface TmuxSession {
 
 export async function isTmuxAvailable(): Promise<boolean> {
   try {
-    await execa('which', ['tmux'], { timeout: TMUX_TIMEOUT_MS });
+    await execa('which', ['tmux']);
     return true;
   } catch {
     return false;
@@ -28,7 +25,7 @@ export async function isTmuxAvailable(): Promise<boolean> {
 
 export async function isTmuxSessionRunning(sessionName: string): Promise<boolean> {
   try {
-    await execa('tmux', ['has-session', '-t', sessionName], { timeout: TMUX_TIMEOUT_MS });
+    await execa('tmux', ['has-session', '-t', sessionName]);
     return true;
   } catch {
     return false;
@@ -41,7 +38,7 @@ export async function listTmuxSessions(): Promise<TmuxSession[]> {
       'list-sessions',
       '-F',
       '#{session_name}|#{session_windows}|#{session_created}|#{session_attached}',
-    ], { timeout: TMUX_TIMEOUT_MS });
+    ]);
 
     return stdout.split('\n').filter(Boolean).map(line => {
       const [name, windows, created, attached] = line.split('|');
@@ -78,7 +75,7 @@ export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<voi
     '-c', workDir,
   ];
 
-  const execaOptions: { env?: NodeJS.ProcessEnv; timeout: number } = { timeout: TMUX_TIMEOUT_MS };
+  const execaOptions: { env?: NodeJS.ProcessEnv } = {};
   if (env) {
     execaOptions.env = { ...process.env, ...env };
   }
@@ -90,13 +87,13 @@ export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<voi
 
   // Send the command to the session
   if (command) {
-    await execa('tmux', ['send-keys', '-t', sessionName, command, 'Enter'], { timeout: TMUX_TIMEOUT_MS });
+    await execa('tmux', ['send-keys', '-t', sessionName, command, 'Enter']);
   }
 }
 
 export async function killTmuxSession(sessionName: string): Promise<void> {
   try {
-    await execa('tmux', ['kill-session', '-t', sessionName], { timeout: TMUX_TIMEOUT_MS });
+    await execa('tmux', ['kill-session', '-t', sessionName]);
   } catch {
     // Session might not exist, ignore error
   }
@@ -123,9 +120,9 @@ export async function sendToTmuxSession(sessionName: string, text: string, clear
     // Clear any existing input at the prompt before sending new text
     // Escape: exit any menu/selection state
     // Ctrl+U: clear line from cursor to beginning
-    await execa('tmux', ['send-keys', '-t', sessionName, 'Escape'], { timeout: TMUX_TIMEOUT_MS });
+    await execa('tmux', ['send-keys', '-t', sessionName, 'Escape']);
     await new Promise(resolve => setTimeout(resolve, 50));
-    await execa('tmux', ['send-keys', '-t', sessionName, 'C-u'], { timeout: TMUX_TIMEOUT_MS });
+    await execa('tmux', ['send-keys', '-t', sessionName, 'C-u']);
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 
@@ -136,9 +133,9 @@ export async function sendToTmuxSession(sessionName: string, text: string, clear
       if (line.trim()) {
         // Use send-keys with literal flag to handle special characters
         // '--' signals end of options, preventing lines starting with '-' from being parsed as flags
-        await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', line], { timeout: TMUX_TIMEOUT_MS });
+        await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', line]);
         // Send Enter as a key event, not as literal text, to ensure prompt receives it
-        await execa('tmux', ['send-keys', '-t', sessionName, 'C-m'], { timeout: TMUX_TIMEOUT_MS });
+        await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
         // Small delay between lines to ensure they're processed
         await new Promise(resolve => setTimeout(resolve, 100));
       }
@@ -146,15 +143,15 @@ export async function sendToTmuxSession(sessionName: string, text: string, clear
   } else {
     // For single-line text, use send-keys with literal flag then Enter separately
     // '--' signals end of options, preventing text starting with '-' from being parsed as flags
-    await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', text], { timeout: TMUX_TIMEOUT_MS });
+    await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', text]);
     // Send Enter as a key event (C-m = carriage return = Enter) to ensure prompt receives it
-    await execa('tmux', ['send-keys', '-t', sessionName, 'C-m'], { timeout: TMUX_TIMEOUT_MS });
+    await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
   }
 }
 
 export async function sendEnterToTmuxSession(sessionName: string): Promise<void> {
   // C-m is equivalent to Enter/Return
-  await execa('tmux', ['send-keys', '-t', sessionName, 'C-m'], { timeout: TMUX_TIMEOUT_MS });
+  await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
 }
 
 export async function captureTmuxPane(sessionName: string, lines = 100): Promise<string> {
@@ -164,7 +161,7 @@ export async function captureTmuxPane(sessionName: string, lines = 100): Promise
       '-t', sessionName,
       '-p',
       '-S', `-${lines}`,
-    ], { timeout: TMUX_TIMEOUT_MS });
+    ]);
     return stdout;
   } catch {
     return '';
@@ -241,7 +238,7 @@ export async function forceBypassMode(
     if (output.toLowerCase().includes('plan mode on')) {
       // Send BTab (Shift+Tab / backtab) to cycle permissions mode
       // For Claude Code, BTab cycles through: plan -> safe -> bypass -> plan
-      await execa('tmux', ['send-keys', '-t', sessionName, 'BTab'], { timeout: TMUX_TIMEOUT_MS });
+      await execa('tmux', ['send-keys', '-t', sessionName, 'BTab']);
 
       // Wait for the mode change to take effect
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -252,7 +249,7 @@ export async function forceBypassMode(
 
     // If neither plan mode nor bypass mode is detected, try cycling anyway
     // This handles cases where the mode indicator might not be visible
-    await execa('tmux', ['send-keys', '-t', sessionName, 'BTab'], { timeout: TMUX_TIMEOUT_MS });
+    await execa('tmux', ['send-keys', '-t', sessionName, 'BTab']);
     await new Promise(resolve => setTimeout(resolve, 500));
 
     retries++;
@@ -315,6 +312,61 @@ export async function sendMessageWithConfirmation(
   return false;
 }
 
+/**
+ * Automatically approve permission prompts by sending 'y' or appropriate response.
+ * Detects permission prompts in tmux pane output and auto-approves them.
+ * @param sessionName - Tmux session name to auto-approve
+ * @param maxRetries - Maximum attempts to detect and approve prompt
+ * @returns true if permission was approved, false if approval failed or no prompt detected
+ */
+export async function autoApprovePermission(
+  sessionName: string,
+  maxRetries = 3
+): Promise<boolean> {
+  let retries = 0;
+
+  while (retries < maxRetries) {
+    // Capture pane output to check for permission prompts
+    const output = await captureTmuxPane(sessionName, 100);
+
+    // Check for common permission prompt patterns
+    const permissionPatterns = [
+      /Do you want to make this edit\?.*\[y\/n\]/i,
+      /Do you want to .+\?.*\[y\/n\]/i,
+      /Would you like to .+\?.*\[y\/n\]/i,
+      /Allow .+\?.*\[y\/n\]/i,
+      /Approve .+\?.*\[y\/n\]/i,
+      /permission.*required/i,
+    ];
+
+    const hasPermissionPrompt = permissionPatterns.some(pattern => pattern.test(output));
+
+    if (!hasPermissionPrompt) {
+      // No permission prompt detected
+      return false;
+    }
+
+    // Send 'y' to approve the permission
+    await execa('tmux', ['send-keys', '-t', sessionName, 'y', 'Enter']);
+
+    // Wait for response to process
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Check if the prompt is gone (approval succeeded)
+    const newOutput = await captureTmuxPane(sessionName, 100);
+    const promptGone = !permissionPatterns.some(pattern => pattern.test(newOutput));
+
+    if (promptGone) {
+      return true; // Successfully approved
+    }
+
+    retries++;
+  }
+
+  // Max retries exceeded
+  return false;
+}
+
 export function generateSessionName(agentType: string, teamName?: string, index?: number): string {
   let name = `hive-${agentType}`;
   if (teamName) {
@@ -342,7 +394,7 @@ export async function startManager(interval = 60): Promise<boolean> {
     'new-session',
     '-d',
     '-s', MANAGER_SESSION,
-  ], { timeout: TMUX_TIMEOUT_MS });
+  ]);
 
   // Send the manager command
   await execa('tmux', [
@@ -350,7 +402,7 @@ export async function startManager(interval = 60): Promise<boolean> {
     '-t', MANAGER_SESSION,
     `hive manager start -i ${interval}`,
     'Enter',
-  ], { timeout: TMUX_TIMEOUT_MS });
+  ]);
 
   return true;
 }
