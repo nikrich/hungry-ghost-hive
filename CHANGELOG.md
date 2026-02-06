@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.13.0...v0.13.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* correct license from MIT to Proprietary across README ([a1b9a08](https://github.com/nikrich/hungry-ghost-hive/commit/a1b9a08792032c30327f88784b3a9c2213462586))
+* Correct license references from MIT to Proprietary ([e80ddb5](https://github.com/nikrich/hungry-ghost-hive/commit/e80ddb57c7da68867b0d76546395a58b1edfd664))
+
 ## [0.13.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.12.0...v0.13.0) (2026-02-06)
 
 
