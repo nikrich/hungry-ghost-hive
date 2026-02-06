@@ -17,7 +17,7 @@ export function generateContextFileContent(options: ContextFileOptions): string 
   // Get the appropriate template for the CLI tool
   let template: (options: ContextFileOptions) => string;
   switch (cliTool) {
-    case 'claude-code':
+    case 'claude':
       template = claudeCodeTemplate;
       break;
     case 'codex':

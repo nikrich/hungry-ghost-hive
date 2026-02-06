@@ -29,8 +29,8 @@ describe('context-files module', () => {
   });
 
   describe('getContextFileName', () => {
-    it('should return CLAUDE.md for claude-code', () => {
-      expect(getContextFileName('claude-code')).toBe('CLAUDE.md');
+    it('should return CLAUDE.md for claude', () => {
+      expect(getContextFileName('claude')).toBe('CLAUDE.md');
     });
 
     it('should return AGENTS.md for codex', () => {
@@ -44,12 +44,12 @@ describe('context-files module', () => {
 
   describe('getContextFilePath', () => {
     it('should construct correct file path', () => {
-      const path = getContextFilePath('/repos/service-a', 'claude-code');
+      const path = getContextFilePath('/repos/service-a', 'claude');
       expect(path).toBe('/repos/service-a/CLAUDE.md');
     });
 
     it('should work for different CLI tools', () => {
-      const claudePath = getContextFilePath('/repo', 'claude-code');
+      const claudePath = getContextFilePath('/repo', 'claude');
       const codexPath = getContextFilePath('/repo', 'codex');
       const geminiPath = getContextFilePath('/repo', 'gemini');
 
@@ -61,15 +61,15 @@ describe('context-files module', () => {
 
   describe('contextFileExists', () => {
     it('should return false when file does not exist', () => {
-      expect(contextFileExists(testDir, 'claude-code')).toBe(false);
+      expect(contextFileExists(testDir, 'claude')).toBe(false);
     });
 
     it('should return true when file exists', () => {
-      const filePath = getContextFilePath(testDir, 'claude-code');
+      const filePath = getContextFilePath(testDir, 'claude');
       mkdirSync(testDir, { recursive: true });
       require('fs').writeFileSync(filePath, 'test content');
 
-      expect(contextFileExists(testDir, 'claude-code')).toBe(true);
+      expect(contextFileExists(testDir, 'claude')).toBe(true);
     });
   });
 
@@ -128,7 +128,7 @@ describe('context-files module', () => {
     it('should create a new context file if it does not exist', () => {
       const team = { ...mockTeam, repo_path: testDir };
       const options: ContextFileOptions = {
-        cliTool: 'claude-code',
+        cliTool: 'claude',
         team,
         stories: [mockStory],
         agentType: 'intermediate',
@@ -138,8 +138,8 @@ describe('context-files module', () => {
 
       generateContextFile(options);
 
-      expect(contextFileExists(testDir, 'claude-code')).toBe(true);
-      const content = readFileSync(getContextFilePath(testDir, 'claude-code'), 'utf-8');
+      expect(contextFileExists(testDir, 'claude')).toBe(true);
+      const content = readFileSync(getContextFilePath(testDir, 'claude'), 'utf-8');
       expect(content).toContain('<!-- HIVE:START -->');
       expect(content).toContain('<!-- HIVE:END -->');
       expect(content).toContain('STORY-001');
@@ -148,7 +148,7 @@ describe('context-files module', () => {
     it('should include story information in generated file', () => {
       const team = { ...mockTeam, repo_path: testDir };
       const options: ContextFileOptions = {
-        cliTool: 'claude-code',
+        cliTool: 'claude',
         team,
         stories: [mockStory],
         agentType: 'senior',
@@ -157,7 +157,7 @@ describe('context-files module', () => {
 
       generateContextFile(options);
 
-      const content = readFileSync(getContextFilePath(testDir, 'claude-code'), 'utf-8');
+      const content = readFileSync(getContextFilePath(testDir, 'claude'), 'utf-8');
       expect(content).toContain('STORY-001');
       expect(content).toContain('Implement authentication');
       expect(content).toContain('OAuth2');
@@ -166,7 +166,7 @@ describe('context-files module', () => {
     it('should generate different content for different CLI tools', () => {
       const team = { ...mockTeam, repo_path: testDir };
       const baseOptions: ContextFileOptions = {
-        cliTool: 'claude-code',
+        cliTool: 'claude',
         team,
         stories: [mockStory],
         agentType: 'intermediate',
@@ -174,8 +174,8 @@ describe('context-files module', () => {
       };
 
       // Generate for Claude Code
-      generateContextFile({ ...baseOptions, cliTool: 'claude-code' });
-      const claudeContent = readFileSync(getContextFilePath(testDir, 'claude-code'), 'utf-8');
+      generateContextFile({ ...baseOptions, cliTool: 'claude' });
+      const claudeContent = readFileSync(getContextFilePath(testDir, 'claude'), 'utf-8');
 
       // Clean up and generate for Codex
       rmSync(testDir, { recursive: true, force: true });
@@ -193,7 +193,7 @@ describe('context-files module', () => {
 
     it('should update existing file preserving content outside markers', () => {
       const team = { ...mockTeam, repo_path: testDir };
-      const filePath = getContextFilePath(testDir, 'claude-code');
+      const filePath = getContextFilePath(testDir, 'claude');
 
       // Write initial file with custom content
       mkdirSync(testDir, { recursive: true });
@@ -213,7 +213,7 @@ More custom content here.`;
 
       // Generate new context
       const options: ContextFileOptions = {
-        cliTool: 'claude-code',
+        cliTool: 'claude',
         team,
         stories: [mockStory],
         agentType: 'junior',
@@ -239,7 +239,7 @@ More custom content here.`;
 
     it('should append Hive section if markers do not exist', () => {
       const team = { ...mockTeam, repo_path: testDir };
-      const filePath = getContextFilePath(testDir, 'claude-code');
+      const filePath = getContextFilePath(testDir, 'claude');
 
       // Write initial file without markers
       mkdirSync(testDir, { recursive: true });
@@ -248,7 +248,7 @@ More custom content here.`;
 
       // Generate context
       const options: ContextFileOptions = {
-        cliTool: 'claude-code',
+        cliTool: 'claude',
         team,
         stories: [mockStory],
         agentType: 'qa',
@@ -271,7 +271,7 @@ More custom content here.`;
     it('should work with empty stories list', () => {
       const team = { ...mockTeam, repo_path: testDir };
       const options: ContextFileOptions = {
-        cliTool: 'claude-code',
+        cliTool: 'claude',
         team,
         stories: [],
         agentType: 'senior',
@@ -280,7 +280,7 @@ More custom content here.`;
 
       generateContextFile(options);
 
-      const content = readFileSync(getContextFilePath(testDir, 'claude-code'), 'utf-8');
+      const content = readFileSync(getContextFilePath(testDir, 'claude'), 'utf-8');
       expect(content).toContain('<!-- HIVE:START -->');
       expect(content).toContain('No active stories');
     });
@@ -288,7 +288,7 @@ More custom content here.`;
     it('should include quality check commands from config', () => {
       const team = { ...mockTeam, repo_path: testDir };
       const options: ContextFileOptions = {
-        cliTool: 'claude-code',
+        cliTool: 'claude',
         team,
         stories: [mockStory],
         agentType: 'intermediate',
@@ -297,7 +297,7 @@ More custom content here.`;
 
       generateContextFile(options);
 
-      const content = readFileSync(getContextFilePath(testDir, 'claude-code'), 'utf-8');
+      const content = readFileSync(getContextFilePath(testDir, 'claude'), 'utf-8');
       expect(content).toContain('npm run lint');
       expect(content).toContain('npm run type-check');
       expect(content).toContain('npm run build');
@@ -307,7 +307,7 @@ More custom content here.`;
       const team = { ...mockTeam, repo_path: testDir };
       const agentId = 'intermediate-abc123def456';
       const options: ContextFileOptions = {
-        cliTool: 'claude-code',
+        cliTool: 'claude',
         team,
         stories: [mockStory],
         agentType: 'intermediate',
@@ -317,7 +317,7 @@ More custom content here.`;
 
       generateContextFile(options);
 
-      const content = readFileSync(getContextFilePath(testDir, 'claude-code'), 'utf-8');
+      const content = readFileSync(getContextFilePath(testDir, 'claude'), 'utf-8');
       expect(content).toContain(agentId);
     });
   });

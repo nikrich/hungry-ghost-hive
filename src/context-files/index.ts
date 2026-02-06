@@ -7,7 +7,7 @@ import type { TeamRow } from '../db/queries/teams.js';
 import type { HiveConfig } from '../config/schema.js';
 import { generateContextFileContent } from './generator.js';
 
-export type CLITool = 'claude-code' | 'codex' | 'gemini';
+export type CLITool = 'claude' | 'codex' | 'gemini';
 
 export interface ContextFileOptions {
   cliTool: CLITool;
@@ -23,7 +23,7 @@ export interface ContextFileOptions {
  */
 export function getContextFileName(cliTool: CLITool): string {
   switch (cliTool) {
-    case 'claude-code':
+    case 'claude':
       return 'CLAUDE.md';
     case 'codex':
       return 'AGENTS.md';
