@@ -283,6 +283,79 @@ export class Scheduler {
         return { assigned, errors };
     }
     /**
+     * Preview story assignments without making changes
+     * Returns the same data structure as assignStories for dry-run display
+     */
+    previewAssignments() {
+        const plannedStories = getPlannedStories(this.db);
+        const errors = [];
+        const assignments = [];
+        let assigned = 0;
+        // Topological sort stories to respect dependencies
+        const sortedStories = this.topologicalSort(plannedStories);
+        if (sortedStories === null) {
+            errors.push('Circular dependency detected in planned stories');
+            return { assigned, assignments, errors };
+        }
+        // Group stories by team
+        const storiesByTeam = new Map();
+        for (const story of sortedStories) {
+            if (!story.team_id)
+                continue;
+            const existing = storiesByTeam.get(story.team_id) || [];
+            existing.push(story);
+            storiesByTeam.set(story.team_id, existing);
+        }
+        // Process each team
+        for (const [teamId, stories] of storiesByTeam) {
+            const team = getTeamById(this.db, teamId);
+            if (!team)
+                continue;
+            // Get available agents for this team
+            const agents = getAgentsByTeam(this.db, teamId)
+                .filter(a => a.status === 'idle' && a.type !== 'qa');
+            // Find a Senior (or note if one needs to be spawned)
+            let senior = agents.find(a => a.type === 'senior');
+            if (!senior) {
+                // Create a placeholder for preview purposes
+                senior = { type: 'senior' };
+            }
+            // Assign stories based on complexity
+            for (const story of stories) {
+                // Check if dependencies are satisfied before assigning
+                if (!this.areDependenciesSatisfied(story.id)) {
+                    continue;
+                }
+                const complexity = story.complexity_score || 5;
+                let targetAgentType;
+                if (complexity <= this.config.scaling.junior_max_complexity) {
+                    const juniors = agents.filter(a => a.type === 'junior' && a.status === 'idle');
+                    targetAgentType = juniors.length > 0 ? 'junior' : undefined;
+                    if (!targetAgentType) {
+                        targetAgentType = agents.some(a => a.type === 'intermediate' && a.status === 'idle') ? 'intermediate' : 'senior';
+                    }
+                }
+                else if (complexity <= this.config.scaling.intermediate_max_complexity) {
+                    const intermediates = agents.filter(a => a.type === 'intermediate' && a.status === 'idle');
+                    targetAgentType = intermediates.length > 0 ? 'intermediate' : undefined;
+                    if (!targetAgentType) {
+                        targetAgentType = 'senior';
+                    }
+                }
+                else {
+                    targetAgentType = 'senior';
+                }
+                if (!targetAgentType) {
+                    errors.push(`No available agent for story ${story.id}`);
+                    continue;
+                }
+                assignments.push({ storyId: story.id, agentType: targetAgentType });
+                assigned++;
+            }
+        }
+        return { assigned, assignments, errors };
+    }
+    /**
      * Get the next story to work on for a specific agent
      */
     getNextStoryForAgent(agentId) {

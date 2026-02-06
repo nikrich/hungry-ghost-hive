@@ -52,6 +52,18 @@ export declare class Scheduler {
         errors: string[];
     }>;
     /**
+     * Preview story assignments without making changes
+     * Returns the same data structure as assignStories for dry-run display
+     */
+    previewAssignments(): {
+        assigned: number;
+        assignments: Array<{
+            storyId: string;
+            agentType: string;
+        }>;
+        errors: string[];
+    };
+    /**
      * Get the next story to work on for a specific agent
      */
     getNextStoryForAgent(agentId: string): StoryRow | null;

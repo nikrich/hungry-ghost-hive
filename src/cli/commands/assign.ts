@@ -24,17 +24,43 @@ export const assignCommand = new Command('assign')
     try {
       const config = loadConfig(paths.hiveDir);
 
-      if (options.dryRun) {
-        spinner.info(chalk.yellow('Dry run - no changes will be made'));
-        // TODO: Add dry run logic
-        return;
-      }
-
       const scheduler = new Scheduler(db.db, {
         scaling: config.scaling,
         models: config.models,
         rootDir: root,
       });
+
+      if (options.dryRun) {
+        spinner.text = chalk.yellow('Previewing story assignments...');
+        const preview = scheduler.previewAssignments();
+
+        spinner.stop();
+        console.log();
+        console.log(chalk.cyan.bold('Assignment Preview (dry run - no changes made)'));
+        console.log(chalk.gray('═'.repeat(60)));
+
+        if (preview.assigned === 0) {
+          console.log(chalk.gray('No stories to assign'));
+        } else {
+          console.log(chalk.green(`\n${preview.assigned} stories would be assigned:\n`));
+          for (const assignment of preview.assignments) {
+            console.log(chalk.cyan(`  • ${assignment.storyId}`));
+            console.log(chalk.gray(`    → ${assignment.agentType.toUpperCase()} agent\n`));
+          }
+        }
+
+        if (preview.errors.length > 0) {
+          console.log(chalk.yellow('\nWarnings:'));
+          for (const error of preview.errors) {
+            console.log(chalk.yellow(`  ⚠ ${error}`));
+          }
+        }
+
+        console.log();
+        console.log(chalk.gray('Run without --dry-run to apply these assignments.'));
+        console.log();
+        return;
+      }
 
       // Check scaling first (spawns additional seniors if needed)
       spinner.text = 'Checking team scaling...';
