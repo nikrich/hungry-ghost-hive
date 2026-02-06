@@ -86,7 +86,11 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       current_story_id: null,
       memory_state: null,
       last_seen: null,
+<<<<<<< HEAD
       cli_tool: 'claude',
+=======
+      cli_tool: 'hive',
+>>>>>>> df28695 (fix: resolve test failures after rebase on main)
       worktree_path: null,
       created_at: '2024-01-01',
       updated_at: '2024-01-01',
@@ -292,10 +296,17 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       const agentAny = agent as any;
       await agentAny.chat('Test message');
 
+<<<<<<< HEAD
       const result = queryOne<{ memory_state: string }>(db, 'SELECT memory_state FROM agents WHERE id = ?', [agentRow.id]);
       const memoryState = JSON.parse(result!.memory_state);
       expect(memoryState.conversationSummary).toBe('Checkpoint summary');
       expect(memoryState.checkpointTokens).toBe(11000);
+=======
+      const result = queryOne<{ memory_state: string | null }>(db, 'SELECT memory_state FROM agents WHERE id = ?', [agentRow.id]);
+      const memoryState = result?.memory_state ? JSON.parse(result.memory_state) : null;
+      expect(memoryState?.conversationSummary).toBe('Checkpoint summary');
+      expect(memoryState?.checkpointTokens).toBe(11000);
+>>>>>>> df28695 (fix: resolve test failures after rebase on main)
     });
 
     it('should reset messages after checkpoint but keep context', async () => {
@@ -397,8 +408,14 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 
       await expect(agentAny.chat('Test')).rejects.toThrow();
 
+<<<<<<< HEAD
       const events = queryAll<{ event_type: string }>(db, 'SELECT event_type FROM agent_logs WHERE agent_id = ?', [agentRow.id]);
       expect(events.map(e => e.event_type)).toContain('AGENT_TERMINATED');
+=======
+      const logEntries = queryAll<{ event_type: string }>(db, 'SELECT event_type FROM agent_logs WHERE agent_id = ?', [agentRow.id]);
+      const events = logEntries.map(entry => entry.event_type);
+      expect(events).toContain('AGENT_TERMINATED');
+>>>>>>> df28695 (fix: resolve test failures after rebase on main)
     });
 
     it('should pass through timeout option to LLM provider', async () => {
@@ -416,7 +433,10 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 
   describe('Heartbeat Mechanism', () => {
     it('should send initial heartbeat on construction', () => {
+<<<<<<< HEAD
       // Create agent to trigger heartbeat
+=======
+>>>>>>> df28695 (fix: resolve test failures after rebase on main)
       new TestAgent(context);
 
       // Check that last_seen was updated
