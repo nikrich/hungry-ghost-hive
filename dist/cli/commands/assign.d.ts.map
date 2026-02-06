@@ -1,1 +1,1 @@
-{"version":3,"file":"assign.d.ts","sourceRoot":"","sources":["../../../src/cli/commands/assign.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,MAAM,WAAW,CAAC;AASpC,eAAO,MAAM,aAAa,SA6EtB,CAAC"}
+{"version":3,"file":"assign.d.ts","sourceRoot":"","sources":["../../../src/cli/commands/assign.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,MAAM,WAAW,CAAC;AAWpC,eAAO,MAAM,aAAa,SAwHtB,CAAC"}

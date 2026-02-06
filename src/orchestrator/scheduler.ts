@@ -1,5 +1,5 @@
 import type { Database } from 'sql.js';
-import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, type StoryRow } from '../db/queries/stories.js';
+import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, getBatchStoryDependencies, type StoryRow } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll } from '../db/client.js';
@@ -96,12 +96,14 @@ export class Scheduler {
       }
     }
 
+    // Fetch all dependencies in a single query to avoid N+1 pattern
+    const allDepsMap = getBatchStoryDependencies(this.db, Array.from(storyIds));
+
     // Add dependencies (only within the planned set; external deps handled by areDependenciesSatisfied)
-    for (const story of stories) {
-      const dependencies = getStoryDependencies(this.db, story.id);
-      for (const dep of dependencies) {
-        if (graph.has(story.id) && storyIds.has(dep.id)) {
-          graph.get(story.id)!.add(dep.id);
+    for (const [storyId, depIds] of allDepsMap) {
+      for (const depId of depIds) {
+        if (storyIds.has(depId)) {
+          graph.get(storyId)!.add(depId);
         }
       }
     }

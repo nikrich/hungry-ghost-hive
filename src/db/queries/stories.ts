@@ -196,6 +196,41 @@ export function getStoriesDependingOn(db: Database, storyId: string): StoryRow[]
   `, [storyId]);
 }
 
+/**
+ * Get dependencies for multiple stories in a single query.
+ * Returns a map of story ID to its dependencies for improved query performance.
+ * Avoids N+1 queries when building dependency graphs.
+ * @param storyIds Array of story IDs to get dependencies for
+ * @returns Map of story ID to array of dependent story IDs
+ */
+export function getBatchStoryDependencies(db: Database, storyIds: string[]): Map<string, string[]> {
+  if (storyIds.length === 0) return new Map();
+
+  const placeholders = storyIds.map(() => '?').join(',');
+  const rows = queryAll<{ story_id: string; depends_on_story_id: string }>(
+    db,
+    `
+    SELECT sd.story_id, sd.depends_on_story_id
+    FROM story_dependencies sd
+    WHERE sd.story_id IN (${placeholders})
+    `,
+    storyIds
+  );
+
+  const deps = new Map<string, string[]>();
+  for (const storyId of storyIds) {
+    deps.set(storyId, []);
+  }
+
+  for (const row of rows) {
+    const depIds = deps.get(row.story_id) || [];
+    depIds.push(row.depends_on_story_id);
+    deps.set(row.story_id, depIds);
+  }
+
+  return deps;
+}
+
 export function getStoryCounts(db: Database): Record<StoryStatus, number> {
   const rows = queryAll<{ status: StoryStatus; count: number }>(db, `
     SELECT status, COUNT(*) as count

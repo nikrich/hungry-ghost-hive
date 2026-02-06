@@ -31,4 +31,10 @@ export declare function getAllPullRequests(db: Database): PullRequestRow[];
 export declare function getPullRequestsByTeam(db: Database, teamId: string): PullRequestRow[];
 export declare function updatePullRequest(db: Database, id: string, input: UpdatePullRequestInput): PullRequestRow | undefined;
 export declare function deletePullRequest(db: Database, id: string): void;
+/**
+ * Backfill github_pr_number for existing PRs that have github_pr_url but no number
+ * This is an idempotent operation - it only updates PRs with NULL github_pr_number
+ * @returns Number of PRs updated
+ */
+export declare function backfillGithubPrNumbers(db: Database): number;
 //# sourceMappingURL=pull-requests.d.ts.map
