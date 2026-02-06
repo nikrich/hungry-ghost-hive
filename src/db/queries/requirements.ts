@@ -35,18 +35,18 @@ export function getRequirementById(db: Database, id: string): RequirementRow | u
 }
 
 export function getAllRequirements(db: Database): RequirementRow[] {
-  return queryAll<RequirementRow>(db, 'SELECT * FROM requirements ORDER BY created_at DESC');
+  return queryAll<RequirementRow>(db, 'SELECT * FROM requirements ORDER BY created_at DESC, rowid DESC');
 }
 
 export function getRequirementsByStatus(db: Database, status: RequirementStatus): RequirementRow[] {
-  return queryAll<RequirementRow>(db, 'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC', [status]);
+  return queryAll<RequirementRow>(db, 'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC, rowid DESC', [status]);
 }
 
 export function getPendingRequirements(db: Database): RequirementRow[] {
   return queryAll<RequirementRow>(db, `
     SELECT * FROM requirements
     WHERE status IN ('pending', 'planning', 'in_progress')
-    ORDER BY created_at
+    ORDER BY created_at, rowid
   `);
 }
 

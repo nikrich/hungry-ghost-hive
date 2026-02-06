@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.12.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.11.1...v0.12.0) (2026-02-06)
+
+
+### Features
+
+* Configure Vitest code coverage and enhance CI test reporting ([5e01ddb](https://github.com/nikrich/hungry-ghost-hive/commit/5e01ddbf52091d33cc2ca9abbfdd655776b09224))
+
+## [0.11.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.11.0...v0.11.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* resolve TypeScript error in branches.test.ts ([6d74870](https://github.com/nikrich/hungry-ghost-hive/commit/6d7487099de30e334e626f46146f1580a634e612))
+
+## [0.11.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.10.3...v0.11.0) (2026-02-06)
+
+
+### Features
+
+* add shields.io badges to README header ([2e89556](https://github.com/nikrich/hungry-ghost-hive/commit/2e89556692761db2c4b95efbaa8094a82e77a235))
+
 ## [0.10.3](https://github.com/nikrich/hungry-ghost-hive/compare/v0.10.2...v0.10.3) (2026-02-06)
 
 
