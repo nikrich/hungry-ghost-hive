@@ -80,8 +80,18 @@ export declare class Scheduler {
      * - Scale down excess QA agents when queue shrinks
      */
     private scaleQAAgents;
-    private spawnQA;
     private ensureManagerRunning;
+    /**
+     * Generic agent spawn method
+     * Handles spawning of all agent types (senior, intermediate, junior, qa)
+     */
+    private spawnAgent;
+    /**
+     * Extract model shorthand from full model ID
+     * E.g., 'claude-sonnet-4-20250514' -> 'sonnet', 'claude-haiku-3-5-20241022' -> 'haiku'
+     */
+    private getModelShorthand;
+    private spawnQA;
     private spawnSenior;
     private spawnIntermediate;
     private spawnJunior;
