@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.14.2...v0.15.0) (2026-02-06)
+
+
+### Features
+
+* create typed error classes for structured error handling ([5a6a026](https://github.com/nikrich/hungry-ghost-hive/commit/5a6a026c1af79899a51105e9f36cb6c2088d7837))
+
+
+### Bug Fixes
+
+* add missing import and install eslint-config-prettier ([3606a2f](https://github.com/nikrich/hungry-ghost-hive/commit/3606a2f44624e0ab700fddfa1d053ea0fa07b1f3))
+
 ## [0.14.2](https://github.com/nikrich/hungry-ghost-hive/compare/v0.14.1...v0.14.2) (2026-02-06)
 
 
