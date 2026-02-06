@@ -492,7 +492,7 @@ async function managerCheck(root: string): Promise<void> {
     );
     for (const story of qaFailedStories) {
       if (story.assigned_agent_id) {
-        const agent = getAgentById(db.db, story.assigned_agent_id);
+        const agent = allAgents.find(a => a.id === story.assigned_agent_id);
         if (agent && agent.status === 'working') {
           const agentSession = hiveSessions.find(s =>
             s.name === agent.tmux_session || s.name.includes(agent.id)
@@ -524,7 +524,7 @@ hive pr queue`
     let agentsSpunDown = 0;
     for (const story of mergedStoriesWithAgents) {
       if (story.assigned_agent_id) {
-        const agent = getAgentById(db.db, story.assigned_agent_id);
+        const agent = allAgents.find(a => a.id === story.assigned_agent_id);
         if (agent && agent.status !== 'terminated') {
           // Find and kill the agent's tmux session
           const agentSession = hiveSessions.find(s =>
