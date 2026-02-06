@@ -12,48 +12,32 @@ Hive is a CLI tool that orchestrates AI agents modeled after agile software deve
 
 ### Agent Hierarchy
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     HUMAN (Head of Product)                      │
-│                   Provides initial requirements                  │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    TECH LEAD (Claude Opus)                       │
-│  • Single instance across all teams                              │
-│  • Orchestrates planning phases                                  │
-│  • Manages cross-repo dependencies                               │
-│  • Consolidates requirements into stories                        │
-│  • Escalation endpoint for serious issues                        │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-          ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│  TEAM: Service A │ │  TEAM: Service B │ │  TEAM: Service C │
-│                  │ │                  │ │                  │
-│ ┌──────────────┐ │ │ ┌──────────────┐ │ │ ┌──────────────┐ │
-│ │   SENIOR     │ │ │ │   SENIOR     │ │ │ │   SENIOR     │ │
-│ │ Opus/Sonnet  │ │ │ │ Opus/Sonnet  │ │ │ │ Opus/Sonnet  │ │
-│ │              │ │ │ │              │ │ │ │              │ │
-│ │ • Team lead  │ │ │ │ • Team lead  │ │ │ │ • Team lead  │ │
-│ │ • Estimates  │ │ │ │ • Estimates  │ │ │ │ • Estimates  │ │
-│ │ • Delegates  │ │ │ │ • Delegates  │ │ │ │ • Delegates  │ │
-│ └──────┬───────┘ │ │ └──────┬───────┘ │ │ └──────┬───────┘ │
-│        │         │ │        │         │ │        │         │
-│   ┌────┴────┐    │ │   ┌────┴────┐    │ │   ┌────┴────┐    │
-│   ▼         ▼    │ │   ▼         ▼    │ │   ▼         ▼    │
-│ ┌────┐   ┌────┐  │ │ ┌────┐   ┌────┐  │ │ ┌────┐   ┌────┐  │
-│ │INT │   │INT │  │ │ │INT │   │INT │  │ │ │INT │   │INT │  │
-│ │S/H │   │S/H │  │ │ │S/H │   │S/H │  │ │ │S/H │   │S/H │  │
-│ └──┬─┘   └──┬─┘  │ │ └──┬─┘   └──┬─┘  │ │ └──┬─┘   └──┬─┘  │
-│    │        │    │ │    │        │    │ │    │        │    │
-│ ┌──┴──┐  ┌──┴──┐ │ │ ┌──┴──┐  ┌──┴──┐ │ │ ┌──┴──┐  ┌──┴──┐ │
-│ │ JR  │  │ JR  │ │ │ │ JR  │  │ JR  │ │ │ │ JR  │  │ JR  │ │
-│ │GPT-m│  │GPT-m│ │ │ │GPT-m│  │GPT-m│ │ │ │GPT-m│  │GPT-m│ │
-│ └─────┘  └─────┘ │ │ └─────┘  └─────┘ │ │ └─────┘  └─────┘ │
-└──────────────────┘ └──────────────────┘ └──────────────────┘
+```mermaid
+graph TD
+    H["👤 HUMAN (Head of Product)<br/>Provides initial requirements"]
+    H --> TL["🧠 TECH LEAD (Claude Opus)<br/>• Single instance across all teams<br/>• Orchestrates planning phases<br/>• Manages cross-repo dependencies<br/>• Consolidates requirements into stories<br/>• Escalation endpoint for serious issues"]
+
+    TL --> SA["TEAM: Service A"]
+    TL --> SB["TEAM: Service B"]
+    TL --> SC["TEAM: Service C"]
+
+    SA --> SASnr["👔 SENIOR (Opus/Sonnet)<br/>• Team lead<br/>• Estimates<br/>• Delegates"]
+    SASnr --> SAInt1["📊 INTERMEDIATE (Haiku)"]
+    SASnr --> SAInt2["📊 INTERMEDIATE (Haiku)"]
+    SAInt1 --> SAJr1["🚀 JUNIOR (GPT-4o-mini)"]
+    SAInt2 --> SAJr2["🚀 JUNIOR (GPT-4o-mini)"]
+
+    SB --> SBSnr["👔 SENIOR (Opus/Sonnet)<br/>• Team lead<br/>• Estimates<br/>• Delegates"]
+    SBSnr --> SBInt1["📊 INTERMEDIATE (Haiku)"]
+    SBSnr --> SBInt2["📊 INTERMEDIATE (Haiku)"]
+    SBInt1 --> SBJr1["🚀 JUNIOR (GPT-4o-mini)"]
+    SBInt2 --> SBJr2["🚀 JUNIOR (GPT-4o-mini)"]
+
+    SC --> SCSnr["👔 SENIOR (Opus/Sonnet)<br/>• Team lead<br/>• Estimates<br/>• Delegates"]
+    SCSnr --> SCInt1["📊 INTERMEDIATE (Haiku)"]
+    SCSnr --> SCInt2["📊 INTERMEDIATE (Haiku)"]
+    SCInt1 --> SCJr1["🚀 JUNIOR (GPT-4o-mini)"]
+    SCInt2 --> SCJr2["🚀 JUNIOR (GPT-4o-mini)"]
 ```
 
 ### Model Configuration (Config-Driven)
@@ -452,26 +436,29 @@ TRIGGER: Story status = 'pr_submitted' (QA passed)
 
 ## Escalation Protocol
 
-```
-Level 1: Junior → Senior
-  WHEN: Junior encounters error it cannot resolve
-  ACTION: Log escalation, Senior receives notification via state change
+```mermaid
+graph TD
+    Jr["🚀 Junior<br/>Encounters unsolvable error"]
+    Sr["👔 Senior<br/>Reviews issue"]
+    SrResolved{Senior can<br/>resolve?}
+    TL["🧠 Tech Lead<br/>Inspects & advises"]
+    TLResolved{Tech Lead<br/>can resolve?}
+    Human["👤 Human (Product Owner)<br/>Makes strategic decision"]
 
-Level 2: Senior → Tech Lead  
-  WHEN: Senior cannot resolve after 2 attempts
-  ACTION: Log escalation, Tech Lead inspects and provides guidance
+    Jr -->|"WHEN: Error unresolvable<br/>ACTION: Log escalation"| Sr
+    Sr --> SrResolved
+    SrResolved -->|Yes| Resolved["✅ Resolved<br/>Resume work"]
+    SrResolved -->|"No after 2 attempts"| TL
+    TL --> TLResolved
+    TLResolved -->|Yes| Resolved
+    TLResolved -->|"No<br/>(Architecture/Security/Dependency/<br/>Ambiguous requirement)"| Human
+    Human -->|"Provide guidance<br/>via escalations resolve"| Resolved
 
-Level 3: Tech Lead → Human
-  WHEN: 
-    - Architectural decision required
-    - External dependency blocker
-    - Security concern
-    - Ambiguous requirement
-  ACTION: 
-    - Log escalation with status 'pending'
-    - Human notified via CLI: `hive escalations list`
-    - Human resolves via: `hive escalations resolve <id> --message "..."`
-    - Tech Lead receives resolution and continues
+    style Resolved fill:#90EE90
+    style Jr fill:#FFE4B5
+    style Sr fill:#87CEEB
+    style TL fill:#DDA0DD
+    style Human fill:#FFB6C1
 ```
 
 ---
@@ -533,40 +520,17 @@ When an agent runs out of tokens or is interrupted:
 
 ### Layout
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ HIVE ORCHESTRATOR                                    [R]efresh [Q]uit   │
-├─────────────────────────────────────────────────────────────────────────┤
-│ AGENTS                                                                  │
-│ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │ ID              │ Type    │ Team      │ Status  │ Current Story     │ │
-│ ├─────────────────┼─────────┼───────────┼─────────┼───────────────────┤ │
-│ │ tech-lead       │ LEAD    │ -         │ working │ -                 │ │
-│ │ senior-pay-1    │ SENIOR  │ payments  │ working │ STORY-003         │ │
-│ │ junior-pay-1    │ JUNIOR  │ payments  │ working │ STORY-007         │ │
-│ │ qa-payments     │ QA      │ payments  │ idle    │ -                 │ │
-│ └─────────────────────────────────────────────────────────────────────┘ │
-├─────────────────────────────────────────────────────────────────────────┤
-│ STORY PIPELINE                                                          │
-│ ┌───────────┬───────────┬───────────┬───────────┬───────────┬─────────┐ │
-│ │  PLANNED  │ IN PROG   │  REVIEW   │    QA     │    PR     │ MERGED  │ │
-│ │     3     │     2     │     1     │     1     │     0     │    5    │ │
-│ └───────────┴───────────┴───────────┴───────────┴───────────┴─────────┘ │
-├─────────────────────────────────────────────────────────────────────────┤
-│ RECENT ACTIVITY                                                         │
-│ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │ 14:23:01 │ junior-pay-1  │ STORY_PROGRESS_UPDATE │ Tests passing    │ │
-│ │ 14:22:45 │ senior-pay-1  │ STORY_ASSIGNED        │ STORY-003        │ │
-│ │ 14:22:30 │ tech-lead     │ PLANNING_COMPLETED    │ 12 stories       │ │
-│ │ 14:20:15 │ qa-payments   │ STORY_QA_PASSED       │ STORY-002        │ │
-│ └─────────────────────────────────────────────────────────────────────┘ │
-├─────────────────────────────────────────────────────────────────────────┤
-│ ESCALATIONS (1 pending)                                                 │
-│ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │ [!] ESC-001: Unclear requirement for payment retry logic            │ │
-│ │     From: senior-pay-1 │ Story: STORY-003 │ Waiting for human       │ │
-│ └─────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    Main["📊 HIVE ORCHESTRATOR<br/>[R]efresh [Q]uit"]
+
+    Main --> Agents["👥 AGENTS Panel<br/>━━━━━━━━━━━━━━━<br/>ID │ Type │ Team │ Status │ Story<br/>tech-lead │ LEAD │ - │ working │ -<br/>senior-pay-1 │ SENIOR │ payments │ working │ STORY-003<br/>junior-pay-1 │ JUNIOR │ payments │ working │ STORY-007<br/>qa-payments │ QA │ payments │ idle │ -"]
+
+    Main --> Pipeline["📈 STORY PIPELINE<br/>━━━━━━━━━━━━━━━━━<br/>PLANNED(3) │ IN PROG(2) │ REVIEW(1) │ QA(1) │ PR(0) │ MERGED(5)"]
+
+    Main --> Activity["⏱️ RECENT ACTIVITY<br/>━━━━━━━━━━━━━━━━<br/>14:23:01 junior-pay-1 STORY_PROGRESS_UPDATE Tests passing<br/>14:22:45 senior-pay-1 STORY_ASSIGNED STORY-003<br/>14:22:30 tech-lead PLANNING_COMPLETED 12 stories<br/>14:20:15 qa-payments STORY_QA_PASSED STORY-002"]
+
+    Main --> Escalations["⚠️ ESCALATIONS (1 pending)<br/>━━━━━━━━━━━━━━━<br/>[!] ESC-001: Unclear requirement for payment retry<br/>From: senior-pay-1 │ Story: STORY-003 │ Waiting for human"]
 ```
 
 ### Navigation
