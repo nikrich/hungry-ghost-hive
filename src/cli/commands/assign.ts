@@ -1,13 +1,13 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
+import { Command } from 'commander';
 import ora from 'ora';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
-import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
-import { Scheduler } from '../../orchestrator/scheduler.js';
-import { startManager, isManagerRunning } from '../../tmux/manager.js';
+import { getDatabase } from '../../db/client.js';
 import { getPlannedStories } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
+import { Scheduler } from '../../orchestrator/scheduler.js';
+import { isManagerRunning, startManager } from '../../tmux/manager.js';
+import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 
 export const assignCommand = new Command('assign')
   .description('Assign planned stories to agents (spawns Seniors as needed)')
@@ -119,7 +119,7 @@ export const assignCommand = new Command('assign')
 
       // Auto-start the manager if work was assigned and it's not running
       if (result.assigned > 0) {
-        if (!await isManagerRunning()) {
+        if (!(await isManagerRunning())) {
           spinner.start('Starting manager daemon...');
           const started = await startManager(60);
           if (started) {

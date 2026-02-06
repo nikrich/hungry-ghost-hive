@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { HiveConfigSchema, DEFAULT_CONFIG } from './schema.js';
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_CONFIG, HiveConfigSchema } from './schema.js';
 
 describe('HiveConfigSchema', () => {
   it('should validate default config', () => {

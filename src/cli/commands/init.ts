@@ -1,11 +1,11 @@
-import { Command } from 'commander';
-import { mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
-import ora from 'ora';
 import chalk from 'chalk';
-import { getHivePaths, isHiveWorkspace } from '../../utils/paths.js';
-import { createDatabase } from '../../db/client.js';
+import { Command } from 'commander';
+import { existsSync, mkdirSync } from 'fs';
+import ora from 'ora';
+import { join } from 'path';
 import { createDefaultConfig } from '../../config/loader.js';
+import { createDatabase } from '../../db/client.js';
+import { getHivePaths, isHiveWorkspace } from '../../utils/paths.js';
 
 export const initCommand = new Command('init')
   .description('Initialize a new Hive workspace')

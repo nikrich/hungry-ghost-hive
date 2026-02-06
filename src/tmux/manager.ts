@@ -1,5 +1,5 @@
 import { execa } from 'execa';
-import { writeFileSync, mkdirSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -44,15 +44,18 @@ export async function listTmuxSessions(): Promise<TmuxSession[]> {
       '#{session_name}|#{session_windows}|#{session_created}|#{session_attached}',
     ]);
 
-    return stdout.split('\n').filter(Boolean).map(line => {
-      const [name, windows, created, attached] = line.split('|');
-      return {
-        name,
-        windows: parseInt(windows, 10),
-        created,
-        attached: attached === '1',
-      };
-    });
+    return stdout
+      .split('\n')
+      .filter(Boolean)
+      .map(line => {
+        const [name, windows, created, attached] = line.split('|');
+        return {
+          name,
+          windows: parseInt(windows, 10),
+          created,
+          attached: attached === '1',
+        };
+      });
   } catch {
     return [];
   }
@@ -72,12 +75,7 @@ export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<voi
   }
 
   // Create new detached session with default shell
-  const args = [
-    'new-session',
-    '-d',
-    '-s', sessionName,
-    '-c', workDir,
-  ];
+  const args = ['new-session', '-d', '-s', sessionName, '-c', workDir];
 
   const execaOptions: { env?: NodeJS.ProcessEnv } = {};
   if (env) {
@@ -134,7 +132,11 @@ export async function killAllHiveSessions(): Promise<number> {
   return killed;
 }
 
-export async function sendToTmuxSession(sessionName: string, text: string, clearFirst = true): Promise<void> {
+export async function sendToTmuxSession(
+  sessionName: string,
+  text: string,
+  clearFirst = true
+): Promise<void> {
   if (clearFirst) {
     // Clear any existing input at the prompt before sending new text
     // Escape: exit any menu/selection state
@@ -166,9 +168,11 @@ export async function captureTmuxPane(sessionName: string, lines = 100): Promise
   try {
     const { stdout } = await execa('tmux', [
       'capture-pane',
-      '-t', sessionName,
+      '-t',
+      sessionName,
       '-p',
-      '-S', `-${lines}`,
+      '-S',
+      `-${lines}`,
     ]);
     return stdout;
   } catch {
@@ -301,7 +305,8 @@ export async function sendMessageWithConfirmation(
     // Check if the first line of the message appears in the output
     // Extract first meaningful part of message for verification
     const messageLines = message.split('\n').filter(line => line.trim());
-    const verificationText = messageLines.length > 0 ? messageLines[0].substring(0, 50) : message.substring(0, 50);
+    const verificationText =
+      messageLines.length > 0 ? messageLines[0].substring(0, 50) : message.substring(0, 50);
 
     if (output.includes(verificationText)) {
       // Message verified in output - delivery confirmed
@@ -327,10 +332,7 @@ export async function sendMessageWithConfirmation(
  * @param maxRetries - Maximum attempts to detect and approve prompt
  * @returns true if permission was approved, false if approval failed or no prompt detected
  */
-export async function autoApprovePermission(
-  sessionName: string,
-  maxRetries = 3
-): Promise<boolean> {
+export async function autoApprovePermission(sessionName: string, maxRetries = 3): Promise<boolean> {
   let retries = 0;
 
   while (retries < maxRetries) {
@@ -398,16 +400,13 @@ export async function startManager(interval = 60): Promise<boolean> {
   }
 
   // Start the manager in a detached tmux session
-  await execa('tmux', [
-    'new-session',
-    '-d',
-    '-s', MANAGER_SESSION,
-  ]);
+  await execa('tmux', ['new-session', '-d', '-s', MANAGER_SESSION]);
 
   // Send the manager command
   await execa('tmux', [
     'send-keys',
-    '-t', MANAGER_SESSION,
+    '-t',
+    MANAGER_SESSION,
     `hive manager start -i ${interval}`,
     'Enter',
   ]);
@@ -416,7 +415,7 @@ export async function startManager(interval = 60): Promise<boolean> {
 }
 
 export async function stopManager(): Promise<boolean> {
-  if (!await isManagerRunning()) {
+  if (!(await isManagerRunning())) {
     return false; // Not running
   }
 

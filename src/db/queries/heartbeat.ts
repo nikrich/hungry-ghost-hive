@@ -5,16 +5,16 @@ import { run } from '../client.js';
  * Update agent's last_seen timestamp (heartbeat)
  */
 export function updateAgentHeartbeat(db: Database, agentId: string): void {
-  run(db,
-    "UPDATE agents SET last_seen = CURRENT_TIMESTAMP WHERE id = ?",
-    [agentId]
-  );
+  run(db, 'UPDATE agents SET last_seen = CURRENT_TIMESTAMP WHERE id = ?', [agentId]);
 }
 
 /**
  * Get agents that haven't sent a heartbeat within the specified timeout (in seconds)
  */
-export function getStaleAgents(db: Database, timeoutSeconds: number = 15): Array<{
+export function getStaleAgents(
+  db: Database,
+  timeoutSeconds: number = 15
+): Array<{
   id: string;
   type: string;
   status: string;
@@ -66,7 +66,11 @@ export function getStaleAgents(db: Database, timeoutSeconds: number = 15): Array
 /**
  * Check if agent's heartbeat is current (within timeout)
  */
-export function isAgentHeartbeatCurrent(db: Database, agentId: string, timeoutSeconds: number = 15): boolean {
+export function isAgentHeartbeatCurrent(
+  db: Database,
+  agentId: string,
+  timeoutSeconds: number = 15
+): boolean {
   const query = `
     SELECT
       CASE

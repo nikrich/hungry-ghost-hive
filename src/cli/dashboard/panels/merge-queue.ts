@@ -1,8 +1,11 @@
-import type { Database } from 'sql.js';
 import blessed, { type Widgets } from 'blessed';
+import type { Database } from 'sql.js';
 import { getMergeQueue, type PullRequestRow } from '../../../db/queries/pull-requests.js';
 
-export function createMergeQueuePanel(screen: Widgets.Screen, db: Database): Widgets.ListTableElement {
+export function createMergeQueuePanel(
+  screen: Widgets.Screen,
+  db: Database
+): Widgets.ListTableElement {
   const table = blessed.listtable({
     parent: screen,
     top: '55%+5',
@@ -24,11 +27,16 @@ export function createMergeQueuePanel(screen: Widgets.Screen, db: Database): Wid
     tags: true,
   });
 
-  updateMergeQueuePanel(table, db).catch(err => console.error('Failed to update merge queue panel:', err));
+  updateMergeQueuePanel(table, db).catch(err =>
+    console.error('Failed to update merge queue panel:', err)
+  );
   return table;
 }
 
-export async function updateMergeQueuePanel(table: Widgets.ListTableElement, db: Database): Promise<void> {
+export async function updateMergeQueuePanel(
+  table: Widgets.ListTableElement,
+  db: Database
+): Promise<void> {
   const queue = getMergeQueue(db);
 
   const headers = ['#', 'Branch', 'Status'];

@@ -4,9 +4,9 @@
  * Generates the actual content for context files based on CLI tool type
  */
 
-import { claudeCodeTemplate, codexTemplate, geminiTemplate } from './templates.js';
-import type { ContextFileOptions } from './index.js';
 import type { StoryRow } from '../db/queries/stories.js';
+import type { ContextFileOptions } from './index.js';
+import { claudeCodeTemplate, codexTemplate, geminiTemplate } from './templates.js';
 
 /**
  * Generate context file content for the specified CLI tool
@@ -43,15 +43,19 @@ export function formatStoriesForContext(stories: StoryRow[]): string {
   }
 
   return stories
-    .map(story => `
+    .map(
+      story => `
 ### ${story.id}: ${story.title}
 - **Status**: ${story.status}
 - **Complexity**: ${story.complexity_score || 'Not estimated'}
 - **Story Points**: ${story.story_points || 'Not estimated'}
 - **Description**: ${story.description}
-${story.acceptance_criteria && story.acceptance_criteria.length > 0
-        ? `**Acceptance Criteria**:\n${(Array.isArray(story.acceptance_criteria) ? story.acceptance_criteria : JSON.parse(story.acceptance_criteria || '[]')).map((c: string) => `  - ${c}`).join('\n')}`
-        : ''}`)
+${
+  story.acceptance_criteria && story.acceptance_criteria.length > 0
+    ? `**Acceptance Criteria**:\n${(Array.isArray(story.acceptance_criteria) ? story.acceptance_criteria : JSON.parse(story.acceptance_criteria || '[]')).map((c: string) => `  - ${c}`).join('\n')}`
+    : ''
+}`
+    )
     .join('\n\n');
 }
 

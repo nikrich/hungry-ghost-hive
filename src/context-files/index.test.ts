@@ -1,17 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { mkdirSync, readFileSync, rmSync, existsSync } from 'fs';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { HiveConfig } from '../config/schema.js';
+import type { StoryRow } from '../db/queries/stories.js';
+import type { TeamRow } from '../db/queries/teams.js';
 import {
-  getContextFileName,
-  getContextFilePath,
   contextFileExists,
   generateContextFile,
+  getContextFileName,
+  getContextFilePath,
   type ContextFileOptions,
 } from './index.js';
-import type { TeamRow } from '../db/queries/teams.js';
-import type { StoryRow } from '../db/queries/stories.js';
-import type { HiveConfig } from '../config/schema.js';
 
 describe('context-files module', () => {
   let testDir: string;
@@ -101,11 +101,41 @@ describe('context-files module', () => {
     const mockConfig: HiveConfig = {
       version: '1.0',
       models: {
-        tech_lead: { provider: 'anthropic', model: 'claude-opus', max_tokens: 16000, temperature: 0.7, cli_tool: 'claude' },
-        senior: { provider: 'anthropic', model: 'claude-sonnet', max_tokens: 8000, temperature: 0.5, cli_tool: 'claude' },
-        intermediate: { provider: 'anthropic', model: 'claude-haiku', max_tokens: 4000, temperature: 0.3, cli_tool: 'claude' },
-        junior: { provider: 'openai', model: 'gpt-4o-mini', max_tokens: 4000, temperature: 0.2, cli_tool: 'claude' },
-        qa: { provider: 'anthropic', model: 'claude-sonnet', max_tokens: 8000, temperature: 0.2, cli_tool: 'claude' },
+        tech_lead: {
+          provider: 'anthropic',
+          model: 'claude-opus',
+          max_tokens: 16000,
+          temperature: 0.7,
+          cli_tool: 'claude',
+        },
+        senior: {
+          provider: 'anthropic',
+          model: 'claude-sonnet',
+          max_tokens: 8000,
+          temperature: 0.5,
+          cli_tool: 'claude',
+        },
+        intermediate: {
+          provider: 'anthropic',
+          model: 'claude-haiku',
+          max_tokens: 4000,
+          temperature: 0.3,
+          cli_tool: 'claude',
+        },
+        junior: {
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          max_tokens: 4000,
+          temperature: 0.2,
+          cli_tool: 'claude',
+        },
+        qa: {
+          provider: 'anthropic',
+          model: 'claude-sonnet',
+          max_tokens: 8000,
+          temperature: 0.2,
+          cli_tool: 'claude',
+        },
       },
       scaling: {
         senior_capacity: 20,

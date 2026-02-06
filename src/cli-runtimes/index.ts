@@ -1,8 +1,8 @@
 import { execa } from 'execa';
-import { CliRuntimeType, CliRuntimeBuilder } from './types.js';
 import { ClaudeRuntimeBuilder } from './claude.js';
 import { CodexRuntimeBuilder } from './codex.js';
 import { GeminiRuntimeBuilder } from './gemini.js';
+import { CliRuntimeBuilder, CliRuntimeType } from './types.js';
 
 /**
  * Factory function to get the appropriate CLI runtime builder
@@ -60,8 +60,8 @@ export function validateModelCliCompatibility(model: string, cliTool: CliRuntime
     if (!modelLower.includes('claude')) {
       throw new Error(
         `Model "${model}" is incompatible with CLI tool "claude". ` +
-        `Claude CLI only works with Claude models (e.g., claude-opus, claude-sonnet, claude-haiku). ` +
-        `For OpenAI models, use cli_tool: 'codex'. For Google Gemini models, use cli_tool: 'gemini'.`,
+          `Claude CLI only works with Claude models (e.g., claude-opus, claude-sonnet, claude-haiku). ` +
+          `For OpenAI models, use cli_tool: 'codex'. For Google Gemini models, use cli_tool: 'gemini'.`
       );
     }
   }
@@ -71,8 +71,8 @@ export function validateModelCliCompatibility(model: string, cliTool: CliRuntime
     if (!modelLower.includes('gpt') && !modelLower.includes('openai')) {
       throw new Error(
         `Model "${model}" is incompatible with CLI tool "codex". ` +
-        `Codex CLI works with OpenAI models (e.g., gpt-4, gpt-4o-mini). ` +
-        `For Claude models, use cli_tool: 'claude'. For Google Gemini models, use cli_tool: 'gemini'.`,
+          `Codex CLI works with OpenAI models (e.g., gpt-4, gpt-4o-mini). ` +
+          `For Claude models, use cli_tool: 'claude'. For Google Gemini models, use cli_tool: 'gemini'.`
       );
     }
   }
@@ -82,14 +82,14 @@ export function validateModelCliCompatibility(model: string, cliTool: CliRuntime
     if (!modelLower.includes('gemini')) {
       throw new Error(
         `Model "${model}" is incompatible with CLI tool "gemini". ` +
-        `Gemini CLI only works with Google Gemini models (e.g., gemini-pro). ` +
-        `For Claude models, use cli_tool: 'claude'. For OpenAI models, use cli_tool: 'codex'.`,
+          `Gemini CLI only works with Google Gemini models (e.g., gemini-pro). ` +
+          `For Claude models, use cli_tool: 'claude'. For OpenAI models, use cli_tool: 'codex'.`
       );
     }
   }
 }
 
-export type { CliRuntimeType, CliRuntimeBuilder };
 export { ClaudeRuntimeBuilder } from './claude.js';
 export { CodexRuntimeBuilder } from './codex.js';
 export { GeminiRuntimeBuilder } from './gemini.js';
+export type { CliRuntimeBuilder, CliRuntimeType };

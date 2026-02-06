@@ -1,24 +1,24 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
-import { createTestDatabase } from './test-helpers.js';
-import { createTeam } from './teams.js';
-import { createStory } from './stories.js';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createPullRequest,
-  getPullRequestById,
-  getPullRequestByStory,
-  getPullRequestByGithubNumber,
+  deletePullRequest,
+  getAllPullRequests,
+  getApprovedPullRequests,
   getMergeQueue,
   getNextInQueue,
-  getQueuePosition,
+  getPullRequestByGithubNumber,
+  getPullRequestById,
+  getPullRequestByStory,
   getPullRequestsByStatus,
-  getApprovedPullRequests,
-  getAllPullRequests,
   getPullRequestsByTeam,
-  updatePullRequest,
-  deletePullRequest,
+  getQueuePosition,
   isAgentReviewingPR,
+  updatePullRequest,
 } from './pull-requests.js';
+import { createStory } from './stories.js';
+import { createTeam } from './teams.js';
+import { createTestDatabase } from './test-helpers.js';
 
 describe('pull-requests queries', () => {
   let db: Database;
@@ -516,13 +516,9 @@ describe('pull-requests queries', () => {
     });
 
     it('should return true only if status is exactly reviewing', () => {
-      const statuses: Array<'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed'> = [
-        'queued',
-        'approved',
-        'merged',
-        'rejected',
-        'closed',
-      ];
+      const statuses: Array<
+        'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed'
+      > = ['queued', 'approved', 'merged', 'rejected', 'closed'];
 
       for (const status of statuses) {
         const pr = createPullRequest(db, { branchName: `test-${status}` });
@@ -554,14 +550,9 @@ describe('pull-requests queries', () => {
 
   describe('edge cases', () => {
     it('should handle all PR statuses', () => {
-      const statuses: Array<'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed'> = [
-        'queued',
-        'reviewing',
-        'approved',
-        'merged',
-        'rejected',
-        'closed',
-      ];
+      const statuses: Array<
+        'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed'
+      > = ['queued', 'reviewing', 'approved', 'merged', 'rejected', 'closed'];
 
       const pr = createPullRequest(db, { branchName: 'test' });
 

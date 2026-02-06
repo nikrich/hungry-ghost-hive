@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Database } from 'sql.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getApprovedPullRequests, updatePullRequest } from '../../db/queries/pull-requests.js';
 
 // Mock the functions we're testing with
@@ -18,7 +18,8 @@ vi.mock('../../tmux/manager.js', () => ({
 }));
 vi.mock('../../utils/cli-commands.js', () => ({
   getAvailableCommands: vi.fn(() => ({
-    msgReply: (id: string, msg: string, session: string) => `hive msg reply ${id} "${msg}" --to ${session}`,
+    msgReply: (id: string, msg: string, session: string) =>
+      `hive msg reply ${id} "${msg}" --to ${session}`,
   })),
 }));
 

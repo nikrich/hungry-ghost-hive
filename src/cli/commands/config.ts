@@ -1,11 +1,16 @@
-import { Command } from 'commander';
 import chalk from 'chalk';
+import { Command } from 'commander';
 import { stringify } from 'yaml';
+import {
+  ConfigError,
+  getConfigValue,
+  loadConfig,
+  saveConfig,
+  setConfigValue,
+} from '../../config/loader.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
-import { loadConfig, saveConfig, getConfigValue, setConfigValue, ConfigError } from '../../config/loader.js';
 
-export const configCommand = new Command('config')
-  .description('Manage Hive configuration');
+export const configCommand = new Command('config').description('Manage Hive configuration');
 
 configCommand
   .command('show')

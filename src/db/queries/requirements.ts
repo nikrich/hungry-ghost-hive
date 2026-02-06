@@ -1,5 +1,5 @@
-import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run, type RequirementRow } from '../client.js';
 
 export type { RequirementRow };
@@ -22,10 +22,14 @@ export function createRequirement(db: Database, input: CreateRequirementInput): 
   const id = `REQ-${nanoid(8).toUpperCase()}`;
   const now = new Date().toISOString();
 
-  run(db, `
+  run(
+    db,
+    `
     INSERT INTO requirements (id, title, description, submitted_by, created_at)
     VALUES (?, ?, ?, ?, ?)
-  `, [id, input.title, input.description, input.submittedBy || 'human', now]);
+  `,
+    [id, input.title, input.description, input.submittedBy || 'human', now]
+  );
 
   return getRequirementById(db, id)!;
 }
@@ -38,19 +42,33 @@ export function getAllRequirements(db: Database): RequirementRow[] {
   return queryAll<RequirementRow>(db, 'SELECT * FROM requirements ORDER BY created_at DESC, rowid DESC');
 }
 
-export function getRequirementsByStatus(db: Database, status: RequirementStatus): RequirementRow[] {
-  return queryAll<RequirementRow>(db, 'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC, rowid DESC', [status]);
+export function getRequirementsByStatus(
+  db: Database,
+  status: RequirementStatus
+): RequirementRow[] {
+  return queryAll<RequirementRow>(
+    db,
+    'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC, rowid DESC',
+    [status]
+  );
 }
 
 export function getPendingRequirements(db: Database): RequirementRow[] {
-  return queryAll<RequirementRow>(db, `
+  return queryAll<RequirementRow>(
+    db,
+    `
     SELECT * FROM requirements
     WHERE status IN ('pending', 'planning', 'in_progress')
     ORDER BY created_at, rowid
-  `);
+  `
+  );
 }
 
-export function updateRequirement(db: Database, id: string, input: UpdateRequirementInput): RequirementRow | undefined {
+export function updateRequirement(
+  db: Database,
+  id: string,
+  input: UpdateRequirementInput
+): RequirementRow | undefined {
   const updates: string[] = [];
   const values: string[] = [];
 

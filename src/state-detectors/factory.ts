@@ -4,10 +4,10 @@
  * Factory function to create the appropriate state detector based on CLI type
  */
 
-import { CLIType, StateDetector } from './types.js';
 import { ClaudeStateDetector } from './claude.js';
 import { CodexStateDetector } from './codex.js';
 import { GeminiStateDetector } from './gemini.js';
+import { CLIType, StateDetector } from './types.js';
 
 /**
  * Get the appropriate state detector for the specified CLI type

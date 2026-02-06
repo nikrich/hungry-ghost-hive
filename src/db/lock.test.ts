@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { acquireLock, isLocked } from './lock.js';
 import { mkdtempSync, rmSync } from 'fs';
-import { join } from 'path';
 import { tmpdir } from 'os';
+import { join } from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { acquireLock, isLocked } from './lock.js';
 
 describe('Database Lock', () => {
   let testDir: string;
@@ -84,7 +84,7 @@ describe('Database Lock', () => {
     const results = await Promise.allSettled(attempts);
 
     // All should be rejected
-    results.forEach((result) => {
+    results.forEach(result => {
       expect(result.status).toBe('rejected');
     });
 

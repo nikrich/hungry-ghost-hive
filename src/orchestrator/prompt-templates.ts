@@ -3,10 +3,17 @@ import type { StoryRow } from '../db/client.js';
 /**
  * Generate prompt for Senior Developer agent
  */
-export function generateSeniorPrompt(teamName: string, repoUrl: string, repoPath: string, stories: StoryRow[]): string {
-  const storyList = stories.map(s =>
-    `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'})\n  ${s.description}`
-  ).join('\n\n');
+export function generateSeniorPrompt(
+  teamName: string,
+  repoUrl: string,
+  repoPath: string,
+  stories: StoryRow[]
+): string {
+  const storyList = stories
+    .map(
+      s => `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'})\n  ${s.description}`
+    )
+    .join('\n\n');
 
   const sessionName = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 
@@ -113,7 +120,12 @@ Start by exploring the codebase to understand its structure, then begin working 
 /**
  * Generate prompt for Intermediate Developer agent
  */
-export function generateIntermediatePrompt(teamName: string, repoUrl: string, repoPath: string, sessionName: string): string {
+export function generateIntermediatePrompt(
+  teamName: string,
+  repoUrl: string,
+  repoPath: string,
+  sessionName: string
+): string {
   const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 
   return `You are an Intermediate Developer on Team ${teamName}.
@@ -206,7 +218,12 @@ Start by exploring the codebase, then run \`hive my-stories ${sessionName}\` to 
 /**
  * Generate prompt for Junior Developer agent
  */
-export function generateJuniorPrompt(teamName: string, repoUrl: string, repoPath: string, sessionName: string): string {
+export function generateJuniorPrompt(
+  teamName: string,
+  repoUrl: string,
+  repoPath: string,
+  sessionName: string
+): string {
   const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 
   return `You are a Junior Developer on Team ${teamName}.
@@ -299,7 +316,12 @@ Start by exploring the codebase to understand how things work, then run \`hive m
 /**
  * Generate prompt for QA Engineer agent
  */
-export function generateQAPrompt(teamName: string, repoUrl: string, repoPath: string, sessionName: string): string {
+export function generateQAPrompt(
+  teamName: string,
+  repoUrl: string,
+  repoPath: string,
+  sessionName: string
+): string {
   return `You are a QA Engineer on Team ${teamName}.
 Your tmux session: ${sessionName}
 
