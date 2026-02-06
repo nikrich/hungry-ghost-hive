@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - id: release
         uses: googleapis/release-please-action@v4
@@ -51,6 +52,6 @@ jobs:
         run: npm pack
 
       - name: Upload tarball to release
-        run: gh release upload ${{ github.ref_name }} *.tgz --clobber
+        run: gh release upload ${{ needs.release-please.outputs.tag_name }} *.tgz --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
