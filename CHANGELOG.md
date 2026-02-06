@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.13.1...v0.14.0) (2026-02-06)
+
+
+### Features
+
+* add GitHub PR template, issue templates, and CODE_OF_CONDUCT ([#167](https://github.com/nikrich/hungry-ghost-hive/issues/167)) ([b465148](https://github.com/nikrich/hungry-ghost-hive/commit/b465148c7cd4f4ec0756c12310a6d6b4bb164ebe))
+
 ## [0.13.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.13.0...v0.13.1) (2026-02-06)
 
 
