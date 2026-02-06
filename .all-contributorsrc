@@ -1,7 +1,5 @@
 {
-  "files": [
-    "README.md"
-  ],
+  "files": ["README.md"],
   "imageSize": 100,
   "commit": false,
   "commitConvention": "angular",
@@ -11,21 +9,14 @@
       "name": "nikrich",
       "avatar_url": "https://avatars.githubusercontent.com/u/8254123?v=4",
       "profile": "https://github.com/nikrich",
-      "contributions": [
-        "code",
-        "doc",
-        "infra",
-        "maintenance"
-      ]
+      "contributions": ["code", "doc", "infra", "maintenance"]
     },
     {
       "login": "aleeuwen73",
       "name": "Alastair van Leeuwen",
       "avatar_url": "https://avatars.githubusercontent.com/u/73424841?v=4",
       "profile": "https://github.com/aleeuwen73",
-      "contributions": [
-        "code"
-      ]
+      "contributions": ["code"]
     }
   ],
   "contributorsPerLine": 7,
