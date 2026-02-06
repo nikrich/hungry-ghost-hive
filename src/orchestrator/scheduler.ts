@@ -76,8 +76,18 @@ export class Scheduler {
         stdio: 'pipe',
       });
     } catch (err) {
-      // Log error but don't throw - worktree might already be removed
-      console.error(`Warning: Failed to remove worktree at ${fullWorktreePath}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      // Log error with escalation instead of silent console.error
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      createLog(this.db, {
+        agentId: 'scheduler',
+        eventType: 'ESCALATION_CREATED',
+        message: `Failed to remove worktree at ${fullWorktreePath}: ${errorMessage}`,
+        metadata: {
+          worktreePath,
+          fullWorktreePath,
+          error: errorMessage,
+        },
+      });
     }
   }
 
@@ -288,8 +298,21 @@ export class Scheduler {
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnJunior(teamId, team.name, team.repo_path);
-            } catch {
-              // Fall back to Intermediate or Senior
+            } catch (err) {
+              // Escalate error and fall back to Intermediate or Senior
+              const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+              createLog(this.db, {
+                agentId: 'scheduler',
+                storyId: story.id,
+                eventType: 'ESCALATION_CREATED',
+                message: `Failed to spawn Junior agent for story ${story.id}: ${errorMessage}`,
+                metadata: {
+                  storyId: story.id,
+                  teamId,
+                  error: errorMessage,
+                  fallback: 'Intermediate or Senior',
+                },
+              });
               const intermediates = agents.filter(a => a.type === 'intermediate' && a.status === 'idle');
               targetAgent = intermediates.length > 0 ? this.selectAgentWithLeastWorkload(intermediates) : senior;
             }
@@ -301,8 +324,21 @@ export class Scheduler {
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnIntermediate(teamId, team.name, team.repo_path);
-            } catch {
-              // Fall back to Senior
+            } catch (err) {
+              // Escalate error and fall back to Senior
+              const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+              createLog(this.db, {
+                agentId: 'scheduler',
+                storyId: story.id,
+                eventType: 'ESCALATION_CREATED',
+                message: `Failed to spawn Intermediate agent for story ${story.id}: ${errorMessage}`,
+                metadata: {
+                  storyId: story.id,
+                  teamId,
+                  error: errorMessage,
+                  fallback: 'Senior',
+                },
+              });
               targetAgent = senior;
             }
           }
@@ -393,8 +429,21 @@ export class Scheduler {
               message: `Spawned additional Senior for team ${team.name}`,
               metadata: { teamId: team.id, totalSeniors: currentSeniors + i + 1 },
             });
-          } catch {
-            // Log error but continue
+          } catch (err) {
+            // Escalate error instead of silently continuing
+            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+            createLog(this.db, {
+              agentId: 'scheduler',
+              eventType: 'ESCALATION_CREATED',
+              message: `Failed to spawn Senior agent for team ${team.name}: ${errorMessage}`,
+              metadata: {
+                teamId: team.id,
+                teamName: team.name,
+                error: errorMessage,
+                neededSeniors,
+                currentSeniors: currentSeniors + i,
+              },
+            });
           }
         }
       }
@@ -513,12 +562,20 @@ export class Scheduler {
           metadata: { teamId, agentType: 'qa', previousCount: currentQACount, newCount: neededQAs, pendingCount },
         });
       } catch (err) {
+        // Escalate spawn failure properly
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         createLog(this.db, {
           agentId: 'scheduler',
-          eventType: 'AGENT_SPAWNED',
-          status: 'error',
-          message: `Failed to scale QA agents for team ${teamName}: ${err instanceof Error ? err.message : 'Unknown error'}`,
-          metadata: { teamId, agentType: 'qa', error: String(err) },
+          eventType: 'ESCALATION_CREATED',
+          message: `Failed to scale QA agents for team ${teamName}: ${errorMessage}`,
+          metadata: {
+            teamId,
+            agentType: 'qa',
+            error: errorMessage,
+            targetCount: neededQAs,
+            currentCount: currentQACount,
+            pendingCount,
+          },
         });
       }
     } else if (neededQAs < currentQACount) {
@@ -538,7 +595,22 @@ export class Scheduler {
         for (const agent of qaAgentsToTerminate) {
           // Kill tmux session
           if (agent.tmux_session) {
-            await killTmuxSession(agent.tmux_session);
+            try {
+              await killTmuxSession(agent.tmux_session);
+            } catch (err) {
+              // Log but continue termination
+              const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+              createLog(this.db, {
+                agentId: 'scheduler',
+                eventType: 'ESCALATION_CREATED',
+                message: `Failed to kill tmux session ${agent.tmux_session}: ${errorMessage}`,
+                metadata: {
+                  agentId: agent.id,
+                  tmuxSession: agent.tmux_session,
+                  error: errorMessage,
+                },
+              });
+            }
           }
 
           // Remove worktree
@@ -569,12 +641,20 @@ export class Scheduler {
           metadata: { teamId, agentType: 'qa', previousCount: currentQACount, newCount: neededQAs, pendingCount },
         });
       } catch (err) {
+        // Escalate scale-down failure properly
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         createLog(this.db, {
           agentId: 'scheduler',
-          eventType: 'AGENT_TERMINATED',
-          status: 'error',
-          message: `Failed to scale down QA agents for team ${teamName}: ${err instanceof Error ? err.message : 'Unknown error'}`,
-          metadata: { teamId, agentType: 'qa', error: String(err) },
+          eventType: 'ESCALATION_CREATED',
+          message: `Failed to scale down QA agents for team ${teamName}: ${errorMessage}`,
+          metadata: {
+            teamId,
+            agentType: 'qa',
+            error: errorMessage,
+            targetCount: neededQAs,
+            currentCount: currentQACount,
+            pendingCount,
+          },
         });
       }
     }
