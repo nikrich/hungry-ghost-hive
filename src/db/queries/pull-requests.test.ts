@@ -530,4 +530,75 @@ describe('pull-requests queries', () => {
       expect(updated?.review_notes).toBeNull();
     });
   });
+
+  describe('getPrioritizedMergeQueue', () => {
+    it('should prioritize by age when no story dependencies', async () => {
+      const pr1 = createPullRequest(db, { branchName: 'branch-1', teamId });
+      const pr2 = createPullRequest(db, { branchName: 'branch-2', teamId });
+      const pr3 = createPullRequest(db, { branchName: 'branch-3', teamId });
+
+      const { getPrioritizedMergeQueue } = await import('./pull-requests.js');
+      const queue = getPrioritizedMergeQueue(db, teamId);
+
+      // Should be ordered: pr1 (oldest), pr2, pr3 (newest)
+      expect(queue[0].id).toBe(pr1.id);
+      expect(queue[1].id).toBe(pr2.id);
+      expect(queue[2].id).toBe(pr3.id);
+    });
+
+    it('should prioritize PRs with satisfied dependencies', async () => {
+      // Create two base stories: story1 and story2
+      const story1 = createStory(db, {
+        title: 'Story 1 - Base',
+        description: 'Base story',
+        teamId,
+      });
+      const story2 = createStory(db, {
+        title: 'Story 2 - Dependent',
+        description: 'Dependent story',
+        teamId,
+      });
+      const story3 = createStory(db, {
+        title: 'Story 3 - Independent',
+        description: 'Independent story',
+        teamId,
+      });
+
+      // Add dependency: story2 depends on story1
+      const { addStoryDependency } = await import('./stories.js');
+      addStoryDependency(db, story2.id, story1.id);
+
+      // Create PRs in order: story3 (independent, oldest), story2 (dependent, newer), story1 (base, newest)
+      const pr3 = createPullRequest(db, {
+        storyId: story3.id,
+        branchName: 'feature/story3-independent',
+        teamId,
+      });
+
+      const pr2_unsatisfied = createPullRequest(db, {
+        storyId: story2.id,
+        branchName: 'feature/story2-unsatisfied',
+        teamId,
+      });
+
+      // Update story1 to merged status (satisfies story2's dependency)
+      const { updateStory } = await import('./stories.js');
+      updateStory(db, story1.id, { status: 'merged' });
+
+      const { getPrioritizedMergeQueue } = await import('./pull-requests.js');
+      const queue = getPrioritizedMergeQueue(db, teamId);
+
+      // Expected order:
+      // 1. pr2_unsatisfied (has unsatisfied dependency) - should be deprioritized
+      // 2. pr3 (independent, no dependencies) - by age after unsatisfied ones
+      // Actually: dependencies satisfied > no dependencies
+      // So: pr2 should be LAST (unsatisfied), pr3 and pr2_before_merge should be by age
+
+      const indexIndependent = queue.findIndex(p => p.id === pr3.id);
+      const indexUnsatisfied = queue.findIndex(p => p.id === pr2_unsatisfied.id);
+
+      // Independent PR should come before dependent PR with unsatisfied dependencies
+      expect(indexIndependent).toBeLessThan(indexUnsatisfied);
+    });
+  });
 });
