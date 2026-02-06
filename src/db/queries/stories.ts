@@ -71,6 +71,15 @@ export function getStoriesByAgent(db: Database, agentId: string): StoryRow[] {
   return queryAll<StoryRow>(db, 'SELECT * FROM stories WHERE assigned_agent_id = ? ORDER BY created_at', [agentId]);
 }
 
+export function getActiveStoriesByAgent(db: Database, agentId: string): StoryRow[] {
+  return queryAll<StoryRow>(db, `
+    SELECT * FROM stories
+    WHERE assigned_agent_id = ?
+    AND status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')
+    ORDER BY created_at
+  `, [agentId]);
+}
+
 export function getAllStories(db: Database): StoryRow[] {
   return queryAll<StoryRow>(db, 'SELECT * FROM stories ORDER BY created_at DESC');
 }

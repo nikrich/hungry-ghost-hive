@@ -72,10 +72,11 @@ export const myStoriesCommand = new Command('my-stories')
             complexity_score DESC
         `, [agent.team_id]);
       } else {
-        // Show only assigned stories
+        // Show only assigned active stories (exclude merged/terminal states)
         stories = queryAll<StoryRow>(db.db, `
           SELECT * FROM stories
           WHERE assigned_agent_id = ?
+          AND status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')
           ORDER BY created_at
         `, [agent.id]);
       }
