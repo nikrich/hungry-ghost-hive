@@ -337,6 +337,22 @@ function runMigrations(db: SqlJsDatabase): void {
     }
     db.run("INSERT INTO migrations (name) VALUES ('005-add-agent-last-seen.sql')");
   }
+
+  // Migration 006: Add cli_tool column to agents for CLI-aware manager
+  const result006 = db.exec("SELECT name FROM migrations WHERE name = '006-add-agent-cli-tool.sql'");
+  const migration006Applied = result006.length > 0 && result006[0].values.length > 0;
+
+  if (!migration006Applied) {
+    const columns = db.exec("PRAGMA table_info(agents)");
+    const hasCliToolColumn = columns.length > 0 &&
+      columns[0].values.some((col: unknown[]) => col[1] === 'cli_tool');
+
+    if (!hasCliToolColumn) {
+      // Add cli_tool column with default 'claude' for backward compatibility
+      db.run("ALTER TABLE agents ADD COLUMN cli_tool TEXT DEFAULT 'claude'");
+    }
+    db.run("INSERT INTO migrations (name) VALUES ('006-add-agent-cli-tool.sql')");
+  }
 }
 
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
@@ -388,6 +404,7 @@ export interface AgentRow {
   current_story_id: string | null;
   memory_state: string | null;
   last_seen: string | null;
+  cli_tool: string;
   created_at: string;
   updated_at: string;
 }

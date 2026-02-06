@@ -4,6 +4,9 @@ import { getStoriesByTeam, updateStory, type StoryRow } from '../db/queries/stor
 import { createAgent, updateAgent, getTechLead } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
 import { spawnTmuxSession, generateSessionName } from '../tmux/manager.js';
+import { generateContextFile } from '../context-files/index.js';
+import { loadConfig } from '../config/loader.js';
+import { findHiveRoot, getHivePaths } from '../utils/paths.js';
 
 export interface SeniorContext extends AgentContext {
   teamId: string;
@@ -134,7 +137,42 @@ This will help with story estimation and implementation.`;
     const subordinate = createAgent(this.db, {
       type: agentType,
       teamId: this.teamId,
+      cliTool: 'claude',
     });
+
+    // Generate context files for the subordinate before spawning
+    let config = null;
+    try {
+      const hiveRoot = findHiveRoot(this.workDir);
+      if (hiveRoot) {
+        const paths = getHivePaths(hiveRoot);
+        config = loadConfig(paths.hiveDir);
+      }
+      if (this.team && config) {
+        // Get stories assigned to this agent to provide in context
+        const agentStories = getStoriesByTeam(this.db, this.team.id).filter(s => s.assigned_agent_id === subordinate.id || s.id === story.id);
+
+        const cliToolMap: Record<string, 'claude-code' | 'codex' | 'gemini'> = {
+          'claude': 'claude-code',
+          'codex': 'codex',
+          'gemini': 'gemini',
+        };
+
+        generateContextFile({
+          cliTool: cliToolMap[subordinate.cli_tool] || 'claude-code',
+          team: this.team,
+          stories: agentStories,
+          agentType,
+          config,
+          agentId: subordinate.id,
+        });
+      }
+    } catch (err) {
+      // Log context file generation error but don't fail the delegation
+      this.log('STORY_PROGRESS_UPDATE', `Failed to generate context file: ${err instanceof Error ? err.message : 'Unknown error'}`, {
+        storyId: story.id,
+      });
+    }
 
     // Spawn tmux session
     const sessionName = generateSessionName(agentType, this.team?.name);

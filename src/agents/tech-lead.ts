@@ -1,12 +1,15 @@
 import { BaseAgent, type AgentContext } from './base-agent.js';
 import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
 import { getRequirementById, updateRequirement, type RequirementRow } from '../db/queries/requirements.js';
-import { createStory, updateStory, getStoryById } from '../db/queries/stories.js';
+import { createStory, updateStory, getStoryById, getStoriesByTeam } from '../db/queries/stories.js';
 import { createAgent, getAgentsByType, updateAgent } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
 import { spawnTmuxSession, generateSessionName } from '../tmux/manager.js';
 import { queryAll } from '../db/client.js';
 import { addStoryDependency } from '../db/queries/stories.js';
+import { generateContextFile } from '../context-files/index.js';
+import { loadConfig } from '../config/loader.js';
+import { findHiveRoot, getHivePaths } from '../utils/paths.js';
 
 export interface TechLeadContext extends AgentContext {
   requirementId?: string;
@@ -229,6 +232,18 @@ Respond in JSON format:
       }
     }
 
+    // Load config for context file generation
+    let config = null;
+    try {
+      const hiveRoot = findHiveRoot(this.workDir);
+      if (hiveRoot) {
+        const paths = getHivePaths(hiveRoot);
+        config = loadConfig(paths.hiveDir);
+      }
+    } catch {
+      // Continue without config, context files will still be generated with defaults
+    }
+
     // Spawn or assign Senior for each team
     for (const teamId of teamIds) {
       const team = this.teams.find(t => t.id === teamId);
@@ -242,8 +257,29 @@ Respond in JSON format:
         const senior = createAgent(this.db, {
           type: 'senior',
           teamId,
+          cliTool: 'claude',
         });
         seniors = [senior];
+
+        // Generate context files for the team before spawning
+        try {
+          const teamStories = getStoriesByTeam(this.db, teamId);
+          if (config) {
+            generateContextFile({
+              cliTool: senior.cli_tool === 'codex' ? 'codex' : (senior.cli_tool === 'gemini' ? 'gemini' : 'claude-code'),
+              team,
+              stories: teamStories,
+              agentType: 'senior',
+              config,
+              agentId: senior.id,
+            });
+          }
+        } catch (err) {
+          // Log context file generation error but don't fail the spawn
+          this.log('STORY_PROGRESS_UPDATE', `Failed to generate context file: ${err instanceof Error ? err.message : 'Unknown error'}`, {
+            teamId,
+          });
+        }
 
         // Spawn tmux session for the Senior
         const sessionName = generateSessionName('senior', team.name);
