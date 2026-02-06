@@ -365,8 +365,8 @@ We appreciate contributions from everyone! This project is built and maintained 
 <!-- markdownlint-disable -->
 <table>
   <tr>
-    <td align="center"><a href="https://github.com/nikrich"><img src="https://avatars.githubusercontent.com/u/12345678?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Jannik Richter</b></sub></a><br /><a href="https://github.com/nikrich/hungry-ghost-hive/commits?author=nikrich" title="Code">💻</a> <a href="https://github.com/nikrich/hungry-ghost-hive/commits?author=nikrich" title="Documentation">📖</a> <a href="#infra-nikrich" title="Infrastructure">🚀</a></td>
-    <td align="center"><a href="https://github.com/mayor-bot"><img src="https://avatars.githubusercontent.com/u/87654321?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Mayor</b></sub></a><br /><a href="https://github.com/nikrich/hungry-ghost-hive/commits?author=mayor-bot" title="Code">💻</a></td>
+    <td align="center"><a href="https://github.com/nikrich"><img src="https://avatars.githubusercontent.com/u/8254123?v=4?s=100" width="100px;" alt=""/><br /><sub><b>nikrich</b></sub></a><br /><a href="https://github.com/nikrich/hungry-ghost-hive/commits?author=nikrich" title="Code">💻</a> <a href="https://github.com/nikrich/hungry-ghost-hive/commits?author=nikrich" title="Documentation">📖</a> <a href="#infra-nikrich" title="Infrastructure">🚀</a> <a href="#maintenance-nikrich" title="Maintenance">🚧</a></td>
+    <td align="center"><a href="https://github.com/aleeuwen73"><img src="https://avatars.githubusercontent.com/u/73424841?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Alastair van Leeuwen</b></sub></a><br /><a href="https://github.com/nikrich/hungry-ghost-hive/commits?author=aleeuwen73" title="Code">💻</a></td>
   </tr>
 </table>
 
