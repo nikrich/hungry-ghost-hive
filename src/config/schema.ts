@@ -6,6 +6,7 @@ const ModelConfigSchema = z.object({
   model: z.string(),
   max_tokens: z.number().int().positive().default(8000),
   temperature: z.number().min(0).max(2).default(0.5),
+  cli_tool: z.enum(['claude', 'codex', 'gemini']).optional().default('claude'),
 });
 
 // Models configuration for all agent types
@@ -15,30 +16,35 @@ const ModelsConfigSchema = z.object({
     model: 'claude-opus-4-20250514',
     max_tokens: 16000,
     temperature: 0.7,
+    cli_tool: 'claude',
   }),
   senior: ModelConfigSchema.default({
     provider: 'anthropic',
     model: 'claude-sonnet-4-20250514',
     max_tokens: 8000,
     temperature: 0.5,
+    cli_tool: 'claude',
   }),
   intermediate: ModelConfigSchema.default({
     provider: 'anthropic',
     model: 'claude-haiku-3-5-20241022',
     max_tokens: 4000,
     temperature: 0.3,
+    cli_tool: 'claude',
   }),
   junior: ModelConfigSchema.default({
     provider: 'openai',
     model: 'gpt-4o-mini',
     max_tokens: 4000,
     temperature: 0.2,
+    cli_tool: 'claude',
   }),
   qa: ModelConfigSchema.default({
     provider: 'anthropic',
     model: 'claude-sonnet-4-20250514',
     max_tokens: 8000,
     temperature: 0.2,
+    cli_tool: 'claude',
   }),
 });
 
@@ -144,30 +150,36 @@ models:
     model: claude-opus-4-20250514
     max_tokens: 16000
     temperature: 0.7
+    # CLI tool used to spawn agents (claude, codex, or gemini)
+    cli_tool: claude
 
   senior:
     provider: anthropic
     model: claude-sonnet-4-20250514
     max_tokens: 8000
     temperature: 0.5
+    cli_tool: claude
 
   intermediate:
     provider: anthropic
     model: claude-haiku-3-5-20241022
     max_tokens: 4000
     temperature: 0.3
+    cli_tool: claude
 
   junior:
     provider: openai
     model: gpt-4o-mini
     max_tokens: 4000
     temperature: 0.2
+    cli_tool: claude
 
   qa:
     provider: anthropic
     model: claude-sonnet-4-20250514
     max_tokens: 8000
     temperature: 0.2
+    cli_tool: claude
 
 # Team scaling rules
 scaling:

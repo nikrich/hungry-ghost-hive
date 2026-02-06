@@ -7,7 +7,7 @@ describe('HiveConfigSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('should accept valid config', () => {
+  it('should accept valid config with cli_tool', () => {
     const config = {
       version: '1.0',
       models: {
@@ -16,30 +16,35 @@ describe('HiveConfigSchema', () => {
           model: 'claude-opus-4-20250514',
           max_tokens: 16000,
           temperature: 0.7,
+          cli_tool: 'claude',
         },
         senior: {
           provider: 'anthropic',
           model: 'claude-sonnet-4-20250514',
           max_tokens: 8000,
           temperature: 0.5,
+          cli_tool: 'claude',
         },
         intermediate: {
           provider: 'anthropic',
-          model: 'claude-3-5-haiku-20241022',
+          model: 'claude-haiku-3-5-20241022',
           max_tokens: 4000,
           temperature: 0.3,
+          cli_tool: 'claude',
         },
         junior: {
           provider: 'openai',
           model: 'gpt-4o-mini',
           max_tokens: 4000,
           temperature: 0.2,
+          cli_tool: 'codex',
         },
         qa: {
           provider: 'anthropic',
           model: 'claude-sonnet-4-20250514',
           max_tokens: 8000,
           temperature: 0.2,
+          cli_tool: 'claude',
         },
       },
       scaling: {
@@ -74,5 +79,57 @@ describe('HiveConfigSchema', () => {
 
     const result = HiveConfigSchema.safeParse(config);
     expect(result.success).toBe(false);
+  });
+
+  it('should accept all valid cli_tool values (claude, codex, gemini)', () => {
+    const tools = ['claude', 'codex', 'gemini'];
+
+    for (const tool of tools) {
+      const config = {
+        models: {
+          junior: {
+            provider: 'openai',
+            model: 'gpt-4o-mini',
+            cli_tool: tool,
+          },
+        },
+      };
+
+      const result = HiveConfigSchema.safeParse(config);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('should reject invalid cli_tool values', () => {
+    const config = {
+      models: {
+        junior: {
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          max_tokens: 4000,
+          temperature: 0.2,
+          cli_tool: 'invalid_tool',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it('should apply cli_tool default to all tiers', () => {
+    const config = HiveConfigSchema.parse({});
+    expect(config.models.tech_lead.cli_tool).toBe('claude');
+    expect(config.models.senior.cli_tool).toBe('claude');
+    expect(config.models.intermediate.cli_tool).toBe('claude');
+    expect(config.models.junior.cli_tool).toBe('claude');
+    expect(config.models.qa.cli_tool).toBe('claude');
+  });
+
+  it('should export ModelConfig type with cli_tool', () => {
+    const config = DEFAULT_CONFIG;
+    expect(config.models).toBeDefined();
+    expect(config.models.junior.cli_tool).toBe('claude');
+    expect(typeof config.models.junior.cli_tool).toBe('string');
   });
 });
