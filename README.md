@@ -449,3 +449,11 @@ git status  # MUST show "up to date with origin"
 ## License
 
 See [LICENSE](LICENSE) file for details. This project uses a proprietary Hungry Ghost Hive License.
+
+## Contributors
+
+[![Contributors](https://img.shields.io/github/contributors/nikrich/hungry-ghost-hive?style=flat-square)](https://github.com/nikrich/hungry-ghost-hive/graphs/contributors)
+
+Thanks to all the contributors who have helped build Hive! 🎉
+
+See the full list of contributors on the [Contributors page](https://github.com/nikrich/hungry-ghost-hive/graphs/contributors).
