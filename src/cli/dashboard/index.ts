@@ -19,7 +19,7 @@ function debugLog(msg: string) {
       }
     }
     appendFileSync(DEBUG_LOG_PATH, `${new Date().toISOString()} ${msg}\n`);
-  } catch (err) {
+  } catch {
     // Silently fail if we can't write to debug log
   }
 }
