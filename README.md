@@ -1,5 +1,11 @@
 # Hive - AI Agent Orchestrator
 
+[![CI](https://img.shields.io/github/actions/workflow/status/nikrich/hungry-ghost-hive/ci.yml?branch=main&label=CI&logo=github)](https://github.com/nikrich/hungry-ghost-hive/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/hungry-ghost-hive?logo=npm)](https://www.npmjs.com/package/hungry-ghost-hive)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen?logo=node.js)](https://nodejs.org)
+[![License](https://img.shields.io/badge/license-Proprietary-blue)](./LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)](https://www.typescriptlang.org/)
+
 <img width="1263" height="651" alt="image" src="https://github.com/user-attachments/assets/76eb8bd9-d5ec-45b7-9ee2-b7ef910f3e88" />
 
 Hive is a CLI tool that orchestrates AI agents modeled after agile software development teams. You act as the **Product Owner**, providing requirements. Hive's AI agents handle the rest—from planning through to PR submission.
