@@ -19,6 +19,7 @@ import { createPullRequest, type PullRequestRow } from '../../db/queries/pull-re
 import { acquireLock } from '../../db/lock.js';
 import { join } from 'path';
 import { detectClaudeCodeState, getStateDescription } from '../../utils/claude-code-state.js';
+import { getStateDetector, type CliTool as StateDetectorCliTool } from '../../state-detectors/index.js';
 
 export const managerCommand = new Command('manager')
   .description('Micromanager daemon that keeps agents productive');
@@ -310,11 +311,13 @@ async function managerCheck(root: string): Promise<void> {
 
       // Check if agent appears stuck (capture last output)
       const output = await captureTmuxPane(session.name, 50);
-      const waitingInfo = detectWaitingState(output);
+      const agentForCheck = getAgentById(db.db, session.name.replace('hive-', ''));
+      const cliToolForCheck = (agentForCheck?.cli_tool || 'claude') as StateDetectorCliTool;
+      const waitingInfo = detectWaitingState(output, cliToolForCheck);
 
       if (waitingInfo.needsHuman && !escalatedSessions.has(session.name)) {
         // Create escalation for human attention
-        const agent = getAgentById(db.db, session.name.replace('hive-', ''));
+        const agent = agentForCheck;
         const storyId = agent?.current_story_id || null;
 
         createEscalation(db.db, {
@@ -409,7 +412,9 @@ hive my-stories ${session.name}
           if (agentSession) {
             // Check if agent is idle before nudging
             const output = await captureTmuxPane(agentSession.name, 30);
-            const state = detectWaitingState(output);
+            const agentForWaiting = getAgentById(db.db, agentSession.name.replace('hive-', ''));
+            const cliToolForWaiting = (agentForWaiting?.cli_tool || 'claude') as StateDetectorCliTool;
+            const state = detectWaitingState(output, cliToolForWaiting);
             if (state.isWaiting && !state.needsHuman) {
               await sendToTmuxSession(agentSession.name,
                 `# REMINDER: Story ${story.id} failed QA review!
