@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { Database } from 'sql.js';
 import { createTestDatabase } from './test-helpers.js';
+import { queryOne } from '../client.js';
 import { createTeam } from './teams.js';
 import { createAgent } from './agents.js';
 import {
@@ -32,8 +33,8 @@ describe('heartbeat queries', () => {
 
       updateAgentHeartbeat(db, agent.id);
 
-      const afterUpdate = db.exec(`SELECT last_seen FROM agents WHERE id = ?`, [agent.id]);
-      const updatedLastSeen = afterUpdate[0]?.values[0]?.[0];
+      const afterUpdate = queryOne<{ last_seen: string }>(db, `SELECT last_seen FROM agents WHERE id = ?`, [agent.id]);
+      const updatedLastSeen = afterUpdate?.last_seen;
 
       expect(updatedLastSeen).toBeDefined();
       expect(typeof updatedLastSeen).toBe('string');
@@ -49,8 +50,8 @@ describe('heartbeat queries', () => {
       updateAgentHeartbeat(db, agent.id);
       updateAgentHeartbeat(db, agent.id);
 
-      const result = db.exec(`SELECT last_seen FROM agents WHERE id = ?`, [agent.id]);
-      const lastSeen = result[0]?.values[0]?.[0];
+      const result = queryOne<{ last_seen: string }>(db, `SELECT last_seen FROM agents WHERE id = ?`, [agent.id]);
+      const lastSeen = result?.last_seen;
 
       expect(lastSeen).toBeDefined();
     });
