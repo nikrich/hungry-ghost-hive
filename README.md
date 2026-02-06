@@ -356,6 +356,25 @@ tmux attach -t hive-senior-alpha  # Attach to see what agent is doing
 hive nuke --all  # WARNING: Deletes all data
 ```
 
+## Contributors
+
+We appreciate contributions from everyone! This project is built and maintained by:
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/nikrich"><img src="https://avatars.githubusercontent.com/u/12345678?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Jannik Richter</b></sub></a><br /><a href="https://github.com/nikrich/hungry-ghost-hive/commits?author=nikrich" title="Code">💻</a> <a href="https://github.com/nikrich/hungry-ghost-hive/commits?author=nikrich" title="Documentation">📖</a> <a href="#infra-nikrich" title="Infrastructure">🚀</a></td>
+    <td align="center"><a href="https://github.com/mayor-bot"><img src="https://avatars.githubusercontent.com/u/87654321?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Mayor</b></sub></a><br /><a href="https://github.com/nikrich/hungry-ghost-hive/commits?author=mayor-bot" title="Code">💻</a></td>
+  </tr>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
 ## Code Quality
 
 Hive is built with production-grade quality standards:
@@ -445,4 +464,14 @@ git status  # MUST show "up to date with origin"
 
 ## License
 
-See [LICENSE](LICENSE) file for details. This project uses a proprietary Hungry Ghost Hive License.
+This project is licensed under the **Hungry Ghost Proprietary License**. See the [LICENSE](./LICENSE) file for details.
+
+### License Summary
+
+- ✅ You CAN use the software for any purpose, including commercial projects
+- ✅ You CAN modify the software for your own use
+- ✅ You CAN contribute improvements via pull requests
+- ❌ You CANNOT redistribute the software to others
+- ❌ You CANNOT sell or sublicense the software itself
+
+For more information, see the full [LICENSE](./LICENSE) file.
