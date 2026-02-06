@@ -349,6 +349,40 @@ OPENAI_API_KEY=sk-...         # Required for GPT agents (juniors)
 GITHUB_TOKEN=ghp_...          # Required for PR creation
 ```
 
+## Issue Tracking (Beads)
+
+This repository uses `bd` (Beads) for issue tracking. Run `bd onboard` to get started.
+
+### Quick Reference
+
+```bash
+bd ready              # Find available work
+bd show <id>          # View issue details
+bd update <id> --status in_progress  # Claim work
+bd close <id>         # Complete work
+bd sync               # Sync with git
+```
+
+### Session Completion (Landing the Plane)
+
+When ending a work session, complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+1. File issues for remaining work
+2. Run quality gates (tests/linters/builds) if code changed
+3. Update issue status (close finished work, update in-progress)
+4. Push to remote:
+
+```bash
+git pull --rebase
+bd sync
+git push
+git status  # MUST show "up to date with origin"
+```
+
+5. Clean up (stashes, prune remote branches)
+6. Verify all changes committed AND pushed
+7. Hand off with context for next session
+
 ## License
 
 MIT
