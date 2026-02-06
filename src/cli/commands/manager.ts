@@ -5,7 +5,7 @@ import { getDatabase, withTransaction } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
-import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
+import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession, sendMessageWithConfirmation } from '../../tmux/manager.js';
 import { getMergeQueue, getPullRequestsByStatus, backfillGithubPrNumbers } from '../../db/queries/pull-requests.js';
 import { markMessagesRead, getAllPendingMessages, type MessageRow } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
@@ -742,9 +742,16 @@ async function forwardMessages(sessionName: string, messages: MessageRow[], cliT
 # ${msg.body}
 # Reply with: # ${commands.msgReply(msg.id, 'your response', sessionName)}`;
 
-    await sendToTmuxSession(sessionName, notification);
-    // Small delay between messages
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Send with delivery confirmation - wait for message to appear in session output before proceeding
+    const delivered = await sendMessageWithConfirmation(sessionName, notification);
+
+    if (!delivered) {
+      console.warn(`Failed to confirm delivery of message ${msg.id} to ${sessionName} after retries`);
+      // Continue to next message even if delivery not confirmed to avoid blocking the manager
+    }
+
+    // Small delay between messages to allow recipient time to read
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
 }
 
