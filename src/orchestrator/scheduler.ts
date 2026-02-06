@@ -6,7 +6,7 @@ import { queryOne, queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode, killTmuxSession } from '../tmux/manager.js';
 import type { ScalingConfig, ModelsConfig, QAConfig } from '../config/schema.js';
-import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
+import { getCliRuntimeBuilder, validateModelCliCompatibility } from '../cli-runtimes/index.js';
 
 export interface SchedulerConfig {
   scaling: ScalingConfig;
@@ -611,6 +611,16 @@ export class Scheduler {
     // Get model info from config
     const modelConfig = this.config.models[type as keyof typeof this.config.models];
     const modelShorthand = this.getModelShorthand(modelConfig.model);
+    const cliTool = modelConfig.cli_tool || 'claude';
+
+    // Validate that the model is compatible with the CLI tool
+    try {
+      validateModelCliCompatibility(modelConfig.model, cliTool);
+    } catch (err) {
+      throw new Error(
+        `Cannot spawn ${type} agent: ${err instanceof Error ? err.message : 'Unknown compatibility error'}`,
+      );
+    }
 
     const agent = createAgent(this.db, {
       type,
