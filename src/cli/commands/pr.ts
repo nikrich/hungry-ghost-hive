@@ -10,6 +10,7 @@ import {
   getPullRequestById,
   updatePullRequest,
   getQueuePosition,
+  getOpenPullRequestsByStory,
   type PullRequestRow,
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
@@ -59,6 +60,20 @@ prCommand
         const story = getStoryById(db.db, storyId);
         if (story) {
           teamId = story.team_id;
+
+          // Auto-close any existing open PRs for this story
+          const existingPRs = getOpenPullRequestsByStory(db.db, storyId);
+          for (const existingPR of existingPRs) {
+            updatePullRequest(db.db, existingPR.id, { status: 'closed' });
+            createLog(db.db, {
+              agentId: options.from || 'system',
+              storyId,
+              eventType: 'PR_CLOSED',
+              message: `Auto-closed duplicate PR ${existingPR.id}`,
+              metadata: { pr_id: existingPR.id, reason: 'duplicate' },
+            });
+          }
+
           // Update story status
           updateStory(db.db, storyId, { status: 'pr_submitted' });
         }

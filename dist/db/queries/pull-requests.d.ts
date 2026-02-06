@@ -26,6 +26,7 @@ export declare function getNextInQueue(db: Database, teamId?: string): PullReque
 export declare function getQueuePosition(db: Database, prId: string): number;
 export declare function getPullRequestsByStatus(db: Database, status: PullRequestStatus): PullRequestRow[];
 export declare function getApprovedPullRequests(db: Database): PullRequestRow[];
+export declare function getOpenPullRequestsByStory(db: Database, storyId: string): PullRequestRow[];
 export declare function getAllPullRequests(db: Database): PullRequestRow[];
 export declare function getPullRequestsByTeam(db: Database, teamId: string): PullRequestRow[];
 export declare function updatePullRequest(db: Database, id: string, input: UpdatePullRequestInput): PullRequestRow | undefined;
