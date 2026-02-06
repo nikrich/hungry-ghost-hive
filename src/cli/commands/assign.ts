@@ -97,15 +97,24 @@ export const assignCommand = new Command('assign')
       const result = await scheduler.assignStories();
       db.save(); // Save immediately to prevent race condition with manager daemon
 
+      let summaryMsg = `Assigned ${result.assigned} stories`;
+      if (result.preventedDuplicates > 0) {
+        summaryMsg += ` (prevented ${result.preventedDuplicates} duplicate assignments)`;
+      }
+
       if (result.errors.length > 0) {
-        spinner.warn(chalk.yellow(`Assigned ${result.assigned} stories with ${result.errors.length} errors`));
+        spinner.warn(chalk.yellow(`${summaryMsg} with ${result.errors.length} errors`));
         for (const error of result.errors) {
           console.log(chalk.red(`  - ${error}`));
         }
       } else if (result.assigned === 0) {
-        spinner.info(chalk.gray('No stories to assign'));
+        if (result.preventedDuplicates > 0) {
+          spinner.info(chalk.yellow(summaryMsg));
+        } else {
+          spinner.info(chalk.gray('No stories to assign'));
+        }
       } else {
-        spinner.succeed(chalk.green(`Assigned ${result.assigned} stories`));
+        spinner.succeed(chalk.green(summaryMsg));
       }
 
       // Auto-start the manager if work was assigned and it's not running
