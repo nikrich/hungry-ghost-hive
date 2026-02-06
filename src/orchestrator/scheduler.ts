@@ -1084,13 +1084,16 @@ hive pr show <pr-id>
 
 ### After reviewing:
 
-**If the PR is good - approve and merge:**
+**If the PR is good - approve and merge immediately:**
 \`\`\`bash
-# First, merge via GitHub CLI
-gh pr merge <pr-number> --merge
-
-# Then mark as merged in Hive
+# Approve and merge (this will attempt to merge immediately with retries)
 hive pr approve <pr-id> --from ${sessionName}
+
+# The above command will:
+# 1. Review and approve the PR on GitHub
+# 2. Merge the PR immediately if checks pass
+# 3. Retry up to 3 times if GitHub checks are still running
+# 4. Mark the PR as merged in Hive when successful
 \`\`\`
 
 **If the PR has issues - reject with feedback:**

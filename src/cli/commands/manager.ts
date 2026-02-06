@@ -868,11 +868,10 @@ async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Promise<n
         }
       }
 
-      // Attempt to merge on GitHub
-      const { execSync } = await import('child_process');
-      try {
-        execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
+      // Attempt to merge on GitHub with retries
+      const merged = await attemptMergeWithRetry(pr.github_pr_number, repoCwd);
 
+      if (merged) {
         // Update PR status to merged
         updatePullRequest(db.db, pr.id, { status: 'merged' });
 
@@ -895,18 +894,18 @@ async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Promise<n
         }
 
         mergedCount++;
-      } catch (mergeErr) {
+      } else {
         // Log merge failure but continue with other PRs
         createLog(db.db, {
           agentId: 'manager',
           storyId: pr.story_id || undefined,
           eventType: 'PR_MERGE_FAILED',
           status: 'error',
-          message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${mergeErr instanceof Error ? mergeErr.message : 'Unknown error'}`,
+          message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): PR still not mergeable`,
           metadata: { pr_id: pr.id },
         });
       }
-    } catch {
+    } catch (err) {
       // Non-fatal - continue with other PRs
       continue;
     }
@@ -917,4 +916,51 @@ async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Promise<n
   }
 
   return mergedCount;
+}
+
+/**
+ * Attempt to merge a PR on GitHub with exponential backoff retry
+ * Retries up to 3 times with delays to wait for GitHub checks to complete
+ * Returns true if merge succeeded, false otherwise
+ */
+async function attemptMergeWithRetry(prNumber: number, repoCwd: string, maxRetries: number = 3): Promise<boolean> {
+  const { execSync } = await import('child_process');
+  let lastError: string | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // First approve the PR on GitHub
+      try {
+        execSync(`gh pr review ${prNumber} --approve`, { stdio: 'pipe', cwd: repoCwd });
+      } catch {
+        // May fail if already approved or if it's our own PR - continue
+      }
+
+      // Then merge
+      execSync(`gh pr merge ${prNumber} --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
+      return true; // Success
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+
+      // Check if this is a temporary error (GitHub checks not complete, etc)
+      const isTemporaryError = lastError.includes('not mergeable') ||
+                                lastError.includes('checks') ||
+                                lastError.includes('status') ||
+                                lastError.includes('conflict');
+
+      if (!isTemporaryError) {
+        // Permanent error - don't retry
+        return false;
+      }
+
+      if (attempt < maxRetries) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delayMs = Math.pow(2, attempt - 1) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  // All retries exhausted
+  return false;
 }

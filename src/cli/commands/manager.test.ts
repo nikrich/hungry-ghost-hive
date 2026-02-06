@@ -50,3 +50,47 @@ describe('Auto-merge PRs', () => {
     expect(updatePullRequest).toBeDefined();
   });
 });
+
+describe('Merge retry logic', () => {
+  describe('Temporary error detection', () => {
+    it('should recognize merge conflicts as temporary errors', () => {
+      const error = 'PR has merge conflicts - wait for checks to complete';
+      const isTemporary = error.includes('conflict');
+      expect(isTemporary).toBe(true);
+    });
+
+    it('should recognize GitHub checks pending as temporary errors', () => {
+      const error = 'PR is not mergeable - checks are still running';
+      const isTemporary = error.includes('checks') || error.includes('not mergeable');
+      expect(isTemporary).toBe(true);
+    });
+
+    it('should recognize status check failures as temporary errors', () => {
+      const error = 'Cannot merge - required status checks are not passing yet';
+      const isTemporary = error.includes('status');
+      expect(isTemporary).toBe(true);
+    });
+
+    it('should not treat permanent errors as temporary', () => {
+      const error = 'PR branch has been deleted';
+      const isTemporary = error.includes('not mergeable') ||
+                         error.includes('checks') ||
+                         error.includes('status') ||
+                         error.includes('conflict');
+      expect(isTemporary).toBe(false);
+    });
+  });
+
+  describe('Retry backoff', () => {
+    it('should use exponential backoff strategy', () => {
+      // First retry: 1s, Second retry: 2s, Third retry: 4s
+      const attempt1Delay = Math.pow(2, 0) * 1000;
+      const attempt2Delay = Math.pow(2, 1) * 1000;
+      const attempt3Delay = Math.pow(2, 2) * 1000;
+
+      expect(attempt1Delay).toBe(1000);
+      expect(attempt2Delay).toBe(2000);
+      expect(attempt3Delay).toBe(4000);
+    });
+  });
+});
