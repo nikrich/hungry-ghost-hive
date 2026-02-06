@@ -1,9 +1,10 @@
 import type { Database } from 'sql.js';
 import { type StoryRow } from '../db/queries/stories.js';
-import type { ScalingConfig, ModelsConfig } from '../config/schema.js';
+import type { ScalingConfig, ModelsConfig, QAConfig } from '../config/schema.js';
 export interface SchedulerConfig {
     scaling: ScalingConfig;
     models: ModelsConfig;
+    qa?: QAConfig;
     rootDir: string;
 }
 export declare class Scheduler {

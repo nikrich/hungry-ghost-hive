@@ -5,12 +5,13 @@ import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode, killTmuxSession } from '../tmux/manager.js';
-import type { ScalingConfig, ModelsConfig } from '../config/schema.js';
+import type { ScalingConfig, ModelsConfig, QAConfig } from '../config/schema.js';
 import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
 
 export interface SchedulerConfig {
   scaling: ScalingConfig;
   models: ModelsConfig;
+  qa?: QAConfig;
   rootDir: string;
 }
 
@@ -458,9 +459,13 @@ export class Scheduler {
 
     const pendingCount = qaStories.length;
 
-    // Calculate needed QA agents: 1 per 2-3 pending PRs, max 5
+    // Calculate needed QA agents using configurable values
+    const qaScaling = this.config.qa?.scaling || { pending_per_agent: 2.5, max_agents: 5 };
+    const pendingPerAgent = qaScaling.pending_per_agent || 2.5;
+    const maxAgents = qaScaling.max_agents || 5;
+
     // If no pending work, scale down to 0 agents
-    const neededQAs = pendingCount > 0 ? Math.min(Math.ceil(pendingCount / 2.5), 5) : 0;
+    const neededQAs = pendingCount > 0 ? Math.min(Math.ceil(pendingCount / pendingPerAgent), maxAgents) : 0;
 
     // Get currently active QA agents for this team
     const activeQAs = getAgentsByTeam(this.db, teamId)
