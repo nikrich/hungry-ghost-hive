@@ -19,6 +19,7 @@ import { createPullRequest, type PullRequestRow } from '../../db/queries/pull-re
 import { acquireLock } from '../../db/lock.js';
 import { join } from 'path';
 import { detectClaudeCodeState, getStateDescription, ClaudeCodeState } from '../../utils/claude-code-state.js';
+import { getAvailableCommands, buildAutoRecoveryReminder, type CLITool } from '../../utils/cli-commands.js';
 
 // Agent state tracking for nudge logic
 interface AgentStateTracking {
@@ -228,8 +229,16 @@ managerCommand
       process.exit(1);
     }
 
-    await nudgeAgent(root, session, options.message);
-    console.log(chalk.green(`Nudged ${session}`));
+    const paths = getHivePaths(root);
+    const db = await getDatabase(paths.hiveDir);
+    try {
+      const agent = getAgentById(db.db, session.replace('hive-', ''));
+      const cliTool = (agent?.cli_tool || 'claude') as CLITool;
+      await nudgeAgent(root, session, options.message, undefined, undefined, cliTool);
+      console.log(chalk.green(`Nudged ${session}`));
+    } finally {
+      db.close();
+    }
   });
 
 async function managerCheck(root: string): Promise<void> {
@@ -302,10 +311,14 @@ async function managerCheck(root: string): Promise<void> {
       // Skip manager itself
       if (session.name === 'hive-manager') continue;
 
+      // Get agent information for CLI-aware messaging
+      const agent = getAgentById(db.db, session.name.replace('hive-', ''));
+      const agentCliTool = (agent?.cli_tool || 'claude') as CLITool;
+
       // Check if agent has unread messages
       const unread = getUnreadMessages(db.db, session.name);
       if (unread.length > 0) {
-        await forwardMessages(session.name, unread);
+        await forwardMessages(session.name, unread, agentCliTool);
         messagesForwarded += unread.length;
         // Mark as read
         for (const msg of unread) {
@@ -344,7 +357,6 @@ async function managerCheck(root: string): Promise<void> {
 
       if (waitingInfo.needsHuman && !escalatedSessions.has(session.name)) {
         // Create escalation for human attention
-        const agent = getAgentById(db.db, session.name.replace('hive-', ''));
         const storyId = agent?.current_story_id || null;
 
         createEscalation(db.db, {
@@ -358,13 +370,8 @@ async function managerCheck(root: string): Promise<void> {
         escalatedSessions.add(session.name);
 
         // Also remind the agent to continue autonomously if they can
-        await sendToTmuxSession(session.name,
-          `# REMINDER: You are an autonomous agent. Don't wait for instructions.
-# If you completed your task, check for more work:
-hive my-stories ${session.name}
-# If no stories, check available work: hive my-stories ${session.name} --all
-# If you created a PR, make sure to submit it: hive pr submit -b <branch> -s <story-id> --from ${session.name}`
-        );
+        const reminder = buildAutoRecoveryReminder(session.name, agentCliTool);
+        await sendToTmuxSession(session.name, reminder);
 
         console.log(chalk.red(`  ESCALATION: ${session.name} needs human input`));
       } else if (waitingInfo.isWaiting && stateResult.state !== ClaudeCodeState.THINKING) {
@@ -390,7 +397,7 @@ hive my-stories ${session.name}
             // Only proceed if still in a waiting state and not THINKING
             if (recheckState.isWaiting && !recheckState.needsHuman && recheckState.state !== ClaudeCodeState.THINKING) {
               const agentType = getAgentType(session.name);
-              await nudgeAgent(root, session.name, undefined, agentType, waitingInfo.reason);
+              await nudgeAgent(root, session.name, undefined, agentType, waitingInfo.reason, agentCliTool);
               currentTrackedState.lastNudgeTime = now;
               nudged++;
             }
@@ -632,7 +639,8 @@ async function nudgeAgent(
   sessionName: string,
   customMessage?: string,
   agentType?: string,
-  reason?: string
+  reason?: string,
+  agentCliTool?: CLITool
 ): Promise<void> {
   if (customMessage) {
     await sendToTmuxSession(sessionName, customMessage);
@@ -640,24 +648,26 @@ async function nudgeAgent(
   }
 
   const type = agentType || getAgentType(sessionName);
+  const cliTool = agentCliTool || 'claude' as CLITool;
+  const commands = getAvailableCommands(cliTool);
 
   // Build contextual nudge message based on agent type and reason
   let nudge: string;
   switch (type) {
     case 'qa':
       nudge = `# You are a QA agent. Check for PRs to review:
-hive pr queue
+# ${commands.queueCheck()}
 # If there are PRs, review them with: hive pr review <pr-id>`;
       break;
     case 'senior':
       nudge = `# You are a Senior developer. Continue with your assigned stories.
-# Check your work: hive my-stories ${sessionName}
+# Check your work: # ${commands.getMyStories(sessionName)}
 # If no active stories, check for available work: hive stories list --status planned`;
       break;
     case 'intermediate':
     case 'junior':
       nudge = `# Continue with your assigned story. Check status:
-hive my-stories ${sessionName}
+# ${commands.getMyStories(sessionName)}
 # If stuck, ask your Senior for help via: hive msg send hive-senior-<team> "your question"
 # If done, submit PR: hive pr submit -b <branch> -s <story-id> --from ${sessionName}`;
       break;
@@ -678,11 +688,12 @@ hive status`;
   await sendEnterToTmuxSession(sessionName);
 }
 
-async function forwardMessages(sessionName: string, messages: MessageRow[]): Promise<void> {
+async function forwardMessages(sessionName: string, messages: MessageRow[], cliTool: CLITool = 'claude'): Promise<void> {
+  const commands = getAvailableCommands(cliTool);
   for (const msg of messages) {
     const notification = `# New message from ${msg.from_session}${msg.subject ? ` - ${msg.subject}` : ''}
 # ${msg.body}
-# Reply with: hive msg reply ${msg.id} "your response" --from ${sessionName}`;
+# Reply with: # ${commands.msgReply(msg.id, 'your response', sessionName)}`;
 
     await sendToTmuxSession(sessionName, notification);
     // Small delay between messages
