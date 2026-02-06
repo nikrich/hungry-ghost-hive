@@ -1,5 +1,5 @@
 import { execa } from 'execa';
-import { writeFileSync, unlinkSync } from 'fs';
+import { writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -7,6 +7,7 @@ export interface TmuxSessionOptions {
   sessionName: string;
   workDir: string;
   command: string;
+  initialPrompt?: string;
   env?: Record<string, string>;
 }
 
@@ -63,7 +64,7 @@ export async function getHiveSessions(): Promise<TmuxSession[]> {
 }
 
 export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<void> {
-  const { sessionName, workDir, command, env } = options;
+  const { sessionName, workDir, command, initialPrompt, env } = options;
 
   // Kill existing session if it exists
   if (await isTmuxSessionRunning(sessionName)) {
@@ -90,7 +91,22 @@ export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<voi
 
   // Send the command to the session
   if (command) {
-    await execa('tmux', ['send-keys', '-t', sessionName, command, 'Enter']);
+    let fullCommand = command;
+
+    if (initialPrompt) {
+      // Write the prompt to a temp file and use $(cat ...) to pass it as
+      // a CLI positional argument. This avoids multi-line tmux send-keys issues
+      // because the command itself is a single line - the shell expands the
+      // $(cat ...) at execution time. The double quotes around $() ensure the
+      // prompt is passed as one argument with newlines preserved.
+      const promptDir = join(tmpdir(), 'hive-prompts');
+      mkdirSync(promptDir, { recursive: true });
+      const promptFile = join(promptDir, `${sessionName}-${Date.now()}.md`);
+      writeFileSync(promptFile, initialPrompt, 'utf-8');
+      fullCommand += ` -- "$(cat '${promptFile}')"`;
+    }
+
+    await execa('tmux', ['send-keys', '-t', sessionName, fullCommand, 'Enter']);
   }
 }
 
@@ -129,30 +145,16 @@ export async function sendToTmuxSession(sessionName: string, text: string, clear
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 
-  if (text.includes('\n')) {
-    // For multi-line text, use tmux load-buffer/paste-buffer to paste the entire
-    // block as one unit. This avoids the previous bug where each line was sent
-    // separately with Enter, causing Claude Code to treat each line as a separate
-    // submitted message instead of one coherent prompt.
-    const tmpFile = join(tmpdir(), `hive-tmux-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
-    try {
-      writeFileSync(tmpFile, text, 'utf-8');
-      await execa('tmux', ['load-buffer', tmpFile]);
-      await execa('tmux', ['paste-buffer', '-p', '-t', sessionName]);
-      // Small delay to let the pasted text settle before submitting
-      await new Promise(resolve => setTimeout(resolve, 200));
-      // Send a single Enter to submit the entire pasted prompt
-      await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
-    } finally {
-      try { unlinkSync(tmpFile); } catch { /* ignore cleanup errors */ }
-    }
-  } else {
-    // For single-line text, use send-keys with literal flag then Enter separately
-    // '--' signals end of options, preventing text starting with '-' from being parsed as flags
-    await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', text]);
-    // Send Enter as a key event (C-m = carriage return = Enter) to ensure prompt receives it
-    await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
-  }
+  // For single-line text, use send-keys with literal flag then Enter separately.
+  // '--' signals end of options, preventing text starting with '-' from being parsed as flags.
+  //
+  // NOTE: Multi-line initial prompts should be passed via spawnTmuxSession's
+  // initialPrompt option, which writes to a temp file and uses $(cat ...) to
+  // deliver the prompt as a CLI positional argument. This function is only for
+  // single-line runtime messages (nudges, commands, etc).
+  await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', text]);
+  // Send Enter as a key event (C-m = carriage return = Enter) to ensure prompt receives it
+  await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
 }
 
 export async function sendEnterToTmuxSession(sessionName: string): Promise<void> {

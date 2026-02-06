@@ -8,7 +8,7 @@ import { createRequirement, updateRequirement } from '../../db/queries/requireme
 import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.js';
 import { getAllTeams } from '../../db/queries/teams.js';
 import { createLog } from '../../db/queries/logs.js';
-import { spawnTmuxSession, isTmuxAvailable, sendToTmuxSession, waitForTmuxSessionReady } from '../../tmux/manager.js';
+import { spawnTmuxSession, isTmuxAvailable } from '../../tmux/manager.js';
 import { loadConfig } from '../../config/loader.js';
 import { getCliRuntimeBuilder } from '../../cli-runtimes/index.js';
 
@@ -111,15 +111,15 @@ export const reqCommand = new Command('req')
         const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
         const command = commandArgs.join(' ');
 
+        // Pass the prompt as initialPrompt so it's included as a CLI positional
+        // argument via $(cat ...). This delivers the full multi-line prompt
+        // reliably without tmux send-keys newline issues.
         await spawnTmuxSession({
           sessionName,
           workDir: root,
           command,
+          initialPrompt: techLeadPrompt,
         });
-
-        // Wait for Claude to be ready before sending the prompt
-        await waitForTmuxSessionReady(sessionName);
-        await sendToTmuxSession(sessionName, techLeadPrompt);
 
         // Update agent and log spawning/planning events (atomic transaction)
         await withTransaction(db.db, () => {

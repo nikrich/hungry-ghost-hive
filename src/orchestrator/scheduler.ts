@@ -5,7 +5,7 @@ import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { createEscalation } from '../db/queries/escalations.js';
-import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode, killTmuxSession } from '../tmux/manager.js';
+import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, startManager, isManagerRunning, getHiveSessions, killTmuxSession } from '../tmux/manager.js';
 import type { ScalingConfig, ModelsConfig, QAConfig } from '../config/schema.js';
 import { getCliRuntimeBuilder, validateModelCliCompatibility } from '../cli-runtimes/index.js';
 import { generateSeniorPrompt, generateIntermediatePrompt, generateJuniorPrompt, generateQAPrompt } from './prompt-templates.js';
@@ -691,22 +691,7 @@ export class Scheduler {
     const workDir = `${this.config.rootDir}/${worktreePath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
-      // Build CLI command using the configured runtime
-      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(modelShorthand);
-      const command = commandArgs.join(' ');
-
-      await spawnTmuxSession({
-        sessionName,
-        workDir,
-        command,
-      });
-
-      // Wait for CLI tool to be ready before sending prompt
-      await waitForTmuxSessionReady(sessionName);
-
-      // Force bypass permissions mode to enable autonomous work
-      await forceBypassMode(sessionName, cliTool);
-
+      // Build the initial prompt for this agent type
       const team = getTeamById(this.db, teamId);
       let prompt: string;
 
@@ -721,7 +706,19 @@ export class Scheduler {
         prompt = generateQAPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
       }
 
-      await sendToTmuxSession(sessionName, prompt);
+      // Build CLI command using the configured runtime
+      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(modelShorthand);
+      const command = commandArgs.join(' ');
+
+      // Pass the prompt as initialPrompt so it's included as a CLI positional
+      // argument via $(cat ...). This delivers the full multi-line prompt
+      // reliably without tmux send-keys newline issues.
+      await spawnTmuxSession({
+        sessionName,
+        workDir,
+        command,
+        initialPrompt: prompt,
+      });
 
       // Auto-start manager when spawning agents
       await this.ensureManagerRunning();
