@@ -6,6 +6,8 @@ import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { startManager, isManagerRunning } from '../../tmux/manager.js';
+import { getPlannedStories, type StoryRow } from '../../db/queries/stories.js';
+import { getTeamById } from '../../db/queries/teams.js';
 
 export const assignCommand = new Command('assign')
   .description('Assign planned stories to agents (spawns Seniors as needed)')
@@ -25,8 +27,45 @@ export const assignCommand = new Command('assign')
       const config = loadConfig(paths.hiveDir);
 
       if (options.dryRun) {
-        spinner.info(chalk.yellow('Dry run - no changes will be made'));
-        // TODO: Add dry run logic
+        spinner.text = 'Previewing story assignments...';
+        const plannedStories = getPlannedStories(db.db);
+
+        if (plannedStories.length === 0) {
+          spinner.info(chalk.gray('No planned stories to assign'));
+          return;
+        }
+
+        spinner.succeed(chalk.cyan(`\nDry run: Would assign ${plannedStories.length} stories\n`));
+
+        // Group stories by team and display what would be assigned
+        const storiesByTeam = new Map<string, StoryRow[]>();
+        for (const story of plannedStories) {
+          if (!story.team_id) continue;
+          const existing = storiesByTeam.get(story.team_id) || [];
+          existing.push(story);
+          storiesByTeam.set(story.team_id, existing);
+        }
+
+        for (const [teamId, stories] of storiesByTeam) {
+          const team = getTeamById(db.db, teamId);
+          if (!team) continue;
+
+          console.log(chalk.bold(`Team: ${team.name}`));
+          for (const story of stories) {
+            const complexity = story.complexity_score || 5;
+            let agentType = 'senior';
+            if (complexity <= config.scaling.junior_max_complexity) {
+              agentType = 'junior';
+            } else if (complexity <= config.scaling.intermediate_max_complexity) {
+              agentType = 'intermediate';
+            }
+
+            console.log(chalk.gray(`  - ${story.id}: ${story.title} (complexity: ${complexity}) → ${chalk.cyan(agentType)}`));
+          }
+          console.log();
+        }
+
+        console.log(chalk.gray('Run without --dry-run to apply assignments'));
         return;
       }
 
