@@ -6,10 +6,12 @@ import { getMergeQueue } from '../db/queries/pull-requests.js';
 import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady } from '../tmux/manager.js';
-import type { ScalingConfig } from '../config/schema.js';
+import type { ScalingConfig, ModelsConfig } from '../config/schema.js';
+import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
 
 export interface SchedulerConfig {
   scaling: ScalingConfig;
+  models: ModelsConfig;
   rootDir: string;
 }
 
@@ -409,10 +411,16 @@ export class Scheduler {
     const workDir = `${this.config.rootDir}/${repoPath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
+      // Build CLI command using the configured runtime for QA agents
+      const cliTool = this.config.models.qa.cli_tool;
+      const model = 'sonnet';
+      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
+      const command = commandArgs.join(' ');
+
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --dangerously-skip-permissions --model sonnet`,
+        command,
       });
 
       // Wait for Claude to be ready before sending prompt
@@ -450,10 +458,16 @@ export class Scheduler {
     const workDir = `${this.config.rootDir}/${repoPath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
+      // Build CLI command using the configured runtime for Senior agents
+      const cliTool = this.config.models.senior.cli_tool;
+      const model = 'sonnet';
+      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
+      const command = commandArgs.join(' ');
+
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --dangerously-skip-permissions --model sonnet`,
+        command,
       });
 
       // Wait for Claude to be ready before sending prompt
@@ -489,10 +503,16 @@ export class Scheduler {
     const workDir = `${this.config.rootDir}/${repoPath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
+      // Build CLI command using the configured runtime for Intermediate agents
+      const cliTool = this.config.models.intermediate.cli_tool;
+      const model = 'haiku';
+      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
+      const command = commandArgs.join(' ');
+
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --dangerously-skip-permissions --model haiku`,
+        command,
       });
 
       // Wait for Claude to be ready before sending prompt
@@ -527,11 +547,17 @@ export class Scheduler {
     const workDir = `${this.config.rootDir}/${repoPath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
+      // Build CLI command using the configured runtime for Junior agents
       // Note: Spec calls for gpt-4o-mini but using haiku until OpenAI integration is added
+      const cliTool = this.config.models.junior.cli_tool;
+      const model = 'haiku';
+      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
+      const command = commandArgs.join(' ');
+
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --dangerously-skip-permissions --model haiku`,
+        command,
       });
 
       // Wait for Claude to be ready before sending prompt
