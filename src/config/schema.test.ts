@@ -122,14 +122,14 @@ describe('HiveConfigSchema', () => {
     expect(config.models.tech_lead.cli_tool).toBe('claude');
     expect(config.models.senior.cli_tool).toBe('claude');
     expect(config.models.intermediate.cli_tool).toBe('claude');
-    expect(config.models.junior.cli_tool).toBe('claude');
+    expect(config.models.junior.cli_tool).toBe('codex');
     expect(config.models.qa.cli_tool).toBe('claude');
   });
 
   it('should export ModelConfig type with cli_tool', () => {
     const config = DEFAULT_CONFIG;
     expect(config.models).toBeDefined();
-    expect(config.models.junior.cli_tool).toBe('claude');
+    expect(config.models.junior.cli_tool).toBe('codex');
     expect(typeof config.models.junior.cli_tool).toBe('string');
   });
 });
