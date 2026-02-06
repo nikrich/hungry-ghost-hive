@@ -169,12 +169,12 @@ export class Scheduler {
      * Calculate queue depth for an agent (number of active stories)
      */
     getAgentWorkload(agentId) {
-        const activeStories = queryAll(this.db, `
-      SELECT * FROM stories
+        const result = queryOne(this.db, `
+      SELECT COUNT(*) as count FROM stories
       WHERE assigned_agent_id = ?
         AND status IN ('in_progress', 'review', 'qa', 'qa_failed')
     `, [agentId]);
-        return activeStories.length;
+        return result?.count || 0;
     }
     /**
      * Assign planned stories to available agents
