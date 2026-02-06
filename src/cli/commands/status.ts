@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
 import { getAllTeams, getTeamByName } from '../../db/queries/teams.js';
-import { getAllAgents, getActiveAgents } from '../../db/queries/agents.js';
+import { getActiveAgents } from '../../db/queries/agents.js';
 import { getStoryCounts, getStoryById, getStoriesByTeam, getStoryDependencies } from '../../db/queries/stories.js';
 import { getPendingRequirements } from '../../db/queries/requirements.js';
 import { getPendingEscalations } from '../../db/queries/escalations.js';
@@ -40,7 +40,6 @@ export const statusCommand = new Command('status')
 
 function showOverallStatus(db: import('sql.js').Database, json?: boolean): void {
   const teams = getAllTeams(db);
-  const agents = getAllAgents(db);
   const activeAgents = getActiveAgents(db);
   const storyCounts = getStoryCounts(db);
   const requirements = getPendingRequirements(db);
@@ -50,11 +49,10 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
   const status = {
     teams: teams.length,
     agents: {
-      total: agents.length,
-      active: activeAgents.length,
-      working: agents.filter(a => a.status === 'working').length,
-      idle: agents.filter(a => a.status === 'idle').length,
-      blocked: agents.filter(a => a.status === 'blocked').length,
+      total: activeAgents.length,
+      working: activeAgents.filter(a => a.status === 'working').length,
+      idle: activeAgents.filter(a => a.status === 'idle').length,
+      blocked: activeAgents.filter(a => a.status === 'blocked').length,
     },
     stories: storyCounts,
     requirements: {
