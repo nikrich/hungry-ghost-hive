@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const reqCommand: Command;
+export declare const reqCommand: any;
 //# sourceMappingURL=req.d.ts.map

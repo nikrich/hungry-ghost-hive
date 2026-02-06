@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const agentsCommand: Command;
+export declare const agentsCommand: any;
 //# sourceMappingURL=agents.d.ts.map

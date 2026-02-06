@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const addRepoCommand: Command;
+export declare const addRepoCommand: any;
 //# sourceMappingURL=add-repo.d.ts.map

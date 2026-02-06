@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const resumeCommand: Command;
+export declare const resumeCommand: any;
 //# sourceMappingURL=resume.d.ts.map

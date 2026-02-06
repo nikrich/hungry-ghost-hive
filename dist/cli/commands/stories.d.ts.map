@@ -1,1 +1,1 @@
-{"version":3,"file":"stories.d.ts","sourceRoot":"","sources":["../../../src/cli/commands/stories.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,MAAM,WAAW,CAAC;AAOpC,eAAO,MAAM,cAAc,SACK,CAAC"}
+{"version":3,"file":"stories.d.ts","sourceRoot":"","sources":["../../../src/cli/commands/stories.ts"],"names":[],"mappings":"AAOA,eAAO,MAAM,cAAc,KACK,CAAC"}

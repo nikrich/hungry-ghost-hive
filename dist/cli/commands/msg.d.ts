@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const msgCommand: Command;
+export declare const msgCommand: any;
 //# sourceMappingURL=msg.d.ts.map

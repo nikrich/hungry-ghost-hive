@@ -1,3 +1,2 @@
-import { Command } from 'commander';
-export declare const storiesCommand: Command;
+export declare const storiesCommand: any;
 //# sourceMappingURL=stories.d.ts.map
