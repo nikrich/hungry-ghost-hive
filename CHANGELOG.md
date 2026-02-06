@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.12.0...v0.13.0) (2026-02-06)
+
+
+### Features
+
+* **db:** add DAO abstraction with sqlite + leveldb implementations ([146b364](https://github.com/nikrich/hungry-ghost-hive/commit/146b36410bdca9053a2034a4432ea8eb09efe24f))
+
 ## [0.12.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.11.1...v0.12.0) (2026-02-06)
 
 
