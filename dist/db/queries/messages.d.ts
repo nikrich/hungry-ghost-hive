@@ -12,6 +12,7 @@ export interface MessageRow {
 }
 export declare function getUnreadMessages(db: Database, toSession: string): MessageRow[];
 export declare function markMessageRead(db: Database, messageId: string): void;
+export declare function markMessagesRead(db: Database, messageIds: string[]): void;
 export declare function getMessageById(db: Database, id: string): MessageRow | undefined;
 export declare function getAllPendingMessages(db: Database): MessageRow[];
 //# sourceMappingURL=messages.d.ts.map

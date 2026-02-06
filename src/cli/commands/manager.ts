@@ -5,7 +5,8 @@ import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
-import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests, updatePullRequest } from '../../db/queries/pull-requests.js';
+import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests } from '../../db/queries/pull-requests.js';
+import { mergePullRequest } from '../../utils/pr-merge.js';
 import { markMessagesRead, getAllPendingMessages, type MessageRow } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
 import { getAgentById, updateAgent, getAllAgents } from '../../db/queries/agents.js';
@@ -859,73 +860,8 @@ async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Promise<n
   let mergedCount = 0;
 
   for (const pr of approvedPRs) {
-    // Skip PRs without GitHub PR numbers
-    if (!pr.github_pr_number) continue;
-
-    try {
-      // Get team to find repo path
-      let teamId = pr.team_id;
-      let repoCwd = root;
-
-      if (teamId) {
-        const team = getAllTeams(db.db).find(t => t.id === teamId);
-        if (team?.repo_path) {
-          repoCwd = join(root, team.repo_path);
-        }
-      } else if (pr.branch_name) {
-        // Try to find team by matching branch name pattern
-        const teams = getAllTeams(db.db);
-        for (const team of teams) {
-          if (team.repo_path) {
-            repoCwd = join(root, team.repo_path);
-            teamId = team.id;
-            break;
-          }
-        }
-      }
-
-      // Attempt to merge on GitHub
-      const { execSync } = await import('child_process');
-      try {
-        execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
-
-        // Update PR status to merged
-        updatePullRequest(db.db, pr.id, { status: 'merged' });
-
-        // Update story status if linked
-        if (pr.story_id) {
-          updateStory(db.db, pr.story_id, { status: 'merged' });
-          createLog(db.db, {
-            agentId: 'manager',
-            storyId: pr.story_id,
-            eventType: 'STORY_MERGED',
-            message: `Story auto-merged from GitHub PR #${pr.github_pr_number}`,
-          });
-        } else {
-          createLog(db.db, {
-            agentId: 'manager',
-            eventType: 'PR_MERGED',
-            message: `PR ${pr.id} auto-merged (GitHub PR #${pr.github_pr_number})`,
-            metadata: { pr_id: pr.id },
-          });
-        }
-
-        mergedCount++;
-      } catch (mergeErr) {
-        // Log merge failure but continue with other PRs
-        createLog(db.db, {
-          agentId: 'manager',
-          storyId: pr.story_id || undefined,
-          eventType: 'PR_MERGE_FAILED',
-          status: 'error',
-          message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${mergeErr instanceof Error ? mergeErr.message : 'Unknown error'}`,
-          metadata: { pr_id: pr.id },
-        });
-      }
-    } catch {
-      // Non-fatal - continue with other PRs
-      continue;
-    }
+    const success = await mergePullRequest(root, db.db, pr, 'manager');
+    if (success) mergedCount++;
   }
 
   if (mergedCount > 0) {

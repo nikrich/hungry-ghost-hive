@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { execa } from 'execa';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase, queryAll } from '../../db/client.js';
+import { mergePullRequest } from '../../utils/pr-merge.js';
 import {
   createPullRequest,
   getMergeQueue,
@@ -13,9 +14,7 @@ import {
   type PullRequestRow,
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
-import { getTeamById } from '../../db/queries/teams.js';
 import { createLog } from '../../db/queries/logs.js';
-import { join } from 'path';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { sendToTmuxSession, isTmuxSessionRunning } from '../../tmux/manager.js';
@@ -313,49 +312,27 @@ prCommand
       let actuallyMerged = false;
 
       if (shouldMerge && pr.github_pr_number) {
-        // Actually merge on GitHub via gh CLI
-        // Use the team's repo path as cwd so gh knows which repo to operate on
-        let repoCwd = root;
-        if (pr.team_id) {
-          const team = getTeamById(db.db, pr.team_id);
-          if (team?.repo_path) {
-            repoCwd = join(root, team.repo_path);
-          }
-        }
-        try {
-          const { execSync } = await import('child_process');
-          // First approve the PR on GitHub
-          try {
-            execSync(`gh pr review ${pr.github_pr_number} --approve`, { stdio: 'pipe', cwd: repoCwd });
-          } catch {
-            // May fail if already approved or if it's our own PR - continue
-          }
-          // Then merge
-          execSync(`gh pr merge ${pr.github_pr_number} --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
-          actuallyMerged = true;
+        // Attempt immediate merge using utility
+        actuallyMerged = await mergePullRequest(root, db.db, pr, options.from || 'qa');
+        if (actuallyMerged) {
           console.log(chalk.green(`PR ${prId} approved and merged on GitHub!`));
-        } catch (mergeErr: unknown) {
-          const errMsg = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
-          console.log(chalk.yellow(`GitHub merge failed: ${errMsg}`));
-          console.log(chalk.yellow('Marking as approved (manual merge needed).'));
+        } else {
+          console.log(chalk.yellow('GitHub merge failed - marking as approved (manual merge needed).'));
         }
       } else if (shouldMerge && !pr.github_pr_number) {
         console.log(chalk.yellow('No GitHub PR number linked - marking as approved only.'));
       }
 
-      const newStatus = actuallyMerged ? 'merged' : 'approved';
+      const finalStatus = actuallyMerged ? 'merged' : 'approved';
 
-      updatePullRequest(db.db, prId, {
-        status: newStatus,
-        reviewedBy: options.from || pr.reviewed_by,
-        reviewNotes: options.notes || null,
-      });
-
-      if (storyId && newStatus === 'merged') {
-        updateStory(db.db, storyId, { status: 'merged' });
+      if (!actuallyMerged) {
+        updatePullRequest(db.db, prId, {
+          status: finalStatus,
+          reviewedBy: options.from || pr.reviewed_by,
+          reviewNotes: options.notes || null,
+        });
+        db.save();
       }
-
-      db.save();
 
       if (!actuallyMerged && shouldMerge) {
         console.log(chalk.green(`PR ${prId} approved.`));
@@ -365,12 +342,12 @@ prCommand
         console.log(chalk.gray('Manual merge is needed.'));
       }
 
-      if (options.from) {
+      if (options.from && !actuallyMerged) {
         createLog(db.db, {
           agentId: options.from,
           storyId: storyId || undefined,
-          eventType: newStatus === 'merged' ? 'PR_MERGED' : 'PR_APPROVED',
-          message: `${newStatus === 'merged' ? 'Merged' : 'Approved'} PR ${prId}${storyId ? ` (${storyId})` : ''}`,
+          eventType: 'PR_APPROVED',
+          message: `Approved PR ${prId}${storyId ? ` (${storyId})` : ''}`,
           metadata: { pr_id: prId, branch: pr.branch_name, story_id: storyId },
         });
         db.save();

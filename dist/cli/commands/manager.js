@@ -5,10 +5,11 @@ import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
-import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests, updatePullRequest } from '../../db/queries/pull-requests.js';
-import { getUnreadMessages, markMessageRead } from '../../db/queries/messages.js';
+import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests } from '../../db/queries/pull-requests.js';
+import { mergePullRequest } from '../../utils/pr-merge.js';
+import { markMessagesRead, getAllPendingMessages } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
-import { getAgentById, updateAgent } from '../../db/queries/agents.js';
+import { getAgentById, updateAgent, getAllAgents } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { queryAll } from '../../db/client.js';
 import { getAllTeams } from '../../db/queries/teams.js';
@@ -271,23 +272,32 @@ async function managerCheck(root) {
         const escalatedSessions = new Set(existingEscalations
             .filter(e => e.from_agent_id)
             .map(e => e.from_agent_id));
+        // Optimization: Batch fetch all agents and messages instead of per-session queries
+        const allAgents = getAllAgents(db.db);
+        const agentsBySessionName = new Map(allAgents.map(a => [`hive-${a.id}`, a]));
+        const allPendingMessages = getAllPendingMessages(db.db);
+        const messagesBySessionName = new Map();
+        const messagesToMarkRead = [];
+        for (const msg of allPendingMessages) {
+            if (!messagesBySessionName.has(msg.to_session)) {
+                messagesBySessionName.set(msg.to_session, []);
+            }
+            messagesBySessionName.get(msg.to_session).push(msg);
+        }
         for (const session of hiveSessions) {
             // Skip manager itself
             if (session.name === 'hive-manager')
                 continue;
-            // Get agent information for CLI-aware messaging
-            const agent = getAgentById(db.db, session.name.replace('hive-', ''));
+            // Get agent information for CLI-aware messaging (from cached data)
+            const agent = agentsBySessionName.get(session.name);
             const agentCliTool = (agent?.cli_tool || 'claude');
-            // Check if agent has unread messages
-            const unread = getUnreadMessages(db.db, session.name);
+            // Check if agent has unread messages (from cached data)
+            const unread = messagesBySessionName.get(session.name) || [];
             if (unread.length > 0) {
                 await forwardMessages(session.name, unread, agentCliTool);
                 messagesForwarded += unread.length;
-                // Mark as read
-                for (const msg of unread) {
-                    markMessageRead(db.db, msg.id);
-                }
-                db.save();
+                // Collect message IDs to mark as read in batch
+                messagesToMarkRead.push(...unread.map(msg => msg.id));
             }
             // Check if agent appears stuck (capture last output)
             const output = await captureTmuxPane(session.name, 50);
@@ -358,6 +368,11 @@ async function managerCheck(root) {
                 }
             }
             // If not waiting (actively working), do nothing - let them work
+        }
+        // Batch mark all messages as read after processing
+        if (messagesToMarkRead.length > 0) {
+            markMessagesRead(db.db, messagesToMarkRead);
+            db.save();
         }
         // Check for PRs needing QA attention
         const queuedPRs = getMergeQueue(db.db);
@@ -700,72 +715,9 @@ async function autoMergeApprovedPRs(root, db) {
         return 0;
     let mergedCount = 0;
     for (const pr of approvedPRs) {
-        // Skip PRs without GitHub PR numbers
-        if (!pr.github_pr_number)
-            continue;
-        try {
-            // Get team to find repo path
-            let teamId = pr.team_id;
-            let repoCwd = root;
-            if (teamId) {
-                const team = getAllTeams(db.db).find(t => t.id === teamId);
-                if (team?.repo_path) {
-                    repoCwd = join(root, team.repo_path);
-                }
-            }
-            else if (pr.branch_name) {
-                // Try to find team by matching branch name pattern
-                const teams = getAllTeams(db.db);
-                for (const team of teams) {
-                    if (team.repo_path) {
-                        repoCwd = join(root, team.repo_path);
-                        teamId = team.id;
-                        break;
-                    }
-                }
-            }
-            // Attempt to merge on GitHub
-            const { execSync } = await import('child_process');
-            try {
-                execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
-                // Update PR status to merged
-                updatePullRequest(db.db, pr.id, { status: 'merged' });
-                // Update story status if linked
-                if (pr.story_id) {
-                    updateStory(db.db, pr.story_id, { status: 'merged' });
-                    createLog(db.db, {
-                        agentId: 'manager',
-                        storyId: pr.story_id,
-                        eventType: 'STORY_MERGED',
-                        message: `Story auto-merged from GitHub PR #${pr.github_pr_number}`,
-                    });
-                }
-                else {
-                    createLog(db.db, {
-                        agentId: 'manager',
-                        eventType: 'PR_MERGED',
-                        message: `PR ${pr.id} auto-merged (GitHub PR #${pr.github_pr_number})`,
-                        metadata: { pr_id: pr.id },
-                    });
-                }
-                mergedCount++;
-            }
-            catch (mergeErr) {
-                // Log merge failure but continue with other PRs
-                createLog(db.db, {
-                    agentId: 'manager',
-                    storyId: pr.story_id || undefined,
-                    eventType: 'PR_MERGE_FAILED',
-                    status: 'error',
-                    message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${mergeErr instanceof Error ? mergeErr.message : 'Unknown error'}`,
-                    metadata: { pr_id: pr.id },
-                });
-            }
-        }
-        catch {
-            // Non-fatal - continue with other PRs
-            continue;
-        }
+        const success = await mergePullRequest(root, db.db, pr, 'manager');
+        if (success)
+            mergedCount++;
     }
     if (mergedCount > 0) {
         db.save();
