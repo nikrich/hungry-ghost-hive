@@ -1,11 +1,27 @@
 import blessed from 'blessed';
-import { appendFileSync, statSync } from 'fs';
+import { appendFileSync, statSync, existsSync, renameSync } from 'fs';
 import { join } from 'path';
 import { getDatabase, type DatabaseClient } from '../../db/client.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 
+const DEBUG_LOG_PATH = '/tmp/hive-dashboard-debug.log';
+const DEBUG_LOG_MAX_SIZE = 10 * 1024 * 1024; // 10MB
+
 function debugLog(msg: string) {
-  appendFileSync('/tmp/hive-dashboard-debug.log', `${new Date().toISOString()} ${msg}\n`);
+  try {
+    // Check if log file exists and is too large, rotate if needed
+    if (existsSync(DEBUG_LOG_PATH)) {
+      const stats = statSync(DEBUG_LOG_PATH);
+      if (stats.size > DEBUG_LOG_MAX_SIZE) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const rotatedPath = `/tmp/hive-dashboard-debug.${timestamp}.log`;
+        renameSync(DEBUG_LOG_PATH, rotatedPath);
+      }
+    }
+    appendFileSync(DEBUG_LOG_PATH, `${new Date().toISOString()} ${msg}\n`);
+  } catch (err) {
+    // Silently fail if we can't write to debug log
+  }
 }
 import { createAgentsPanel, updateAgentsPanel } from './panels/agents.js';
 import { createStoriesPanel, updateStoriesPanel } from './panels/stories.js';
@@ -96,11 +112,11 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
       }
 
       await updateAgentsPanel(agentsPanel, db.db);
-      updateStoriesPanel(storiesPanel, db.db);
-      updatePipelinePanel(pipelinePanel, db.db);
-      updateActivityPanel(activityPanel, db.db);
-      updateMergeQueuePanel(mergeQueuePanel, db.db);
-      updateEscalationsPanel(escalationsPanel, db.db);
+      await updateStoriesPanel(storiesPanel, db.db);
+      await updatePipelinePanel(pipelinePanel, db.db);
+      await updateActivityPanel(activityPanel, db.db);
+      await updateMergeQueuePanel(mergeQueuePanel, db.db);
+      await updateEscalationsPanel(escalationsPanel, db.db);
       screen.render();
     } catch (err) {
       debugLog(`Refresh error: ${err}`);
@@ -108,12 +124,19 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
     }
   };
 
-  // Auto-refresh - wrap in arrow function to handle async properly
-  const timer = setInterval(() => { refresh(); }, refreshInterval);
+  // Auto-refresh using recursive setTimeout to prevent overlapping refreshes
+  let currentTimeout: NodeJS.Timeout | null = null;
+  const scheduleRefresh = () => {
+    currentTimeout = setTimeout(async () => {
+      await refresh();
+      scheduleRefresh();
+    }, refreshInterval);
+  };
+  scheduleRefresh();
 
   // Key bindings
   screen.key(['q', 'C-c', 'escape'], () => {
-    clearInterval(timer);
+    if (currentTimeout) clearTimeout(currentTimeout);
     try { db.db.close(); } catch { /* ignore */ }
     screen.destroy();
     process.exit(0);

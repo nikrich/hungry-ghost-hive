@@ -18,12 +18,12 @@ export function createPipelinePanel(screen: Widgets.Screen, db: Database): Widge
     tags: true,
   });
 
-  updatePipelinePanel(box, db);
+  updatePipelinePanel(box, db).catch(err => console.error('Failed to update pipeline panel:', err));
 
   return box;
 }
 
-export function updatePipelinePanel(box: Widgets.BoxElement, db: Database): void {
+export async function updatePipelinePanel(box: Widgets.BoxElement, db: Database): Promise<void> {
   const counts = getStoryCounts(db);
 
   const stages = [
