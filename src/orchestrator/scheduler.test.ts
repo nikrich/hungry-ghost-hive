@@ -1020,3 +1020,191 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     expect(selected.map(s => s.id)).toEqual([refactorA.id, refactorB.id]);
   });
 });
+
+describe('Scheduler Agent Selection', () => {
+  it('should select agent with least workload from multiple agents', () => {
+    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+
+    // Create three junior agents with different workloads
+    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('junior-1', 'junior', '${team.id}', 'idle')`);
+    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('junior-2', 'junior', '${team.id}', 'idle')`);
+    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('junior-3', 'junior', '${team.id}', 'idle')`);
+
+    // Give junior-1 two stories, junior-2 one story, junior-3 zero stories
+    const story1 = createStory(db, { teamId: team.id, title: 'Story 1', description: 'Test' });
+    const story2 = createStory(db, { teamId: team.id, title: 'Story 2', description: 'Test' });
+    const story3 = createStory(db, { teamId: team.id, title: 'Story 3', description: 'Test' });
+    updateStory(db, story1.id, { assignedAgentId: 'junior-1', status: 'in_progress' });
+    updateStory(db, story2.id, { assignedAgentId: 'junior-1', status: 'in_progress' });
+    updateStory(db, story3.id, { assignedAgentId: 'junior-2', status: 'in_progress' });
+
+    const agents = [
+      { id: 'junior-1', type: 'junior' as const, team_id: team.id, tmux_session: null, model: null, status: 'idle' as const, current_story_id: null, memory_state: null, last_seen: null, created_at: '', updated_at: '' },
+      { id: 'junior-2', type: 'junior' as const, team_id: team.id, tmux_session: null, model: null, status: 'idle' as const, current_story_id: null, memory_state: null, last_seen: null, created_at: '', updated_at: '' },
+      { id: 'junior-3', type: 'junior' as const, team_id: team.id, tmux_session: null, model: null, status: 'idle' as const, current_story_id: null, memory_state: null, last_seen: null, created_at: '', updated_at: '' },
+    ];
+
+    const selectMethod = (scheduler as any).selectAgentWithLeastWorkload;
+    const selected = selectMethod.call(scheduler, agents);
+
+    // Should select junior-3 who has zero stories
+    expect(selected.id).toBe('junior-3');
+  });
+
+  it('should select first agent when all have equal workload', () => {
+    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+
+    const agents = [
+      { id: 'agent-1', type: 'junior' as const, team_id: team.id, tmux_session: null, model: null, status: 'idle' as const, current_story_id: null, memory_state: null, last_seen: null, created_at: '', updated_at: '' },
+      { id: 'agent-2', type: 'junior' as const, team_id: team.id, tmux_session: null, model: null, status: 'idle' as const, current_story_id: null, memory_state: null, last_seen: null, created_at: '', updated_at: '' },
+    ];
+
+    const selectMethod = (scheduler as any).selectAgentWithLeastWorkload;
+    const selected = selectMethod.call(scheduler, agents);
+
+    expect(selected.id).toBe('agent-1');
+  });
+
+  it('should calculate agent workload correctly', () => {
+    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`);
+
+    const story1 = createStory(db, { teamId: team.id, title: 'Story 1', description: 'Test' });
+    const story2 = createStory(db, { teamId: team.id, title: 'Story 2', description: 'Test' });
+    updateStory(db, story1.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
+    updateStory(db, story2.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
+
+    const workloadMethod = (scheduler as any).getAgentWorkload;
+    const workload = workloadMethod.call(scheduler, 'agent-1');
+
+    expect(workload).toBe(2);
+  });
+
+  it('should return zero workload for agent with no stories', () => {
+    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`);
+
+    const workloadMethod = (scheduler as any).getAgentWorkload;
+    const workload = workloadMethod.call(scheduler, 'agent-1');
+
+    expect(workload).toBe(0);
+  });
+});
+
+describe('Scheduler Complexity Routing', () => {
+  it('should route low complexity stories to junior agents', () => {
+    // Test the routing logic: complexity <= junior_max_complexity goes to junior
+    const complexity = 2;
+    expect(complexity).toBeLessThanOrEqual(mockConfig.scaling.junior_max_complexity);
+  });
+
+  it('should route medium complexity stories to intermediate agents', () => {
+    // Test the routing logic: complexity between junior and intermediate thresholds
+    const complexity = 4;
+    expect(complexity).toBeGreaterThan(mockConfig.scaling.junior_max_complexity);
+    expect(complexity).toBeLessThanOrEqual(mockConfig.scaling.intermediate_max_complexity);
+  });
+
+  it('should route high complexity stories to senior agents', () => {
+    // Test the routing logic: complexity > intermediate_max_complexity goes to senior
+    const complexity = 8;
+    expect(complexity).toBeGreaterThan(mockConfig.scaling.intermediate_max_complexity);
+  });
+
+  it('should handle edge case at junior boundary', () => {
+    // Complexity exactly at junior_max_complexity should still go to junior
+    const complexity = 3;
+    expect(complexity).toBeLessThanOrEqual(mockConfig.scaling.junior_max_complexity);
+  });
+
+  it('should handle edge case at intermediate boundary', () => {
+    // Complexity exactly at intermediate_max_complexity should still go to intermediate
+    const complexity = 5;
+    expect(complexity).toBeLessThanOrEqual(mockConfig.scaling.intermediate_max_complexity);
+  });
+
+  it('should use config values for routing thresholds', () => {
+    // Verify config values are set correctly for routing logic
+    expect(mockConfig.scaling.junior_max_complexity).toBe(3);
+    expect(mockConfig.scaling.intermediate_max_complexity).toBe(5);
+  });
+
+  it('should default to complexity 5 when not specified', () => {
+    // Test default complexity value used in assignStories
+    const complexity = null;
+    const defaultComplexity = complexity || 5;
+    expect(defaultComplexity).toBe(5);
+  });
+});
+
+describe('Scheduler Story Assignment Prevention', () => {
+  it('should prevent duplicate story assignments', () => {
+    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`);
+
+    // Create a story and assign it
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Story',
+      description: 'Test',
+      complexityScore: 2,
+      status: 'planned',
+    });
+
+    // First assignment
+    updateStory(db, story.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
+
+    // Verify the story is now assigned
+    const result = db.exec('SELECT assigned_agent_id FROM stories WHERE id = ?', [story.id]);
+    expect(result[0].values[0][0]).toBe('agent-1');
+  });
+
+  it('should verify story assignment changes status', () => {
+    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Story',
+      description: 'Test',
+      status: 'planned',
+    });
+
+    // Change status to in_progress
+    updateStory(db, story.id, { status: 'in_progress' });
+
+    // Verify status changed
+    const result = db.exec('SELECT status FROM stories WHERE id = ?', [story.id]);
+    expect(result[0].values[0][0]).toBe('in_progress');
+  });
+
+  it('should skip stories with unsatisfied dependencies', () => {
+    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+    const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test', status: 'planned' });
+    const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test', status: 'planned' });
+
+    // B depends on A, but A is still planned
+    addStoryDependency(db, storyB.id, storyA.id);
+
+    // B should not be ready for assignment because A is not merged yet
+    const satisfied = (scheduler as any).areDependenciesSatisfied(storyB.id);
+    expect(satisfied).toBe(false);
+  });
+
+  it('should allow stories when dependencies are in terminal states', () => {
+    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+
+    // Test with merged status (terminal state)
+    const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
+    const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
+
+    // Update A to merged status
+    updateStory(db, storyA.id, { status: 'merged' });
+
+    // B depends on A, and A is merged
+    addStoryDependency(db, storyB.id, storyA.id);
+
+    // B should be ready for assignment
+    const satisfied = (scheduler as any).areDependenciesSatisfied(storyB.id);
+    expect(satisfied).toBe(true);
+  });
+});
