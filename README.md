@@ -2,8 +2,34 @@
 
 Hive is a CLI tool that orchestrates AI agents modeled after agile software development teams. You act as the **Product Owner**, providing requirements. Hive's AI agents handle the rest—from planning through to PR submission.
 
+## Installation
+
+### Via npm (Recommended)
+
+```bash
+npm install -g hungry-ghost-hive
+```
+
+### For Contributors (Development Setup)
+
+If you want to contribute or run from source:
+
+```bash
+# Clone the repository
+git clone https://github.com/nikrich/hungry-ghost-hive.git
+cd hungry-ghost-hive
+
+# Install dependencies
+npm ci
+
+# Build the project
+npm run build
+
+# Create a symlink
+npm link
+```
+
 ## Quick Start
-IMPORTANT: The npm package does not exist yet. Please clone the repository and create a symlink to the hive command.
 
 ```bash
 # Initialize a workspace
@@ -17,6 +43,27 @@ hive req "Add user authentication with OAuth2 support"
 
 # Watch the magic happen
 hive dashboard
+```
+
+### Basic Usage Examples
+
+After installation, you can:
+
+```bash
+# Check overall status
+hive status
+
+# View all stories
+hive stories list
+
+# Check your team's active agents
+hive agents list --active
+
+# Monitor progress in real-time
+hive dashboard
+
+# Check for escalations (agents asking for help)
+hive escalations list
 ```
 
 ## How It Works
