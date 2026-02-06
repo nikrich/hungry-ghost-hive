@@ -109,6 +109,15 @@ describe('pull-requests queries', () => {
 
       expect(pr.github_pr_number).toBe(999);
     });
+
+    it('should handle PR URLs with trailing slashes', () => {
+      const pr = createPullRequest(db, {
+        branchName: 'feature/test-branch',
+        githubPrUrl: 'https://github.com/test/repo/pull/555/',
+      });
+
+      expect(pr.github_pr_number).toBe(555);
+    });
   });
 
   describe('getPullRequestById', () => {
