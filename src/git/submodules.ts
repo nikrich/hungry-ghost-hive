@@ -1,6 +1,7 @@
 import { execa } from 'execa';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { FileSystemError } from '../errors/index.js';
 
 export interface SubmoduleInfo {
   path: string;
@@ -21,7 +22,7 @@ export async function addSubmodule(
   const fullPath = join(rootDir, path);
 
   if (existsSync(fullPath)) {
-    throw new Error(`Path already exists: ${fullPath}`);
+    throw new FileSystemError(`Path already exists: ${fullPath}`);
   }
 
   await execa('git', ['submodule', 'add', '-b', branch, url, path], {

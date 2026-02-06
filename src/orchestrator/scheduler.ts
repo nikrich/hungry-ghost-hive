@@ -38,6 +38,7 @@ import {
   generateQAPrompt,
   generateSeniorPrompt,
 } from './prompt-templates.js';
+import { FileSystemError, OperationalError } from '../errors/index.js';
 
 export interface SchedulerConfig {
   scaling: ScalingConfig;
@@ -87,7 +88,7 @@ export class Scheduler {
         });
       } catch {
         // If that fails too, log and throw
-        throw new Error(
+        throw new FileSystemError(
           `Failed to create worktree at ${fullWorktreePath}: ${err instanceof Error ? err.message : 'Unknown error'}`
         );
       }
@@ -854,7 +855,7 @@ export class Scheduler {
       });
 
       // Throw the error to prevent agent creation
-      throw new Error(`Cannot spawn ${type} agent: ${errorMessage}`);
+      throw new OperationalError(`Cannot spawn ${type} agent: ${errorMessage}`);
     }
 
     const agent = createAgent(this.db, {

@@ -1,12 +1,13 @@
-import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
-import { loadConfig } from '../config/index.js';
-import { createAgent, getTechLead, updateAgent } from '../db/queries/agents.js';
-import { createEscalation } from '../db/queries/escalations.js';
-import { getStoriesByTeam, updateStory, type StoryRow } from '../db/queries/stories.js';
-import { getTeamById, type TeamRow } from '../db/queries/teams.js';
-import { generateSessionName, spawnTmuxSession } from '../tmux/manager.js';
-import { findHiveRoot, getHivePaths } from '../utils/paths.js';
 import { BaseAgent, type AgentContext } from './base-agent.js';
+import { getTeamById, type TeamRow } from '../db/queries/teams.js';
+import { getStoriesByTeam, updateStory, type StoryRow } from '../db/queries/stories.js';
+import { createAgent, updateAgent, getTechLead } from '../db/queries/agents.js';
+import { createEscalation } from '../db/queries/escalations.js';
+import { spawnTmuxSession, generateSessionName } from '../tmux/manager.js';
+import { loadConfig } from '../config/index.js';
+import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
+import { findHiveRoot, getHivePaths } from '../utils/paths.js';
+import { NotFoundError } from '../errors/index.js';
 
 export interface SeniorContext extends AgentContext {
   teamId: string;
@@ -20,7 +21,7 @@ export class SeniorAgent extends BaseAgent {
     super(context);
     if (context.teamId) {
       this.team = getTeamById(this.db, context.teamId) || null;
-      this.assignedStories = getStoriesByTeam(this.db, context.teamId).filter(s =>
+      this.assignedStories = getStoriesByTeam(this.db, context.teamId).filter((s) =>
         ['planned', 'in_progress', 'review'].includes(s.status)
       );
     }
@@ -34,7 +35,7 @@ export class SeniorAgent extends BaseAgent {
     const storiesInfo =
       this.assignedStories.length > 0
         ? this.assignedStories
-            .map(s => `- ${s.id}: ${s.title} (${s.status}, complexity: ${s.complexity_score})`)
+            .map((s) => `- ${s.id}: ${s.title} (${s.status}, complexity: ${s.complexity_score})`)
             .join('\n')
         : 'No stories assigned';
 
@@ -153,7 +154,7 @@ This will help with story estimation and implementation.`;
       // Load config and get CLI runtime settings for the subordinate agent type
       const hiveRoot = findHiveRoot(this.workDir);
       if (!hiveRoot) {
-        throw new Error('Hive root not found');
+        throw new NotFoundError('Hive root not found');
       }
       const paths = getHivePaths(hiveRoot);
       const config = loadConfig(paths.hiveDir);

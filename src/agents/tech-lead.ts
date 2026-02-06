@@ -1,23 +1,20 @@
-import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
-import { loadConfig } from '../config/index.js';
-import { queryAll } from '../db/client.js';
-import { createAgent, getAgentsByType, updateAgent } from '../db/queries/agents.js';
-import { createEscalation } from '../db/queries/escalations.js';
+import { BaseAgent, type AgentContext } from './base-agent.js';
+import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
 import {
   getRequirementById,
   updateRequirement,
   type RequirementRow,
 } from '../db/queries/requirements.js';
-import {
-  addStoryDependency,
-  createStory,
-  getStoryById,
-  updateStory,
-} from '../db/queries/stories.js';
-import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
-import { generateSessionName, spawnTmuxSession } from '../tmux/manager.js';
+import { createStory, updateStory, getStoryById } from '../db/queries/stories.js';
+import { createAgent, getAgentsByType, updateAgent } from '../db/queries/agents.js';
+import { createEscalation } from '../db/queries/escalations.js';
+import { spawnTmuxSession, generateSessionName } from '../tmux/manager.js';
+import { queryAll } from '../db/client.js';
+import { addStoryDependency } from '../db/queries/stories.js';
+import { loadConfig } from '../config/index.js';
+import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
 import { findHiveRoot, getHivePaths } from '../utils/paths.js';
-import { BaseAgent, type AgentContext } from './base-agent.js';
+import { NotFoundError } from '../errors/index.js';
 
 export interface TechLeadContext extends AgentContext {
   requirementId?: string;
@@ -39,7 +36,9 @@ export class TechLeadAgent extends BaseAgent {
   }
 
   getSystemPrompt(): string {
-    const teamList = this.teams.map(t => `- ${t.name} (${t.repo_path}): ${t.repo_url}`).join('\n');
+    const teamList = this.teams
+      .map((t) => `- ${t.name} (${t.repo_path}): ${t.repo_url}`)
+      .join('\n');
 
     return `You are the Tech Lead of Hive, an AI development team orchestrator.
 
@@ -129,7 +128,7 @@ Description:
 ${this.requirement!.description}
 
 ## Available Teams
-${this.teams.map(t => `- ${t.name}: ${t.repo_path}`).join('\n')}
+${this.teams.map((t) => `- ${t.name}: ${t.repo_path}`).join('\n')}
 
 ## Instructions
 1. Identify which teams are affected
@@ -187,7 +186,7 @@ Respond in JSON format:
     const storyIdMap: Record<string, string> = {};
 
     for (const story of analysis.stories) {
-      const team = this.teams.find(t => t.name === story.teamName);
+      const team = this.teams.find((t) => t.name === story.teamName);
 
       const storyRow = createStory(this.db, {
         requirementId: this.requirement!.id,
@@ -242,11 +241,11 @@ Respond in JSON format:
 
     // Spawn or assign Senior for each team
     for (const teamId of teamIds) {
-      const team = this.teams.find(t => t.id === teamId);
+      const team = this.teams.find((t) => t.id === teamId);
       if (!team) continue;
 
       // Check if Senior already exists for this team
-      let seniors = getAgentsByType(this.db, 'senior').filter(s => s.team_id === teamId);
+      let seniors = getAgentsByType(this.db, 'senior').filter((s) => s.team_id === teamId);
 
       if (seniors.length === 0) {
         // Create a new Senior agent
@@ -262,7 +261,7 @@ Respond in JSON format:
           // Load config and get CLI runtime settings for the senior agent type
           const hiveRoot = findHiveRoot(this.workDir);
           if (!hiveRoot) {
-            throw new Error('Hive root not found');
+            throw new NotFoundError('Hive root not found');
           }
           const paths = getHivePaths(hiveRoot);
           const config = loadConfig(paths.hiveDir);

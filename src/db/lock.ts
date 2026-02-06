@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { dirname } from 'path';
 import lockfile from 'proper-lockfile';
+import { existsSync, writeFileSync, mkdirSync } from 'fs';
+import { dirname } from 'path';
+import { ConcurrencyError } from '../errors/index.js';
 
 export interface LockOptions {
   timeout?: number; // Max time to wait for lock (ms), default 30000
@@ -51,7 +52,7 @@ export async function acquireLock(
     const release = await lockfile.lock(lockFile, opts);
     return release;
   } catch (err) {
-    throw new Error(
+    throw new ConcurrencyError(
       `Failed to acquire lock: ${err instanceof Error ? err.message : 'Unknown error'}. ` +
         `Another process may be holding the lock.`
     );

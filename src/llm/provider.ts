@@ -1,3 +1,5 @@
+import { ConfigurationError } from '../errors/index.js';
+
 export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -53,7 +55,7 @@ export function getProviderApiKey(provider: ProviderType): string | undefined {
 export function validateProviderConfig(config: ProviderConfig): void {
   const apiKey = getProviderApiKey(config.provider);
   if (!apiKey) {
-    throw new Error(
+    throw new ConfigurationError(
       `Missing API key for ${config.provider}. Set ${config.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'} environment variable.`
     );
   }

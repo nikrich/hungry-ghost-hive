@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import { InitializationError } from '../errors/index.js';
 
 export interface DatabaseClient {
   db: SqlJsDatabase;
@@ -160,7 +161,7 @@ async function getSqlJs(): Promise<typeof SQL> {
 
 export async function createDatabase(dbPath: string): Promise<DatabaseClient> {
   const SqlJs = await getSqlJs();
-  if (!SqlJs) throw new Error('Failed to initialize sql.js');
+  if (!SqlJs) throw new InitializationError('Failed to initialize sql.js');
 
   let db: SqlJsDatabase;
 
