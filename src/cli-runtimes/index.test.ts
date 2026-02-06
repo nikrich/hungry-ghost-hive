@@ -3,6 +3,7 @@ import {
   getCliRuntimeBuilder,
   validateCliBinary,
   validateCliRuntime,
+  validateModelCliCompatibility,
   ClaudeRuntimeBuilder,
   CodexRuntimeBuilder,
   GeminiRuntimeBuilder,
@@ -256,6 +257,108 @@ describe('CLI Runtime Builders', () => {
 
       const result = await validateCliRuntime('claude');
       expect(result).toBe(false);
+    });
+  });
+
+  describe('validateModelCliCompatibility', () => {
+    describe('Claude CLI validation', () => {
+      it('should accept Claude models with claude CLI', () => {
+        expect(() => {
+          validateModelCliCompatibility('claude-opus-4-6', 'claude');
+        }).not.toThrow();
+
+        expect(() => {
+          validateModelCliCompatibility('claude-sonnet-4-5-20250929', 'claude');
+        }).not.toThrow();
+
+        expect(() => {
+          validateModelCliCompatibility('claude-haiku-4-5-20251001', 'claude');
+        }).not.toThrow();
+      });
+
+      it('should reject OpenAI models with claude CLI', () => {
+        expect(() => {
+          validateModelCliCompatibility('gpt-4o-mini', 'claude');
+        }).toThrow(/incompatible with CLI tool "claude"/);
+
+        expect(() => {
+          validateModelCliCompatibility('gpt-4-turbo', 'claude');
+        }).toThrow(/incompatible with CLI tool "claude"/);
+      });
+
+      it('should reject Gemini models with claude CLI', () => {
+        expect(() => {
+          validateModelCliCompatibility('gemini-2.0-flash-exp', 'claude');
+        }).toThrow(/incompatible with CLI tool "claude"/);
+      });
+    });
+
+    describe('Codex CLI validation', () => {
+      it('should accept OpenAI models with codex CLI', () => {
+        expect(() => {
+          validateModelCliCompatibility('gpt-4o-mini', 'codex');
+        }).not.toThrow();
+
+        expect(() => {
+          validateModelCliCompatibility('gpt-4-turbo', 'codex');
+        }).not.toThrow();
+      });
+
+      it('should reject Claude models with codex CLI', () => {
+        expect(() => {
+          validateModelCliCompatibility('claude-opus-4-6', 'codex');
+        }).toThrow(/incompatible with CLI tool "codex"/);
+
+        expect(() => {
+          validateModelCliCompatibility('claude-sonnet-4-5-20250929', 'codex');
+        }).toThrow(/incompatible with CLI tool "codex"/);
+      });
+
+      it('should reject Gemini models with codex CLI', () => {
+        expect(() => {
+          validateModelCliCompatibility('gemini-2.0-flash-exp', 'codex');
+        }).toThrow(/incompatible with CLI tool "codex"/);
+      });
+    });
+
+    describe('Gemini CLI validation', () => {
+      it('should accept Gemini models with gemini CLI', () => {
+        expect(() => {
+          validateModelCliCompatibility('gemini-2.0-flash-exp', 'gemini');
+        }).not.toThrow();
+
+        expect(() => {
+          validateModelCliCompatibility('gemini-pro', 'gemini');
+        }).not.toThrow();
+      });
+
+      it('should reject Claude models with gemini CLI', () => {
+        expect(() => {
+          validateModelCliCompatibility('claude-opus-4-6', 'gemini');
+        }).toThrow(/incompatible with CLI tool "gemini"/);
+      });
+
+      it('should reject OpenAI models with gemini CLI', () => {
+        expect(() => {
+          validateModelCliCompatibility('gpt-4o-mini', 'gemini');
+        }).toThrow(/incompatible with CLI tool "gemini"/);
+      });
+    });
+
+    describe('Error messages', () => {
+      it('should provide helpful error message with suggestions', () => {
+        expect(() => {
+          validateModelCliCompatibility('gpt-4o-mini', 'claude');
+        }).toThrow('For OpenAI models, use cli_tool: \'codex\'');
+
+        expect(() => {
+          validateModelCliCompatibility('claude-sonnet-4-5-20250929', 'codex');
+        }).toThrow('For Claude models, use cli_tool: \'claude\'');
+
+        expect(() => {
+          validateModelCliCompatibility('gemini-pro', 'claude');
+        }).toThrow('For Google Gemini models, use cli_tool: \'gemini\'');
+      });
     });
   });
 });

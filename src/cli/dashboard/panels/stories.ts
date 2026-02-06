@@ -24,11 +24,11 @@ export function createStoriesPanel(screen: Widgets.Screen, db: Database): Widget
     tags: true,
   });
 
-  updateStoriesPanel(table, db);
+  updateStoriesPanel(table, db).catch(err => console.error('Failed to update stories panel:', err));
   return table;
 }
 
-export function updateStoriesPanel(table: Widgets.ListTableElement, db: Database): void {
+export async function updateStoriesPanel(table: Widgets.ListTableElement, db: Database): Promise<void> {
   const stories = queryAll<StoryRow>(db, `
     SELECT * FROM stories
     ORDER BY

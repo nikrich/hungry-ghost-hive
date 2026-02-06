@@ -18,6 +18,8 @@ import {
   resolveEscalation,
   acknowledgeEscalation,
   deleteEscalation,
+  getRecentEscalationsForAgent,
+  getActiveEscalationsForAgent,
 } from './escalations.js';
 
 describe('escalations queries', () => {
@@ -380,6 +382,73 @@ describe('escalations queries', () => {
 
       expect(esc.resolution).toBeNull();
       expect(esc.resolved_at).toBeNull();
+    });
+  });
+
+  describe('getRecentEscalationsForAgent', () => {
+    it('should return recent escalations for an agent', () => {
+      const esc1 = createEscalation(db, { fromAgentId: agentId, reason: 'Recent 1' });
+      const esc2 = createEscalation(db, { fromAgentId: agentId, reason: 'Recent 2' });
+
+      const agent2 = createAgent(db, { type: 'junior', teamId });
+      createEscalation(db, { fromAgentId: agent2.id, reason: 'Other agent' });
+
+      const recent = getRecentEscalationsForAgent(db, agentId, 30);
+
+      expect(recent).toHaveLength(2);
+      expect(recent.map(e => e.id)).toContain(esc1.id);
+      expect(recent.map(e => e.id)).toContain(esc2.id);
+    });
+
+    it('should return empty array for agent with no recent escalations', () => {
+      const recent = getRecentEscalationsForAgent(db, 'non-existent-agent', 30);
+      expect(recent).toEqual([]);
+    });
+
+    it('should return escalations in DESC order', () => {
+      const esc1 = createEscalation(db, { fromAgentId: agentId, reason: 'First' });
+      const esc2 = createEscalation(db, { fromAgentId: agentId, reason: 'Second' });
+
+      const recent = getRecentEscalationsForAgent(db, agentId, 30);
+
+      expect(recent).toHaveLength(2);
+      // Both escalations should be present
+      expect(recent.map(e => e.id)).toContain(esc1.id);
+      expect(recent.map(e => e.id)).toContain(esc2.id);
+    });
+  });
+
+  describe('getActiveEscalationsForAgent', () => {
+    it('should return pending and acknowledged escalations for an agent', () => {
+      const esc1 = createEscalation(db, { fromAgentId: agentId, reason: 'Pending' });
+      const esc2 = createEscalation(db, { fromAgentId: agentId, reason: 'Acknowledged' });
+      updateEscalation(db, esc2.id, { status: 'acknowledged' });
+
+      const esc3 = createEscalation(db, { fromAgentId: agentId, reason: 'Resolved' });
+      updateEscalation(db, esc3.id, { status: 'resolved', resolution: 'Fixed' });
+
+      const active = getActiveEscalationsForAgent(db, agentId);
+
+      expect(active).toHaveLength(2);
+      expect(active.map(e => e.id)).toContain(esc1.id);
+      expect(active.map(e => e.id)).toContain(esc2.id);
+      expect(active.map(e => e.id)).not.toContain(esc3.id);
+    });
+
+    it('should not return resolved escalations', () => {
+      createEscalation(db, { fromAgentId: agentId, reason: 'Pending' });
+      const esc2 = createEscalation(db, { fromAgentId: agentId, reason: 'Will resolve' });
+      updateEscalation(db, esc2.id, { status: 'resolved', resolution: 'Fixed' });
+
+      const active = getActiveEscalationsForAgent(db, agentId);
+
+      expect(active).toHaveLength(1);
+      expect(active[0].reason).toBe('Pending');
+    });
+
+    it('should return empty array for agent with no active escalations', () => {
+      const active = getActiveEscalationsForAgent(db, 'non-existent-agent');
+      expect(active).toEqual([]);
     });
   });
 });

@@ -1,12 +1,14 @@
 import type { Database } from 'sql.js';
-import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, getBatchStoryDependencies, getStoryById, type StoryRow } from '../db/queries/stories.js';
+import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, getBatchStoryDependencies, getStoryById, getStoriesWithOrphanedAssignments, type StoryRow } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
+import { createEscalation } from '../db/queries/escalations.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode, killTmuxSession } from '../tmux/manager.js';
 import type { ScalingConfig, ModelsConfig, QAConfig } from '../config/schema.js';
-import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
+import { getCliRuntimeBuilder, validateModelCliCompatibility } from '../cli-runtimes/index.js';
+import { generateSeniorPrompt, generateIntermediatePrompt, generateJuniorPrompt, generateQAPrompt } from './prompt-templates.js';
 
 export interface SchedulerConfig {
   scaling: ScalingConfig;
@@ -40,10 +42,11 @@ export class Scheduler {
     const branchName = `agent/${agentId}`;
 
     try {
-      // Create worktree from main branch
+      // Create worktree from main branch (30s timeout for git operations)
       execSync(`git worktree add "${fullWorktreePath}" -b "${branchName}"`, {
         cwd: fullRepoPath,
         stdio: 'pipe',
+        timeout: 30000, // 30 second timeout for git operations
       });
     } catch (err) {
       // If worktree or branch already exists, try to add without creating branch
@@ -51,6 +54,7 @@ export class Scheduler {
         execSync(`git worktree add "${fullWorktreePath}" "${branchName}"`, {
           cwd: fullRepoPath,
           stdio: 'pipe',
+          timeout: 30000, // 30 second timeout for git operations
         });
       } catch {
         // If that fails too, log and throw
@@ -64,7 +68,7 @@ export class Scheduler {
   /**
    * Remove a git worktree for an agent
    */
-  private async removeWorktree(worktreePath: string): Promise<void> {
+  private async removeWorktree(worktreePath: string, agentId: string): Promise<void> {
     if (!worktreePath) return;
 
     const { execSync } = await import('child_process');
@@ -74,10 +78,18 @@ export class Scheduler {
       execSync(`git worktree remove "${fullWorktreePath}" --force`, {
         cwd: this.config.rootDir,
         stdio: 'pipe',
+        timeout: 30000, // 30 second timeout for git operations
       });
     } catch (err) {
-      // Log error but don't throw - worktree might already be removed
-      console.error(`Warning: Failed to remove worktree at ${fullWorktreePath}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      // Log failure to database for tracking and potential recovery
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      createLog(this.db, {
+        agentId,
+        eventType: 'WORKTREE_REMOVAL_FAILED',
+        status: 'error',
+        message: `Failed to remove worktree at ${fullWorktreePath}: ${errorMessage}`,
+        metadata: { worktreePath, fullWorktreePath },
+      });
     }
   }
 
@@ -402,10 +414,40 @@ export class Scheduler {
   }
 
   /**
+   * Detect and recover orphaned stories (assigned to terminated agents)
+   * Returns the story IDs that were recovered
+   */
+  private detectAndRecoverOrphanedStories(): string[] {
+    const orphanedAssignments = getStoriesWithOrphanedAssignments(this.db);
+    const recovered: string[] = [];
+
+    for (const assignment of orphanedAssignments) {
+      try {
+        // Update story in single atomic operation
+        updateStory(this.db, assignment.id, {
+          assignedAgentId: null,
+          status: 'planned',
+        });
+        createLog(this.db, {
+          agentId: 'scheduler',
+          storyId: assignment.id,
+          eventType: 'ORPHANED_STORY_RECOVERED',
+          message: `Recovered from terminated agent ${assignment.agent_id}`,
+        });
+        recovered.push(assignment.id);
+      } catch (err) {
+        console.error(`Failed to recover orphaned story ${assignment.id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+    }
+
+    return recovered;
+  }
+
+  /**
    * Health check: sync agent status with actual tmux sessions
    * Returns number of agents whose status was corrected
    */
-  async healthCheck(): Promise<{ terminated: number; revived: string[] }> {
+  async healthCheck(): Promise<{ terminated: number; revived: string[]; orphanedRecovered: string[] }> {
     const allAgents = queryAll<AgentRow>(this.db, `
       SELECT * FROM agents WHERE status != 'terminated'
     `);
@@ -427,7 +469,7 @@ export class Scheduler {
       if (!sessionAlive && agent.status !== 'terminated') {
         // Remove worktree if exists
         if (agent.worktree_path) {
-          await this.removeWorktree(agent.worktree_path);
+          await this.removeWorktree(agent.worktree_path, agent.id);
         }
 
         updateAgent(this.db, agent.id, { status: 'terminated', currentStoryId: null, worktreePath: null });
@@ -449,7 +491,10 @@ export class Scheduler {
       }
     }
 
-    return { terminated, revived };
+    // Detect and recover orphaned stories (assigned to terminated agents)
+    const orphanedRecovered = this.detectAndRecoverOrphanedStories();
+
+    return { terminated, revived, orphanedRecovered };
   }
 
   /**
@@ -543,7 +588,7 @@ export class Scheduler {
 
           // Remove worktree
           if (agent.worktree_path) {
-            await this.removeWorktree(agent.worktree_path);
+            await this.removeWorktree(agent.worktree_path, agent.id);
           }
 
           // Update database
@@ -611,6 +656,29 @@ export class Scheduler {
     // Get model info from config
     const modelConfig = this.config.models[type as keyof typeof this.config.models];
     const modelShorthand = this.getModelShorthand(modelConfig.model);
+    const cliTool = modelConfig.cli_tool || 'claude';
+
+    // Validate that the model is compatible with the CLI tool
+    try {
+      validateModelCliCompatibility(modelConfig.model, cliTool);
+    } catch (err) {
+      // Create an escalation for human review instead of spawning a broken agent
+      const errorMessage = err instanceof Error ? err.message : 'Unknown compatibility error';
+      createEscalation(this.db, {
+        reason: `Configuration mismatch: Cannot spawn ${type} agent for team ${teamName}. ${errorMessage}`,
+      });
+
+      createLog(this.db, {
+        agentId: 'scheduler',
+        eventType: 'AGENT_SPAWN_FAILED',
+        status: 'error',
+        message: `Failed to spawn ${type} agent for team ${teamName}: ${errorMessage}. Created escalation for human review.`,
+        metadata: { teamId, agentType: type, model: modelConfig.model, cliTool, error: errorMessage },
+      });
+
+      // Throw the error to prevent agent creation
+      throw new Error(`Cannot spawn ${type} agent: ${errorMessage}`);
+    }
 
     const agent = createAgent(this.db, {
       type,
@@ -624,7 +692,6 @@ export class Scheduler {
 
     if (!await isTmuxSessionRunning(sessionName)) {
       // Build CLI command using the configured runtime
-      const cliTool = modelConfig.cli_tool;
       const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(modelShorthand);
       const command = commandArgs.join(' ');
 
@@ -634,11 +701,11 @@ export class Scheduler {
         command,
       });
 
-      // Wait for Claude to be ready before sending prompt
+      // Wait for CLI tool to be ready before sending prompt
       await waitForTmuxSessionReady(sessionName);
 
       // Force bypass permissions mode to enable autonomous work
-      await forceBypassMode(sessionName, 'claude');
+      await forceBypassMode(sessionName, cliTool);
 
       const team = getTeamById(this.db, teamId);
       let prompt: string;
@@ -708,343 +775,4 @@ export class Scheduler {
       ORDER BY complexity_score DESC
     `, [teamId]);
   }
-}
-
-// Prompt generation functions
-
-function generateSeniorPrompt(teamName: string, repoUrl: string, repoPath: string, stories: StoryRow[]): string {
-  const storyList = stories.map(s =>
-    `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'})\n  ${s.description}`
-  ).join('\n\n');
-
-  const sessionName = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-
-  return `You are a Senior Developer on Team ${teamName}.
-Your tmux session: ${sessionName}
-
-## Your Repository
-- Local path: ${repoPath}
-- Remote: ${repoUrl}
-
-## Your Responsibilities
-1. Implement assigned stories
-2. Review code quality
-3. Delegate simpler tasks to Intermediate/Junior developers
-4. Ensure tests pass and code meets standards
-
-## Pending Stories for Your Team
-${storyList || 'No stories assigned yet.'}
-
-## Finding Your Stories
-Check your assigned stories:
-\`\`\`bash
-hive my-stories ${sessionName}
-\`\`\`
-
-See all team stories:
-\`\`\`bash
-hive my-stories ${sessionName} --all
-\`\`\`
-
-Claim a story:
-\`\`\`bash
-hive my-stories claim <story-id> --session ${sessionName}
-\`\`\`
-
-Mark story complete:
-\`\`\`bash
-hive my-stories complete <story-id>
-\`\`\`
-
-## Workflow
-1. Run \`hive my-stories ${sessionName}\` to see your assigned work
-2. Create a feature branch: \`git checkout -b feature/<story-id>-<short-description>\`
-3. Implement the changes
-4. Run tests and linting
-5. Commit with a clear message referencing the story ID
-6. Create a PR using \`gh pr create\`
-7. Submit to merge queue for QA review:
-\`\`\`bash
-hive pr submit -b feature/<story-id>-<description> -s <story-id> --from ${sessionName}
-\`\`\`
-
-## Submitting PRs
-After creating your GitHub PR, submit it to the merge queue:
-\`\`\`bash
-gh pr create --title "Story <story-id>: <title>" --body "..."
-hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
-\`\`\`
-
-Check your PR status:
-\`\`\`bash
-hive pr queue
-\`\`\`
-
-## Communication with Tech Lead
-If you have questions or need guidance, message the Tech Lead:
-\`\`\`bash
-hive msg send hive-tech-lead "Your question here" --from ${sessionName}
-\`\`\`
-
-Check for replies:
-\`\`\`bash
-hive msg outbox ${sessionName}
-\`\`\`
-
-## Guidelines
-- Follow existing code patterns in the repository
-- Write tests for new functionality
-- Keep commits atomic and well-documented
-- Message the Tech Lead if blocked or need clarification
-
-## IMPORTANT: Autonomous Workflow
-You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
-After completing a story:
-1. Run \`hive my-stories ${sessionName}\` to get your next assignment
-2. If no stories assigned, run \`hive my-stories ${sessionName} --all\` to see available work
-3. Claim available work with \`hive my-stories claim <story-id> --session ${sessionName}\`
-4. ALWAYS submit PRs to hive after creating them on GitHub:
-   \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
-
-Start by exploring the codebase to understand its structure, then begin working on the highest priority story.`;
-}
-
-function generateIntermediatePrompt(teamName: string, repoUrl: string, repoPath: string, sessionName: string): string {
-  const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-
-  return `You are an Intermediate Developer on Team ${teamName}.
-Your tmux session: ${sessionName}
-
-## Your Repository
-- Local path: ${repoPath}
-- Remote: ${repoUrl}
-
-## Your Responsibilities
-1. Implement assigned stories (moderate complexity)
-2. Write clean, tested code
-3. Follow team coding standards
-4. Ask Senior for help if stuck
-
-## Finding Your Stories
-Check your assigned stories:
-\`\`\`bash
-hive my-stories ${sessionName}
-\`\`\`
-
-Claim a story:
-\`\`\`bash
-hive my-stories claim <story-id> --session ${sessionName}
-\`\`\`
-
-Mark story complete:
-\`\`\`bash
-hive my-stories complete <story-id>
-\`\`\`
-
-## Workflow
-1. Run \`hive my-stories ${sessionName}\` to see your assigned work
-2. Create a feature branch: \`git checkout -b feature/<story-id>-<description>\`
-3. Implement the changes
-4. Run tests and linting
-5. Commit and create a PR using \`gh pr create\`
-6. Submit to merge queue:
-\`\`\`bash
-hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
-\`\`\`
-
-## Submitting PRs
-After creating your GitHub PR:
-\`\`\`bash
-gh pr create --title "Story <story-id>: <title>" --body "..."
-hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
-\`\`\`
-
-## Communication
-If you have questions, message your Senior or the Tech Lead:
-\`\`\`bash
-hive msg send ${seniorSession} "Your question" --from ${sessionName}
-hive msg send hive-tech-lead "Your question" --from ${sessionName}
-\`\`\`
-
-Check for replies:
-\`\`\`bash
-hive msg outbox ${sessionName}
-\`\`\`
-
-## Guidelines
-- Follow existing code patterns
-- Write tests for your changes
-- Keep commits focused and clear
-- Message Senior or Tech Lead if blocked
-
-## IMPORTANT: Autonomous Workflow
-You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
-After completing a story:
-1. Run \`hive my-stories ${sessionName}\` to get your next assignment
-2. If no stories assigned, run \`hive my-stories ${sessionName} --all\` to see available work
-3. Claim available work with \`hive my-stories claim <story-id> --session ${sessionName}\`
-4. ALWAYS submit PRs to hive after creating them on GitHub:
-   \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
-
-Start by exploring the codebase, then run \`hive my-stories ${sessionName}\` to see your assignments.`;
-}
-
-function generateJuniorPrompt(teamName: string, repoUrl: string, repoPath: string, sessionName: string): string {
-  const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-
-  return `You are a Junior Developer on Team ${teamName}.
-Your tmux session: ${sessionName}
-
-## Your Repository
-- Local path: ${repoPath}
-- Remote: ${repoUrl}
-
-## Your Responsibilities
-1. Implement simple, well-defined stories
-2. Learn the codebase patterns
-3. Write tests for your changes
-4. Ask for help when needed
-
-## Finding Your Stories
-Check your assigned stories:
-\`\`\`bash
-hive my-stories ${sessionName}
-\`\`\`
-
-Claim a story:
-\`\`\`bash
-hive my-stories claim <story-id> --session ${sessionName}
-\`\`\`
-
-Mark story complete:
-\`\`\`bash
-hive my-stories complete <story-id>
-\`\`\`
-
-## Workflow
-1. Run \`hive my-stories ${sessionName}\` to see your assigned work
-2. Create a feature branch: \`git checkout -b feature/<story-id>-<description>\`
-3. Implement the changes carefully
-4. Run tests before committing
-5. Commit and create a PR using \`gh pr create\`
-6. Submit to merge queue:
-\`\`\`bash
-hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
-\`\`\`
-
-## Submitting PRs
-After creating your GitHub PR:
-\`\`\`bash
-gh pr create --title "Story <story-id>: <title>" --body "..."
-hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
-\`\`\`
-
-## Communication
-If you have questions, message your Senior or the Tech Lead:
-\`\`\`bash
-hive msg send ${seniorSession} "Your question" --from ${sessionName}
-hive msg send hive-tech-lead "Your question" --from ${sessionName}
-\`\`\`
-
-Check for replies:
-\`\`\`bash
-hive msg outbox ${sessionName}
-\`\`\`
-
-## Guidelines
-- Follow existing patterns exactly
-- Ask questions if requirements are unclear
-- Test thoroughly before submitting
-- Keep changes small and focused
-
-## IMPORTANT: Autonomous Workflow
-You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
-After completing a story:
-1. Run \`hive my-stories ${sessionName}\` to get your next assignment
-2. If no stories assigned, run \`hive my-stories ${sessionName} --all\` to see available work
-3. Claim available work with \`hive my-stories claim <story-id> --session ${sessionName}\`
-4. ALWAYS submit PRs to hive after creating them on GitHub:
-   \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
-
-Start by exploring the codebase to understand how things work, then run \`hive my-stories ${sessionName}\` to see your assignments.`;
-}
-
-function generateQAPrompt(teamName: string, repoUrl: string, repoPath: string, sessionName: string): string {
-  return `You are a QA Engineer on Team ${teamName}.
-Your tmux session: ${sessionName}
-
-## Your Repository
-- Local path: ${repoPath}
-- Remote: ${repoUrl}
-
-## Your Responsibilities
-1. Review PRs in the merge queue
-2. Check for merge conflicts
-3. Run tests and verify functionality
-4. Check code quality and standards
-5. Approve and merge good PRs
-6. Reject PRs that need fixes
-
-## Merge Queue Workflow
-
-### Check the merge queue:
-\`\`\`bash
-hive pr queue
-\`\`\`
-
-### Claim the next PR for review:
-\`\`\`bash
-hive pr review --from ${sessionName}
-\`\`\`
-
-### View PR details:
-\`\`\`bash
-hive pr show <pr-id>
-\`\`\`
-
-### After reviewing:
-
-**If the PR is good - approve and merge:**
-\`\`\`bash
-# First, merge via GitHub CLI
-gh pr merge <pr-number> --merge
-
-# Then mark as merged in Hive
-hive pr approve <pr-id> --from ${sessionName}
-\`\`\`
-
-**If the PR has issues - reject with feedback:**
-\`\`\`bash
-hive pr reject <pr-id> --reason "Description of issues" --from ${sessionName}
-
-# Notify the developer
-hive msg send <developer-session> "Your PR was rejected: <reason>" --from ${sessionName}
-\`\`\`
-
-## Review Checklist
-For each PR, verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
-2. **Tests pass** - Run the project's test suite
-3. **Code quality** - Check for code standards, no obvious bugs
-4. **Functionality** - Test that the changes work as expected
-5. **Story requirements** - Verify acceptance criteria are met
-
-## Communication
-If you need clarification from a developer:
-\`\`\`bash
-hive msg send <developer-session> "Your question" --from ${sessionName}
-\`\`\`
-
-Check for replies:
-\`\`\`bash
-hive msg outbox ${sessionName}
-\`\`\`
-
-## Guidelines
-- Review PRs in queue order (first in, first out)
-- Be thorough but efficient
-- Provide clear feedback when rejecting
-- Ensure main branch stays stable
-
-Start by running \`hive pr queue\` to see PRs waiting for review.`;
 }

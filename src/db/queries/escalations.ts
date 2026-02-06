@@ -93,6 +93,24 @@ export function getPendingHumanEscalations(db: Database): EscalationRow[] {
   `);
 }
 
+export function getRecentEscalationsForAgent(db: Database, agentId: string, minutesBack: number = 30): EscalationRow[] {
+  return queryAll<EscalationRow>(db, `
+    SELECT * FROM escalations
+    WHERE from_agent_id = ?
+    AND created_at > datetime('now', ?)
+    ORDER BY created_at DESC
+  `, [agentId, `-${minutesBack} minutes`]);
+}
+
+export function getActiveEscalationsForAgent(db: Database, agentId: string): EscalationRow[] {
+  return queryAll<EscalationRow>(db, `
+    SELECT * FROM escalations
+    WHERE from_agent_id = ?
+    AND status IN ('pending', 'acknowledged')
+    ORDER BY created_at DESC
+  `, [agentId]);
+}
+
 export function getAllEscalations(db: Database): EscalationRow[] {
   return queryAll<EscalationRow>(db, 'SELECT * FROM escalations ORDER BY created_at DESC');
 }

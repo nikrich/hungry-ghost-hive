@@ -5,10 +5,10 @@ import { getDatabase, withTransaction } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
-import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession, forceBypassMode } from '../../tmux/manager.js';
+import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession, sendMessageWithConfirmation, autoApprovePermission, forceBypassMode } from '../../tmux/manager.js';
 import { getMergeQueue, getPullRequestsByStatus, backfillGithubPrNumbers } from '../../db/queries/pull-requests.js';
 import { markMessagesRead, getAllPendingMessages, type MessageRow } from '../../db/queries/messages.js';
-import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
+import { createEscalation, getPendingEscalations, getRecentEscalationsForAgent, getActiveEscalationsForAgent, updateEscalation } from '../../db/queries/escalations.js';
 import { getAgentById, updateAgent, getAllAgents } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { queryAll } from '../../db/client.js';
@@ -22,6 +22,7 @@ import { join } from 'path';
 import { detectClaudeCodeState, getStateDescription, ClaudeCodeState } from '../../utils/claude-code-state.js';
 import { getAvailableCommands, buildAutoRecoveryReminder, type CLITool } from '../../utils/cli-commands.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
+import { extractStoryIdFromBranch } from '../../utils/story-id.js';
 
 // Agent state tracking for nudge logic
 interface AgentStateTracking {
@@ -280,6 +281,11 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       db.save();
     }
 
+    if (healthResult.orphanedRecovered.length > 0) {
+      console.log(chalk.green(`  Recovered ${healthResult.orphanedRecovered.length} orphaned story(ies): ${healthResult.orphanedRecovered.join(', ')}`));
+      db.save();
+    }
+
     // Check merge queue for QA spawning
     await scheduler.checkMergeQueue();
     db.save();
@@ -319,6 +325,7 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     let nudged = 0;
     let messagesForwarded = 0;
     let escalationsCreated = 0;
+    let escalationsResolved = 0;
 
     // Get existing pending escalations to avoid duplicates
     const existingEscalations = getPendingEscalations(db.db);
@@ -402,6 +409,31 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
         trackedState.lastStateChangeTime = now;
       }
 
+      // Auto-handle permission prompts before escalation
+      if (stateResult.state === ClaudeCodeState.PERMISSION_REQUIRED) {
+        const approved = await autoApprovePermission(session.name);
+        if (approved) {
+          console.log(chalk.green(`  AUTO-APPROVED: ${session.name} permission prompt`));
+          // Don't escalate if we successfully auto-approved
+          continue;
+        }
+        // If auto-approval failed, fall through to escalation
+      }
+
+      // Re-enforce bypass mode if agent drifted away from it
+      if (stateResult.state === ClaudeCodeState.PLAN_APPROVAL) {
+        const restored = await forceBypassMode(session.name);
+        if (restored) {
+          console.log(chalk.green(`  BYPASS MODE RESTORED: ${session.name} cycled out of plan mode`));
+          // Update tracked state since bypass was restored
+          const tracked = agentStates.get(session.name);
+          if (tracked) {
+            tracked.lastState = ClaudeCodeState.IDLE_AT_PROMPT;
+            tracked.lastStateChangeTime = now;
+          }
+        }
+      }
+
       // Convert to legacy format for escalation logic
       const waitingInfo = {
         isWaiting: stateResult.isWaiting,
@@ -409,7 +441,11 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
         reason: stateResult.needsHuman ? getStateDescription(stateResult.state) : undefined,
       };
 
-      if (waitingInfo.needsHuman && !escalatedSessions.has(session.name)) {
+      // Check for recent escalations from this agent to improve dedup (avoid duplicates even after restart)
+      const hasRecentEscalation = escalatedSessions.has(session.name) ||
+        getRecentEscalationsForAgent(db.db, session.name, 30).length > 0;
+
+      if (waitingInfo.needsHuman && !hasRecentEscalation) {
         // Create escalation for human attention
         const storyId = agent?.current_story_id || null;
 
@@ -428,6 +464,20 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
         await sendToTmuxSession(session.name, reminder);
 
         console.log(chalk.red(`  ESCALATION: ${session.name} needs human input`));
+      } else if (!waitingInfo.isWaiting && !waitingInfo.needsHuman) {
+        // Agent has recovered from the state that caused escalation - auto-resolve any active escalations
+        const activeEscalations = getActiveEscalationsForAgent(db.db, session.name);
+        for (const escalation of activeEscalations) {
+          updateEscalation(db.db, escalation.id, {
+            status: 'resolved',
+            resolution: `Agent recovered: no longer in waiting state`,
+          });
+          escalationsResolved++;
+        }
+        if (activeEscalations.length > 0) {
+          db.save();
+          console.log(chalk.green(`  AUTO-RESOLVED: ${session.name} recovered, resolved ${activeEscalations.length} escalation(s)`));
+        }
       } else if (waitingInfo.isWaiting && stateResult.state !== ClaudeCodeState.THINKING) {
         // Agent is idle/waiting but doesn't need human
         // Check if we should nudge based on state duration and cooldown
@@ -514,7 +564,9 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       }
       // Mark as closed to prevent re-notification spam
       // Developer will create a new PR when they resubmit
-      db.db.run("UPDATE pull_requests SET status = 'closed' WHERE id = ?", [pr.id]);
+      await withTransaction(db.db, () => {
+        db.db.run("UPDATE pull_requests SET status = 'closed' WHERE id = ?", [pr.id]);
+      });
     }
     if (rejectedPRs.length > 0) {
       db.save();
@@ -676,6 +728,7 @@ hive pr queue`
     // Summary
     const summary = [];
     if (escalationsCreated > 0) summary.push(`${escalationsCreated} escalations created`);
+    if (escalationsResolved > 0) summary.push(`${escalationsResolved} escalations auto-resolved`);
     if (nudged > 0) summary.push(`${nudged} nudged`);
     if (messagesForwarded > 0) summary.push(`${messagesForwarded} messages forwarded`);
     if (queuedPRs.length > 0) summary.push(`${queuedPRs.length} PRs queued`);
@@ -761,9 +814,16 @@ async function forwardMessages(sessionName: string, messages: MessageRow[], cliT
 # ${msg.body}
 # Reply with: # ${commands.msgReply(msg.id, 'your response', sessionName)}`;
 
-    await sendToTmuxSession(sessionName, notification);
-    // Small delay between messages
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Send with delivery confirmation - wait for message to appear in session output before proceeding
+    const delivered = await sendMessageWithConfirmation(sessionName, notification);
+
+    if (!delivered) {
+      console.warn(`Failed to confirm delivery of message ${msg.id} to ${sessionName} after retries`);
+      // Continue to next message even if delivery not confirmed to avoid blocking the manager
+    }
+
+    // Small delay between messages to allow recipient time to read
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
 }
 
@@ -791,12 +851,9 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
       const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> = JSON.parse(result.stdout);
 
       for (const pr of mergedPRs) {
-        // Extract story ID from branch name - match STORY-XXX-NAME pattern
-        // Use a more specific pattern to avoid matching extra suffixes
-        const storyMatch = pr.headRefName.match(/STORY-\d+-[A-Z]+/i);
-        if (!storyMatch) continue;
-
-        const storyId = storyMatch[0].toUpperCase();
+        // Extract story ID from branch name using unified pattern
+        const storyId = extractStoryIdFromBranch(pr.headRefName);
+        if (!storyId) continue;
 
         // Check if story exists and isn't already merged
         const story = queryAll<StoryRow>(db.db,
@@ -805,15 +862,17 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
         );
 
         if (story.length > 0) {
-          // Update story to merged
-          db.db.run("UPDATE stories SET status = 'merged', assigned_agent_id = NULL, updated_at = datetime('now') WHERE id = ?", [storyId]);
+          // Update story to merged (atomic transaction)
+          await withTransaction(db.db, () => {
+            db.db.run("UPDATE stories SET status = 'merged', assigned_agent_id = NULL, updated_at = datetime('now') WHERE id = ?", [storyId]);
 
-          // Log the sync
-          createLog(db.db, {
-            agentId: 'manager',
-            storyId: storyId,
-            eventType: 'STORY_MERGED',
-            message: `Story synced to merged from GitHub PR #${pr.number}`,
+            // Log the sync
+            createLog(db.db, {
+              agentId: 'manager',
+              storyId: storyId,
+              eventType: 'STORY_MERGED',
+              message: `Story synced to merged from GitHub PR #${pr.number}`,
+            });
           });
 
           storiesUpdated++;
@@ -863,9 +922,8 @@ async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string)
           continue;
         }
 
-        // Try to match to a story by parsing branch name
-        const storyMatch = ghPR.headRefName.match(/STORY-\d+/i);
-        const storyId = storyMatch ? storyMatch[0].toUpperCase() : null;
+        // Try to match to a story by parsing branch name using unified pattern
+        const storyId = extractStoryIdFromBranch(ghPR.headRefName);
 
         createPullRequest(db.db, {
           storyId,

@@ -126,6 +126,9 @@ describe('context-files module', () => {
         stuck_threshold_ms: 120000,
         nudge_cooldown_ms: 300000,
         lock_stale_ms: 120000,
+        git_timeout_ms: 30000,
+        gh_timeout_ms: 60000,
+        tmux_timeout_ms: 10000,
       },
       logging: { level: 'info', retention_days: 30 },
     };

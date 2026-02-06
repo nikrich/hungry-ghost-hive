@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { Scheduler } from './scheduler.js';
 import { createStory, addStoryDependency, updateStory } from '../db/queries/stories.js';
 import { createTeam } from '../db/queries/teams.js';
+import { getLogsByEventType } from '../db/queries/logs.js';
 import type { StoryRow } from '../db/queries/stories.js';
 
 let db: Database;
@@ -85,6 +86,17 @@ CREATE TABLE IF NOT EXISTS story_dependencies (
     story_id TEXT REFERENCES stories(id),
     depends_on_story_id TEXT REFERENCES stories(id),
     PRIMARY KEY (story_id, depends_on_story_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL,
+    story_id TEXT,
+    event_type TEXT NOT NULL,
+    status TEXT,
+    message TEXT,
+    metadata TEXT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 `;
 
@@ -284,5 +296,150 @@ describe('Scheduler Build Dependency Graph', () => {
     expect(graph.has(storyB.id)).toBe(true);
     expect(graph.has(storyC.id)).toBe(true);
     expect(graph.has(storyA.id)).toBe(false);
+  });
+});
+
+describe('Scheduler Worktree Removal', () => {
+  it('should log worktree removal failures to the database', async () => {
+    // Mock execSync to throw an error
+    const mockExecSync = vi.fn().mockImplementation(() => {
+      throw new Error('Permission denied');
+    });
+    vi.doMock('child_process', () => ({
+      execSync: mockExecSync,
+    }));
+
+    const removeMethod = (scheduler as any).removeWorktree;
+    await removeMethod.call(scheduler, 'repos/test-agent-1', 'agent-test-1');
+
+    // Check that the failure was logged
+    const logs = getLogsByEventType(db, 'WORKTREE_REMOVAL_FAILED');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].agent_id).toBe('agent-test-1');
+    expect(logs[0].event_type).toBe('WORKTREE_REMOVAL_FAILED');
+    expect(logs[0].status).toBe('error');
+    expect(logs[0].message).toContain('Permission denied');
+
+    // Restore original execSync
+    vi.unmock('child_process');
+  });
+
+  it('should handle empty worktree paths gracefully', async () => {
+    const removeMethod = (scheduler as any).removeWorktree;
+
+    // Should return without error for empty path
+    await expect(removeMethod.call(scheduler, '', 'agent-test-1')).resolves.toBeUndefined();
+
+    // Should not log anything
+    const logs = getLogsByEventType(db, 'WORKTREE_REMOVAL_FAILED');
+    expect(logs).toHaveLength(0);
+  });
+});
+
+describe('Scheduler Orphaned Story Recovery', () => {
+  it('should recover orphaned stories assigned to terminated agents', async () => {
+    // Setup: Create team, agents, and a story
+    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+
+    // Create a terminated agent in the database
+    const terminatedAgentId = 'agent-terminated-1';
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [terminatedAgentId, 'intermediate', team.id, 'terminated']
+    );
+
+    // Create a story assigned to the terminated agent
+    const story = createStory(db, { teamId: team.id, title: 'Orphaned Story', description: 'Test' });
+    updateStory(db, story.id, {
+      assignedAgentId: terminatedAgentId,
+      status: 'in_progress'
+    });
+
+    // Get the recovery method
+    const recoverMethod = (scheduler as any).detectAndRecoverOrphanedStories;
+    const recovered = recoverMethod.call(scheduler);
+
+    // Verify the story was recovered
+    expect(recovered).toContain(story.id);
+    expect(recovered.length).toBe(1);
+
+    // Verify the story's assignment was cleared and status changed
+    const recoveredStory = (scheduler as any).db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = ?`,
+      [story.id]
+    )[0]?.values[0];
+
+    expect(recoveredStory?.[0]).toBeNull(); // assigned_agent_id should be null
+    expect(recoveredStory?.[1]).toBe('planned'); // status should be 'planned'
+  });
+
+  it('should not affect stories assigned to active agents', async () => {
+    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+
+    // Create an active (non-terminated) agent
+    const activeAgentId = 'agent-active-1';
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [activeAgentId, 'intermediate', team.id, 'working']
+    );
+
+    // Create a story assigned to the active agent
+    const story = createStory(db, { teamId: team.id, title: 'Active Story', description: 'Test' });
+    updateStory(db, story.id, {
+      assignedAgentId: activeAgentId,
+      status: 'in_progress'
+    });
+
+    // Get the recovery method
+    const recoverMethod = (scheduler as any).detectAndRecoverOrphanedStories;
+    const recovered = recoverMethod.call(scheduler);
+
+    // Verify no stories were recovered
+    expect(recovered.length).toBe(0);
+
+    // Verify the story's assignment was NOT changed
+    const unchangedStory = (scheduler as any).db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = ?`,
+      [story.id]
+    )[0]?.values[0];
+
+    expect(unchangedStory?.[0]).toBe(activeAgentId);
+    expect(unchangedStory?.[1]).toBe('in_progress');
+  });
+
+  it('should recover multiple orphaned stories', async () => {
+    const team = createTeam(db, { name: 'Test Team', repoUrl: 'https://github.com/test/repo', repoPath: 'test' });
+
+    // Create a terminated agent
+    const terminatedAgentId = 'agent-terminated-2';
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [terminatedAgentId, 'intermediate', team.id, 'terminated']
+    );
+
+    // Create multiple stories assigned to the terminated agent
+    const story1 = createStory(db, { teamId: team.id, title: 'Orphaned Story 1', description: 'Test' });
+    const story2 = createStory(db, { teamId: team.id, title: 'Orphaned Story 2', description: 'Test' });
+
+    updateStory(db, story1.id, {
+      assignedAgentId: terminatedAgentId,
+      status: 'in_progress'
+    });
+    updateStory(db, story2.id, {
+      assignedAgentId: terminatedAgentId,
+      status: 'review'
+    });
+
+    // Get the recovery method
+    const recoverMethod = (scheduler as any).detectAndRecoverOrphanedStories;
+    const recovered = recoverMethod.call(scheduler);
+
+    // Verify both stories were recovered
+    expect(recovered.length).toBe(2);
+    expect(recovered).toContain(story1.id);
+    expect(recovered).toContain(story2.id);
   });
 });

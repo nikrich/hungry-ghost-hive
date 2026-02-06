@@ -1,6 +1,6 @@
 import { join } from 'path';
 import type { DatabaseClient } from '../db/client.js';
-import { withTransaction } from '../db/client.js';
+import { withTransaction, queryOne } from '../db/client.js';
 import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-requests.js';
 import { getAllTeams } from '../db/queries/teams.js';
 import { updateStory } from '../db/queries/stories.js';
@@ -25,6 +25,29 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
     if (!pr.github_pr_number) continue;
 
     try {
+      // Atomically claim this PR for merging using optimistic locking
+      // This prevents race conditions when multiple managers run concurrently
+      let claimed = false;
+      await withTransaction(db.db, () => {
+        // Re-fetch PR status to ensure it's still 'approved'
+        const currentPR = queryOne<{ status: string }>(
+          db.db,
+          `SELECT status FROM pull_requests WHERE id = ?`,
+          [pr.id]
+        );
+
+        if (currentPR?.status === 'approved') {
+          // Update to 'queued' status (temporary merge-in-progress state)
+          // Only this manager will proceed if status was 'approved'
+          updatePullRequest(db.db, pr.id, { status: 'queued' });
+          claimed = true;
+        }
+      });
+      db.save();
+
+      // If we didn't claim the PR, another manager is already merging it
+      if (!claimed) continue;
+
       // Get team to find repo path
       let teamId = pr.team_id;
       let repoCwd = root;
@@ -46,10 +69,73 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         }
       }
 
-      // Attempt to merge on GitHub
+      // Check if PR is still open and mergeable before attempting merge
       const { execSync } = await import('child_process');
       try {
-        execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
+        // Verify PR state and mergeable status
+        let prState: any;
+        let mergeableStatus: boolean;
+        try {
+          const prViewOutput = execSync(`gh pr view ${pr.github_pr_number} --json state,mergeable`, {
+            stdio: 'pipe',
+            cwd: repoCwd,
+            encoding: 'utf-8',
+            timeout: 30000 // 30 second timeout for state check
+          });
+          prState = JSON.parse(prViewOutput);
+          mergeableStatus = prState.mergeable === 'MERGEABLE';
+        } catch {
+          // If we can't determine PR status, skip this PR
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: pr.story_id || undefined,
+            eventType: 'PR_MERGE_SKIPPED',
+            status: 'warn',
+            message: `Skipped auto-merge of PR ${pr.id} (GitHub PR #${pr.github_pr_number}): Could not determine PR status`,
+            metadata: { pr_id: pr.id },
+          });
+          continue;
+        }
+
+        // Check if PR is still open
+        if (prState.state !== 'OPEN') {
+          // PR is not open (closed, merged, or draft), skip merge attempt
+          const newStatus = prState.state === 'MERGED' ? 'merged' : 'closed';
+          await withTransaction(db.db, () => {
+            updatePullRequest(db.db, pr.id, { status: newStatus });
+            createLog(db.db, {
+              agentId: 'manager',
+              storyId: pr.story_id || undefined,
+              eventType: 'PR_MERGE_SKIPPED',
+              message: `PR #${pr.github_pr_number} is already ${prState.state.toLowerCase()}, skipping merge`,
+              metadata: { pr_id: pr.id, github_state: prState.state },
+            });
+          });
+          db.save();
+          continue;
+        }
+
+        // Check if PR has merge conflicts
+        if (!mergeableStatus) {
+          // PR has conflicts - skip merge
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: pr.story_id || undefined,
+            eventType: 'PR_MERGE_SKIPPED',
+            status: 'warn',
+            message: `Skipped auto-merge of PR ${pr.id} (GitHub PR #${pr.github_pr_number}): PR has merge conflicts`,
+            metadata: { pr_id: pr.id },
+          });
+          continue;
+        }
+
+        // Use --auto flag to enable GitHub's auto-merge feature (idempotent if already merged)
+        // Add timeout to prevent blocking the manager daemon (60s for GitHub API operations)
+        execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, {
+          stdio: 'pipe',
+          cwd: repoCwd,
+          timeout: 60000 // 60 second timeout for GitHub operations
+        });
 
         // Update PR and story status, create logs (atomic transaction)
         const storyId = pr.story_id;
@@ -75,25 +161,26 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         });
 
         mergedCount++;
+        db.save();
       } catch (mergeErr) {
-        // Log merge failure but continue with other PRs
-        createLog(db.db, {
-          agentId: 'manager',
-          storyId: pr.story_id || undefined,
-          eventType: 'PR_MERGE_FAILED',
-          status: 'error',
-          message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${mergeErr instanceof Error ? mergeErr.message : 'Unknown error'}`,
-          metadata: { pr_id: pr.id },
+        // Merge failed - revert PR status back to approved for retry (atomic transaction)
+        await withTransaction(db.db, () => {
+          updatePullRequest(db.db, pr.id, { status: 'approved' });
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: pr.story_id || undefined,
+            eventType: 'PR_MERGE_FAILED',
+            status: 'error',
+            message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${mergeErr instanceof Error ? mergeErr.message : 'Unknown error'}`,
+            metadata: { pr_id: pr.id },
+          });
         });
+        db.save();
       }
     } catch {
       // Non-fatal - continue with other PRs
       continue;
     }
-  }
-
-  if (mergedCount > 0) {
-    db.save();
   }
 
   return mergedCount;
