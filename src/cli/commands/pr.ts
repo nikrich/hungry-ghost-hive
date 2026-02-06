@@ -13,7 +13,9 @@ import {
   type PullRequestRow,
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
+import { getTeamById } from '../../db/queries/teams.js';
 import { createLog } from '../../db/queries/logs.js';
+import { join } from 'path';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { sendToTmuxSession, isTmuxSessionRunning } from '../../tmux/manager.js';
@@ -312,16 +314,24 @@ prCommand
 
       if (shouldMerge && pr.github_pr_number) {
         // Actually merge on GitHub via gh CLI
+        // Use the team's repo path as cwd so gh knows which repo to operate on
+        let repoCwd = root;
+        if (pr.team_id) {
+          const team = getTeamById(db.db, pr.team_id);
+          if (team?.repo_path) {
+            repoCwd = join(root, team.repo_path);
+          }
+        }
         try {
           const { execSync } = await import('child_process');
           // First approve the PR on GitHub
           try {
-            execSync(`gh pr review ${pr.github_pr_number} --approve`, { stdio: 'pipe', cwd: root });
+            execSync(`gh pr review ${pr.github_pr_number} --approve`, { stdio: 'pipe', cwd: repoCwd });
           } catch {
             // May fail if already approved or if it's our own PR - continue
           }
           // Then merge
-          execSync(`gh pr merge ${pr.github_pr_number} --squash --delete-branch`, { stdio: 'pipe', cwd: root });
+          execSync(`gh pr merge ${pr.github_pr_number} --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
           actuallyMerged = true;
           console.log(chalk.green(`PR ${prId} approved and merged on GitHub!`));
         } catch (mergeErr: unknown) {
