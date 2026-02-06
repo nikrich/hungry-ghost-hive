@@ -170,6 +170,9 @@ hive assign
 hive stories list
 hive stories show <story-id>
 
+# Engineer-discovered refactor story (from an agent session)
+hive my-stories refactor --session <agent-session> --title "Simplify auth middleware" --description "Duplication and branching complexity in auth stack" --points 2
+
 # View agents
 hive agents list
 hive agents list --active
@@ -288,6 +291,10 @@ scaling:
   junior_max_complexity: 3      # 1-3 → Junior
   intermediate_max_complexity: 5 # 4-5 → Intermediate
   senior_capacity: 20           # Story points before scaling up
+  refactor:
+    enabled: true
+    capacity_percent: 10        # Reserve up to 10% of feature capacity for refactor stories
+    allow_without_feature_work: true
 
 # QA checks
 qa:

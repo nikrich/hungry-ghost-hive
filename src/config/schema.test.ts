@@ -81,6 +81,26 @@ describe('HiveConfigSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('should apply defaults for refactor scaling policy', () => {
+    const config = HiveConfigSchema.parse({});
+    expect(config.scaling.refactor.enabled).toBe(true);
+    expect(config.scaling.refactor.capacity_percent).toBe(10);
+    expect(config.scaling.refactor.allow_without_feature_work).toBe(true);
+  });
+
+  it('should reject invalid refactor capacity percent', () => {
+    const config = {
+      scaling: {
+        refactor: {
+          capacity_percent: 150,
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
   it('should accept all valid cli_tool values (claude, codex, gemini)', () => {
     const tools = ['claude', 'codex', 'gemini'];
 

@@ -107,7 +107,16 @@ describe('context-files module', () => {
         junior: { provider: 'openai', model: 'gpt-4o-mini', max_tokens: 4000, temperature: 0.2, cli_tool: 'claude' },
         qa: { provider: 'anthropic', model: 'claude-sonnet', max_tokens: 8000, temperature: 0.2, cli_tool: 'claude' },
       },
-      scaling: { senior_capacity: 20, junior_max_complexity: 3, intermediate_max_complexity: 5 },
+      scaling: {
+        senior_capacity: 20,
+        junior_max_complexity: 3,
+        intermediate_max_complexity: 5,
+        refactor: {
+          enabled: true,
+          capacity_percent: 10,
+          allow_without_feature_work: true,
+        },
+      },
       github: { base_branch: 'main', pr_template: '' },
       qa: {
         quality_checks: ['npm run lint', 'npm run type-check'],

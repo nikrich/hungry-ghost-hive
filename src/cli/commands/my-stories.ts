@@ -2,6 +2,8 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase, queryAll, queryOne, run, type StoryRow } from '../../db/client.js';
+import { createStory, updateStory } from '../../db/queries/stories.js';
+import { createLog } from '../../db/queries/logs.js';
 
 export const myStoriesCommand = new Command('my-stories')
   .description('View and manage stories assigned to an agent')
@@ -179,6 +181,103 @@ myStoriesCommand
       db.save();
 
       console.log(chalk.green(`Story ${storyId} marked as ready for review.`));
+    } finally {
+      db.close();
+    }
+  });
+
+myStoriesCommand
+  .command('refactor')
+  .description('Create a refactor story discovered during implementation')
+  .requiredOption('-s, --session <session>', 'Your tmux session name')
+  .requiredOption('-t, --title <title>', 'Refactor story title')
+  .requiredOption('-d, --description <description>', 'Refactor scope and rationale')
+  .option('-p, --points <points>', 'Story points / complexity (1-13)', '2')
+  .option('--status <status>', 'Initial status (estimated|planned)', 'planned')
+  .option('-c, --criteria <criteria...>', 'Acceptance criteria (repeatable)')
+  .action(async (options: {
+    session: string;
+    title: string;
+    description: string;
+    points: string;
+    status?: string;
+    criteria?: string[];
+  }) => {
+    const root = findHiveRoot();
+    if (!root) {
+      console.error(chalk.red('Not in a Hive workspace.'));
+      process.exit(1);
+    }
+
+    const points = parseInt(options.points, 10);
+    if (!Number.isInteger(points) || points < 1 || points > 13) {
+      console.error(chalk.red('Points must be an integer between 1 and 13.'));
+      process.exit(1);
+    }
+
+    const status = options.status === 'estimated' ? 'estimated' : options.status === 'planned' ? 'planned' : null;
+    if (!status) {
+      console.error(chalk.red('Status must be either "estimated" or "planned".'));
+      process.exit(1);
+    }
+
+    const paths = getHivePaths(root);
+    const db = await getDatabase(paths.hiveDir);
+
+    try {
+      const agent = queryOne<{ id: string; team_id: string | null }>(
+        db.db,
+        'SELECT id, team_id FROM agents WHERE tmux_session = ?',
+        [options.session]
+      );
+
+      if (!agent) {
+        console.error(chalk.red(`No agent found with session: ${options.session}`));
+        process.exit(1);
+      }
+
+      if (!agent.team_id) {
+        console.error(chalk.red('This agent is not attached to a team, so a team refactor story cannot be created.'));
+        process.exit(1);
+      }
+
+      const trimmedTitle = options.title.trim();
+      const normalizedTitle = /^refactor\s*:/i.test(trimmedTitle)
+        ? trimmedTitle
+        : `Refactor: ${trimmedTitle}`;
+
+      const story = createStory(db.db, {
+        teamId: agent.team_id,
+        title: normalizedTitle,
+        description: options.description.trim(),
+        acceptanceCriteria: options.criteria && options.criteria.length > 0 ? options.criteria : null,
+      });
+
+      const updatedStory = updateStory(db.db, story.id, {
+        complexityScore: points,
+        storyPoints: points,
+        status,
+      });
+
+      createLog(db.db, {
+        agentId: agent.id,
+        storyId: story.id,
+        eventType: 'STORY_CREATED',
+        message: `Refactor story proposed: ${normalizedTitle}`,
+        metadata: {
+          source: 'engineer_discovery',
+          session: options.session,
+          points,
+          status,
+        },
+      });
+
+      db.save();
+
+      console.log(chalk.green(`Created refactor story: ${story.id}`));
+      console.log(chalk.gray(`Title: ${normalizedTitle}`));
+      console.log(chalk.gray(`Status: ${(updatedStory?.status || status).toUpperCase()} | Points: ${points}`));
+      console.log(chalk.gray('Run `hive assign` to schedule work based on current capacity policy.'));
     } finally {
       db.close();
     }

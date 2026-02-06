@@ -227,6 +227,71 @@ export class Scheduler {
   }
 
   /**
+   * Convention-based story typing: refactor stories start with "Refactor:".
+   */
+  private isRefactorStory(story: StoryRow): boolean {
+    return /^refactor\s*:/i.test(story.title.trim());
+  }
+
+  /**
+   * Capacity computations prefer story points, then complexity score, then 1.
+   */
+  private getCapacityPoints(story: StoryRow): number {
+    return story.story_points || story.complexity_score || 1;
+  }
+
+  /**
+   * Apply configurable refactor-capacity policy before assignment.
+   */
+  private selectStoriesForCapacity(stories: StoryRow[]): StoryRow[] {
+    const refactorConfig = this.config.scaling.refactor || {
+      enabled: false,
+      capacity_percent: 0,
+      allow_without_feature_work: false,
+    };
+
+    if (!refactorConfig.enabled) {
+      return stories.filter(story => !this.isRefactorStory(story));
+    }
+
+    const featureStories = stories.filter(story => !this.isRefactorStory(story));
+    const featurePoints = featureStories.reduce((sum, story) => sum + this.getCapacityPoints(story), 0);
+    const hasFeatureWork = featureStories.length > 0;
+
+    if (!hasFeatureWork && !refactorConfig.allow_without_feature_work) {
+      return [];
+    }
+
+    let refactorBudgetPoints = hasFeatureWork
+      ? Math.floor((featurePoints * refactorConfig.capacity_percent) / 100)
+      : Number.POSITIVE_INFINITY;
+
+    if (hasFeatureWork && refactorConfig.capacity_percent > 0 && refactorBudgetPoints === 0) {
+      refactorBudgetPoints = 1;
+    }
+
+    let usedRefactorPoints = 0;
+    const selected: StoryRow[] = [];
+
+    for (const story of stories) {
+      if (!this.isRefactorStory(story)) {
+        selected.push(story);
+        continue;
+      }
+
+      const points = this.getCapacityPoints(story);
+      if (usedRefactorPoints + points > refactorBudgetPoints) {
+        continue;
+      }
+
+      selected.push(story);
+      usedRefactorPoints += points;
+    }
+
+    return selected;
+  }
+
+  /**
    * Assign planned stories to available agents
    */
   async assignStories(): Promise<{ assigned: number; errors: string[]; preventedDuplicates: number }> {
@@ -271,8 +336,9 @@ export class Scheduler {
         }
       }
 
-      // Assign stories based on complexity
-      for (const story of stories) {
+      // Assign stories based on complexity and capacity policy
+      const storiesToAssign = this.selectStoriesForCapacity(stories);
+      for (const story of storiesToAssign) {
         // Check if story is already assigned (prevent duplicate assignment)
         const currentStory = getStoryById(this.db, story.id);
         if (currentStory && currentStory.assigned_agent_id !== null) {

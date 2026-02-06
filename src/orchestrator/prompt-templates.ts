@@ -82,6 +82,16 @@ Check for replies:
 hive msg outbox ${sessionName}
 \`\`\`
 
+## Proactive Refactoring
+If, while working on the assigned story, you discover a useful fix that is outside the story's acceptance criteria:
+- Do NOT implement that out-of-scope fix in the current branch
+- Reuse the code context you already gathered from this task (do not run a separate deep discovery pass)
+- Create a refactor story immediately, then continue the current story
+\`\`\`bash
+hive my-stories refactor --session ${sessionName} --title "<short title>" --description "<what/why>" --points 2
+\`\`\`
+Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
+
 ## Guidelines
 - Follow existing code patterns in the repository
 - Write tests for new functionality
@@ -165,6 +175,16 @@ Check for replies:
 hive msg outbox ${sessionName}
 \`\`\`
 
+## Proactive Refactoring
+If, while working on the assigned story, you discover a useful fix that is outside the story's acceptance criteria:
+- Do NOT implement that out-of-scope fix in the current branch
+- Reuse the code context you already gathered from this task (do not run a separate deep discovery pass)
+- Create a refactor story immediately, then continue the current story
+\`\`\`bash
+hive my-stories refactor --session ${sessionName} --title "<short title>" --description "<what/why>" --points 2
+\`\`\`
+Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
+
 ## Guidelines
 - Follow existing code patterns
 - Write tests for your changes
@@ -247,6 +267,16 @@ Check for replies:
 \`\`\`bash
 hive msg outbox ${sessionName}
 \`\`\`
+
+## Proactive Refactoring
+If, while working on the assigned story, you discover a useful fix that is outside the story's acceptance criteria:
+- Do NOT implement that out-of-scope fix in the current branch
+- Reuse the code context you already gathered from this task (do not run a separate deep discovery pass)
+- Create a refactor story immediately, then continue the current story
+\`\`\`bash
+hive my-stories refactor --session ${sessionName} --title "<short title>" --description "<what/why>" --points 2
+\`\`\`
+Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
 
 ## Guidelines
 - Follow existing patterns exactly
