@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
+import * as logger from '../../utils/logger.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase, withTransaction } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
