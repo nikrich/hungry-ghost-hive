@@ -132,8 +132,15 @@ export class Scaler {
           stdio: 'pipe',
         });
       } catch (err) {
-        // Log error but don't throw - worktree might already be removed
-        console.error(`Warning: Failed to remove worktree: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        // Log failure to database for tracking
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        createLog(this.db, {
+          agentId: agent.id,
+          eventType: 'WORKTREE_REMOVAL_FAILED',
+          status: 'error',
+          message: `Failed to remove worktree at ${this.config.rootDir}/${agent.worktree_path}: ${errorMessage}`,
+          metadata: { worktreePath: agent.worktree_path, fullWorktreePath: `${this.config.rootDir}/${agent.worktree_path}` },
+        });
       }
     }
 
