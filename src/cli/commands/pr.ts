@@ -21,6 +21,7 @@ import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { sendToTmuxSession, isTmuxSessionRunning } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
+import { extractStoryIdFromBranch, normalizeStoryId } from '../../utils/story-id.js';
 
 export const prCommand = new Command('pr')
   .description('Manage pull requests and merge queue');
@@ -30,14 +31,14 @@ prCommand
   .command('submit')
   .description('Submit a PR to the merge queue')
   .requiredOption('-b, --branch <branch>', 'Branch name')
-  .option('-s, --story <story-id>', 'Associated story ID')
+  .requiredOption('-s, --story <story-id>', 'Associated story ID')
   .option('-t, --team <team-id>', 'Team ID')
   .option('--pr-number <number>', 'GitHub PR number')
   .option('--pr-url <url>', 'GitHub PR URL')
   .option('--from <session>', 'Submitting agent session')
   .action(async (options: {
     branch: string;
-    story?: string;
+    story: string;
     team?: string;
     prNumber?: string;
     prUrl?: string;
@@ -53,32 +54,34 @@ prCommand
     const db = await getDatabase(paths.hiveDir);
 
     try {
-      // If story ID provided, get team from story
+      // Story ID is now required - normalize it
+      const storyId = normalizeStoryId(options.story);
+
+      // Get team from story
       let teamId = options.team || null;
-      const storyId = options.story || null;
-
-      if (storyId) {
-        const story = getStoryById(db.db, storyId);
-        if (story) {
-          teamId = story.team_id;
-
-          // Auto-close any existing open PRs for this story
-          const existingPRs = getOpenPullRequestsByStory(db.db, storyId);
-          for (const existingPR of existingPRs) {
-            updatePullRequest(db.db, existingPR.id, { status: 'closed' });
-            createLog(db.db, {
-              agentId: options.from || 'system',
-              storyId,
-              eventType: 'PR_CLOSED',
-              message: `Auto-closed duplicate PR ${existingPR.id}`,
-              metadata: { pr_id: existingPR.id, reason: 'duplicate' },
-            });
-          }
-
-          // Update story status
-          updateStory(db.db, storyId, { status: 'pr_submitted' });
-        }
+      const story = getStoryById(db.db, storyId);
+      if (!story) {
+        console.error(chalk.red(`Story not found: ${storyId}`));
+        process.exit(1);
       }
+
+      teamId = story.team_id;
+
+      // Auto-close any existing open PRs for this story
+      const existingPRs = getOpenPullRequestsByStory(db.db, storyId);
+      for (const existingPR of existingPRs) {
+        updatePullRequest(db.db, existingPR.id, { status: 'closed' });
+        createLog(db.db, {
+          agentId: options.from || 'system',
+          storyId,
+          eventType: 'PR_CLOSED',
+          message: `Auto-closed duplicate PR ${existingPR.id}`,
+          metadata: { pr_id: existingPR.id, reason: 'duplicate' },
+        });
+      }
+
+      // Update story status
+      updateStory(db.db, storyId, { status: 'pr_submitted' });
 
       const pr = createPullRequest(db.db, {
         storyId,
@@ -317,13 +320,10 @@ prCommand
         return;
       }
 
-      // Extract story ID from PR or branch name
+      // Extract story ID from PR or branch name using unified pattern
       let storyId = pr.story_id;
       if (!storyId && pr.branch_name) {
-        const storyMatch = pr.branch_name.match(/STORY-[A-Z0-9-]+/i);
-        if (storyMatch) {
-          storyId = storyMatch[0].toUpperCase();
-        }
+        storyId = extractStoryIdFromBranch(pr.branch_name);
       }
 
       const shouldMerge = options.merge !== false;
@@ -442,10 +442,7 @@ prCommand
       // Update story status - extract from branch name if not directly linked
       let storyId = pr.story_id;
       if (!storyId && pr.branch_name) {
-        const storyMatch = pr.branch_name.match(/STORY-\d+-[A-Z]+/i);
-        if (storyMatch) {
-          storyId = storyMatch[0].toUpperCase();
-        }
+        storyId = extractStoryIdFromBranch(pr.branch_name);
       }
       if (storyId) {
         updateStory(db.db, storyId, { status: 'qa_failed' });
@@ -544,9 +541,8 @@ prCommand
           continue;
         }
 
-        // Try to match to a story by parsing branch name (e.g., feature/STORY-001-description)
-        const storyMatch = ghPR.headRefName.match(/STORY-\d+/i);
-        const storyId = storyMatch ? storyMatch[0].toUpperCase() : null;
+        // Try to match to a story by parsing branch name using unified pattern
+        const storyId = extractStoryIdFromBranch(ghPR.headRefName);
 
         const pr = createPullRequest(db.db, {
           storyId,

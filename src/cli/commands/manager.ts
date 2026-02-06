@@ -22,6 +22,7 @@ import { join } from 'path';
 import { detectClaudeCodeState, getStateDescription, ClaudeCodeState } from '../../utils/claude-code-state.js';
 import { getAvailableCommands, buildAutoRecoveryReminder, type CLITool } from '../../utils/cli-commands.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
+import { extractStoryIdFromBranch } from '../../utils/story-id.js';
 
 // Agent state tracking for nudge logic
 interface AgentStateTracking {
@@ -831,12 +832,9 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
       const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> = JSON.parse(result.stdout);
 
       for (const pr of mergedPRs) {
-        // Extract story ID from branch name - match STORY-XXX-NAME pattern
-        // Use a more specific pattern to avoid matching extra suffixes
-        const storyMatch = pr.headRefName.match(/STORY-\d+-[A-Z]+/i);
-        if (!storyMatch) continue;
-
-        const storyId = storyMatch[0].toUpperCase();
+        // Extract story ID from branch name using unified pattern
+        const storyId = extractStoryIdFromBranch(pr.headRefName);
+        if (!storyId) continue;
 
         // Check if story exists and isn't already merged
         const story = queryAll<StoryRow>(db.db,
@@ -905,9 +903,8 @@ async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string)
           continue;
         }
 
-        // Try to match to a story by parsing branch name
-        const storyMatch = ghPR.headRefName.match(/STORY-\d+/i);
-        const storyId = storyMatch ? storyMatch[0].toUpperCase() : null;
+        // Try to match to a story by parsing branch name using unified pattern
+        const storyId = extractStoryIdFromBranch(ghPR.headRefName);
 
         createPullRequest(db.db, {
           storyId,
