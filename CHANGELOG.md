@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/nikrich/hungry-ghost-hive/compare/v0.14.1...v0.14.2) (2026-02-06)
+
+
+### Bug Fixes
+
+* replace any type with proper GitHubPRState interface ([2cab62f](https://github.com/nikrich/hungry-ghost-hive/commit/2cab62f7d412af1fcb2b7bba93305a27fefa747c))
+
 ## [0.14.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.14.0...v0.14.1) (2026-02-06)
 
 
