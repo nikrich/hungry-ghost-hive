@@ -3,7 +3,7 @@ import { getAgentsByTeam, getAgentById, createAgent, updateAgent } from '../db/q
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
-import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode } from '../tmux/manager.js';
+import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady, forceBypassMode, killTmuxSession } from '../tmux/manager.js';
 import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
 export class Scheduler {
     db;
@@ -11,6 +11,59 @@ export class Scheduler {
     constructor(db, config) {
         this.db = db;
         this.config = config;
+    }
+    /**
+     * Create a git worktree for an agent
+     * Returns the worktree path
+     */
+    async createWorktree(agentId, teamId, repoPath) {
+        const { execSync } = await import('child_process');
+        // Construct worktree path: repos/<team-id>-<agent-id>/
+        const worktreePath = `repos/${teamId}-${agentId}`;
+        const fullWorktreePath = `${this.config.rootDir}/${worktreePath}`;
+        const fullRepoPath = `${this.config.rootDir}/${repoPath}`;
+        // Branch name: agent/<agent-id>
+        const branchName = `agent/${agentId}`;
+        try {
+            // Create worktree from main branch
+            execSync(`git worktree add "${fullWorktreePath}" -b "${branchName}"`, {
+                cwd: fullRepoPath,
+                stdio: 'pipe',
+            });
+        }
+        catch (err) {
+            // If worktree or branch already exists, try to add without creating branch
+            try {
+                execSync(`git worktree add "${fullWorktreePath}" "${branchName}"`, {
+                    cwd: fullRepoPath,
+                    stdio: 'pipe',
+                });
+            }
+            catch {
+                // If that fails too, log and throw
+                throw new Error(`Failed to create worktree at ${fullWorktreePath}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+        }
+        return worktreePath;
+    }
+    /**
+     * Remove a git worktree for an agent
+     */
+    async removeWorktree(worktreePath) {
+        if (!worktreePath)
+            return;
+        const { execSync } = await import('child_process');
+        const fullWorktreePath = `${this.config.rootDir}/${worktreePath}`;
+        try {
+            execSync(`git worktree remove "${fullWorktreePath}" --force`, {
+                cwd: this.config.rootDir,
+                stdio: 'pipe',
+            });
+        }
+        catch (err) {
+            // Log error but don't throw - worktree might already be removed
+            console.error(`Warning: Failed to remove worktree at ${fullWorktreePath}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
     }
     /**
      * Build a dependency graph for stories
@@ -299,7 +352,11 @@ export class Scheduler {
             // Heartbeat staleness alone is not sufficient since Claude Code sessions
             // don't have a mechanism to send heartbeats
             if (!sessionAlive && agent.status !== 'terminated') {
-                updateAgent(this.db, agent.id, { status: 'terminated', currentStoryId: null });
+                // Remove worktree if exists
+                if (agent.worktree_path) {
+                    await this.removeWorktree(agent.worktree_path);
+                }
+                updateAgent(this.db, agent.id, { status: 'terminated', currentStoryId: null, worktreePath: null });
                 createLog(this.db, {
                     agentId: agent.id,
                     eventType: 'AGENT_TERMINATED',
@@ -333,6 +390,7 @@ export class Scheduler {
      * - Count stories with status 'pr_submitted' or 'qa'
      * - Calculate needed QA agents: 1 QA per 2-3 pending PRs, max 5
      * - Spawn QA agents in parallel with unique session names
+     * - Scale down excess QA agents when queue shrinks
      */
     async scaleQAAgents(teamId, teamName, repoPath) {
         // Count pending QA work: stories in 'qa' or 'pr_submitted' status
@@ -341,10 +399,9 @@ export class Scheduler {
       WHERE team_id = ? AND status IN ('qa', 'pr_submitted')
     `, [teamId]);
         const pendingCount = qaStories.length;
-        if (pendingCount === 0)
-            return;
         // Calculate needed QA agents: 1 per 2-3 pending PRs, max 5
-        const neededQAs = Math.min(Math.ceil(pendingCount / 2.5), 5);
+        // If no pending work, scale down to 0 agents
+        const neededQAs = pendingCount > 0 ? Math.min(Math.ceil(pendingCount / 2.5), 5) : 0;
         // Get currently active QA agents for this team
         const activeQAs = getAgentsByTeam(this.db, teamId)
             .filter(a => a.type === 'qa' && a.status !== 'terminated');
@@ -376,6 +433,57 @@ export class Scheduler {
                 });
             }
         }
+        else if (neededQAs < currentQACount) {
+            // Scale down: terminate excess QA agents
+            const toTerminate = currentQACount - neededQAs;
+            // Identify QA agents to terminate (remove the ones with highest indices first)
+            const sortedAgents = activeQAs.sort((a, b) => {
+                const aIndex = parseInt(a.id.split('-').pop() || '0', 10);
+                const bIndex = parseInt(b.id.split('-').pop() || '0', 10);
+                return bIndex - aIndex; // Descending order to remove highest indices first
+            });
+            const qaAgentsToTerminate = sortedAgents.slice(0, toTerminate);
+            try {
+                for (const agent of qaAgentsToTerminate) {
+                    // Kill tmux session
+                    if (agent.tmux_session) {
+                        await killTmuxSession(agent.tmux_session);
+                    }
+                    // Remove worktree
+                    if (agent.worktree_path) {
+                        await this.removeWorktree(agent.worktree_path);
+                    }
+                    // Update database
+                    updateAgent(this.db, agent.id, {
+                        status: 'terminated',
+                        currentStoryId: null,
+                        worktreePath: null,
+                    });
+                    // Log the event
+                    createLog(this.db, {
+                        agentId: agent.id,
+                        eventType: 'AGENT_TERMINATED',
+                        message: 'QA agent scaled down due to reduced PR queue',
+                        metadata: { teamId, agentType: 'qa', reason: 'queue_shrink', pendingCount },
+                    });
+                }
+                createLog(this.db, {
+                    agentId: 'scheduler',
+                    eventType: 'TEAM_SCALED_DOWN',
+                    message: `Scaled down QA agents for team ${teamName}: ${currentQACount} → ${neededQAs} (${pendingCount} pending stories)`,
+                    metadata: { teamId, agentType: 'qa', previousCount: currentQACount, newCount: neededQAs, pendingCount },
+                });
+            }
+            catch (err) {
+                createLog(this.db, {
+                    agentId: 'scheduler',
+                    eventType: 'AGENT_TERMINATED',
+                    status: 'error',
+                    message: `Failed to scale down QA agents for team ${teamName}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+                    metadata: { teamId, agentType: 'qa', error: String(err) },
+                });
+            }
+        }
     }
     async spawnQA(teamId, teamName, repoPath, index = 1) {
         const agent = createAgent(this.db, {
@@ -383,8 +491,10 @@ export class Scheduler {
             teamId,
             model: 'sonnet',
         });
+        // Create git worktree for this agent
+        const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
+        const workDir = `${this.config.rootDir}/${worktreePath}`;
         const sessionName = generateSessionName('qa', teamName, index);
-        const workDir = `${this.config.rootDir}/${repoPath}`;
         if (!await isTmuxSessionRunning(sessionName)) {
             // Build CLI command using the configured runtime for QA agents
             const cliTool = this.config.models.qa.cli_tool;
@@ -401,7 +511,7 @@ export class Scheduler {
             // Force bypass permissions mode to enable autonomous work
             await forceBypassMode(sessionName, 'claude');
             const team = getTeamById(this.db, teamId);
-            const prompt = generateQAPrompt(teamName, team?.repo_url || '', repoPath, sessionName);
+            const prompt = generateQAPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
             await sendToTmuxSession(sessionName, prompt);
             // Auto-start manager when spawning agents
             await this.ensureManagerRunning();
@@ -409,6 +519,7 @@ export class Scheduler {
         updateAgent(this.db, agent.id, {
             tmuxSession: sessionName,
             status: 'working',
+            worktreePath,
         });
         return agent;
     }
@@ -418,19 +529,15 @@ export class Scheduler {
         }
     }
     async spawnSenior(teamId, teamName, repoPath, index) {
-        const sessionName = generateSessionName('senior', teamName, index);
-        const workDir = `${this.config.rootDir}/${repoPath}`;
-        // Check if an agent is already running on this session (prevent duplicates)
-        const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'senior');
-        const existingAgent = existing.find(a => a.tmux_session === sessionName);
-        if (existingAgent && await isTmuxSessionRunning(sessionName)) {
-            return existingAgent;
-        }
         const agent = createAgent(this.db, {
             type: 'senior',
             teamId,
             model: 'sonnet',
         });
+        // Create git worktree for this agent
+        const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
+        const workDir = `${this.config.rootDir}/${worktreePath}`;
+        const sessionName = generateSessionName('senior', teamName, index);
         if (!await isTmuxSessionRunning(sessionName)) {
             // Build CLI command using the configured runtime for Senior agents
             const cliTool = this.config.models.senior.cli_tool;
@@ -448,7 +555,7 @@ export class Scheduler {
             await forceBypassMode(sessionName, 'claude');
             const team = getTeamById(this.db, teamId);
             const stories = this.getTeamStories(teamId);
-            const prompt = generateSeniorPrompt(teamName, team?.repo_url || '', repoPath, stories);
+            const prompt = generateSeniorPrompt(teamName, team?.repo_url || '', worktreePath, stories);
             await sendToTmuxSession(sessionName, prompt);
             // Auto-start manager when spawning agents
             await this.ensureManagerRunning();
@@ -456,24 +563,22 @@ export class Scheduler {
         updateAgent(this.db, agent.id, {
             tmuxSession: sessionName,
             status: 'working',
+            worktreePath,
         });
         return agent;
     }
     async spawnIntermediate(teamId, teamName, repoPath) {
         const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'intermediate');
         const index = existing.length + 1;
-        const sessionName = generateSessionName('intermediate', teamName, index);
-        const workDir = `${this.config.rootDir}/${repoPath}`;
-        // Check if an agent is already running on this session (prevent duplicates)
-        const existingAgent = existing.find(a => a.tmux_session === sessionName);
-        if (existingAgent && await isTmuxSessionRunning(sessionName)) {
-            return existingAgent;
-        }
         const agent = createAgent(this.db, {
             type: 'intermediate',
             teamId,
             model: 'haiku',
         });
+        // Create git worktree for this agent
+        const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
+        const workDir = `${this.config.rootDir}/${worktreePath}`;
+        const sessionName = generateSessionName('intermediate', teamName, index);
         if (!await isTmuxSessionRunning(sessionName)) {
             // Build CLI command using the configured runtime for Intermediate agents
             const cliTool = this.config.models.intermediate.cli_tool;
@@ -490,7 +595,7 @@ export class Scheduler {
             // Force bypass permissions mode to enable autonomous work
             await forceBypassMode(sessionName, 'claude');
             const team = getTeamById(this.db, teamId);
-            const prompt = generateIntermediatePrompt(teamName, team?.repo_url || '', repoPath, sessionName);
+            const prompt = generateIntermediatePrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
             await sendToTmuxSession(sessionName, prompt);
             // Auto-start manager when spawning agents
             await this.ensureManagerRunning();
@@ -498,24 +603,22 @@ export class Scheduler {
         updateAgent(this.db, agent.id, {
             tmuxSession: sessionName,
             status: 'working',
+            worktreePath,
         });
         return agent;
     }
     async spawnJunior(teamId, teamName, repoPath) {
         const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'junior');
         const index = existing.length + 1;
-        const sessionName = generateSessionName('junior', teamName, index);
-        const workDir = `${this.config.rootDir}/${repoPath}`;
-        // Check if an agent is already running on this session (prevent duplicates)
-        const existingAgent = existing.find(a => a.tmux_session === sessionName);
-        if (existingAgent && await isTmuxSessionRunning(sessionName)) {
-            return existingAgent;
-        }
         const agent = createAgent(this.db, {
             type: 'junior',
             teamId,
             model: 'haiku',
         });
+        // Create git worktree for this agent
+        const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
+        const workDir = `${this.config.rootDir}/${worktreePath}`;
+        const sessionName = generateSessionName('junior', teamName, index);
         if (!await isTmuxSessionRunning(sessionName)) {
             // Build CLI command using the configured runtime for Junior agents
             // Note: Spec calls for gpt-4o-mini but using haiku until OpenAI integration is added
@@ -533,7 +636,7 @@ export class Scheduler {
             // Force bypass permissions mode to enable autonomous work
             await forceBypassMode(sessionName, 'claude');
             const team = getTeamById(this.db, teamId);
-            const prompt = generateJuniorPrompt(teamName, team?.repo_url || '', repoPath, sessionName);
+            const prompt = generateJuniorPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
             await sendToTmuxSession(sessionName, prompt);
             // Auto-start manager when spawning agents
             await this.ensureManagerRunning();
@@ -541,6 +644,7 @@ export class Scheduler {
         updateAgent(this.db, agent.id, {
             tmuxSession: sessionName,
             status: 'working',
+            worktreePath,
         });
         return agent;
     }

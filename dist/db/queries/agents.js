@@ -6,9 +6,9 @@ export function createAgent(db, input) {
         : `${input.type}-${nanoid(8)}`;
     const now = new Date().toISOString();
     run(db, `
-    INSERT INTO agents (id, type, team_id, tmux_session, model, status, created_at, updated_at, last_seen)
-    VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?)
-  `, [id, input.type, input.teamId || null, input.tmuxSession || null, input.model || null, now, now, now]);
+    INSERT INTO agents (id, type, team_id, tmux_session, model, status, worktree_path, created_at, updated_at, last_seen)
+    VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?)
+  `, [id, input.type, input.teamId || null, input.tmuxSession || null, input.model || null, input.worktreePath || null, now, now, now]);
     return getAgentById(db, id);
 }
 export function getAgentById(db, id) {
@@ -54,6 +54,10 @@ export function updateAgent(db, id, input) {
     if (input.memoryState !== undefined) {
         updates.push('memory_state = ?');
         values.push(input.memoryState);
+    }
+    if (input.worktreePath !== undefined) {
+        updates.push('worktree_path = ?');
+        values.push(input.worktreePath);
     }
     if (updates.length === 1) {
         // Only updated_at, nothing to update

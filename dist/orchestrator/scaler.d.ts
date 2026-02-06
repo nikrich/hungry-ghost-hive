@@ -2,6 +2,7 @@ import type { Database } from 'sql.js';
 import type { ScalingConfig } from '../config/schema.js';
 export interface ScalerConfig {
     scaling: ScalingConfig;
+    rootDir: string;
 }
 export interface ScalingRecommendation {
     teamId: string;

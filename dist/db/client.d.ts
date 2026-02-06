@@ -28,6 +28,7 @@ export interface AgentRow {
     memory_state: string | null;
     last_seen: string | null;
     cli_tool: string;
+    worktree_path: string | null;
     created_at: string;
     updated_at: string;
 }

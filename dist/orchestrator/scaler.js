@@ -84,6 +84,21 @@ export class Scaler {
         if (agent.tmux_session) {
             await killTmuxSession(agent.tmux_session);
         }
+        // Remove worktree if exists
+        if (agent.worktree_path) {
+            try {
+                const { execSync } = await import('child_process');
+                const fullWorktreePath = `${this.config.rootDir}/${agent.worktree_path}`;
+                execSync(`git worktree remove "${fullWorktreePath}" --force`, {
+                    cwd: this.config.rootDir,
+                    stdio: 'pipe',
+                });
+            }
+            catch (err) {
+                // Log error but don't throw - worktree might already be removed
+                console.error(`Warning: Failed to remove worktree: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+        }
         // Mark as terminated
         terminateAgent(this.db, agent.id);
         // Log the event

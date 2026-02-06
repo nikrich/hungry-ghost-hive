@@ -180,10 +180,24 @@ agentsCommand
             console.log(chalk.yellow('Dry run - no agents were deleted.'));
             return;
         }
-        // Delete terminated agents
+        // Delete terminated agents and their worktrees
         let deleted = 0;
         for (const agent of terminatedAgents) {
             try {
+                // Remove worktree if exists
+                if (agent.worktree_path) {
+                    try {
+                        const { execSync } = await import('child_process');
+                        const fullWorktreePath = `${root}/${agent.worktree_path}`;
+                        execSync(`git worktree remove "${fullWorktreePath}" --force`, {
+                            cwd: root,
+                            stdio: 'pipe',
+                        });
+                    }
+                    catch (err) {
+                        console.error(chalk.yellow(`Warning: Failed to remove worktree for ${agent.id}: ${err instanceof Error ? err.message : 'Unknown error'}`));
+                    }
+                }
                 deleteAgent(db.db, agent.id);
                 deleted++;
             }
