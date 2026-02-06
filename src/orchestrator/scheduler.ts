@@ -634,7 +634,6 @@ export class Scheduler {
 
     if (!await isTmuxSessionRunning(sessionName)) {
       // Build CLI command using the configured runtime
-      const cliTool = modelConfig.cli_tool;
       const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(modelShorthand);
       const command = commandArgs.join(' ');
 
@@ -644,11 +643,11 @@ export class Scheduler {
         command,
       });
 
-      // Wait for Claude to be ready before sending prompt
+      // Wait for CLI tool to be ready before sending prompt
       await waitForTmuxSessionReady(sessionName);
 
       // Force bypass permissions mode to enable autonomous work
-      await forceBypassMode(sessionName, 'claude');
+      await forceBypassMode(sessionName, cliTool);
 
       const team = getTeamById(this.db, teamId);
       let prompt: string;
