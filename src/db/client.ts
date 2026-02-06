@@ -352,6 +352,27 @@ function runMigrations(db: SqlJsDatabase): void {
     }
     db.run("INSERT INTO migrations (name) VALUES ('006-add-agent-worktree.sql')");
   }
+
+  // Migration 007: Add indexes for frequently-queried columns
+  const result007 = db.exec("SELECT name FROM migrations WHERE name = '007-add-query-indexes.sql'");
+  const migration007Applied = result007.length > 0 && result007[0].values.length > 0;
+
+  if (!migration007Applied) {
+    // Create indexes for frequently-queried columns
+    // Using IF NOT EXISTS to safely handle existing indexes
+    db.run("CREATE INDEX IF NOT EXISTS idx_stories_status ON stories(status)");
+    db.run("CREATE INDEX IF NOT EXISTS idx_stories_team_id ON stories(team_id)");
+    db.run("CREATE INDEX IF NOT EXISTS idx_stories_assigned_agent_id ON stories(assigned_agent_id)");
+    db.run("CREATE INDEX IF NOT EXISTS idx_stories_requirement_id ON stories(requirement_id)");
+    db.run("CREATE INDEX IF NOT EXISTS idx_agents_team_id ON agents(team_id)");
+    db.run("CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)");
+    db.run("CREATE INDEX IF NOT EXISTS idx_pull_requests_team_id_status ON pull_requests(team_id, status)");
+    db.run("CREATE INDEX IF NOT EXISTS idx_pull_requests_story_id ON pull_requests(story_id)");
+    db.run("CREATE INDEX IF NOT EXISTS idx_messages_to_session ON messages(to_session)");
+    db.run("CREATE INDEX IF NOT EXISTS idx_escalations_status ON escalations(status)");
+
+    db.run("INSERT INTO migrations (name) VALUES ('007-add-query-indexes.sql')");
+  }
 }
 
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
