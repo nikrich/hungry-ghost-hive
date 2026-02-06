@@ -82,28 +82,33 @@ export function getMergeQueue(db: Database, teamId?: string): PullRequestRow[] {
 }
 
 export function getNextInQueue(db: Database, teamId?: string): PullRequestRow | undefined {
-  if (teamId) {
-    return queryOne<PullRequestRow>(db, `
-      SELECT * FROM pull_requests
-      WHERE team_id = ? AND status = 'queued'
-      ORDER BY created_at ASC
-      LIMIT 1
-    `, [teamId]);
-  }
-  return queryOne<PullRequestRow>(db, `
-    SELECT * FROM pull_requests
-    WHERE status = 'queued'
-    ORDER BY created_at ASC
-    LIMIT 1
-  `);
+  // Get the prioritized queue and return the first PR with status = 'queued'
+  const queue = getPrioritizedMergeQueue(db, teamId);
+  return queue.find(pr => pr.status === 'queued');
 }
 
 export function getQueuePosition(db: Database, prId: string): number {
   const pr = getPullRequestById(db, prId);
   if (!pr || !['queued', 'reviewing'].includes(pr.status)) return -1;
 
-  const queue = getMergeQueue(db, pr.team_id || undefined);
+  const queue = getPrioritizedMergeQueue(db, pr.team_id || undefined);
   return queue.findIndex(p => p.id === prId) + 1;
+}
+
+// Priority scoring for merge queue
+export function getPrioritizedMergeQueue(db: Database, teamId?: string): PullRequestRow[] {
+  const baseQueue = getMergeQueue(db, teamId);
+
+  // Score by age - older PRs get higher priority
+  const scored = baseQueue.map(pr => {
+    const createdTime = new Date(pr.created_at).getTime();
+    return { pr, score: -createdTime };
+  });
+
+  // Sort by score (descending) = older first
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored.map(item => item.pr);
 }
 
 export function getPullRequestsByStatus(db: Database, status: PullRequestStatus): PullRequestRow[] {
