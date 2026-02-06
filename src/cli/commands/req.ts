@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { readFileSync, existsSync } from 'fs';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
-import { getDatabase } from '../../db/client.js';
+import { getDatabase, withTransaction } from '../../db/client.js';
 import { createRequirement, updateRequirement } from '../../db/queries/requirements.js';
 import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.js';
 import { getAllTeams } from '../../db/queries/teams.js';
@@ -85,19 +85,19 @@ export const reqCommand = new Command('req')
         techLead = createAgent(db.db, { type: 'tech_lead', model: 'opus' });
       }
 
-      // Update Tech Lead status
-      updateAgent(db.db, techLead.id, { status: 'working' });
+      // Update Tech Lead status and log event (atomic transaction)
+      await withTransaction(db.db, () => {
+        updateAgent(db.db, techLead.id, { status: 'working' });
 
-      // Log the event
-      createLog(db.db, {
-        agentId: techLead.id,
-        eventType: 'REQUIREMENT_RECEIVED',
-        message: title,
-        metadata: { requirement_id: req.id },
+        createLog(db.db, {
+          agentId: techLead.id,
+          eventType: 'REQUIREMENT_RECEIVED',
+          message: title,
+          metadata: { requirement_id: req.id },
+        });
+
+        updateRequirement(db.db, req.id, { status: 'planning' });
       });
-
-      // Update requirement status
-      updateRequirement(db.db, req.id, { status: 'planning' });
 
       // Spawn Tech Lead tmux session
       const sessionName = `hive-tech-lead`;
@@ -121,20 +121,23 @@ export const reqCommand = new Command('req')
         await waitForTmuxSessionReady(sessionName);
         await sendToTmuxSession(sessionName, techLeadPrompt);
 
-        updateAgent(db.db, techLead.id, { tmuxSession: sessionName });
+        // Update agent and log spawning/planning events (atomic transaction)
+        await withTransaction(db.db, () => {
+          updateAgent(db.db, techLead.id, { tmuxSession: sessionName });
 
-        createLog(db.db, {
-          agentId: techLead.id,
-          eventType: 'AGENT_SPAWNED',
-          message: `Tech Lead spawned for requirement ${req.id}`,
-          metadata: { tmux_session: sessionName },
-        });
+          createLog(db.db, {
+            agentId: techLead.id,
+            eventType: 'AGENT_SPAWNED',
+            message: `Tech Lead spawned for requirement ${req.id}`,
+            metadata: { tmux_session: sessionName },
+          });
 
-        createLog(db.db, {
-          agentId: techLead.id,
-          eventType: 'PLANNING_STARTED',
-          message: `Planning started for requirement ${req.id}`,
-          metadata: { requirement_id: req.id },
+          createLog(db.db, {
+            agentId: techLead.id,
+            eventType: 'PLANNING_STARTED',
+            message: `Planning started for requirement ${req.id}`,
+            metadata: { requirement_id: req.id },
+          });
         });
 
         spinner.succeed(chalk.green('Requirement submitted and Tech Lead spawned'));
