@@ -14,3 +14,4 @@ export { msgCommand } from './msg.js';
 export { myStoriesCommand } from './my-stories.js';
 export { prCommand } from './pr.js';
 export { managerCommand } from './manager.js';
+export { cleanupCommand } from './cleanup.js';

@@ -2,7 +2,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { spawnSync } from 'child_process';
-import { initCommand, configCommand, addRepoCommand, teamsCommand, reqCommand, statusCommand, agentsCommand, storiesCommand, escalationsCommand, resumeCommand, assignCommand, nukeCommand, msgCommand, myStoriesCommand, prCommand, managerCommand, } from './cli/commands/index.js';
+import { initCommand, configCommand, addRepoCommand, teamsCommand, reqCommand, statusCommand, agentsCommand, storiesCommand, escalationsCommand, resumeCommand, assignCommand, nukeCommand, msgCommand, myStoriesCommand, prCommand, managerCommand, cleanupCommand, } from './cli/commands/index.js';
 const program = new Command();
 program
     .name('hive')
@@ -25,6 +25,7 @@ program.addCommand(storiesCommand);
 program.addCommand(escalationsCommand);
 // Destructive operations
 program.addCommand(nukeCommand);
+program.addCommand(cleanupCommand);
 // Communication
 program.addCommand(msgCommand);
 // Agent workflow
