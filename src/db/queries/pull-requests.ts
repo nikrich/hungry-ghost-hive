@@ -1,6 +1,6 @@
 import type { Database } from 'sql.js';
 import { nanoid } from 'nanoid';
-import { queryAll, queryOne, run, type PullRequestRow } from '../client.js';
+import { queryAll, queryOne, run, type PullRequestRow, type StoryRow } from '../client.js';
 import { extractPRNumber } from '../../utils/github.js';
 
 export type { PullRequestRow };
@@ -95,17 +95,54 @@ export function getQueuePosition(db: Database, prId: string): number {
   return queue.findIndex(p => p.id === prId) + 1;
 }
 
+/**
+ * Check if a story's dependencies are satisfied (ready for QA review)
+ * A dependency is satisfied if the story is merged or in active development
+ */
+function areDependenciesSatisfied(db: Database, storyId: string): boolean {
+  const dependencies = queryAll<StoryRow>(db, `
+    SELECT s.* FROM stories s
+    JOIN story_dependencies sd ON s.id = sd.depends_on_story_id
+    WHERE sd.story_id = ?
+  `, [storyId]);
+
+  // All dependencies must be in a satisfied state
+  for (const dep of dependencies) {
+    // Satisfied if: merged, in active work (in_progress, review, qa, qa_failed), or awaiting merge (pr_submitted)
+    if (!['merged', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted'].includes(dep.status)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 // Priority scoring for merge queue
 export function getPrioritizedMergeQueue(db: Database, teamId?: string): PullRequestRow[] {
   const baseQueue = getMergeQueue(db, teamId);
 
-  // Score by age - older PRs get higher priority
+  // Score by dependency satisfaction first, then by age
   const scored = baseQueue.map(pr => {
+    // Get the story for this PR to check dependencies
+    let dependenciesSatisfied = true;
+    if (pr.story_id) {
+      dependenciesSatisfied = areDependenciesSatisfied(db, pr.story_id);
+    }
+
+    // Scoring: dependencies satisfied = higher priority (larger score)
+    // Within each tier, older PRs get higher priority
+    const dependencyScore = dependenciesSatisfied ? 1 : 0;
     const createdTime = new Date(pr.created_at).getTime();
-    return { pr, score: -createdTime };
+    const ageScore = -createdTime;
+
+    // Combined score: (dependencyScore * large_multiplier) + ageScore
+    // This ensures dependency satisfaction is the primary sort key
+    const score = (dependencyScore * 1e15) + ageScore;
+
+    return { pr, score, dependenciesSatisfied };
   });
 
-  // Sort by score (descending) = older first
+  // Sort by score (descending) = dependencies satisfied first, then older first
   scored.sort((a, b) => b.score - a.score);
 
   return scored.map(item => item.pr);
