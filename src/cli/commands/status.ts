@@ -52,7 +52,7 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
   const status = {
     teams: teams.length,
     agents: {
-      total: activeAgents.length,
+      total: allAgents.length,
       active: activeAgents.length,
       working: activeAgents.filter(a => a.status === 'working').length,
       idle: activeAgents.filter(a => a.status === 'idle').length,

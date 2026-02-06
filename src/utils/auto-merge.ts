@@ -6,6 +6,11 @@ import { getAllTeams } from '../db/queries/teams.js';
 import { updateStory } from '../db/queries/stories.js';
 import { createLog } from '../db/queries/logs.js';
 
+interface GitHubPRState {
+  state: string;
+  mergeable: string;
+}
+
 /**
  * Auto-merge all approved PRs that are ready to merge
  * Can be called immediately after PR approval or from manager daemon
@@ -73,7 +78,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
       const { execSync } = await import('child_process');
       try {
         // Verify PR state and mergeable status
-        let prState: any;
+        let prState: GitHubPRState;
         let mergeableStatus: boolean;
         try {
           const prViewOutput = execSync(`gh pr view ${pr.github_pr_number} --json state,mergeable`, {
