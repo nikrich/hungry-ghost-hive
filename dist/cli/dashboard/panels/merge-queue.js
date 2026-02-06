@@ -1,0 +1,57 @@
+import blessed from 'blessed';
+import { getMergeQueue } from '../../../db/queries/pull-requests.js';
+export function createMergeQueuePanel(screen, db) {
+    const table = blessed.listtable({
+        parent: screen,
+        top: '55%+5',
+        left: '50%',
+        width: '25%',
+        height: '35%',
+        border: { type: 'line' },
+        label: ' Merge Queue ',
+        keys: true,
+        vi: true,
+        mouse: true,
+        style: {
+            header: { bold: true, fg: 'cyan' },
+            cell: { fg: 'white' },
+            selected: { bg: 'blue' },
+            border: { fg: 'magenta' },
+        },
+        align: 'left',
+        tags: true,
+    });
+    updateMergeQueuePanel(table, db);
+    return table;
+}
+export function updateMergeQueuePanel(table, db) {
+    const queue = getMergeQueue(db);
+    const headers = ['#', 'Branch', 'Status'];
+    if (queue.length === 0) {
+        table.setData([headers, ['-', '{green-fg}Queue empty{/}', '']]);
+        return;
+    }
+    const rows = queue.map((pr, index) => [
+        String(index + 1),
+        pr.branch_name.substring(0, 18),
+        formatStatus(pr.status),
+    ]);
+    table.setData([headers, ...rows]);
+}
+function formatStatus(status) {
+    switch (status) {
+        case 'queued':
+            return '{blue-fg}QUEUED{/}';
+        case 'reviewing':
+            return '{yellow-fg}REVIEWING{/}';
+        case 'approved':
+            return '{green-fg}APPROVED{/}';
+        case 'rejected':
+            return '{red-fg}REJECTED{/}';
+        case 'merged':
+            return '{green-fg}MERGED{/}';
+        default:
+            return status;
+    }
+}
+//# sourceMappingURL=merge-queue.js.map
