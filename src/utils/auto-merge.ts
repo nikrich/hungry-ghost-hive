@@ -69,17 +69,35 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         }
       }
 
-      // Check if PR is still open on GitHub before attempting merge
+      // Check if PR is still open and mergeable before attempting merge
       const { execSync } = await import('child_process');
       try {
-        // Verify PR state is still open
-        const prStateOutput = execSync(`gh pr view ${pr.github_pr_number} --json state`, {
-          stdio: 'pipe',
-          cwd: repoCwd,
-          timeout: 30000 // 30 second timeout for state check
-        }).toString();
+        // Verify PR state and mergeable status
+        let prState: any;
+        let mergeableStatus: boolean;
+        try {
+          const prViewOutput = execSync(`gh pr view ${pr.github_pr_number} --json state,mergeable`, {
+            stdio: 'pipe',
+            cwd: repoCwd,
+            encoding: 'utf-8',
+            timeout: 30000 // 30 second timeout for state check
+          });
+          prState = JSON.parse(prViewOutput);
+          mergeableStatus = prState.mergeable === 'MERGEABLE';
+        } catch {
+          // If we can't determine PR status, skip this PR
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: pr.story_id || undefined,
+            eventType: 'PR_MERGE_SKIPPED',
+            status: 'warn',
+            message: `Skipped auto-merge of PR ${pr.id} (GitHub PR #${pr.github_pr_number}): Could not determine PR status`,
+            metadata: { pr_id: pr.id },
+          });
+          continue;
+        }
 
-        const prState = JSON.parse(prStateOutput);
+        // Check if PR is still open
         if (prState.state !== 'OPEN') {
           // PR is not open (closed, merged, or draft), skip merge attempt
           const newStatus = prState.state === 'MERGED' ? 'merged' : 'closed';
@@ -94,6 +112,20 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
             });
           });
           db.save();
+          continue;
+        }
+
+        // Check if PR has merge conflicts
+        if (!mergeableStatus) {
+          // PR has conflicts - skip merge
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: pr.story_id || undefined,
+            eventType: 'PR_MERGE_SKIPPED',
+            status: 'warn',
+            message: `Skipped auto-merge of PR ${pr.id} (GitHub PR #${pr.github_pr_number}): PR has merge conflicts`,
+            metadata: { pr_id: pr.id },
+          });
           continue;
         }
 
