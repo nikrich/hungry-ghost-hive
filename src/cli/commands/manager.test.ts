@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Database } from 'sql.js';
 import { getApprovedPullRequests, updatePullRequest } from '../../db/queries/pull-requests.js';
-import { updateStory } from '../../db/queries/stories.js';
-import { createLog } from '../../db/queries/logs.js';
 
 // Mock the functions we're testing with
 vi.mock('../../db/queries/pull-requests.js');
@@ -47,9 +45,6 @@ describe('Auto-merge PRs', () => {
 
   it('should validate PR status updates', () => {
     // This test ensures the function would properly update PR status
-    const prId = 'pr-1';
-    const newStatus = 'merged' as const;
-
     // The function should call updatePullRequest with correct parameters
     // This is validated in the integration tests
     expect(updatePullRequest).toBeDefined();
