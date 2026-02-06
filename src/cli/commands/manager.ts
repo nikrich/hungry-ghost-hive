@@ -452,7 +452,10 @@ hive my-stories ${session.name}
     }
 
     // Nudge developers who have qa_failed stories - they need to fix and resubmit
-    const qaFailedStories = getStoriesByStatus(db.db, 'qa_failed');
+    // Filter out merged/completed stories to avoid nudging about finished work
+    const qaFailedStories = getStoriesByStatus(db.db, 'qa_failed').filter(
+      story => !['merged', 'completed'].includes(story.status)
+    );
     for (const story of qaFailedStories) {
       if (story.assigned_agent_id) {
         const agent = getAgentById(db.db, story.assigned_agent_id);
@@ -561,11 +564,12 @@ hive pr queue`
     }
 
     // Check for stories stuck in "in_progress" for too long (> 30 min without activity)
+    // Only nudge stories that haven't been merged or completed
     const stuckStories = queryAll<StoryRow>(db.db,
       `SELECT * FROM stories
        WHERE status = 'in_progress'
        AND updated_at < datetime('now', '-30 minutes')`
-    );
+    ).filter(story => !['merged', 'completed'].includes(story.status));
     for (const story of stuckStories) {
       if (story.assigned_agent_id) {
         const agentSession = hiveSessions.find(s =>
