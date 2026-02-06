@@ -82,8 +82,9 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         const prState = JSON.parse(prStateOutput);
         if (prState.state !== 'OPEN') {
           // PR is not open (closed, merged, or draft), skip merge attempt
+          const newStatus = prState.state === 'MERGED' ? 'merged' : 'closed';
           await withTransaction(db.db, () => {
-            updatePullRequest(db.db, pr.id, { status: 'merged' });
+            updatePullRequest(db.db, pr.id, { status: newStatus });
             createLog(db.db, {
               agentId: 'manager',
               storyId: pr.story_id || undefined,
