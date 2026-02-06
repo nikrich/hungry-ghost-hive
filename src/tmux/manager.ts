@@ -216,7 +216,7 @@ export async function waitForTmuxSessionReady(
  */
 export async function forceBypassMode(
   sessionName: string,
-  cliTool: 'claude' | 'codex' | 'gemini' = 'claude',
+  _cliTool: 'claude' | 'codex' | 'gemini' = 'claude',
   maxRetries = 5
 ): Promise<boolean> {
   // Note: cliTool parameter is reserved for future Codex/Gemini CLI integration
