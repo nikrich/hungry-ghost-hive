@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.14.0...v0.14.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* use actual repo contributors from GitHub API ([#172](https://github.com/nikrich/hungry-ghost-hive/issues/172)) ([019fa40](https://github.com/nikrich/hungry-ghost-hive/commit/019fa40cb18be6afe87fd1f5dff56f28d9a8e6dd))
+
 ## [0.14.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.13.1...v0.14.0) (2026-02-06)
 
 
