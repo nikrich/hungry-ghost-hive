@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.11.0...v0.11.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* resolve TypeScript error in branches.test.ts ([6d74870](https://github.com/nikrich/hungry-ghost-hive/commit/6d7487099de30e334e626f46146f1580a634e612))
+
 ## [0.11.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.10.3...v0.11.0) (2026-02-06)
 
 
