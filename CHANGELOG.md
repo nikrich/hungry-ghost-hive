@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.6.3...v0.7.0) (2026-02-06)
+
+
+### Features
+
+* auto-merge approved PRs immediately on approval ([#103](https://github.com/nikrich/hungry-ghost-hive/issues/103)) ([d4b3f65](https://github.com/nikrich/hungry-ghost-hive/commit/d4b3f6535681330ad02ab4ac7e4e01dc20350ab9))
+
 ## [0.6.3](https://github.com/nikrich/hungry-ghost-hive/compare/v0.6.2...v0.6.3) (2026-02-06)
 
 
