@@ -64,11 +64,20 @@ prCommand
         }
       }
 
+      // Extract PR number from URL if not explicitly provided
+      let prNumber = options.prNumber ? parseInt(options.prNumber, 10) : null;
+      if (!prNumber && options.prUrl) {
+        const urlMatch = options.prUrl.match(/\/pull\/(\d+)/);
+        if (urlMatch) {
+          prNumber = parseInt(urlMatch[1], 10);
+        }
+      }
+
       const pr = createPullRequest(db.db, {
         storyId,
         teamId,
         branchName: options.branch,
-        githubPrNumber: options.prNumber ? parseInt(options.prNumber, 10) : null,
+        githubPrNumber: prNumber,
         githubPrUrl: options.prUrl || null,
         submittedBy: options.from || null,
       });
