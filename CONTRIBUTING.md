@@ -425,7 +425,7 @@ npm uninstall <package>
 
 ## License
 
-By contributing to Hive, you agree that your contributions will be licensed under the MIT License.
+By contributing to Hive, you agree that your contributions will be licensed under the Hungry Ghost Hive License. See [LICENSE](./LICENSE) for details.
 
 ---
 
