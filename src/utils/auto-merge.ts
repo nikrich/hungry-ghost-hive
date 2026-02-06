@@ -69,9 +69,34 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         }
       }
 
-      // Attempt to merge on GitHub
+      // Check if PR is still open on GitHub before attempting merge
       const { execSync } = await import('child_process');
       try {
+        // Verify PR state is still open
+        const prStateOutput = execSync(`gh pr view ${pr.github_pr_number} --json state`, {
+          stdio: 'pipe',
+          cwd: repoCwd,
+          timeout: 30000 // 30 second timeout for state check
+        }).toString();
+
+        const prState = JSON.parse(prStateOutput);
+        if (prState.state !== 'OPEN') {
+          // PR is not open (closed, merged, or draft), skip merge attempt
+          const newStatus = prState.state === 'MERGED' ? 'merged' : 'closed';
+          await withTransaction(db.db, () => {
+            updatePullRequest(db.db, pr.id, { status: newStatus });
+            createLog(db.db, {
+              agentId: 'manager',
+              storyId: pr.story_id || undefined,
+              eventType: 'PR_MERGE_SKIPPED',
+              message: `PR #${pr.github_pr_number} is already ${prState.state.toLowerCase()}, skipping merge`,
+              metadata: { pr_id: pr.id, github_state: prState.state },
+            });
+          });
+          db.save();
+          continue;
+        }
+
         // Use --auto flag to enable GitHub's auto-merge feature (idempotent if already merged)
         // Add timeout to prevent blocking the manager daemon (60s for GitHub API operations)
         execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, {

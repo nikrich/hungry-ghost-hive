@@ -45,7 +45,8 @@ export type EventType =
   | 'PR_MERGED'
   | 'PR_REJECTED'
   | 'PR_CLOSED'
-  | 'PR_MERGE_FAILED';
+  | 'PR_MERGE_FAILED'
+  | 'PR_MERGE_SKIPPED';
 
 export interface CreateLogInput {
   agentId: string;
