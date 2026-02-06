@@ -6,7 +6,7 @@ import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
-import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests, updatePullRequest } from '../../db/queries/pull-requests.js';
+import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests, updatePullRequest, backfillGithubPrNumbers } from '../../db/queries/pull-requests.js';
 import { markMessagesRead, getAllPendingMessages, type MessageRow } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
 import { getAgentById, updateAgent, getAllAgents } from '../../db/queries/agents.js';
@@ -253,6 +253,13 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     // Load config if not provided (for backwards compatibility)
     if (!config) {
       config = loadConfig(paths.hiveDir);
+    }
+
+    // Backfill github_pr_number for existing PRs on first run (idempotent)
+    const backfilled = backfillGithubPrNumbers(db.db);
+    if (backfilled > 0) {
+      console.log(chalk.yellow(`  Backfilled ${backfilled} PR(s) with github_pr_number from URL`));
+      db.save();
     }
 
     // First, run health check to sync agent status with tmux
