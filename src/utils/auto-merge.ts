@@ -106,7 +106,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         mergedCount++;
         db.save();
       } catch (mergeErr) {
-        // Merge failed - revert PR status back to approved for retry
+        // Merge failed - revert PR status back to approved for retry (atomic transaction)
         await withTransaction(db.db, () => {
           updatePullRequest(db.db, pr.id, { status: 'approved' });
           createLog(db.db, {

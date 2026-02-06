@@ -539,7 +539,9 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       }
       // Mark as closed to prevent re-notification spam
       // Developer will create a new PR when they resubmit
-      db.db.run("UPDATE pull_requests SET status = 'closed' WHERE id = ?", [pr.id]);
+      await withTransaction(db.db, () => {
+        db.db.run("UPDATE pull_requests SET status = 'closed' WHERE id = ?", [pr.id]);
+      });
     }
     if (rejectedPRs.length > 0) {
       db.save();
@@ -838,15 +840,17 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
         );
 
         if (story.length > 0) {
-          // Update story to merged
-          db.db.run("UPDATE stories SET status = 'merged', assigned_agent_id = NULL, updated_at = datetime('now') WHERE id = ?", [storyId]);
+          // Update story to merged (atomic transaction)
+          await withTransaction(db.db, () => {
+            db.db.run("UPDATE stories SET status = 'merged', assigned_agent_id = NULL, updated_at = datetime('now') WHERE id = ?", [storyId]);
 
-          // Log the sync
-          createLog(db.db, {
-            agentId: 'manager',
-            storyId: storyId,
-            eventType: 'STORY_MERGED',
-            message: `Story synced to merged from GitHub PR #${pr.number}`,
+            // Log the sync
+            createLog(db.db, {
+              agentId: 'manager',
+              storyId: storyId,
+              eventType: 'STORY_MERGED',
+              message: `Story synced to merged from GitHub PR #${pr.number}`,
+            });
           });
 
           storiesUpdated++;
