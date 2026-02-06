@@ -19,6 +19,7 @@ import { createPullRequest, type PullRequestRow } from '../../db/queries/pull-re
 import { acquireLock } from '../../db/lock.js';
 import { join } from 'path';
 import { detectClaudeCodeState, getStateDescription } from '../../utils/claude-code-state.js';
+import { getAvailableCommands, formatCommandForAgent, buildAutoRecoveryReminder, type CLITool } from '../../utils/cli-commands.js';
 
 export const managerCommand = new Command('manager')
   .description('Micromanager daemon that keeps agents productive');
@@ -156,6 +157,7 @@ managerCommand
       const config = loadConfig(paths.hiveDir);
       const scheduler = new Scheduler(db.db, {
         scaling: config.scaling,
+        models: config.models,
         rootDir: root,
       });
 
@@ -239,6 +241,7 @@ async function managerCheck(root: string): Promise<void> {
     const config = loadConfig(paths.hiveDir);
     const scheduler = new Scheduler(db.db, {
       scaling: config.scaling,
+      models: config.models,
       rootDir: root,
     });
 
@@ -299,7 +302,9 @@ async function managerCheck(root: string): Promise<void> {
       // Check if agent has unread messages
       const unread = getUnreadMessages(db.db, session.name);
       if (unread.length > 0) {
-        await forwardMessages(session.name, unread);
+        const agent = getAgentById(db.db, session.name.replace('hive-', ''));
+        const cliTool = (agent?.cli_tool || 'claude') as CLITool;
+        await forwardMessages(session.name, unread, cliTool);
         messagesForwarded += unread.length;
         // Mark as read
         for (const msg of unread) {
@@ -328,19 +333,17 @@ async function managerCheck(root: string): Promise<void> {
         escalatedSessions.add(session.name);
 
         // Also remind the agent to continue autonomously if they can
-        await sendToTmuxSession(session.name,
-          `# REMINDER: You are an autonomous agent. Don't wait for instructions.
-# If you completed your task, check for more work:
-hive my-stories ${session.name}
-# If no stories, check available work: hive my-stories ${session.name} --all
-# If you created a PR, make sure to submit it: hive pr submit -b <branch> -s <story-id> --from ${session.name}`
-        );
+        const cliTool = (agent?.cli_tool || 'claude') as CLITool;
+        const reminder = buildAutoRecoveryReminder(session.name, cliTool);
+        await sendToTmuxSession(session.name, reminder);
 
         console.log(chalk.red(`  ESCALATION: ${session.name} needs human input`));
       } else if (waitingInfo.isWaiting) {
         // Agent is idle/waiting but doesn't need human - nudge them to continue
         const agentType = getAgentType(session.name);
-        await nudgeAgent(root, session.name, undefined, agentType, waitingInfo.reason);
+        const agent = getAgentById(db.db, session.name.replace('hive-', ''));
+        const cliTool = (agent?.cli_tool || 'claude') as CLITool;
+        await nudgeAgent(root, session.name, undefined, agentType, waitingInfo.reason, cliTool);
         nudged++;
       }
       // If not waiting (actively working), do nothing - let them work
@@ -351,8 +354,11 @@ hive my-stories ${session.name}
     if (queuedPRs.length > 0) {
       const qaSessions = hiveSessions.filter(s => s.name.includes('-qa-'));
       for (const qa of qaSessions) {
+        const qaAgent = getAgentById(db.db, qa.name.replace('hive-', ''));
+        const qaCliTool = (qaAgent?.cli_tool || 'claude') as CLITool;
+        const qaCommands = getAvailableCommands(qaCliTool);
         await sendToTmuxSession(qa.name,
-          `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
+          `# ${queuedPRs.length} PR(s) waiting in queue. Run: ${formatCommandForAgent(qaCommands.queueCheck(), qaCliTool)}`
         );
       }
     }
@@ -376,13 +382,16 @@ hive my-stories ${session.name}
       if (pr.submitted_by) {
         const devSession = hiveSessions.find(s => s.name === pr.submitted_by);
         if (devSession) {
+          const devAgent = getAgentById(db.db, devSession.name.replace('hive-', ''));
+          const devCliTool = (devAgent?.cli_tool || 'claude') as CLITool;
+          const devCommands = getAvailableCommands(devCliTool);
           await sendToTmuxSession(devSession.name,
             `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
 # Story: ${pr.story_id || 'Unknown'}
 # Reason: ${pr.review_notes || 'See review comments'}
 #
 # You MUST fix this issue before doing anything else.
-# Fix the issues and resubmit: hive pr submit -b ${pr.branch_name} -s ${pr.story_id || 'STORY-ID'} --from ${devSession.name}`
+# Fix the issues and resubmit: ${formatCommandForAgent(devCommands.submitPR(pr.branch_name, pr.story_id || 'STORY-ID', devSession.name), devCliTool)}`
           );
           await sendEnterToTmuxSession(devSession.name);
           rejectionNotified++;
@@ -411,11 +420,13 @@ hive my-stories ${session.name}
             const output = await captureTmuxPane(agentSession.name, 30);
             const state = detectWaitingState(output);
             if (state.isWaiting && !state.needsHuman) {
+              const agentCliTool = (agent?.cli_tool || 'claude') as CLITool;
+              const agentCommands = getAvailableCommands(agentCliTool);
               await sendToTmuxSession(agentSession.name,
                 `# REMINDER: Story ${story.id} failed QA review!
 # You must fix the issues and resubmit the PR.
 # Check the QA feedback and address all concerns.
-hive pr queue`
+${formatCommandForAgent(agentCommands.queueCheck(), agentCliTool)}`
               );
               await sendEnterToTmuxSession(agentSession.name);
             }
@@ -517,11 +528,14 @@ hive pr queue`
           s.name.includes(story.assigned_agent_id?.replace(/^hive-/, '') || '')
         );
         if (agentSession) {
+          const stuckAgent = getAgentById(db.db, agentSession.name.replace('hive-', ''));
+          const stuckCliTool = (stuckAgent?.cli_tool || 'claude') as CLITool;
+          const stuckCommands = getAvailableCommands(stuckCliTool);
           await sendToTmuxSession(agentSession.name,
             `# REMINDER: Story ${story.id} has been in progress for a while.
 # If stuck, escalate to your Senior or Tech Lead.
-# If done, submit your PR: hive pr submit -b <branch> -s ${story.id} --from ${agentSession.name}
-# Then mark complete: hive my-stories complete ${story.id}`
+# If done, submit your PR: ${formatCommandForAgent(stuckCommands.submitPR('<branch>', story.id, agentSession.name), stuckCliTool)}
+# Then mark complete: ${formatCommandForAgent(stuckCommands.completeStory(story.id), stuckCliTool)}`
           );
         }
       }
@@ -590,7 +604,8 @@ async function nudgeAgent(
   sessionName: string,
   customMessage?: string,
   agentType?: string,
-  reason?: string
+  reason?: string,
+  agentCliTool?: CLITool
 ): Promise<void> {
   if (customMessage) {
     await sendToTmuxSession(sessionName, customMessage);
@@ -598,26 +613,29 @@ async function nudgeAgent(
   }
 
   const type = agentType || getAgentType(sessionName);
+  const cliTool = agentCliTool || 'claude' as CLITool;
+  const commands = getAvailableCommands(cliTool);
 
   // Build contextual nudge message based on agent type and reason
   let nudge: string;
   switch (type) {
     case 'qa':
       nudge = `# You are a QA agent. Check for PRs to review:
-hive pr queue
+${formatCommandForAgent(commands.queueCheck(), cliTool)}
 # If there are PRs, review them with: hive pr review <pr-id>`;
       break;
     case 'senior':
       nudge = `# You are a Senior developer. Continue with your assigned stories.
-# Check your work: hive my-stories ${sessionName}
+# Check your work:
+${formatCommandForAgent(commands.getMyStories(sessionName), cliTool)}
 # If no active stories, check for available work: hive stories list --status planned`;
       break;
     case 'intermediate':
     case 'junior':
       nudge = `# Continue with your assigned story. Check status:
-hive my-stories ${sessionName}
-# If stuck, ask your Senior for help via: hive msg send hive-senior-<team> "your question"
-# If done, submit PR: hive pr submit -b <branch> -s <story-id> --from ${sessionName}`;
+${formatCommandForAgent(commands.getMyStories(sessionName), cliTool)}
+# If stuck, ask your Senior for help via: ${formatCommandForAgent(commands.msgSend('hive-senior-<team>', 'your question', sessionName), cliTool)}
+# If done, submit PR: ${formatCommandForAgent(commands.submitPR('<branch>', '<story-id>', sessionName), cliTool)}`;
       break;
     default:
       nudge = `# Check current status and continue working:
@@ -636,11 +654,12 @@ hive status`;
   await sendEnterToTmuxSession(sessionName);
 }
 
-async function forwardMessages(sessionName: string, messages: MessageRow[]): Promise<void> {
+async function forwardMessages(sessionName: string, messages: MessageRow[], cliTool: CLITool = 'claude'): Promise<void> {
+  const commands = getAvailableCommands(cliTool);
   for (const msg of messages) {
     const notification = `# New message from ${msg.from_session}${msg.subject ? ` - ${msg.subject}` : ''}
 # ${msg.body}
-# Reply with: hive msg reply ${msg.id} "your response" --from ${sessionName}`;
+# Reply with: ${formatCommandForAgent(commands.msgReply(msg.id, 'your response', sessionName), cliTool)}`;
 
     await sendToTmuxSession(sessionName, notification);
     // Small delay between messages

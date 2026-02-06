@@ -15,6 +15,43 @@ const mockConfig = {
     intermediate_max_complexity: 5,
     senior_capacity: 50,
   },
+  models: {
+    tech_lead: {
+      provider: 'anthropic' as const,
+      model: 'claude-opus-4-20250514',
+      max_tokens: 16000,
+      temperature: 0.7,
+      cli_tool: 'claude' as const,
+    },
+    senior: {
+      provider: 'anthropic' as const,
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      temperature: 0.5,
+      cli_tool: 'claude' as const,
+    },
+    intermediate: {
+      provider: 'anthropic' as const,
+      model: 'claude-haiku-3-5-20241022',
+      max_tokens: 4000,
+      temperature: 0.3,
+      cli_tool: 'claude' as const,
+    },
+    junior: {
+      provider: 'openai' as const,
+      model: 'gpt-4o-mini',
+      max_tokens: 4000,
+      temperature: 0.2,
+      cli_tool: 'claude' as const,
+    },
+    qa: {
+      provider: 'anthropic' as const,
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      temperature: 0.2,
+      cli_tool: 'claude' as const,
+    },
+  },
   rootDir: '/tmp',
 };
 

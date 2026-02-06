@@ -6,10 +6,12 @@ import { getMergeQueue } from '../db/queries/pull-requests.js';
 import { queryOne, queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions, waitForTmuxSessionReady } from '../tmux/manager.js';
-import type { ScalingConfig } from '../config/schema.js';
+import type { ScalingConfig, ModelsConfig } from '../config/schema.js';
+import { buildAgentSpawnCommand } from '../utils/cli-builder.js';
 
 export interface SchedulerConfig {
   scaling: ScalingConfig;
+  models: ModelsConfig;
   rootDir: string;
 }
 
@@ -20,6 +22,14 @@ export class Scheduler {
   constructor(db: Database, config: SchedulerConfig) {
     this.db = db;
     this.config = config;
+  }
+
+  /**
+   * Get the CLI tool configured for a specific agent type
+   */
+  private getCliToolForAgentType(agentType: 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa'): string {
+    const modelConfig = this.config.models[agentType];
+    return modelConfig?.cli_tool || 'claude';
   }
 
   /**
@@ -403,16 +413,21 @@ export class Scheduler {
       type: 'qa',
       teamId,
       model: 'sonnet',
+      cliTool: this.getCliToolForAgentType('qa'),
     });
 
     const sessionName = generateSessionName('qa', teamName);
     const workDir = `${this.config.rootDir}/${repoPath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
+      const command = buildAgentSpawnCommand('qa', this.config.models, {
+        skipPermissions: true,
+      });
+
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --dangerously-skip-permissions --model sonnet`,
+        command,
       });
 
       // Wait for Claude to be ready before sending prompt
@@ -444,16 +459,21 @@ export class Scheduler {
       type: 'senior',
       teamId,
       model: 'sonnet',
+      cliTool: this.getCliToolForAgentType('senior'),
     });
 
     const sessionName = generateSessionName('senior', teamName, index);
     const workDir = `${this.config.rootDir}/${repoPath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
+      const command = buildAgentSpawnCommand('senior', this.config.models, {
+        skipPermissions: true,
+      });
+
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --dangerously-skip-permissions --model sonnet`,
+        command,
       });
 
       // Wait for Claude to be ready before sending prompt
@@ -483,16 +503,21 @@ export class Scheduler {
       type: 'intermediate',
       teamId,
       model: 'haiku',
+      cliTool: this.getCliToolForAgentType('intermediate'),
     });
 
     const sessionName = generateSessionName('intermediate', teamName, index);
     const workDir = `${this.config.rootDir}/${repoPath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
+      const command = buildAgentSpawnCommand('intermediate', this.config.models, {
+        skipPermissions: true,
+      });
+
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --dangerously-skip-permissions --model haiku`,
+        command,
       });
 
       // Wait for Claude to be ready before sending prompt
@@ -521,17 +546,21 @@ export class Scheduler {
       type: 'junior',
       teamId,
       model: 'haiku',
+      cliTool: this.getCliToolForAgentType('junior'),
     });
 
     const sessionName = generateSessionName('junior', teamName, index);
     const workDir = `${this.config.rootDir}/${repoPath}`;
 
     if (!await isTmuxSessionRunning(sessionName)) {
-      // Note: Spec calls for gpt-4o-mini but using haiku until OpenAI integration is added
+      const command = buildAgentSpawnCommand('junior', this.config.models, {
+        skipPermissions: true,
+      });
+
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command: `claude --dangerously-skip-permissions --model haiku`,
+        command,
       });
 
       // Wait for Claude to be ready before sending prompt
