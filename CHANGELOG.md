@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/nikrich/hungry-ghost-hive/compare/v0.6.1...v0.6.2) (2026-02-06)
+
+
+### Bug Fixes
+
+* populate github_pr_number when PRs are submitted ([#93](https://github.com/nikrich/hungry-ghost-hive/issues/93)) ([904a92f](https://github.com/nikrich/hungry-ghost-hive/commit/904a92f19fe983e1fa60fb79a1b6fbcb3b0d2d00))
+
 ## [0.6.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.6.0...v0.6.1) (2026-02-06)
 
 
