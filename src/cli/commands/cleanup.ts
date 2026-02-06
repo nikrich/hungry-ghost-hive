@@ -6,7 +6,7 @@ import path from 'path';
 import { execa } from 'execa';
 import readline from 'readline';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
-import { getDatabase } from '../../db/client.js';
+import { getDatabase, type DatabaseClient } from '../../db/client.js';
 import { getAllAgents } from '../../db/queries/agents.js';
 import { getStoriesWithOrphanedAssignments, updateStoryAssignment } from '../../db/queries/stories.js';
 import { getHiveSessions, isTmuxSessionRunning } from '../../tmux/manager.js';
@@ -33,7 +33,7 @@ interface CleanupStats {
   totalIssuesFound: number;
 }
 
-async function findOrphanedWorktrees(root: string, db: any): Promise<string[]> {
+async function findOrphanedWorktrees(root: string, db: DatabaseClient): Promise<string[]> {
   const reposDir = path.join(root, 'repos');
   const orphaned: string[] = [];
 
@@ -92,7 +92,7 @@ async function findStaleLockFiles(hiveDir: string): Promise<string[]> {
   return staleLockFiles;
 }
 
-async function findDeadTmuxSessions(db: any): Promise<string[]> {
+async function findDeadTmuxSessions(db: DatabaseClient): Promise<string[]> {
   const deadSessions: string[] = [];
 
   try {
@@ -117,7 +117,7 @@ async function findDeadTmuxSessions(db: any): Promise<string[]> {
   return deadSessions;
 }
 
-function findOrphanedAssignments(db: any): Array<{ id: string; agent_id: string }> {
+function findOrphanedAssignments(db: DatabaseClient): Array<{ id: string; agent_id: string }> {
   try {
     return getStoriesWithOrphanedAssignments(db.db);
   } catch (err) {
@@ -190,7 +190,7 @@ async function cleanupDeadTmuxSessions(deadSessions: string[], dryRun: boolean):
   return cleaned;
 }
 
-function cleanupOrphanedAssignments(db: any, orphaned: Array<{ id: string; agent_id: string }>, dryRun: boolean): number {
+function cleanupOrphanedAssignments(db: DatabaseClient, orphaned: Array<{ id: string; agent_id: string }>, dryRun: boolean): number {
   let cleaned = 0;
 
   for (const assignment of orphaned) {
