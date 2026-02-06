@@ -11,21 +11,21 @@ const ModelConfigSchema = z.object({
 const ModelsConfigSchema = z.object({
     tech_lead: ModelConfigSchema.default({
         provider: 'anthropic',
-        model: 'claude-opus-4-20250514',
+        model: 'claude-opus-4-6',
         max_tokens: 16000,
         temperature: 0.7,
         cli_tool: 'claude',
     }),
     senior: ModelConfigSchema.default({
         provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 8000,
         temperature: 0.5,
         cli_tool: 'claude',
     }),
     intermediate: ModelConfigSchema.default({
         provider: 'anthropic',
-        model: 'claude-haiku-3-5-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 4000,
         temperature: 0.3,
         cli_tool: 'claude',
@@ -39,7 +39,7 @@ const ModelsConfigSchema = z.object({
     }),
     qa: ModelConfigSchema.default({
         provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 8000,
         temperature: 0.2,
         cli_tool: 'claude',
@@ -95,6 +95,9 @@ const AgentsConfigSchema = z.object({
 const ManagerConfigSchema = z.object({
     fast_poll_interval: z.number().int().positive().default(15000),
     slow_poll_interval: z.number().int().positive().default(60000),
+    stuck_threshold_ms: z.number().int().positive().default(120000),
+    nudge_cooldown_ms: z.number().int().positive().default(300000),
+    lock_stale_ms: z.number().int().positive().default(120000),
 });
 // Logging configuration
 const LoggingConfigSchema = z.object({
@@ -125,7 +128,7 @@ version: "1.0"
 models:
   tech_lead:
     provider: anthropic
-    model: claude-opus-4-20250514
+    model: claude-opus-4-6
     max_tokens: 16000
     temperature: 0.7
     # CLI tool used to spawn agents (claude, codex, or gemini)
@@ -133,14 +136,14 @@ models:
 
   senior:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-5-20250929
     max_tokens: 8000
     temperature: 0.5
     cli_tool: claude
 
   intermediate:
     provider: anthropic
-    model: claude-haiku-3-5-20241022
+    model: claude-haiku-4-5-20251001
     max_tokens: 4000
     temperature: 0.3
     cli_tool: claude
@@ -154,7 +157,7 @@ models:
 
   qa:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-5-20250929
     max_tokens: 8000
     temperature: 0.2
     cli_tool: claude
@@ -206,6 +209,19 @@ agents:
   llm_timeout_ms: 1800000
   # Max retries for LLM calls on timeout
   llm_max_retries: 2
+
+# Manager daemon (micromanager nudge behavior)
+manager:
+  # Quick poll interval for fast checks (ms)
+  fast_poll_interval: 15000
+  # Standard poll interval for regular checks (ms)
+  slow_poll_interval: 60000
+  # Time to consider agent stuck if state hasn't changed (ms)
+  stuck_threshold_ms: 120000
+  # Cooldown period before nudging the same agent again (ms)
+  nudge_cooldown_ms: 300000
+  # Time before manager lock is considered stale (ms)
+  lock_stale_ms: 120000
 
 # Logging
 logging:

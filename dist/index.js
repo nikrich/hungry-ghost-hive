@@ -2,13 +2,15 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { spawnSync } from 'child_process';
-import { initCommand, configCommand, addRepoCommand, teamsCommand, reqCommand, statusCommand, agentsCommand, storiesCommand, escalationsCommand, resumeCommand, assignCommand, nukeCommand, msgCommand, myStoriesCommand, prCommand, managerCommand, } from './cli/commands/index.js';
+import { initCommand, configCommand, addRepoCommand, teamsCommand, reqCommand, statusCommand, agentsCommand, storiesCommand, escalationsCommand, resumeCommand, assignCommand, nukeCommand, msgCommand, myStoriesCommand, prCommand, managerCommand, versionCommand, } from './cli/commands/index.js';
+import { getVersion } from './utils/version.js';
 const program = new Command();
 program
     .name('hive')
     .description('AI Agent Orchestrator - Manage agile software development teams of AI agents')
-    .version('0.1.0');
+    .version(getVersion());
 // Core commands
+program.addCommand(versionCommand);
 program.addCommand(initCommand);
 program.addCommand(configCommand);
 // Repository and team management

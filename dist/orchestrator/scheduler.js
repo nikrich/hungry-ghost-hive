@@ -529,6 +529,13 @@ export class Scheduler {
         }
     }
     async spawnSenior(teamId, teamName, repoPath, index) {
+        const sessionName = generateSessionName('senior', teamName, index);
+        // Prevent creating duplicate agents on same tmux session
+        const existingSeniors = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'senior');
+        const existingOnSession = existingSeniors.find(a => a.tmux_session === sessionName && a.status !== 'terminated');
+        if (existingOnSession && await isTmuxSessionRunning(sessionName)) {
+            return existingOnSession;
+        }
         const agent = createAgent(this.db, {
             type: 'senior',
             teamId,
@@ -537,7 +544,6 @@ export class Scheduler {
         // Create git worktree for this agent
         const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
         const workDir = `${this.config.rootDir}/${worktreePath}`;
-        const sessionName = generateSessionName('senior', teamName, index);
         if (!await isTmuxSessionRunning(sessionName)) {
             // Build CLI command using the configured runtime for Senior agents
             const cliTool = this.config.models.senior.cli_tool;
@@ -570,6 +576,12 @@ export class Scheduler {
     async spawnIntermediate(teamId, teamName, repoPath) {
         const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'intermediate');
         const index = existing.length + 1;
+        const sessionName = generateSessionName('intermediate', teamName, index);
+        // Prevent creating duplicate agents on same tmux session
+        const existingOnSession = existing.find(a => a.tmux_session === sessionName && a.status !== 'terminated');
+        if (existingOnSession && await isTmuxSessionRunning(sessionName)) {
+            return existingOnSession;
+        }
         const agent = createAgent(this.db, {
             type: 'intermediate',
             teamId,
@@ -578,7 +590,6 @@ export class Scheduler {
         // Create git worktree for this agent
         const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
         const workDir = `${this.config.rootDir}/${worktreePath}`;
-        const sessionName = generateSessionName('intermediate', teamName, index);
         if (!await isTmuxSessionRunning(sessionName)) {
             // Build CLI command using the configured runtime for Intermediate agents
             const cliTool = this.config.models.intermediate.cli_tool;
@@ -610,6 +621,12 @@ export class Scheduler {
     async spawnJunior(teamId, teamName, repoPath) {
         const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'junior');
         const index = existing.length + 1;
+        const sessionName = generateSessionName('junior', teamName, index);
+        // Prevent creating duplicate agents on same tmux session
+        const existingOnSession = existing.find(a => a.tmux_session === sessionName && a.status !== 'terminated');
+        if (existingOnSession && await isTmuxSessionRunning(sessionName)) {
+            return existingOnSession;
+        }
         const agent = createAgent(this.db, {
             type: 'junior',
             teamId,
@@ -618,7 +635,6 @@ export class Scheduler {
         // Create git worktree for this agent
         const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
         const workDir = `${this.config.rootDir}/${worktreePath}`;
-        const sessionName = generateSessionName('junior', teamName, index);
         if (!await isTmuxSessionRunning(sessionName)) {
             // Build CLI command using the configured runtime for Junior agents
             // Note: Spec calls for gpt-4o-mini but using haiku until OpenAI integration is added
@@ -940,13 +956,16 @@ hive pr show <pr-id>
 
 ### After reviewing:
 
-**If the PR is good - approve and merge:**
+**If the PR is good - approve and merge immediately:**
 \`\`\`bash
-# First, merge via GitHub CLI
-gh pr merge <pr-number> --merge
-
-# Then mark as merged in Hive
+# Approve and merge (this will attempt to merge immediately with retries)
 hive pr approve <pr-id> --from ${sessionName}
+
+# The above command will:
+# 1. Review and approve the PR on GitHub
+# 2. Merge the PR immediately if checks pass
+# 3. Retry up to 3 times if GitHub checks are still running
+# 4. Mark the PR as merged in Hive when successful
 \`\`\`
 
 **If the PR has issues - reject with feedback:**

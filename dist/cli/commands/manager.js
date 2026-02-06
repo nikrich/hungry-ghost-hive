@@ -5,7 +5,7 @@ import { getDatabase } from '../../db/client.js';
 import { loadConfig } from '../../config/loader.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getHiveSessions, sendToTmuxSession, sendEnterToTmuxSession, captureTmuxPane, isManagerRunning, stopManager as stopManagerSession, killTmuxSession } from '../../tmux/manager.js';
-import { getMergeQueue, getPullRequestsByStatus } from '../../db/queries/pull-requests.js';
+import { getMergeQueue, getPullRequestsByStatus, getApprovedPullRequests, updatePullRequest } from '../../db/queries/pull-requests.js';
 import { getUnreadMessages, markMessageRead } from '../../db/queries/messages.js';
 import { createEscalation, getPendingEscalations } from '../../db/queries/escalations.js';
 import { getAgentById, updateAgent } from '../../db/queries/agents.js';
@@ -21,9 +21,6 @@ import { detectClaudeCodeState, getStateDescription, ClaudeCodeState } from '../
 import { getAvailableCommands, buildAutoRecoveryReminder } from '../../utils/cli-commands.js';
 // In-memory state tracking per agent session
 const agentStates = new Map();
-// Constants for nudge behavior
-const STATE_STUCK_THRESHOLD_MS = 120000; // 120 seconds = 2 minutes
-const NUDGE_COOLDOWN_MS = 300000; // 300 seconds = 5 minutes
 export const managerCommand = new Command('manager')
     .description('Micromanager daemon that keeps agents productive');
 // Start the manager daemon
@@ -39,11 +36,13 @@ managerCommand
         process.exit(1);
     }
     const paths = getHivePaths(root);
+    // Load config first to get all settings
+    const config = loadConfig(paths.hiveDir);
     const lockPath = join(paths.hiveDir, 'manager.lock');
     // Acquire manager lock to ensure singleton
     let releaseLock = null;
     try {
-        releaseLock = await acquireLock(lockPath, { stale: 120000 }); // 2 min stale threshold
+        releaseLock = await acquireLock(lockPath, { stale: config.manager.lock_stale_ms });
         console.log(chalk.gray('Manager lock acquired'));
     }
     catch (err) {
@@ -61,9 +60,6 @@ managerCommand
     };
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
-    // Load config to get polling intervals (for two-tier polling)
-    const hivePaths = getHivePaths(root);
-    const config = loadConfig(hivePaths.hiveDir);
     // Support two modes: legacy single-interval and new two-tier polling
     const useTwoTier = options.interval === '60' && config.manager;
     if (useTwoTier) {
@@ -73,7 +69,7 @@ managerCommand
         console.log(chalk.gray('Press Ctrl+C to stop\n'));
         const runCheck = async () => {
             try {
-                await managerCheck(root);
+                await managerCheck(root, config);
             }
             catch (err) {
                 console.error(chalk.red('Manager error:'), err);
@@ -94,7 +90,7 @@ managerCommand
         console.log(chalk.gray('Press Ctrl+C to stop\n'));
         const runCheck = async () => {
             try {
-                await managerCheck(root);
+                await managerCheck(root, config);
             }
             catch (err) {
                 console.error(chalk.red('Manager error:'), err);
@@ -119,7 +115,9 @@ managerCommand
         console.error(chalk.red('Not in a Hive workspace.'));
         process.exit(1);
     }
-    await managerCheck(root);
+    const paths = getHivePaths(root);
+    const config = loadConfig(paths.hiveDir);
+    await managerCheck(root, config);
 });
 // Run health check to sync agents with tmux
 managerCommand
@@ -214,14 +212,17 @@ managerCommand
         db.close();
     }
 });
-async function managerCheck(root) {
+async function managerCheck(root, config) {
     const timestamp = new Date().toLocaleTimeString();
     console.log(chalk.gray(`[${timestamp}] Manager checking...`));
     const paths = getHivePaths(root);
     const db = await getDatabase(paths.hiveDir);
     try {
+        // Load config if not provided (for backwards compatibility)
+        if (!config) {
+            config = loadConfig(paths.hiveDir);
+        }
         // First, run health check to sync agent status with tmux
-        const config = loadConfig(paths.hiveDir);
         const scheduler = new Scheduler(db.db, {
             scaling: config.scaling,
             models: config.models,
@@ -238,6 +239,12 @@ async function managerCheck(root) {
         // Check merge queue for QA spawning
         await scheduler.checkMergeQueue();
         db.save();
+        // Auto-merge approved PRs
+        const autoMerged = await autoMergeApprovedPRs(root, db);
+        if (autoMerged > 0) {
+            console.log(chalk.green(`  Auto-merged ${autoMerged} approved PR(s)`));
+            db.save();
+        }
         // Sync merged PRs from GitHub to keep story statuses in sync
         const mergedSynced = await syncMergedPRsFromGitHub(root, db);
         if (mergedSynced > 0) {
@@ -333,11 +340,11 @@ async function managerCheck(root) {
                     const timeSinceStateChange = now - currentTrackedState.lastStateChangeTime;
                     const timeSinceLastNudge = now - currentTrackedState.lastNudgeTime;
                     // Only nudge if:
-                    // 1. Agent stuck in same state for > 120 seconds
-                    // 2. Haven't nudged in last 5 minutes
+                    // 1. Agent stuck in same state for configured threshold
+                    // 2. Haven't nudged within cooldown period
                     // 3. Not in THINKING state (extended thinking is normal)
-                    if (timeSinceStateChange > STATE_STUCK_THRESHOLD_MS &&
-                        timeSinceLastNudge > NUDGE_COOLDOWN_MS) {
+                    if (timeSinceStateChange > config.manager.stuck_threshold_ms &&
+                        timeSinceLastNudge > config.manager.nudge_cooldown_ms) {
                         // Re-check state immediately before nudging to avoid interrupting active work
                         const recheckOutput = await captureTmuxPane(session.name, 50);
                         const recheckState = detectClaudeCodeState(recheckOutput);
@@ -687,5 +694,124 @@ async function syncGitHubPRs(root, db, _hiveDir) {
         db.save();
     }
     return synced;
+}
+async function autoMergeApprovedPRs(root, db) {
+    const approvedPRs = getApprovedPullRequests(db.db);
+    if (approvedPRs.length === 0)
+        return 0;
+    let mergedCount = 0;
+    for (const pr of approvedPRs) {
+        // Skip PRs without GitHub PR numbers
+        if (!pr.github_pr_number)
+            continue;
+        try {
+            // Get team to find repo path
+            let teamId = pr.team_id;
+            let repoCwd = root;
+            if (teamId) {
+                const team = getAllTeams(db.db).find(t => t.id === teamId);
+                if (team?.repo_path) {
+                    repoCwd = join(root, team.repo_path);
+                }
+            }
+            else if (pr.branch_name) {
+                // Try to find team by matching branch name pattern
+                const teams = getAllTeams(db.db);
+                for (const team of teams) {
+                    if (team.repo_path) {
+                        repoCwd = join(root, team.repo_path);
+                        teamId = team.id;
+                        break;
+                    }
+                }
+            }
+            // Attempt to merge on GitHub with retries
+            const merged = await attemptMergeWithRetry(pr.github_pr_number, repoCwd);
+            if (merged) {
+                // Update PR status to merged
+                updatePullRequest(db.db, pr.id, { status: 'merged' });
+                // Update story status if linked
+                if (pr.story_id) {
+                    updateStory(db.db, pr.story_id, { status: 'merged' });
+                    createLog(db.db, {
+                        agentId: 'manager',
+                        storyId: pr.story_id,
+                        eventType: 'STORY_MERGED',
+                        message: `Story auto-merged from GitHub PR #${pr.github_pr_number}`,
+                    });
+                }
+                else {
+                    createLog(db.db, {
+                        agentId: 'manager',
+                        eventType: 'PR_MERGED',
+                        message: `PR ${pr.id} auto-merged (GitHub PR #${pr.github_pr_number})`,
+                        metadata: { pr_id: pr.id },
+                    });
+                }
+                mergedCount++;
+            }
+            else {
+                // Log merge failure but continue with other PRs
+                createLog(db.db, {
+                    agentId: 'manager',
+                    storyId: pr.story_id || undefined,
+                    eventType: 'PR_MERGE_FAILED',
+                    status: 'error',
+                    message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): PR still not mergeable`,
+                    metadata: { pr_id: pr.id },
+                });
+            }
+        }
+        catch (err) {
+            // Non-fatal - continue with other PRs
+            continue;
+        }
+    }
+    if (mergedCount > 0) {
+        db.save();
+    }
+    return mergedCount;
+}
+/**
+ * Attempt to merge a PR on GitHub with exponential backoff retry
+ * Retries up to 3 times with delays to wait for GitHub checks to complete
+ * Returns true if merge succeeded, false otherwise
+ */
+async function attemptMergeWithRetry(prNumber, repoCwd, maxRetries = 3) {
+    const { execSync } = await import('child_process');
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            // First approve the PR on GitHub
+            try {
+                execSync(`gh pr review ${prNumber} --approve`, { stdio: 'pipe', cwd: repoCwd });
+            }
+            catch {
+                // May fail if already approved or if it's our own PR - continue
+            }
+            // Then merge
+            execSync(`gh pr merge ${prNumber} --squash --delete-branch`, { stdio: 'pipe', cwd: repoCwd });
+            return true; // Success
+        }
+        catch (err) {
+            lastError = err instanceof Error ? err.message : String(err);
+            // Check if this is a temporary error (GitHub checks not complete, etc)
+            const isTemporaryError = lastError.includes('not mergeable') ||
+                lastError.includes('checks') ||
+                lastError.includes('status') ||
+                lastError.includes('conflict');
+            if (!isTemporaryError) {
+                // Permanent error - don't retry
+                return false;
+            }
+            if (attempt < maxRetries) {
+                // Exponential backoff: 1s, 2s, 4s
+                const delayMs = Math.pow(2, attempt - 1) * 1000;
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+        }
+    }
+    // All retries exhausted
+    return false;
 }
 //# sourceMappingURL=manager.js.map

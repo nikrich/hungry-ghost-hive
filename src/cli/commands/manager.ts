@@ -905,7 +905,7 @@ async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Promise<n
           metadata: { pr_id: pr.id },
         });
       }
-    } catch (err) {
+    } catch {
       // Non-fatal - continue with other PRs
       continue;
     }
