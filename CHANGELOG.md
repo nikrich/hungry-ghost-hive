@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.9.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.8.0...v0.9.0) (2026-02-06)
+
+
+### Features
+
+* add comprehensive tests for immediate auto-merge functionality ([#117](https://github.com/nikrich/hungry-ghost-hive/issues/117)) ([2299f48](https://github.com/nikrich/hungry-ghost-hive/commit/2299f4835eede6cce6eb882fe87e0beaefacaf24))
+* **escalations:** persist dedup state and add auto-resolution ([#113](https://github.com/nikrich/hungry-ghost-hive/issues/113)) ([cf7f407](https://github.com/nikrich/hungry-ghost-hive/commit/cf7f407c545015c3df21a90bd16e128d3252438c))
+* implement reliable message forwarding with delivery confirmation ([23133dc](https://github.com/nikrich/hungry-ghost-hive/commit/23133dc9a83be2edfff3513f2ed62a888846c174))
+* **manager:** add configurable timeouts to all shell commands ([#116](https://github.com/nikrich/hungry-ghost-hive/issues/116)) ([afcfaf8](https://github.com/nikrich/hungry-ghost-hive/commit/afcfaf84b9a295a5a0ac067a23d88429b1ff63c2))
+
+
+### Bug Fixes
+
+* **dashboard:** add debug log rotation and document configurable refresh interval ([f659281](https://github.com/nikrich/hungry-ghost-hive/commit/f659281fd8529c38a53737d7d849c6b08ec8c280))
+* **dashboard:** prevent overlapping refreshes and always show current data ([7c45012](https://github.com/nikrich/hungry-ghost-hive/commit/7c45012fecbb669fc7e4ad8332dd3effcc763c43))
+* **db:** use BEGIN IMMEDIATE for all write transactions ([3ee4f51](https://github.com/nikrich/hungry-ghost-hive/commit/3ee4f51e2014bbf3932050fbb907454c94dc654d))
+* **db:** use BEGIN IMMEDIATE for all write transactions [STORY-REF-001] ([d6e996c](https://github.com/nikrich/hungry-ghost-hive/commit/d6e996c7be10ab773631644f82219d38c4b393d7))
+* ensure github_pr_number is populated when PRs are submitted ([#115](https://github.com/nikrich/hungry-ghost-hive/issues/115)) ([42d94ac](https://github.com/nikrich/hungry-ghost-hive/commit/42d94acbb7a90cbfe77fe5eead2f038914c76d77))
+* **state-detection:** improve claude-code-state detection accuracy ([#121](https://github.com/nikrich/hungry-ghost-hive/issues/121)) ([5699c34](https://github.com/nikrich/hungry-ghost-hive/commit/5699c34ac000b7791541ff40fc58861ab8637265))
+
 ## [0.8.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.7.0...v0.8.0) (2026-02-06)
 
 
