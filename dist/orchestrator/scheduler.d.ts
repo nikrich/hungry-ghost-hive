@@ -50,6 +50,7 @@ export declare class Scheduler {
     assignStories(): Promise<{
         assigned: number;
         errors: string[];
+        preventedDuplicates: number;
     }>;
     /**
      * Get the next story to work on for a specific agent

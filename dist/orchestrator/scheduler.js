@@ -1,4 +1,4 @@
-import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies } from '../db/queries/stories.js';
+import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, getStoryById } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll } from '../db/client.js';
@@ -183,11 +183,12 @@ export class Scheduler {
         const plannedStories = getPlannedStories(this.db);
         const errors = [];
         let assigned = 0;
+        let preventedDuplicates = 0;
         // Topological sort stories to respect dependencies
         const sortedStories = this.topologicalSort(plannedStories);
         if (sortedStories === null) {
             errors.push('Circular dependency detected in planned stories');
-            return { assigned, errors };
+            return { assigned, errors, preventedDuplicates };
         }
         // Group stories by team
         const storiesByTeam = new Map();
@@ -219,6 +220,18 @@ export class Scheduler {
             }
             // Assign stories based on complexity
             for (const story of stories) {
+                // Check if story is already assigned (prevent duplicate assignment)
+                const currentStory = getStoryById(this.db, story.id);
+                if (currentStory && currentStory.assigned_agent_id !== null) {
+                    preventedDuplicates++;
+                    createLog(this.db, {
+                        agentId: 'scheduler',
+                        storyId: story.id,
+                        eventType: 'DUPLICATE_ASSIGNMENT_PREVENTED',
+                        message: `Story already assigned to ${currentStory.assigned_agent_id}`,
+                    });
+                    continue;
+                }
                 // Check if dependencies are satisfied before assigning
                 if (!this.areDependenciesSatisfied(story.id)) {
                     continue;
@@ -280,7 +293,7 @@ export class Scheduler {
                 assigned++;
             }
         }
-        return { assigned, errors };
+        return { assigned, errors, preventedDuplicates };
     }
     /**
      * Get the next story to work on for a specific agent

@@ -1,5 +1,5 @@
 import type { Database } from 'sql.js';
-import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, type StoryRow } from '../db/queries/stories.js';
+import { getPlannedStories, updateStory, getStoryPointsByTeam, getStoryDependencies, getStoryById, type StoryRow } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent, type AgentRow } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { queryOne, queryAll } from '../db/client.js';
@@ -213,16 +213,17 @@ export class Scheduler {
   /**
    * Assign planned stories to available agents
    */
-  async assignStories(): Promise<{ assigned: number; errors: string[] }> {
+  async assignStories(): Promise<{ assigned: number; errors: string[]; preventedDuplicates: number }> {
     const plannedStories = getPlannedStories(this.db);
     const errors: string[] = [];
     let assigned = 0;
+    let preventedDuplicates = 0;
 
     // Topological sort stories to respect dependencies
     const sortedStories = this.topologicalSort(plannedStories);
     if (sortedStories === null) {
       errors.push('Circular dependency detected in planned stories');
-      return { assigned, errors };
+      return { assigned, errors, preventedDuplicates };
     }
 
     // Group stories by team
@@ -256,6 +257,19 @@ export class Scheduler {
 
       // Assign stories based on complexity
       for (const story of stories) {
+        // Check if story is already assigned (prevent duplicate assignment)
+        const currentStory = getStoryById(this.db, story.id);
+        if (currentStory && currentStory.assigned_agent_id !== null) {
+          preventedDuplicates++;
+          createLog(this.db, {
+            agentId: 'scheduler',
+            storyId: story.id,
+            eventType: 'DUPLICATE_ASSIGNMENT_PREVENTED',
+            message: `Story already assigned to ${currentStory.assigned_agent_id}`,
+          });
+          continue;
+        }
+
         // Check if dependencies are satisfied before assigning
         if (!this.areDependenciesSatisfied(story.id)) {
           continue;
@@ -321,7 +335,7 @@ export class Scheduler {
       }
     }
 
-    return { assigned, errors };
+    return { assigned, errors, preventedDuplicates };
   }
 
   /**
