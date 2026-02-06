@@ -17,6 +17,7 @@ import {
   getPullRequestsByTeam,
   updatePullRequest,
   deletePullRequest,
+  isAgentReviewingPR,
 } from './pull-requests.js';
 
 describe('pull-requests queries', () => {
@@ -476,6 +477,78 @@ describe('pull-requests queries', () => {
 
     it('should not throw when deleting non-existent PR', () => {
       expect(() => deletePullRequest(db, 'non-existent-id')).not.toThrow();
+    });
+  });
+
+  describe('isAgentReviewingPR', () => {
+    it('should return true if agent has a PR in reviewing status', () => {
+      const pr = createPullRequest(db, { branchName: 'test' });
+      updatePullRequest(db, pr.id, {
+        status: 'reviewing',
+        reviewedBy: 'qa-agent-1',
+      });
+
+      expect(isAgentReviewingPR(db, 'qa-agent-1')).toBe(true);
+    });
+
+    it('should return false if agent has no PRs in reviewing status', () => {
+      const pr = createPullRequest(db, { branchName: 'test' });
+      updatePullRequest(db, pr.id, {
+        status: 'approved',
+        reviewedBy: 'qa-agent-1',
+      });
+
+      expect(isAgentReviewingPR(db, 'qa-agent-1')).toBe(false);
+    });
+
+    it('should return false if agent has never reviewed any PR', () => {
+      expect(isAgentReviewingPR(db, 'non-existent-agent')).toBe(false);
+    });
+
+    it('should not count PRs reviewed by other agents', () => {
+      const pr = createPullRequest(db, { branchName: 'test' });
+      updatePullRequest(db, pr.id, {
+        status: 'reviewing',
+        reviewedBy: 'qa-agent-1',
+      });
+
+      expect(isAgentReviewingPR(db, 'qa-agent-2')).toBe(false);
+    });
+
+    it('should return true only if status is exactly reviewing', () => {
+      const statuses: Array<'queued' | 'reviewing' | 'approved' | 'merged' | 'rejected' | 'closed'> = [
+        'queued',
+        'approved',
+        'merged',
+        'rejected',
+        'closed',
+      ];
+
+      for (const status of statuses) {
+        const pr = createPullRequest(db, { branchName: `test-${status}` });
+        updatePullRequest(db, pr.id, {
+          status,
+          reviewedBy: 'qa-agent-test',
+        });
+      }
+
+      expect(isAgentReviewingPR(db, 'qa-agent-test')).toBe(false);
+    });
+
+    it('should handle multiple PRs and return true if any is reviewing', () => {
+      const pr1 = createPullRequest(db, { branchName: 'test-1' });
+      updatePullRequest(db, pr1.id, {
+        status: 'approved',
+        reviewedBy: 'qa-agent-1',
+      });
+
+      const pr2 = createPullRequest(db, { branchName: 'test-2' });
+      updatePullRequest(db, pr2.id, {
+        status: 'reviewing',
+        reviewedBy: 'qa-agent-1',
+      });
+
+      expect(isAgentReviewingPR(db, 'qa-agent-1')).toBe(true);
     });
   });
 

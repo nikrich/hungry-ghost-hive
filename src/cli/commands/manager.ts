@@ -371,6 +371,25 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
 
       // Check if agent appears stuck (capture last output)
       const output = await captureTmuxPane(session.name, 50);
+
+      // CRITICAL: Continuously enforce bypass mode on all agents
+      // Agents can drift into plan mode or hit permission prompts during work
+      // Detect and automatically cycle back to bypass mode
+      const needsBypassEnforcement =
+        output.toLowerCase().includes('plan mode on') ||
+        output.toLowerCase().includes('safe mode on') ||
+        output.match(/permission.*required/i) ||
+        output.match(/approve.*\[y\/n\]/i);
+
+      if (needsBypassEnforcement) {
+        const enforced = await forceBypassMode(session.name, agentCliTool, 3);
+        if (enforced) {
+          console.log(chalk.yellow(`  Enforced bypass mode on ${session.name}`));
+        } else {
+          console.log(chalk.red(`  Failed to enforce bypass mode on ${session.name}`));
+        }
+      }
+
       const stateResult = detectClaudeCodeState(output);
 
       // Track state changes for this agent

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.10.2](https://github.com/nikrich/hungry-ghost-hive/compare/v0.10.1...v0.10.2) (2026-02-06)
+
+
+### Bug Fixes
+
+* **manager:** continuously enforce bypass mode on all agents [STORY-REF-014] ([2145eb4](https://github.com/nikrich/hungry-ghost-hive/commit/2145eb4e2315b245cb80e6fd9502faf452bff6b6))
+* resolve merge conflict in manager.ts imports ([071d3b3](https://github.com/nikrich/hungry-ghost-hive/commit/071d3b3597580537897d5b27e78aadbe5eacf278))
+
+## [0.10.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.10.0...v0.10.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* use tmux bracket paste for multi-line prompt delivery ([162b0fd](https://github.com/nikrich/hungry-ghost-hive/commit/162b0fd7f51dc1cc3f6228f78653fec81dd36e12))
+* use tmux bracket paste for multi-line prompt delivery ([08174f4](https://github.com/nikrich/hungry-ghost-hive/commit/08174f4aa81c42767e52d059a59693711b832c11))
+
 ## [0.10.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.9.0...v0.10.0) (2026-02-06)
 
 
