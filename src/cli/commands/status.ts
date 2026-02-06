@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getDatabase } from '../../db/client.js';
 import { getAllTeams, getTeamByName } from '../../db/queries/teams.js';
-import { getActiveAgents } from '../../db/queries/agents.js';
+import { getAllAgents, getActiveAgents } from '../../db/queries/agents.js';
 import { getStoryCounts, getStoryById, getStoriesByTeam, getStoryDependencies } from '../../db/queries/stories.js';
 import { getPendingRequirements } from '../../db/queries/requirements.js';
 import { getPendingEscalations } from '../../db/queries/escalations.js';
@@ -40,11 +40,14 @@ export const statusCommand = new Command('status')
 
 function showOverallStatus(db: import('sql.js').Database, json?: boolean): void {
   const teams = getAllTeams(db);
+  const allAgents = getAllAgents(db);
   const activeAgents = getActiveAgents(db);
   const storyCounts = getStoryCounts(db);
   const requirements = getPendingRequirements(db);
   const escalations = getPendingEscalations(db);
   const recentLogs = getRecentLogs(db, 5);
+
+  const terminatedAgents = allAgents.filter(a => a.status === 'terminated').length;
 
   const status = {
     teams: teams.length,
@@ -54,6 +57,7 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
       working: activeAgents.filter(a => a.status === 'working').length,
       idle: activeAgents.filter(a => a.status === 'idle').length,
       blocked: activeAgents.filter(a => a.status === 'blocked').length,
+      terminated: terminatedAgents,
     },
     stories: storyCounts,
     requirements: {
@@ -86,7 +90,10 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
 
   // Agents
   console.log(chalk.bold('Agents:'));
-  console.log(`  Total:   ${status.agents.total}`);
+  const totalDisplay = status.agents.terminated > 0
+    ? `${status.agents.total} (${status.agents.terminated} terminated)`
+    : status.agents.total.toString();
+  console.log(`  Total:   ${totalDisplay}`);
   console.log(`  Working: ${chalk.yellow(status.agents.working.toString())}`);
   console.log(`  Idle:    ${chalk.gray(status.agents.idle.toString())}`);
   console.log(`  Blocked: ${chalk.red(status.agents.blocked.toString())}`);
