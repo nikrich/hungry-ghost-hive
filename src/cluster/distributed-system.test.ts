@@ -8,7 +8,6 @@ import { RaftMetadataStore } from './raft-store.js';
 import {
   applyRemoteEvents,
   ensureClusterTables,
-  getAllClusterEvents,
   getDeltaEvents,
   getVersionVector,
   mergeSimilarStories,
@@ -47,7 +46,10 @@ describe('distributed replication primitives', () => {
     ensureClusterTables(db, 'node-a');
     ensureClusterTables(db, 'node-b');
 
-    const state = queryOne<{ node_id: string }>(db, 'SELECT node_id FROM cluster_state WHERE id = 1');
+    const state = queryOne<{ node_id: string }>(
+      db,
+      'SELECT node_id FROM cluster_state WHERE id = 1'
+    );
     expect(state?.node_id).toBe('node-b');
 
     db.close();
@@ -255,7 +257,10 @@ describe('distributed replication primitives', () => {
     });
 
     const applied = applyRemoteEvents(db, 'node-local', [fromZ, fromA]);
-    const story = queryOne<{ title: string }>(db, `SELECT title FROM stories WHERE id = 'STORY-TIE-A'`);
+    const story = queryOne<{ title: string }>(
+      db,
+      `SELECT title FROM stories WHERE id = 'STORY-TIE-A'`
+    );
 
     expect(applied).toBe(2);
     expect(story?.title).toBe('From actor z');
@@ -281,7 +286,10 @@ describe('distributed replication primitives', () => {
     });
 
     const applied = applyRemoteEvents(db, 'node-local', [counter2, counter1]);
-    const story = queryOne<{ title: string }>(db, `SELECT title FROM stories WHERE id = 'STORY-TIE-C'`);
+    const story = queryOne<{ title: string }>(
+      db,
+      `SELECT title FROM stories WHERE id = 'STORY-TIE-C'`
+    );
 
     expect(applied).toBe(2);
     expect(story?.title).toBe('Counter 2');
@@ -318,7 +326,9 @@ describe('distributed story merge behavior', () => {
     });
 
     const merged = mergeSimilarStories(db, 0.8);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(row => row.id);
+    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
+      row => row.id
+    );
 
     expect(merged).toBe(0);
     expect(ids).toEqual(['STORY-TA', 'STORY-TB']);
@@ -352,7 +362,9 @@ describe('distributed story merge behavior', () => {
     });
 
     const merged = mergeSimilarStories(db, 0.8);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(row => row.id);
+    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
+      row => row.id
+    );
 
     expect(merged).toBe(0);
     expect(ids).toEqual(['STORY-R1', 'STORY-R2']);
@@ -377,7 +389,9 @@ describe('distributed story merge behavior', () => {
     });
 
     const merged = mergeSimilarStories(db, 0.45);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(row => row.id);
+    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
+      row => row.id
+    );
 
     expect(merged).toBe(2);
     expect(ids).toEqual(['STORY-100']);
@@ -448,7 +462,10 @@ describe('distributed story merge behavior', () => {
 
     const merged = mergeSimilarStories(db, 0.8);
 
-    const prStory = queryOne<{ story_id: string }>(db, `SELECT story_id FROM pull_requests WHERE id = 'PR-1'`);
+    const prStory = queryOne<{ story_id: string }>(
+      db,
+      `SELECT story_id FROM pull_requests WHERE id = 'PR-1'`
+    );
     const escStory = queryOne<{ story_id: string }>(
       db,
       `SELECT story_id FROM escalations WHERE id = 'ESC-1'`
@@ -503,7 +520,9 @@ describe('distributed story merge behavior', () => {
     });
 
     const merged = mergeSimilarStories(db, 0.95);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(row => row.id);
+    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
+      row => row.id
+    );
 
     expect(merged).toBe(0);
     expect(ids).toEqual(['STORY-S1', 'STORY-S2']);
@@ -532,7 +551,9 @@ describe('distributed story merge behavior', () => {
     });
 
     const secondMerge = mergeSimilarStories(db, 0.8);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(row => row.id);
+    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
+      row => row.id
+    );
 
     expect(secondMerge).toBe(0);
     expect(ids).toEqual(['STORY-001', 'STORY-002']);

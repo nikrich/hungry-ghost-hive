@@ -172,7 +172,9 @@ export class RaftMetadataStore {
   private loadOrCreateState(): DurableRaftState {
     if (existsSync(this.statePath)) {
       try {
-        const parsed = JSON.parse(readFileSync(this.statePath, 'utf-8')) as Partial<DurableRaftState>;
+        const parsed = JSON.parse(
+          readFileSync(this.statePath, 'utf-8')
+        ) as Partial<DurableRaftState>;
         return {
           node_id: parsed.node_id || this.nodeId,
           current_term: toNonNegativeInt(parsed.current_term),

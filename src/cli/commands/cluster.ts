@@ -33,7 +33,8 @@ clusterCommand
           JSON.stringify(
             {
               enabled: false,
-              message: 'Cluster mode is disabled (set cluster.enabled=true in .hive/hive.config.yaml).',
+              message:
+                'Cluster mode is disabled (set cluster.enabled=true in .hive/hive.config.yaml).',
             },
             null,
             2
@@ -41,7 +42,9 @@ clusterCommand
         );
       } else {
         console.log(chalk.yellow('Cluster mode is disabled.'));
-        console.log(chalk.gray('Set `cluster.enabled: true` in `.hive/hive.config.yaml` to enable.'));
+        console.log(
+          chalk.gray('Set `cluster.enabled: true` in `.hive/hive.config.yaml` to enable.')
+        );
       }
       return;
     }
@@ -49,10 +52,13 @@ clusterCommand
     const local = await fetchLocalClusterStatus(config.cluster);
     const peerStatuses: PeerStatus[] = await Promise.all(
       config.cluster.peers.map(async peer => {
-        const status = await fetchClusterStatusFromUrl(`${peer.url.replace(/\/$/, '')}/cluster/v1/status`, {
-          authToken: config.cluster.auth_token,
-          timeoutMs: config.cluster.request_timeout_ms,
-        });
+        const status = await fetchClusterStatusFromUrl(
+          `${peer.url.replace(/\/$/, '')}/cluster/v1/status`,
+          {
+            authToken: config.cluster.auth_token,
+            timeoutMs: config.cluster.request_timeout_ms,
+          }
+        );
 
         return {
           id: peer.id,

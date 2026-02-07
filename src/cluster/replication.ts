@@ -330,11 +330,10 @@ const REPLICATED_TABLES: TableAdapter[] = [
     },
     delete: (db, rowId) => {
       const [storyId, dependsOnId] = splitDependencyRowId(rowId);
-      run(
-        db,
-        'DELETE FROM story_dependencies WHERE story_id = ? AND depends_on_story_id = ?',
-        [storyId, dependsOnId]
-      );
+      run(db, 'DELETE FROM story_dependencies WHERE story_id = ? AND depends_on_story_id = ?', [
+        storyId,
+        dependsOnId,
+      ]);
     },
   },
   {
@@ -968,7 +967,10 @@ function mergeStoryIntoCanonical(db: Database, canonicalId: string, duplicateId:
   run(db, 'UPDATE pull_requests SET story_id = ? WHERE story_id = ?', [canonicalId, duplicateId]);
   run(db, 'UPDATE escalations SET story_id = ? WHERE story_id = ?', [canonicalId, duplicateId]);
   run(db, 'UPDATE agent_logs SET story_id = ? WHERE story_id = ?', [canonicalId, duplicateId]);
-  run(db, 'UPDATE agents SET current_story_id = ? WHERE current_story_id = ?', [canonicalId, duplicateId]);
+  run(db, 'UPDATE agents SET current_story_id = ? WHERE current_story_id = ?', [
+    canonicalId,
+    duplicateId,
+  ]);
 
   run(
     db,
@@ -1053,11 +1055,13 @@ function shouldApplyEvent(db: Database, event: ClusterEvent): boolean {
 
   if (!existing) return true;
 
-  return compareVersion(event.version, {
-    actor_id: existing.actor_id,
-    actor_counter: Number(existing.actor_counter),
-    logical_ts: Number(existing.logical_ts),
-  }) > 0;
+  return (
+    compareVersion(event.version, {
+      actor_id: existing.actor_id,
+      actor_counter: Number(existing.actor_counter),
+      logical_ts: Number(existing.logical_ts),
+    }) > 0
+  );
 }
 
 function compareVersion(a: ClusterEventVersion, b: ClusterEventVersion): number {
@@ -1151,9 +1155,11 @@ function emitLocalEvent(
 }
 
 function incrementAndGetCounter(db: Database): number {
-  run(db, 'UPDATE cluster_state SET event_counter = event_counter + 1, updated_at = ? WHERE id = 1', [
-    new Date().toISOString(),
-  ]);
+  run(
+    db,
+    'UPDATE cluster_state SET event_counter = event_counter + 1, updated_at = ? WHERE id = 1',
+    [new Date().toISOString()]
+  );
 
   const state = queryOne<{ event_counter: number }>(
     db,

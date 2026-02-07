@@ -1,5 +1,5 @@
+import { mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { createServer as createHttpServer, type Server as HttpServer } from 'http';
-import { mkdtempSync, mkdirSync, rmSync } from 'fs';
 import { createServer as createNetServer } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -101,7 +101,10 @@ describe('distributed runtime transport and status', () => {
           raft_commit_index: '12',
           raft_last_applied: 'oops',
           raft_last_log_index: '9',
-          peers: [{ id: 'peer-a', url: 'http://127.0.0.1:8080' }, { id: 2, url: 3 }],
+          peers: [
+            { id: 'peer-a', url: 'http://127.0.0.1:8080' },
+            { id: 2, url: 3 },
+          ],
         })
       );
     });
@@ -499,7 +502,9 @@ describe('distributed runtime sync behavior', () => {
     );
 
     const result = await fixture.runtime.sync(db);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(row => row.id);
+    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
+      row => row.id
+    );
 
     expect(result.merged_duplicate_stories).toBe(1);
     expect(ids).toEqual(['STORY-DUP-A']);
@@ -551,7 +556,10 @@ describe('distributed runtime sync behavior', () => {
     await fixtureA.runtime.sync(dbA);
 
     const resultB = await fixtureB.runtime.sync(dbB);
-    const replicated = queryOne<{ id: string }>(dbB, `SELECT id FROM stories WHERE id = 'STORY-REMOTE-1'`);
+    const replicated = queryOne<{ id: string }>(
+      dbB,
+      `SELECT id FROM stories WHERE id = 'STORY-REMOTE-1'`
+    );
 
     expect(resultB.imported_events_applied).toBeGreaterThan(0);
     expect(replicated?.id).toBe('STORY-REMOTE-1');
@@ -637,7 +645,9 @@ describe('distributed runtime sync behavior', () => {
   });
 });
 
-async function startRuntimeFixture(overrides: Partial<ClusterConfig> = {}): Promise<RuntimeFixture> {
+async function startRuntimeFixture(
+  overrides: Partial<ClusterConfig> = {}
+): Promise<RuntimeFixture> {
   const config = await buildConfig(overrides);
   return startRuntimeWithConfig(config);
 }
@@ -685,7 +695,12 @@ async function buildConfig(overrides: Partial<ClusterConfig> = {}): Promise<Clus
   };
 }
 
-function insertStory(db: Awaited<ReturnType<typeof createTestDatabase>>, id: string, title: string, description: string): void {
+function insertStory(
+  db: Awaited<ReturnType<typeof createTestDatabase>>,
+  id: string,
+  title: string,
+  description: string
+): void {
   const now = new Date().toISOString();
   run(
     db,

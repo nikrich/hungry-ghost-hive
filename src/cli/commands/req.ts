@@ -67,7 +67,9 @@ export const reqCommand = new Command('req')
               )
             );
             if (clusterStatus.leader_url) {
-              console.log(chalk.gray(`Run this command on leader host: ${clusterStatus.leader_url}`));
+              console.log(
+                chalk.gray(`Run this command on leader host: ${clusterStatus.leader_url}`)
+              );
             }
             process.exit(1);
           }

@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { createServer as createNetServer } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -66,7 +66,10 @@ describe('distributed replication edge cases', () => {
     run(db, `INSERT INTO story_dependencies (story_id, depends_on_story_id) VALUES ('S-A', 'S-B')`);
     scanLocalChanges(db, 'node-a');
 
-    run(db, `DELETE FROM story_dependencies WHERE story_id = 'S-A' AND depends_on_story_id = 'S-B'`);
+    run(
+      db,
+      `DELETE FROM story_dependencies WHERE story_id = 'S-A' AND depends_on_story_id = 'S-B'`
+    );
     const emitted = scanLocalChanges(db, 'node-a');
 
     const lastDepEvent = queryOne<{ row_id: string; op: string }>(
@@ -230,11 +233,26 @@ describe('distributed replication edge cases', () => {
 
   it('keeps the highest progression status when merging duplicate stories', async () => {
     const db = await createTestDatabase();
-    insertStory(db, 'S-100', 'Implement OAuth Login', 'Implement oauth2 login with pkce flow', 'planned');
-    insertStory(db, 'S-200', 'Implement OAuth Login', 'Implement oauth2 login with pkce flow', 'review');
+    insertStory(
+      db,
+      'S-100',
+      'Implement OAuth Login',
+      'Implement oauth2 login with pkce flow',
+      'planned'
+    );
+    insertStory(
+      db,
+      'S-200',
+      'Implement OAuth Login',
+      'Implement oauth2 login with pkce flow',
+      'review'
+    );
 
     const merged = mergeSimilarStories(db, 0.8);
-    const canonical = queryOne<{ status: string }>(db, `SELECT status FROM stories WHERE id = 'S-100'`);
+    const canonical = queryOne<{ status: string }>(
+      db,
+      `SELECT status FROM stories WHERE id = 'S-100'`
+    );
 
     expect(merged).toBe(1);
     expect(canonical?.status).toBe('review');
@@ -288,7 +306,9 @@ describe('distributed replication edge cases', () => {
     insertStory(db, 'S-MERGED-2', 'Auth duplicate', 'Auth duplicate', 'merged');
 
     const merged = mergeSimilarStories(db, 0.8);
-    const ids = queryAll<{ id: string }>(db, `SELECT id FROM stories ORDER BY id`).map(row => row.id);
+    const ids = queryAll<{ id: string }>(db, `SELECT id FROM stories ORDER BY id`).map(
+      row => row.id
+    );
 
     expect(merged).toBe(0);
     expect(ids).toEqual(['S-MERGED-1', 'S-MERGED-2']);
@@ -527,7 +547,10 @@ function insertStory(
   );
 }
 
-function storyPayload(id: string, overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
+function storyPayload(
+  id: string,
+  overrides: Partial<Record<string, unknown>> = {}
+): Record<string, unknown> {
   const now = new Date().toISOString();
   return {
     id,
@@ -583,7 +606,6 @@ async function startRuntimeFixture(overrides: Partial<ClusterConfig>): Promise<{
     node_id: 'node-edge',
     listen_host: '127.0.0.1',
     listen_port: port,
-    public_url: `http://127.0.0.1:${port}`,
     peers: [],
     heartbeat_interval_ms: 100,
     election_timeout_min_ms: 120,

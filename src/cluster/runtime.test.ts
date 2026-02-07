@@ -1,7 +1,7 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { createServer } from 'net';
-import { join } from 'path';
 import { tmpdir } from 'os';
+import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ClusterConfig } from '../config/schema.js';
 import { createDatabase } from '../db/client.js';
@@ -64,7 +64,10 @@ describe('cluster runtime helpers', () => {
       story_similarity_threshold: 0.92,
     };
 
-    const { runtime: runtimeA, config: configA } = await startRuntimeWithRetries(hiveDir, configBase);
+    const { runtime: runtimeA, config: configA } = await startRuntimeWithRetries(
+      hiveDir,
+      configBase
+    );
 
     db.db.run(
       `
@@ -88,7 +91,9 @@ describe('cluster runtime helpers', () => {
     });
 
     const statusAfter = runtimeB.getStatus();
-    expect(statusAfter.raft_last_log_index).toBeGreaterThanOrEqual(statusBefore.raft_last_log_index);
+    expect(statusAfter.raft_last_log_index).toBeGreaterThanOrEqual(
+      statusBefore.raft_last_log_index
+    );
     expect(statusAfter.term).toBeGreaterThanOrEqual(statusBefore.term);
 
     const statePath = join(hiveDir, 'cluster', 'raft-state.json');

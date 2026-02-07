@@ -189,7 +189,8 @@ export class ClusterRuntime {
     const localEventsBefore = scanLocalChanges(db, this.config.node_id);
     const imported = await this.pullEventsFromPeers(db);
     const merged = mergeSimilarStories(db, this.config.story_similarity_threshold);
-    const localEventsAfter = imported > 0 || merged > 0 ? scanLocalChanges(db, this.config.node_id) : 0;
+    const localEventsAfter =
+      imported > 0 || merged > 0 ? scanLocalChanges(db, this.config.node_id) : 0;
 
     this.refreshCache(db);
 
@@ -332,7 +333,11 @@ export class ClusterRuntime {
           })
       );
 
-      if (this.role === 'candidate' && this.currentTerm === electionTerm && votes >= this.quorum()) {
+      if (
+        this.role === 'candidate' &&
+        this.currentTerm === electionTerm &&
+        votes >= this.quorum()
+      ) {
         this.role = 'leader';
         this.leaderId = this.config.node_id;
         this.votedFor = null;
@@ -419,7 +424,8 @@ export class ClusterRuntime {
       return { term: this.currentTerm, success: false };
     }
 
-    const changed = term > this.currentTerm || leaderId !== this.leaderId || this.role !== 'follower';
+    const changed =
+      term > this.currentTerm || leaderId !== this.leaderId || this.role !== 'follower';
 
     if (term > this.currentTerm) {
       this.stepDown(term, leaderId);
@@ -483,7 +489,10 @@ export class ClusterRuntime {
     });
   }
 
-  private appendDurableEntry(type: Parameters<RaftMetadataStore['appendEntry']>[0]['type'], metadata: Record<string, unknown>): void {
+  private appendDurableEntry(
+    type: Parameters<RaftMetadataStore['appendEntry']>[0]['type'],
+    metadata: Record<string, unknown>
+  ): void {
     if (!this.raftStore) return;
     this.raftStore.appendEntry({ type, term: this.currentTerm, metadata });
   }
@@ -583,10 +592,15 @@ export class ClusterRuntime {
     const normalizedBase = peer.url.endsWith('/') ? peer.url : `${peer.url}/`;
     const url = new URL(path.replace(/^\//, ''), normalizedBase).toString();
 
-    return fetchClusterStatusOrPostJson<T>(url, this.config.request_timeout_ms, this.config.auth_token, {
-      method: 'POST',
-      body,
-    });
+    return fetchClusterStatusOrPostJson<T>(
+      url,
+      this.config.request_timeout_ms,
+      this.config.auth_token,
+      {
+        method: 'POST',
+        body,
+      }
+    );
   }
 
   private getLeaderUrl(): string | null {
@@ -598,7 +612,9 @@ export class ClusterRuntime {
   }
 }
 
-export async function fetchLocalClusterStatus(config: ClusterConfig): Promise<ClusterStatus | null> {
+export async function fetchLocalClusterStatus(
+  config: ClusterConfig
+): Promise<ClusterStatus | null> {
   if (!config.enabled) {
     return {
       enabled: false,
@@ -629,9 +645,14 @@ export async function fetchClusterStatusFromUrl(
   url: string,
   options: ClusterStatusFetchOptions
 ): Promise<ClusterStatus | null> {
-  const response = await fetchClusterStatusOrPostJson<unknown>(url, options.timeoutMs, options.authToken, {
-    method: 'GET',
-  });
+  const response = await fetchClusterStatusOrPostJson<unknown>(
+    url,
+    options.timeoutMs,
+    options.authToken,
+    {
+      method: 'GET',
+    }
+  );
 
   if (!response || typeof response !== 'object') return null;
 

@@ -1,7 +1,7 @@
-import { mkdtempSync, mkdirSync, rmSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { createServer } from 'net';
-import { join } from 'path';
 import { tmpdir } from 'os';
+import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ClusterConfig } from '../config/schema.js';
 import { createDatabase, queryAll, type DatabaseClient } from '../db/client.js';
@@ -59,11 +59,21 @@ describe('cluster integration harness', () => {
       const nodeB = fixtures[1];
 
       insertStory(nodeA.db, 'STORY-A001', 'Add telemetry', 'Add telemetry event pipeline');
-      insertStory(nodeA.db, 'STORY-E001', 'Implement OAuth Login', 'Implement oauth2 login with pkce flow');
+      insertStory(
+        nodeA.db,
+        'STORY-E001',
+        'Implement OAuth Login',
+        'Implement oauth2 login with pkce flow'
+      );
 
       insertStory(nodeB.db, 'STORY-B001', 'Build dashboard', 'Build dashboard widgets and filters');
       insertStory(nodeB.db, 'STORY-C001', 'Harden auth', 'Add auth token rotation checks');
-      insertStory(nodeB.db, 'STORY-E002', 'Implement OAuth Login', 'Implement oauth2 login with pkce');
+      insertStory(
+        nodeB.db,
+        'STORY-E002',
+        'Implement OAuth Login',
+        'Implement oauth2 login with pkce'
+      );
 
       for (let i = 0; i < 20; i++) {
         for (const fixture of fixtures) {
