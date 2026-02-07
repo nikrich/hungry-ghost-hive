@@ -16,6 +16,10 @@
 export { AgentState } from './types.js';
 export type { CLIType, StateDetectionResult, StateDetector } from './types.js';
 
+// Export base class and shared types
+export { BaseStateDetector } from './base.js';
+export type { StateIndicator } from './base.js';
+
 // Export state detector implementations
 export { ClaudeStateDetector } from './claude.js';
 export { CodexStateDetector } from './codex.js';
