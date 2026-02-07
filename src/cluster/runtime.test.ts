@@ -51,13 +51,10 @@ describe('cluster runtime helpers', () => {
     mkdirSync(hiveDir, { recursive: true });
 
     const db = await createDatabase(join(hiveDir, 'hive.db'));
-    const port = await getFreePort();
-    const config: ClusterConfig = {
+    const configBase: Omit<ClusterConfig, 'listen_port' | 'public_url'> = {
       enabled: true,
       node_id: 'node-persist',
       listen_host: '127.0.0.1',
-      listen_port: port,
-      public_url: `http://127.0.0.1:${port}`,
       peers: [],
       heartbeat_interval_ms: 100,
       election_timeout_min_ms: 150,
@@ -67,8 +64,7 @@ describe('cluster runtime helpers', () => {
       story_similarity_threshold: 0.92,
     };
 
-    const runtimeA = new ClusterRuntime(config, { hiveDir });
-    await runtimeA.start();
+    const { runtime: runtimeA, config: configA } = await startRuntimeWithRetries(hiveDir, configBase);
 
     db.db.run(
       `
@@ -86,8 +82,10 @@ describe('cluster runtime helpers', () => {
 
     await runtimeA.stop();
 
-    const runtimeB = new ClusterRuntime(config, { hiveDir });
-    await runtimeB.start();
+    const { runtime: runtimeB } = await startRuntimeWithRetries(hiveDir, {
+      ...configBase,
+      node_id: configA.node_id,
+    });
 
     const statusAfter = runtimeB.getStatus();
     expect(statusAfter.raft_last_log_index).toBeGreaterThanOrEqual(statusBefore.raft_last_log_index);
@@ -136,4 +134,36 @@ async function canListenOnLocalhost(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function startRuntimeWithRetries(
+  hiveDir: string,
+  baseConfig: Omit<ClusterConfig, 'listen_port' | 'public_url'>,
+  attempts = 5
+): Promise<{ runtime: ClusterRuntime; config: ClusterConfig }> {
+  let lastError: unknown;
+
+  for (let i = 0; i < attempts; i++) {
+    const port = await getFreePort();
+    const config: ClusterConfig = {
+      ...baseConfig,
+      listen_port: port,
+      public_url: `http://127.0.0.1:${port}`,
+    };
+
+    const runtime = new ClusterRuntime(config, { hiveDir });
+
+    try {
+      await runtime.start();
+      return { runtime, config };
+    } catch (error) {
+      lastError = error;
+      const err = error as NodeJS.ErrnoException;
+      if (err.code !== 'EADDRINUSE') {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Failed to start cluster runtime');
 }
