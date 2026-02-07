@@ -6,6 +6,11 @@ import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-r
 import { updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
 
+/** Timeout in ms for checking PR state via GitHub API */
+const PR_STATE_CHECK_TIMEOUT_MS = 30000;
+/** Timeout in ms for GitHub merge operations */
+const PR_MERGE_TIMEOUT_MS = 60000;
+
 interface GitHubPRState {
   state: string;
   mergeable: string;
@@ -87,7 +92,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
               stdio: 'pipe',
               cwd: repoCwd,
               encoding: 'utf-8',
-              timeout: 30000, // 30 second timeout for state check
+              timeout: PR_STATE_CHECK_TIMEOUT_MS,
             }
           );
           prState = JSON.parse(prViewOutput);
@@ -142,7 +147,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, {
           stdio: 'pipe',
           cwd: repoCwd,
-          timeout: 60000, // 60 second timeout for GitHub operations
+          timeout: PR_MERGE_TIMEOUT_MS,
         });
 
         // Update PR and story status, create logs (atomic transaction)

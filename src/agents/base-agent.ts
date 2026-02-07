@@ -9,6 +9,9 @@ import { updateAgentHeartbeat } from '../db/queries/heartbeat.js';
 import { createLog, type EventType } from '../db/queries/logs.js';
 import type { LLMProvider, Message } from '../llm/provider.js';
 
+/** Interval in ms between agent heartbeats */
+const HEARTBEAT_INTERVAL_MS = 10000;
+
 export interface MemoryState {
   conversationSummary: string;
   currentTask?: {
@@ -96,10 +99,10 @@ export abstract class BaseAgent {
     // Send initial heartbeat
     this.sendHeartbeat();
 
-    // Send heartbeat every 10 seconds
+    // Send heartbeat at configured interval
     this.heartbeatInterval = setInterval(() => {
       this.sendHeartbeat();
-    }, 10000);
+    }, HEARTBEAT_INTERVAL_MS);
   }
 
   private sendHeartbeat(): void {
