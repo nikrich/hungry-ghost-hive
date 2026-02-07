@@ -291,6 +291,7 @@ Respond in JSON format:
             agentId: senior.id,
             teamId,
             tmuxSession: sessionName,
+            godmode: this.requirement?.godmode ? true : false,
           });
         } catch (err) {
           this.log(
@@ -299,6 +300,7 @@ Respond in JSON format:
             {
               agentId: senior.id,
               teamId,
+              godmode: this.requirement?.godmode ? true : false,
             }
           );
         }

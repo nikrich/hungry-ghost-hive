@@ -4,7 +4,7 @@ import { getDatabase } from '../../db/client.js';
 import { getActiveAgents, getAllAgents } from '../../db/queries/agents.js';
 import { getPendingEscalations } from '../../db/queries/escalations.js';
 import { getLogsByStory, getRecentLogs } from '../../db/queries/logs.js';
-import { getPendingRequirements } from '../../db/queries/requirements.js';
+import { getPendingRequirements, getRequirementById } from '../../db/queries/requirements.js';
 import {
   getStoriesByTeam,
   getStoryById,
@@ -67,6 +67,11 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
     stories: storyCounts,
     requirements: {
       pending: requirements.length,
+      items: requirements.map(r => ({
+        id: r.id,
+        title: r.title,
+        godmode: r.godmode ? true : false,
+      })),
     },
     escalations: {
       pending: escalations.length,
@@ -122,7 +127,8 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
   if (requirements.length > 0) {
     console.log(chalk.bold('Pending Requirements:'), requirements.length);
     for (const req of requirements.slice(0, 3)) {
-      console.log(chalk.gray(`  • ${req.id}: ${req.title.substring(0, 50)}...`));
+      const godmodeIndicator = req.godmode ? chalk.yellow(' ⚡') : '';
+      console.log(chalk.gray(`  • ${req.id}: ${req.title.substring(0, 50)}...${godmodeIndicator}`));
     }
     console.log();
   }
@@ -168,12 +174,23 @@ function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: 
       repo_url: team.repo_url,
       repo_path: team.repo_path,
     },
-    agents: activeAgents.map(a => ({
-      id: a.id,
-      type: a.type,
-      status: a.status,
-      currentStory: a.current_story_id,
-    })),
+    agents: activeAgents.map(a => {
+      let godmode = false;
+      if (a.current_story_id) {
+        const story = getStoryById(db, a.current_story_id);
+        if (story && story.requirement_id) {
+          const requirement = getRequirementById(db, story.requirement_id);
+          godmode = requirement?.godmode ? true : false;
+        }
+      }
+      return {
+        id: a.id,
+        type: a.type,
+        status: a.status,
+        currentStory: a.current_story_id,
+        godmode,
+      };
+    }),
     stories: {
       total: stories.length,
       counts: storyCounts,
@@ -195,9 +212,19 @@ function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: 
     console.log(chalk.gray('  No active agents'));
   } else {
     for (const agent of activeAgents) {
+      let opusIndicator = '';
+      if (agent.current_story_id) {
+        const story = getStoryById(db, agent.current_story_id);
+        if (story && story.requirement_id) {
+          const requirement = getRequirementById(db, story.requirement_id);
+          if (requirement?.godmode) {
+            opusIndicator = chalk.yellow(' [Opus]');
+          }
+        }
+      }
       const storyInfo = agent.current_story_id ? ` → ${agent.current_story_id}` : '';
       console.log(
-        `  ${agent.id.padEnd(25)} ${agent.type.padEnd(12)} ${statusColor(agent.status)}${storyInfo}`
+        `  ${agent.id.padEnd(25)} ${agent.type.padEnd(12)} ${statusColor(agent.status)}${storyInfo}${opusIndicator}`
       );
     }
   }
