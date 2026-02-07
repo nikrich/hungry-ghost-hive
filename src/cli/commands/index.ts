@@ -2,6 +2,7 @@ export { addRepoCommand } from './add-repo.js';
 export { agentsCommand } from './agents.js';
 export { assignCommand } from './assign.js';
 export { cleanupCommand } from './cleanup.js';
+export { clusterCommand } from './cluster.js';
 export { configCommand } from './config.js';
 export { escalationsCommand } from './escalations.js';
 export { initCommand } from './init.js';

@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import { join } from 'path';
+import { ClusterRuntime, fetchLocalClusterStatus } from '../../cluster/runtime.js';
 import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import type { StoryRow } from '../../db/client.js';
@@ -38,6 +39,7 @@ import {
   forceBypassMode,
   getHiveSessions,
   isManagerRunning,
+  isTmuxSessionRunning,
   killTmuxSession,
   sendEnterToTmuxSession,
   sendMessageWithConfirmation,
@@ -112,6 +114,7 @@ managerCommand
 
     // Load config first to get all settings
     const config = loadConfig(paths.hiveDir);
+    let clusterRuntime: ClusterRuntime | null = null;
 
     const lockPath = join(paths.hiveDir, 'manager.lock');
 
@@ -138,24 +141,39 @@ managerCommand
         await releaseLock();
         console.log(chalk.gray('\nManager lock released'));
       }
+      if (clusterRuntime) {
+        await clusterRuntime.stop();
+      }
       process.exit(0);
     };
 
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
 
+    if (config.cluster.enabled) {
+      clusterRuntime = new ClusterRuntime(config.cluster, { hiveDir: paths.hiveDir });
+      await clusterRuntime.start();
+      console.log(
+        chalk.gray(
+          `Cluster runtime started for ${config.cluster.node_id} (${config.cluster.public_url})`
+        )
+      );
+    }
+
     // Support two modes: legacy single-interval and new two-tier polling
     const useTwoTier = options.interval === '60' && config.manager;
 
     if (useTwoTier) {
       // Two-tier polling - use slow interval (60s) by default to reduce interruptions
-      const slowInterval = config.manager.slow_poll_interval;
+      const slowInterval = config.cluster.enabled
+        ? Math.min(config.manager.slow_poll_interval, config.cluster.sync_interval_ms)
+        : config.manager.slow_poll_interval;
       console.log(chalk.cyan(`Manager started (polling every ${slowInterval / 1000}s)`));
       console.log(chalk.gray('Press Ctrl+C to stop\n'));
 
       const runCheck = async () => {
         try {
-          await managerCheck(root, config);
+          await managerCheck(root, config, clusterRuntime);
         } catch (err) {
           console.error(chalk.red('Manager error:'), err);
         }
@@ -167,16 +185,22 @@ managerCommand
         setInterval(runCheck, slowInterval);
       } else if (releaseLock) {
         await releaseLock();
+        if (clusterRuntime) {
+          await clusterRuntime.stop();
+        }
       }
     } else {
       // Legacy mode: single interval
-      const interval = parseInt(options.interval, 10) * 1000;
-      console.log(chalk.cyan(`Manager started (checking every ${options.interval}s)`));
+      const requestedInterval = parseInt(options.interval, 10) * 1000;
+      const interval = config.cluster.enabled
+        ? Math.min(requestedInterval, config.cluster.sync_interval_ms)
+        : requestedInterval;
+      console.log(chalk.cyan(`Manager started (checking every ${interval / 1000}s)`));
       console.log(chalk.gray('Press Ctrl+C to stop\n'));
 
       const runCheck = async () => {
         try {
-          await managerCheck(root, config);
+          await managerCheck(root, config, clusterRuntime);
         } catch (err) {
           console.error(chalk.red('Manager error:'), err);
         }
@@ -188,6 +212,9 @@ managerCommand
         setInterval(runCheck, interval);
       } else if (releaseLock) {
         await releaseLock();
+        if (clusterRuntime) {
+          await clusterRuntime.stop();
+        }
       }
     }
   });
@@ -205,6 +232,26 @@ managerCommand
 
     const paths = getHivePaths(root);
     const config = loadConfig(paths.hiveDir);
+
+    if (config.cluster.enabled) {
+      const clusterStatus = await fetchLocalClusterStatus(config.cluster);
+      if (!clusterStatus) {
+        console.error(
+          chalk.red(
+            'Cluster mode is enabled, but local cluster runtime is unavailable. Start manager first.'
+          )
+        );
+        process.exit(1);
+      }
+      if (!clusterStatus.is_leader) {
+        console.log(
+          chalk.yellow(
+            `Skipping manager check on follower node (leader: ${clusterStatus.leader_id || 'unknown'}).`
+          )
+        );
+        return;
+      }
+    }
 
     await managerCheck(root, config);
   });
@@ -225,6 +272,25 @@ managerCommand
 
     try {
       const config = loadConfig(paths.hiveDir);
+      if (config.cluster.enabled) {
+        const clusterStatus = await fetchLocalClusterStatus(config.cluster);
+        if (!clusterStatus) {
+          console.error(
+            chalk.red(
+              'Cluster mode is enabled, but local cluster runtime is unavailable. Start manager first.'
+            )
+          );
+          process.exit(1);
+        }
+        if (!clusterStatus.is_leader) {
+          console.log(
+            chalk.yellow(
+              `Skipping health orchestration on follower node (leader: ${clusterStatus.leader_id || 'unknown'}).`
+            )
+          );
+          return;
+        }
+      }
       const scheduler = new Scheduler(db.db, {
         scaling: config.scaling,
         models: config.models,
@@ -308,7 +374,11 @@ managerCommand
     }
   });
 
-async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
+async function managerCheck(
+  root: string,
+  config?: HiveConfig,
+  clusterRuntime?: ClusterRuntime | null
+): Promise<void> {
   const timestamp = new Date().toLocaleTimeString();
   console.log(chalk.gray(`[${timestamp}] Manager checking...`));
 
@@ -319,6 +389,41 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     // Load config if not provided (for backwards compatibility)
     if (!config) {
       config = loadConfig(paths.hiveDir);
+    }
+
+    if (clusterRuntime?.isEnabled()) {
+      const syncResult = await clusterRuntime.sync(db.db);
+      if (!clusterRuntime.isLeader()) {
+        const status = clusterRuntime.getStatus();
+        if (await isTmuxSessionRunning('hive-tech-lead')) {
+          await killTmuxSession('hive-tech-lead');
+        }
+        const details = [];
+        if (syncResult.local_events_emitted > 0) {
+          details.push(`${syncResult.local_events_emitted} local events`);
+        }
+        if (syncResult.imported_events_applied > 0) {
+          details.push(`${syncResult.imported_events_applied} imported events`);
+        }
+        if (syncResult.merged_duplicate_stories > 0) {
+          details.push(`${syncResult.merged_duplicate_stories} merged stories`);
+        }
+
+        console.log(
+          chalk.gray(
+            `  Cluster follower mode (leader: ${status.leader_id || 'unknown'})${
+              details.length > 0 ? `, ${details.join(', ')}` : ''
+            }`
+          )
+        );
+        db.save();
+        return;
+      }
+
+      const leaderStatus = clusterRuntime.getStatus();
+      console.log(
+        chalk.gray(`  Cluster leader mode (${leaderStatus.node_id}, term ${leaderStatus.term})`)
+      );
     }
 
     // Backfill github_pr_number for existing PRs on first run (idempotent)
@@ -848,6 +953,10 @@ hive pr queue`
       console.log(chalk.yellow(`  ${summary.join(', ')}`));
     } else {
       console.log(chalk.green('  All agents productive'));
+    }
+
+    if (clusterRuntime?.isEnabled()) {
+      await clusterRuntime.sync(db.db);
     }
   } finally {
     db.close();

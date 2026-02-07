@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import ora from 'ora';
+import { fetchLocalClusterStatus } from '../../cluster/runtime.js';
 import { loadConfig } from '../../config/loader.js';
 import { getDatabase } from '../../db/client.js';
 import { getRequirementById } from '../../db/queries/requirements.js';
@@ -26,6 +27,26 @@ export const assignCommand = new Command('assign')
 
     try {
       const config = loadConfig(paths.hiveDir);
+
+      if (config.cluster.enabled) {
+        const clusterStatus = await fetchLocalClusterStatus(config.cluster);
+        if (!clusterStatus) {
+          spinner.fail(
+            chalk.red(
+              'Cluster mode is enabled, but local cluster runtime is unavailable. Start manager first.'
+            )
+          );
+          process.exit(1);
+        }
+        if (!clusterStatus.is_leader) {
+          spinner.fail(
+            chalk.red(
+              `Only the cluster leader can assign stories (leader: ${clusterStatus.leader_id || 'unknown'}).`
+            )
+          );
+          process.exit(1);
+        }
+      }
 
       // Check if godmode is active
       const plannedStories = getPlannedStories(db.db);
