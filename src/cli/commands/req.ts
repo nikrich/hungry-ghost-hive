@@ -109,7 +109,13 @@ export const reqCommand = new Command('req')
 
         // Spawn Tech Lead tmux session
         const sessionName = `hive-tech-lead`;
-        const techLeadPrompt = generateTechLeadPrompt(req.id, title, description, teams, options.godmode);
+        const techLeadPrompt = generateTechLeadPrompt(
+          req.id,
+          title,
+          description,
+          teams,
+          options.godmode
+        );
 
         try {
           // Build CLI command using the configured runtime for Tech Lead
