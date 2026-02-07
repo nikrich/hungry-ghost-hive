@@ -63,7 +63,7 @@ export class SqliteRequirementDao implements RequirementDao {
     input: UpdateRequirementInput
   ): Promise<RequirementRow | undefined> {
     const updates: string[] = [];
-    const values: (string | number)[] = [];
+    const values: unknown[] = [];
 
     if (input.title !== undefined) {
       updates.push('title = ?');
