@@ -1,12 +1,7 @@
-import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
-import { loadConfig } from '../config/index.js';
-import { createAgent, getTechLead, updateAgent } from '../db/queries/agents.js';
+import { getTechLead, updateAgent } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
 import { getStoriesByTeam, updateStory, type StoryRow } from '../db/queries/stories.js';
 import { getTeamById, type TeamRow } from '../db/queries/teams.js';
-import { NotFoundError } from '../errors/index.js';
-import { generateSessionName, spawnTmuxSession } from '../tmux/manager.js';
-import { findHiveRoot, getHivePaths } from '../utils/paths.js';
 import { BaseAgent, type AgentContext } from './base-agent.js';
 
 export interface SeniorContext extends AgentContext {
@@ -50,13 +45,9 @@ ${storiesInfo}
 ## Your Responsibilities
 1. Conduct codebase analysis when requested
 2. Estimate story complexity accurately
-3. Delegate work based on complexity:
-   - 1-3 points → Delegate to Junior
-   - 4-5 points → Delegate to Intermediate
-   - 6+ points → Handle directly
-4. Review code from delegated work
-5. Handle complex implementations
-6. Escalate blockers to Tech Lead
+3. Implement assigned stories directly
+4. Handle complex implementations
+5. Escalate blockers to Tech Lead
 
 ## Development Guidelines
 - Create feature branches: feature/{story-id}-{slug}
@@ -116,90 +107,11 @@ This will help with story estimation and implementation.`;
   }
 
   private async processStory(story: StoryRow): Promise<void> {
-    const complexity = story.complexity_score || 5;
-
     this.setCurrentTask(story.id, 'processing');
     this.log('STORY_STARTED', `Processing story: ${story.title}`, { storyId: story.id });
 
-    if (complexity <= 3) {
-      // Delegate to Junior
-      await this.delegateStory(story, 'junior');
-    } else if (complexity <= 5) {
-      // Delegate to Intermediate
-      await this.delegateStory(story, 'intermediate');
-    } else {
-      // Handle directly
-      await this.implementStory(story);
-    }
-  }
-
-  private async delegateStory(
-    story: StoryRow,
-    agentType: 'junior' | 'intermediate'
-  ): Promise<void> {
-    this.log('STORY_ASSIGNED', `Delegating to ${agentType}`, {
-      storyId: story.id,
-      agentType,
-    });
-
-    // Create subordinate agent
-    const subordinate = createAgent(this.db, {
-      type: agentType,
-      teamId: this.teamId,
-    });
-
-    // Spawn tmux session
-    const sessionName = generateSessionName(agentType, this.team?.name);
-    try {
-      // Load config and get CLI runtime settings for the subordinate agent type
-      const hiveRoot = findHiveRoot(this.workDir);
-      if (!hiveRoot) {
-        throw new NotFoundError('Hive root not found');
-      }
-      const paths = getHivePaths(hiveRoot);
-      const config = loadConfig(paths.hiveDir);
-      const agentConfig = config.models[agentType];
-      const cliTool = agentConfig.cli_tool;
-      const model = agentConfig.model;
-
-      // Build spawn command using CLI runtime builder (spawn fresh session, will be resumed later)
-      const runtimeBuilder = getCliRuntimeBuilder(cliTool);
-      const commandArray = runtimeBuilder.buildSpawnCommand(model);
-      const command = commandArray.join(' ');
-
-      await spawnTmuxSession({
-        sessionName,
-        workDir: this.workDir,
-        command,
-      });
-
-      updateAgent(this.db, subordinate.id, {
-        tmuxSession: sessionName,
-        status: 'working',
-        currentStoryId: story.id,
-      });
-
-      // Update story assignment
-      updateStory(this.db, story.id, {
-        assignedAgentId: subordinate.id,
-        status: 'in_progress',
-      });
-
-      this.log('AGENT_SPAWNED', `${agentType} spawned for story ${story.id}`, {
-        agentId: subordinate.id,
-        storyId: story.id,
-      });
-    } catch (err) {
-      // If delegation fails, handle it ourselves
-      this.log(
-        'STORY_PROGRESS_UPDATE',
-        `Failed to delegate, handling directly: ${err instanceof Error ? err.message : 'Unknown error'}`,
-        {
-          storyId: story.id,
-        }
-      );
-      await this.implementStory(story);
-    }
+    // Implement all stories directly - the Scheduler handles routing to appropriate agents
+    await this.implementStory(story);
   }
 
   private async implementStory(story: StoryRow): Promise<void> {
