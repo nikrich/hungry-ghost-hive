@@ -72,7 +72,7 @@ export function updateRequirement(
   input: UpdateRequirementInput
 ): RequirementRow | undefined {
   const updates: string[] = [];
-  const values: (string | number)[] = [];
+  const values: unknown[] = [];
 
   if (input.title !== undefined) {
     updates.push('title = ?');

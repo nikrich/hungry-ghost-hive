@@ -2,18 +2,16 @@
 
 ## [0.16.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.15.0...v0.16.0) (2026-02-07)
 
-
 ### Features
 
-* **tests:** add comprehensive tests for orchestrator and agent modules ([6dfc166](https://github.com/nikrich/hungry-ghost-hive/commit/6dfc1669b18bf0e867bcb7a064df6827b109be19))
-
+- **tests:** add comprehensive tests for orchestrator and agent modules ([6dfc166](https://github.com/nikrich/hungry-ghost-hive/commit/6dfc1669b18bf0e867bcb7a064df6827b109be19))
 
 ### Bug Fixes
 
-* correct areDependenciesSatisfied to only accept merged status ([7d2c307](https://github.com/nikrich/hungry-ghost-hive/commit/7d2c307c424b0fb7984efed9a0116efae0f9aafa))
-* correct TypeScript errors in scheduler.test.ts ([#186](https://github.com/nikrich/hungry-ghost-hive/issues/186)) ([229de73](https://github.com/nikrich/hungry-ghost-hive/commit/229de73791f8001acb62dfa13a999987f4a9dccd))
-* correct TypeScript types in base-agent.test.ts ([#185](https://github.com/nikrich/hungry-ghost-hive/issues/185)) ([26d5755](https://github.com/nikrich/hungry-ghost-hive/commit/26d5755e9d4ba88803f295289dc2969cf5f62c9b))
-* prevent manager from interrupting working agents with unassigned story notifications ([f6abf75](https://github.com/nikrich/hungry-ghost-hive/commit/f6abf75abcc1d6289d48102477b622445f2f28bf))
+- correct areDependenciesSatisfied to only accept merged status ([7d2c307](https://github.com/nikrich/hungry-ghost-hive/commit/7d2c307c424b0fb7984efed9a0116efae0f9aafa))
+- correct TypeScript errors in scheduler.test.ts ([#186](https://github.com/nikrich/hungry-ghost-hive/issues/186)) ([229de73](https://github.com/nikrich/hungry-ghost-hive/commit/229de73791f8001acb62dfa13a999987f4a9dccd))
+- correct TypeScript types in base-agent.test.ts ([#185](https://github.com/nikrich/hungry-ghost-hive/issues/185)) ([26d5755](https://github.com/nikrich/hungry-ghost-hive/commit/26d5755e9d4ba88803f295289dc2969cf5f62c9b))
+- prevent manager from interrupting working agents with unassigned story notifications ([f6abf75](https://github.com/nikrich/hungry-ghost-hive/commit/f6abf75abcc1d6289d48102477b622445f2f28bf))
 
 ## [0.15.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.14.2...v0.15.0) (2026-02-06)
 

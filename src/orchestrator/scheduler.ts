@@ -12,6 +12,7 @@ import {
 import { createEscalation } from '../db/queries/escalations.js';
 import { createLog } from '../db/queries/logs.js';
 import { isAgentReviewingPR } from '../db/queries/pull-requests.js';
+import { getRequirementById } from '../db/queries/requirements.js';
 import {
   getBatchStoryDependencies,
   getPlannedStories,
@@ -818,7 +819,19 @@ export class Scheduler {
     }
 
     // Get model info from config
-    const modelConfig = this.config.models[type as keyof typeof this.config.models];
+    let modelConfig = this.config.models[type as keyof typeof this.config.models];
+
+    // Override models to Opus 4.6 when godmode is active
+    if (this.isGodmodeActive()) {
+      modelConfig = {
+        provider: 'anthropic',
+        model: 'claude-opus-4-6',
+        max_tokens: 16000,
+        temperature: 0.7,
+        cli_tool: modelConfig.cli_tool || 'claude',
+      };
+    }
+
     const modelShorthand = this.getModelShorthand(modelConfig.model);
     const cliTool = modelConfig.cli_tool || 'claude';
 
@@ -906,6 +919,24 @@ export class Scheduler {
     });
 
     return agent;
+  }
+
+  /**
+   * Check if godmode is active (any planned story from a godmode requirement)
+   */
+  private isGodmodeActive(): boolean {
+    const plannedStories = getPlannedStories(this.db);
+
+    for (const story of plannedStories) {
+      if (story.requirement_id) {
+        const requirement = getRequirementById(this.db, story.requirement_id);
+        if (requirement && requirement.godmode) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   /**

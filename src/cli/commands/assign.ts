@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import ora from 'ora';
 import { loadConfig } from '../../config/loader.js';
 import { getDatabase } from '../../db/client.js';
+import { getRequirementById } from '../../db/queries/requirements.js';
 import { getPlannedStories } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
@@ -26,11 +27,25 @@ export const assignCommand = new Command('assign')
     try {
       const config = loadConfig(paths.hiveDir);
 
+      // Check if godmode is active
+      const plannedStories = getPlannedStories(db.db);
+      let godmodeActive = false;
+      for (const story of plannedStories) {
+        if (story.requirement_id) {
+          const requirement = getRequirementById(db.db, story.requirement_id);
+          if (requirement && requirement.godmode) {
+            godmodeActive = true;
+            break;
+          }
+        }
+      }
+
       if (options.dryRun) {
         spinner.info(chalk.yellow('Dry run - no changes will be made'));
 
-        // Get planned stories without making any assignments
-        const plannedStories = getPlannedStories(db.db);
+        if (godmodeActive) {
+          console.log(chalk.yellow('⚡ GODMODE is active - all agents will use Opus 4.6\n'));
+        }
 
         if (plannedStories.length === 0) {
           spinner.succeed(chalk.gray('No stories to assign'));
@@ -73,6 +88,10 @@ export const assignCommand = new Command('assign')
 
         console.log(chalk.green(`✓ Would assign ${plannedStories.length} stories\n`));
         return;
+      }
+
+      if (godmodeActive) {
+        console.log(chalk.yellow('⚡ GODMODE is active - all agents will use Opus 4.6\n'));
       }
 
       const scheduler = new Scheduler(db.db, {
