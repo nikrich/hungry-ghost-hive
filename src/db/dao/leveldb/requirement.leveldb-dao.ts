@@ -31,6 +31,7 @@ export class LevelDbRequirementDao implements RequirementDao {
       description: input.description,
       submitted_by: input.submittedBy || 'human',
       status: 'pending',
+      godmode: input.godmode ? 1 : 0,
       created_at: now,
     };
 
@@ -70,6 +71,7 @@ export class LevelDbRequirementDao implements RequirementDao {
     if (input.title !== undefined) updates.title = input.title;
     if (input.description !== undefined) updates.description = input.description;
     if (input.status !== undefined) updates.status = input.status;
+    if (input.godmode !== undefined) updates.godmode = input.godmode ? 1 : 0;
 
     if (Object.keys(updates).length === 0) {
       return existing;

@@ -18,10 +18,11 @@ export const reqCommand = new Command('req')
   .option('-f, --file <path>', 'Read requirement from file')
   .option('--title <title>', 'Requirement title (defaults to first line)')
   .option('--dry-run', 'Create requirement without spawning agents')
+  .option('--godmode', 'Enable godmode - use most powerful models for all agents')
   .action(
     async (
       requirement: string | undefined,
-      options: { file?: string; title?: string; dryRun?: boolean }
+      options: { file?: string; title?: string; dryRun?: boolean; godmode?: boolean }
     ) => {
       const root = findHiveRoot();
       if (!root) {
@@ -65,8 +66,11 @@ export const reqCommand = new Command('req')
 
         // Create requirement
         spinner.text = 'Creating requirement...';
-        const req = createRequirement(db.db, { title, description });
+        const req = createRequirement(db.db, { title, description, godmode: options.godmode });
         console.log(chalk.green(`\n✓ Requirement created: ${req.id}`));
+        if (options.godmode) {
+          console.log(chalk.yellow('⚡ GODMODE enabled - using Opus 4.6 for all agents'));
+        }
 
         if (options.dryRun) {
           console.log(chalk.yellow('Dry run - not spawning agents'));
@@ -105,7 +109,13 @@ export const reqCommand = new Command('req')
 
         // Spawn Tech Lead tmux session
         const sessionName = `hive-tech-lead`;
-        const techLeadPrompt = generateTechLeadPrompt(req.id, title, description, teams);
+        const techLeadPrompt = generateTechLeadPrompt(
+          req.id,
+          title,
+          description,
+          teams,
+          options.godmode
+        );
 
         try {
           // Build CLI command using the configured runtime for Tech Lead
@@ -172,14 +182,22 @@ function generateTechLeadPrompt(
   reqId: string,
   title: string,
   description: string,
-  teams: { id: string; name: string; repo_path: string; repo_url: string }[]
+  teams: { id: string; name: string; repo_path: string; repo_url: string }[],
+  godmode?: boolean
 ): string {
   const teamList = teams.map(t => `- ${t.name}: ${t.repo_path} (${t.repo_url})`).join('\n');
+  const godmodeNotice = godmode
+    ? `
+
+⚡ **GODMODE ENABLED** ⚡
+This requirement is running in GODMODE. All agents will use claude-opus-4-6 (the most powerful model) for maximum capability and quality. Use this power wisely for complex, critical work.
+`
+    : '';
 
   return `You are the Tech Lead of Hive, an AI development team orchestrator.
 
 ## New Requirement: ${reqId}
-
+${godmodeNotice}
 **Title:** ${title}
 
 **Description:**

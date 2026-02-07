@@ -44,6 +44,7 @@ export async function createTestDb(): Promise<Database> {
       description TEXT NOT NULL,
       submitted_by TEXT DEFAULT 'human',
       status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'planning', 'planned', 'in_progress', 'completed')),
+      godmode BOOLEAN DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);

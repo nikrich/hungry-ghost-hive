@@ -117,4 +117,36 @@ describe('SqliteRequirementDao', () => {
     await dao.deleteRequirement(req.id);
     expect(await dao.getRequirementById(req.id)).toBeUndefined();
   });
+
+  it('requirement.sqlite-dao case 12 - godmode enabled', async () => {
+    const req = await dao.createRequirement({
+      title: 'Godmode req',
+      description: 'Test godmode',
+      godmode: true,
+    });
+
+    expect(req.godmode).toBe(1);
+  });
+
+  it('requirement.sqlite-dao case 13 - godmode defaults to 0', async () => {
+    const req = await dao.createRequirement({
+      title: 'Normal req',
+      description: 'Test without godmode',
+    });
+
+    expect(req.godmode).toBe(0);
+  });
+
+  it('requirement.sqlite-dao case 14 - update godmode', async () => {
+    const req = await dao.createRequirement({
+      title: 'Test',
+      description: 'Desc',
+      godmode: false,
+    });
+
+    expect(req.godmode).toBe(0);
+
+    const updated = await dao.updateRequirement(req.id, { godmode: true });
+    expect(updated!.godmode).toBe(1);
+  });
 });

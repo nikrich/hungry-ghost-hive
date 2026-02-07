@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS requirements (
     description TEXT NOT NULL,
     submitted_by TEXT DEFAULT 'human',
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'planning', 'planned', 'in_progress', 'completed')),
+    godmode BOOLEAN DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -382,6 +383,21 @@ function runMigrations(db: SqlJsDatabase): void {
 
     db.run("INSERT INTO migrations (name) VALUES ('007-add-indexes.sql')");
   }
+
+  // Migration 008: Add godmode column to requirements table
+  const result008 = db.exec("SELECT name FROM migrations WHERE name = '008-add-godmode.sql'");
+  const migration008Applied = result008.length > 0 && result008[0].values.length > 0;
+
+  if (!migration008Applied) {
+    const columns = db.exec('PRAGMA table_info(requirements)');
+    const hasGodmodeColumn =
+      columns.length > 0 && columns[0].values.some((col: unknown[]) => col[1] === 'godmode');
+
+    if (!hasGodmodeColumn) {
+      db.run('ALTER TABLE requirements ADD COLUMN godmode BOOLEAN DEFAULT 0');
+    }
+    db.run("INSERT INTO migrations (name) VALUES ('008-add-godmode.sql')");
+  }
 }
 
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
@@ -468,6 +484,7 @@ export interface RequirementRow {
   description: string;
   submitted_by: string;
   status: 'pending' | 'planning' | 'planned' | 'in_progress' | 'completed';
+  godmode: number;
   created_at: string;
 }
 

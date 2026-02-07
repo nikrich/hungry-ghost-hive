@@ -43,6 +43,26 @@ describe('requirements queries', () => {
       expect(req.submitted_by).toBe('human');
     });
 
+    it('should create a requirement with godmode enabled', () => {
+      const req = createRequirement(db, {
+        title: 'Godmode Feature',
+        description: 'Add feature with godmode',
+        godmode: true,
+      });
+
+      expect(req.id).toMatch(/^REQ-/);
+      expect(req.godmode).toBe(1);
+    });
+
+    it('should default godmode to 0 when not specified', () => {
+      const req = createRequirement(db, {
+        title: 'Normal Feature',
+        description: 'Add feature without godmode',
+      });
+
+      expect(req.godmode).toBe(0);
+    });
+
     it('should generate unique IDs', () => {
       const req1 = createRequirement(db, {
         title: 'Feature 1',
@@ -206,6 +226,22 @@ describe('requirements queries', () => {
       });
 
       expect(updated?.status).toBe('completed');
+    });
+
+    it('should update requirement godmode flag', () => {
+      const req = createRequirement(db, {
+        title: 'Title',
+        description: 'Description',
+        godmode: false,
+      });
+
+      expect(req.godmode).toBe(0);
+
+      const updated = updateRequirement(db, req.id, {
+        godmode: true,
+      });
+
+      expect(updated?.godmode).toBe(1);
     });
 
     it('should update multiple fields at once', () => {
