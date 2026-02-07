@@ -26,10 +26,14 @@ import {
   createPullRequest,
   getMergeQueue,
   getPullRequestsByStatus,
-  type PullRequestRow,
   updatePullRequest,
+  type PullRequestRow,
 } from '../../db/queries/pull-requests.js';
-import { getStoriesByStatus, updateStory, updateStoryAssignment } from '../../db/queries/stories.js';
+import {
+  getStoriesByStatus,
+  updateStory,
+  updateStoryAssignment,
+} from '../../db/queries/stories.js';
 import { getAllTeams } from '../../db/queries/teams.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import {
