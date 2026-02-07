@@ -791,13 +791,23 @@ hive pr queue`
       "SELECT * FROM stories WHERE status = 'planned' AND assigned_agent_id IS NULL"
     );
     if (plannedStories.length > 0) {
-      // Notify seniors about unassigned work
+      // Notify idle seniors about unassigned work - don't interrupt working agents
       const seniorSessions = hiveSessions.filter(s => s.name.includes('-senior-'));
       for (const senior of seniorSessions) {
-        await sendToTmuxSession(
-          senior.name,
-          `# ${plannedStories.length} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
-        );
+        // Only notify if senior is idle, not actively working
+        const output = await captureTmuxPane(senior.name, 30);
+        const stateResult = detectClaudeCodeState(output);
+        // Only notify if idle and not thinking
+        if (
+          stateResult.isWaiting &&
+          !stateResult.needsHuman &&
+          stateResult.state !== ClaudeCodeState.THINKING
+        ) {
+          await sendToTmuxSession(
+            senior.name,
+            `# ${plannedStories.length} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
+          );
+        }
       }
     }
 
