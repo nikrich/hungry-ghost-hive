@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { execa } from 'execa';
 
 export interface BranchInfo {

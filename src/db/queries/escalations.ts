@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { nanoid } from 'nanoid';
 import type { Database } from 'sql.js';
 import { queryAll, queryOne, run, type EscalationRow } from '../client.js';

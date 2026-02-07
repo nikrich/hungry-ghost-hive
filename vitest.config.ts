@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({

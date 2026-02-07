@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { execa } from 'execa';
@@ -344,8 +346,13 @@ prCommand
           console.log(chalk.green(`PR ${prId} approved and merged on GitHub!`));
         } catch (mergeErr: unknown) {
           const errMsg = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
-          console.log(chalk.yellow(`GitHub merge failed: ${errMsg}`));
-          console.log(chalk.yellow('Marking as approved (manual merge needed).'));
+          if (/already merged/i.test(errMsg)) {
+            actuallyMerged = true;
+            console.log(chalk.green(`PR ${prId} was already merged on GitHub.`));
+          } else {
+            console.log(chalk.yellow(`GitHub merge failed: ${errMsg}`));
+            console.log(chalk.yellow('Marking as approved (manual merge needed).'));
+          }
         }
       } else if (shouldMerge && !pr.github_pr_number) {
         console.log(chalk.yellow('No GitHub PR number linked - marking as approved only.'));

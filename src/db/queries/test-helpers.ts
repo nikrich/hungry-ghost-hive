@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 
 /**

@@ -1,8 +1,10 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { queryAll, queryOne, run, type StoryRow } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
-import { createStory, updateStory } from '../../db/queries/stories.js';
+import { createStory, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const myStoriesCommand = new Command('my-stories')
@@ -39,7 +41,7 @@ export const myStoriesCommand = new Command('my-stories')
       // Find agent by tmux session
       const agent = queryOne<{ id: string; team_id: string }>(
         db.db,
-        'SELECT id, team_id FROM agents WHERE tmux_session = ?',
+        "SELECT id, team_id FROM agents WHERE tmux_session = ? AND status != 'terminated'",
         [session]
       );
 
@@ -48,7 +50,7 @@ export const myStoriesCommand = new Command('my-stories')
         console.log(chalk.gray('Available sessions:'));
         const agents = queryAll<{ tmux_session: string }>(
           db.db,
-          'SELECT tmux_session FROM agents WHERE tmux_session IS NOT NULL'
+          "SELECT tmux_session FROM agents WHERE tmux_session IS NOT NULL AND status != 'terminated'"
         );
         for (const a of agents) {
           console.log(chalk.gray(`  - ${a.tmux_session}`));
@@ -117,7 +119,7 @@ myStoriesCommand
       // Find agent by session
       const agent = queryOne<{ id: string }>(
         db.db,
-        'SELECT id FROM agents WHERE tmux_session = ?',
+        "SELECT id FROM agents WHERE tmux_session = ? AND status != 'terminated'",
         [options.session]
       );
 
@@ -135,6 +137,20 @@ myStoriesCommand
 
       if (story.assigned_agent_id && story.assigned_agent_id !== agent.id) {
         console.error(chalk.red(`Story already assigned to another agent.`));
+        process.exit(1);
+      }
+
+      // Check if all dependencies are resolved (merged)
+      const dependencies = getStoryDependencies(db.db, storyId);
+      const unresolvedDeps = dependencies.filter(dep => dep.status !== 'merged');
+      if (unresolvedDeps.length > 0) {
+        console.error(chalk.red(`Cannot claim story: unresolved dependencies`));
+        console.log(chalk.yellow('\nBlocking stories:'));
+        for (const dep of unresolvedDeps) {
+          console.log(
+            chalk.yellow(`  - [${dep.id}] ${dep.title} (status: ${dep.status.toUpperCase()})`)
+          );
+        }
         process.exit(1);
       }
 
@@ -219,7 +235,7 @@ myStoriesCommand
       await withHiveContext(async ({ db }) => {
         const agent = queryOne<{ id: string; team_id: string | null }>(
           db.db,
-          'SELECT id, team_id FROM agents WHERE tmux_session = ?',
+          "SELECT id, team_id FROM agents WHERE tmux_session = ? AND status != 'terminated'",
           [options.session]
         );
 

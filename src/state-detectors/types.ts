@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 /**
  * Multi-CLI Agent State Detection Types
  *

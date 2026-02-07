@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 /**
  * Postinstall script that checks if the npm global bin directory
  * is in the user's PATH on Windows. If not, prints a helpful message.

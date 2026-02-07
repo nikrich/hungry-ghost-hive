@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG, HiveConfigSchema } from './schema.js';
 
@@ -69,6 +71,7 @@ describe('HiveConfigSchema', () => {
       expect(result.data.scaling.senior_capacity).toBe(20);
       expect(result.data.cluster.enabled).toBe(false);
       expect(result.data.cluster.node_id).toBe('node-local');
+      expect(result.data.cluster.listen_host).toBe('127.0.0.1');
     }
   });
 
@@ -163,6 +166,7 @@ describe('HiveConfigSchema', () => {
         listen_host: '0.0.0.0',
         listen_port: 8787,
         public_url: 'http://node-a.example.com:8787',
+        auth_token: 'secret-token',
         peers: [
           { id: 'node-b', url: 'http://node-b.example.com:8787' },
           { id: 'node-c', url: 'http://node-c.example.com:8787' },
@@ -186,5 +190,31 @@ describe('HiveConfigSchema', () => {
 
     const result = HiveConfigSchema.safeParse(config);
     expect(result.success).toBe(false);
+  });
+
+  it('should reject non-loopback cluster listen_host without auth token when enabled', () => {
+    const config = {
+      cluster: {
+        enabled: true,
+        listen_host: '0.0.0.0',
+        public_url: 'http://node-a.example.com:8787',
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it('should allow enabled loopback cluster listen_host without auth token', () => {
+    const config = {
+      cluster: {
+        enabled: true,
+        listen_host: '127.0.0.1',
+        public_url: 'http://127.0.0.1:8787',
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
   });
 });
