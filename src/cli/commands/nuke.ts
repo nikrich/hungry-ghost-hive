@@ -1,9 +1,9 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import readline from 'readline';
-import { getDatabase, queryOne, run } from '../../db/client.js';
+import { queryOne, run } from '../../db/client.js';
 import { killAllHiveSessions } from '../../tmux/manager.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 async function confirm(message: string): Promise<boolean> {
   const rl = readline.createInterface({
@@ -26,16 +26,7 @@ export const nukeCommand = new Command('nuke')
       .description('Delete all stories')
       .option('--force', 'Skip confirmation')
       .action(async (options: { force?: boolean }) => {
-        const root = findHiveRoot();
-        if (!root) {
-          console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-          process.exit(1);
-        }
-
-        const paths = getHivePaths(root);
-        const db = await getDatabase(paths.hiveDir);
-
-        try {
+        await withHiveContext(async ({ db }) => {
           // Count stories
           const count = queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM stories');
           const storyCount = count?.count || 0;
@@ -68,9 +59,7 @@ export const nukeCommand = new Command('nuke')
           db.save();
 
           console.log(chalk.green(`\nDeleted ${storyCount} stories.`));
-        } finally {
-          db.close();
-        }
+        });
       })
   )
   .addCommand(
@@ -78,16 +67,7 @@ export const nukeCommand = new Command('nuke')
       .description('Kill all agent tmux sessions and delete from database')
       .option('--force', 'Skip confirmation')
       .action(async (options: { force?: boolean }) => {
-        const root = findHiveRoot();
-        if (!root) {
-          console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-          process.exit(1);
-        }
-
-        const paths = getHivePaths(root);
-        const db = await getDatabase(paths.hiveDir);
-
-        try {
+        await withHiveContext(async ({ db }) => {
           const count = queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM agents');
           const agentCount = count?.count || 0;
 
@@ -119,9 +99,7 @@ export const nukeCommand = new Command('nuke')
           db.save();
 
           console.log(chalk.green(`\nDeleted ${agentCount} agents.`));
-        } finally {
-          db.close();
-        }
+        });
       })
   )
   .addCommand(
@@ -129,16 +107,7 @@ export const nukeCommand = new Command('nuke')
       .description('Delete all requirements')
       .option('--force', 'Skip confirmation')
       .action(async (options: { force?: boolean }) => {
-        const root = findHiveRoot();
-        if (!root) {
-          console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-          process.exit(1);
-        }
-
-        const paths = getHivePaths(root);
-        const db = await getDatabase(paths.hiveDir);
-
-        try {
+        await withHiveContext(async ({ db }) => {
           const count = queryOne<{ count: number }>(
             db.db,
             'SELECT COUNT(*) as count FROM requirements'
@@ -179,9 +148,7 @@ export const nukeCommand = new Command('nuke')
           db.save();
 
           console.log(chalk.green(`\nDeleted ${reqCount} requirements and ${storyCount} stories.`));
-        } finally {
-          db.close();
-        }
+        });
       })
   )
   .addCommand(
@@ -189,16 +156,7 @@ export const nukeCommand = new Command('nuke')
       .description('Kill all agents and delete all data')
       .option('--force', 'Skip confirmation')
       .action(async (options: { force?: boolean }) => {
-        const root = findHiveRoot();
-        if (!root) {
-          console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-          process.exit(1);
-        }
-
-        const paths = getHivePaths(root);
-        const db = await getDatabase(paths.hiveDir);
-
-        try {
+        await withHiveContext(async ({ db }) => {
           console.log(chalk.red('\nThis will:'));
           console.log(chalk.yellow('  - Kill all hive tmux sessions'));
           console.log(chalk.yellow('  - Delete all stories and dependencies'));
@@ -235,8 +193,6 @@ export const nukeCommand = new Command('nuke')
           db.save();
 
           console.log(chalk.green('\nAll data deleted.'));
-        } finally {
-          db.close();
-        }
+        });
       })
   );

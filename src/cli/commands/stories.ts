@@ -1,6 +1,5 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { getDatabase } from '../../db/client.js';
 import {
   getAllStories,
   getStoriesByStatus,
@@ -9,7 +8,7 @@ import {
   type StoryStatus,
 } from '../../db/queries/stories.js';
 import { statusColor } from '../../utils/logger.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const storiesCommand = new Command('stories').description('Manage stories');
 
@@ -19,16 +18,7 @@ storiesCommand
   .option('--status <status>', 'Filter by status')
   .option('--json', 'Output as JSON')
   .action(async (options: { status?: string; json?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(async ({ db }) => {
       let stories;
       if (options.status) {
         stories = getStoriesByStatus(db.db, options.status as StoryStatus);
@@ -66,25 +56,14 @@ storiesCommand
         );
       }
       console.log();
-    } finally {
-      db.close();
-    }
+    });
   });
 
 storiesCommand
   .command('show <story-id>')
   .description('Show story details')
   .action(async (storyId: string) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(async ({ db }) => {
       const story = getStoryById(db.db, storyId);
       if (!story) {
         console.error(chalk.red(`Story not found: ${storyId}`));
@@ -132,7 +111,5 @@ storiesCommand
         }
       }
       console.log();
-    } finally {
-      db.close();
-    }
+    });
   });
