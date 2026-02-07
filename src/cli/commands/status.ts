@@ -1,6 +1,5 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { getDatabase } from '../../db/client.js';
 import { getActiveAgents, getAllAgents } from '../../db/queries/agents.js';
 import { getPendingEscalations } from '../../db/queries/escalations.js';
 import { getLogsByStory, getRecentLogs } from '../../db/queries/logs.js';
@@ -13,7 +12,7 @@ import {
 } from '../../db/queries/stories.js';
 import { getAllTeams, getTeamByName } from '../../db/queries/teams.js';
 import { statusColor } from '../../utils/logger.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const statusCommand = new Command('status')
   .description('Show Hive status')
@@ -21,16 +20,7 @@ export const statusCommand = new Command('status')
   .option('--story <id>', 'Show status for a specific story')
   .option('--json', 'Output as JSON')
   .action(async (options: { team?: string; story?: string; json?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       if (options.story) {
         showStoryStatus(db.db, options.story, options.json);
       } else if (options.team) {
@@ -38,9 +28,7 @@ export const statusCommand = new Command('status')
       } else {
         showOverallStatus(db.db, options.json);
       }
-    } finally {
-      db.close();
-    }
+    });
   });
 
 function showOverallStatus(db: import('sql.js').Database, json?: boolean): void {

@@ -4,14 +4,14 @@ import { execa } from 'execa';
 import { existsSync, promises as fs } from 'fs';
 import path from 'path';
 import readline from 'readline';
-import { getDatabase, type DatabaseClient } from '../../db/client.js';
+import { type DatabaseClient } from '../../db/client.js';
 import { getAllAgents } from '../../db/queries/agents.js';
 import {
   getStoriesWithOrphanedAssignments,
   updateStoryAssignment,
 } from '../../db/queries/stories.js';
 import { getHiveSessions, isTmuxSessionRunning } from '../../tmux/manager.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 async function confirm(message: string): Promise<boolean> {
   const rl = readline.createInterface({
@@ -268,16 +268,7 @@ export const cleanupCommand = new Command('cleanup')
       sessions?: boolean;
       assignments?: boolean;
     }) => {
-      const root = findHiveRoot();
-      if (!root) {
-        console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-        process.exit(1);
-      }
-
-      const paths = getHivePaths(root);
-      const db = await getDatabase(paths.hiveDir);
-
-      try {
+      await withHiveContext(async ({ root, paths, db }) => {
         // Determine what to cleanup
         const cleanupAll =
           !options.worktrees && !options.locks && !options.sessions && !options.assignments;
@@ -409,8 +400,6 @@ export const cleanupCommand = new Command('cleanup')
         }
 
         console.log(chalk.green(`✓ Successfully cleaned up ${totalCleaned} resource(s).\n`));
-      } finally {
-        db.close();
-      }
+      });
     }
   );

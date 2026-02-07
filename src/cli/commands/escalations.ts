@@ -1,6 +1,5 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { getDatabase } from '../../db/client.js';
 import {
   acknowledgeEscalation,
   getAllEscalations,
@@ -9,7 +8,7 @@ import {
   resolveEscalation,
 } from '../../db/queries/escalations.js';
 import { createLog } from '../../db/queries/logs.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const escalationsCommand = new Command('escalations').description('Manage escalations');
 
@@ -19,16 +18,7 @@ escalationsCommand
   .option('--all', 'Show all escalations (including resolved)')
   .option('--json', 'Output as JSON')
   .action(async (options: { all?: boolean; json?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const escalations = options.all ? getAllEscalations(db.db) : getPendingEscalations(db.db);
 
       if (options.json) {
@@ -64,25 +54,14 @@ escalationsCommand
         console.log(chalk.gray(`   Created:  ${esc.created_at}`));
         console.log();
       }
-    } finally {
-      db.close();
-    }
+    });
   });
 
 escalationsCommand
   .command('show <id>')
   .description('Show escalation details')
   .action(async (id: string) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const escalation = getEscalationById(db.db, id);
       if (!escalation) {
         console.error(chalk.red(`Escalation not found: ${id}`));
@@ -105,9 +84,7 @@ escalationsCommand
         console.log(chalk.bold('Resolved At:'), escalation.resolved_at);
       }
       console.log();
-    } finally {
-      db.close();
-    }
+    });
   });
 
 escalationsCommand
@@ -115,16 +92,7 @@ escalationsCommand
   .description('Resolve an escalation')
   .requiredOption('-m, --message <message>', 'Resolution message/guidance')
   .action(async (id: string, options: { message: string }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const escalation = getEscalationById(db.db, id);
       if (!escalation) {
         console.error(chalk.red(`Escalation not found: ${id}`));
@@ -151,25 +119,14 @@ escalationsCommand
 
       console.log(chalk.green(`Escalation ${id} resolved successfully.`));
       console.log(chalk.gray(`Resolution: ${resolved?.resolution}`));
-    } finally {
-      db.close();
-    }
+    });
   });
 
 escalationsCommand
   .command('acknowledge <id>')
   .description('Acknowledge an escalation (mark as being worked on)')
   .action(async (id: string) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const escalation = getEscalationById(db.db, id);
       if (!escalation) {
         console.error(chalk.red(`Escalation not found: ${id}`));
@@ -183,7 +140,5 @@ escalationsCommand
 
       acknowledgeEscalation(db.db, id);
       console.log(chalk.green(`Escalation ${id} acknowledged.`));
-    } finally {
-      db.close();
-    }
+    });
   });

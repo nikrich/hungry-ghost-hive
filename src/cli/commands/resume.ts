@@ -3,34 +3,26 @@ import { Command } from 'commander';
 import ora from 'ora';
 import { getCliRuntimeBuilder } from '../../cli-runtimes/index.js';
 import { loadConfig } from '../../config/index.js';
-import { getDatabase, withTransaction } from '../../db/client.js';
+import { withTransaction } from '../../db/client.js';
 import { getAgentById, getAllAgents, updateAgent, type AgentRow } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { getTeamById } from '../../db/queries/teams.js';
 import { isTmuxAvailable, isTmuxSessionRunning, spawnTmuxSession } from '../../tmux/manager.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const resumeCommand = new Command('resume')
   .description('Resume agents from saved state')
   .option('--agent <id>', 'Resume a specific agent')
   .option('--all', 'Resume all non-terminated agents')
   .action(async (options: { agent?: string; all?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
     if (!(await isTmuxAvailable())) {
       console.error(chalk.red('tmux is not available. Please install tmux to use agent features.'));
       process.exit(1);
     }
 
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-    const config = loadConfig(paths.hiveDir);
+    await withHiveContext(async ({ root, paths, db }) => {
+      const config = loadConfig(paths.hiveDir);
 
-    try {
       let agentsToResume: AgentRow[];
 
       if (options.agent) {
@@ -125,7 +117,5 @@ export const resumeCommand = new Command('resume')
       console.log(chalk.gray('\nView agent sessions:'));
       console.log(chalk.cyan('  tmux list-sessions'));
       console.log(chalk.cyan('  hive agents list --active'));
-    } finally {
-      db.close();
-    }
+    });
   });
