@@ -11,6 +11,7 @@ import { createRequirement, updateRequirement } from '../../db/queries/requireme
 import { getAllTeams } from '../../db/queries/teams.js';
 import { isTmuxAvailable, spawnTmuxSession } from '../../tmux/manager.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
+import { startDashboard } from '../dashboard/index.js';
 
 export const reqCommand = new Command('req')
   .description('Submit a requirement')
@@ -156,6 +157,14 @@ export const reqCommand = new Command('req')
             console.log(chalk.cyan(`  hive status`));
             console.log(chalk.cyan(`  tmux attach -t ${sessionName}`));
             console.log();
+
+            // Launch dashboard
+            try {
+              await startDashboard();
+            } catch (dashboardErr) {
+              console.warn(chalk.yellow('⚠️  Failed to start dashboard'));
+              console.error(dashboardErr);
+            }
           } catch (tmuxErr) {
             spinner.warn(chalk.yellow('Requirement created but failed to spawn Tech Lead'));
             console.error(tmuxErr);
