@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.2](https://github.com/nikrich/hungry-ghost-hive/compare/v0.18.1...v0.18.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* add Windows PATH detection for hive CLI ([c282657](https://github.com/nikrich/hungry-ghost-hive/commit/c282657b940a4a470c4ab293804acbd21682c57a))
+
 ## [0.18.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.18.0...v0.18.1) (2026-02-07)
 
 
