@@ -5,6 +5,7 @@ import {
   GeminiRuntimeBuilder,
   getCliRuntimeBuilder,
   resolveRuntimeModelForCli,
+  selectCompatibleModelForCli,
   validateCliBinary,
   validateCliRuntime,
   validateModelCliCompatibility,
@@ -373,6 +374,23 @@ describe('CLI Runtime Builders', () => {
     it('should preserve configured model IDs for codex and gemini', () => {
       expect(resolveRuntimeModelForCli('gpt-4o-mini', 'codex')).toBe('gpt-4o-mini');
       expect(resolveRuntimeModelForCli('gemini-2.5-pro', 'gemini')).toBe('gemini-2.5-pro');
+    });
+  });
+
+  describe('selectCompatibleModelForCli', () => {
+    it('should prefer persisted model when compatible', () => {
+      const selected = selectCompatibleModelForCli('codex', 'gpt-4o-mini', 'gpt-4o');
+      expect(selected).toBe('gpt-4o-mini');
+    });
+
+    it('should fall back to configured model when persisted model is incompatible', () => {
+      const selected = selectCompatibleModelForCli('codex', 'claude-opus-4-6', 'gpt-4o-mini');
+      expect(selected).toBe('gpt-4o-mini');
+    });
+
+    it('should validate and return configured model when persisted model is missing', () => {
+      const selected = selectCompatibleModelForCli('claude', null, 'claude-sonnet-4-5-20250929');
+      expect(selected).toBe('claude-sonnet-4-5-20250929');
     });
   });
 });

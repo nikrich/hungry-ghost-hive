@@ -212,7 +212,7 @@ const REPLICATED_TABLES: TableAdapter[] = [
       description: asString(row.description),
       submitted_by: asString(row.submitted_by),
       status: asString(row.status),
-      godmode: asNumber(row.godmode),
+      godmode: asNullableNumber(row.godmode),
       created_at: asString(row.created_at),
     }),
     upsert: (db, payload) => {
@@ -220,13 +220,16 @@ const REPLICATED_TABLES: TableAdapter[] = [
         db,
         `
         INSERT INTO requirements (id, title, description, submitted_by, status, godmode, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, COALESCE(?, 0), ?)
         ON CONFLICT(id) DO UPDATE SET
           title = excluded.title,
           description = excluded.description,
           submitted_by = excluded.submitted_by,
           status = excluded.status,
-          godmode = excluded.godmode,
+          godmode = CASE
+            WHEN ? IS NULL THEN requirements.godmode
+            ELSE ?
+          END,
           created_at = excluded.created_at
       `,
         [
@@ -235,7 +238,9 @@ const REPLICATED_TABLES: TableAdapter[] = [
           asString(payload.description),
           asString(payload.submitted_by),
           asString(payload.status),
-          asNumber(payload.godmode),
+          asNullableNumber(payload.godmode),
+          asNullableNumber(payload.godmode),
+          asNullableNumber(payload.godmode),
           asString(payload.created_at),
         ]
       );

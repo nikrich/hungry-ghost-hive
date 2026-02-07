@@ -91,6 +91,28 @@ export function validateModelCliCompatibility(model: string, cliTool: CliRuntime
 }
 
 /**
+ * Choose a model for a CLI runtime, preferring persisted model values when compatible.
+ * Falls back to the configured model when persisted state is missing or incompatible.
+ */
+export function selectCompatibleModelForCli(
+  cliTool: CliRuntimeType,
+  preferredModel: string | null | undefined,
+  fallbackModel: string
+): string {
+  if (preferredModel) {
+    try {
+      validateModelCliCompatibility(preferredModel, cliTool);
+      return preferredModel;
+    } catch {
+      // Ignore and fall back to configured model.
+    }
+  }
+
+  validateModelCliCompatibility(fallbackModel, cliTool);
+  return fallbackModel;
+}
+
+/**
  * Resolve model values for the target CLI runtime.
  * - Claude CLI accepts compact aliases (sonnet/opus/haiku) for common model families.
  * - Codex CLI should use full OpenAI model IDs; normalize legacy shorthand forms when possible.

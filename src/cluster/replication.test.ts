@@ -7,6 +7,7 @@ import {
   getVersionVector,
   mergeSimilarStories,
   scanLocalChanges,
+  type ClusterEvent,
 } from './replication.js';
 
 describe('cluster replication', () => {
@@ -97,6 +98,54 @@ describe('cluster replication', () => {
 
     sourceDb.close();
     targetDb.close();
+  });
+
+  it('preserves existing godmode when applying legacy requirement events without godmode field', async () => {
+    const db = await createTestDatabase();
+    const now = new Date().toISOString();
+
+    run(
+      db,
+      `
+      INSERT INTO requirements (id, title, description, submitted_by, status, godmode, created_at)
+      VALUES ('REQ-LEGACY', 'Original', 'Original desc', 'human', 'planning', 1, ?)
+    `,
+      [now]
+    );
+
+    const legacyEvent: ClusterEvent = {
+      event_id: 'node-old:42',
+      table_name: 'requirements',
+      row_id: 'REQ-LEGACY',
+      op: 'upsert',
+      payload: {
+        id: 'REQ-LEGACY',
+        title: 'Updated by legacy node',
+        description: 'Updated desc',
+        submitted_by: 'human',
+        status: 'in_progress',
+        created_at: now,
+      },
+      version: {
+        actor_id: 'node-old',
+        actor_counter: 42,
+        logical_ts: Date.now(),
+      },
+      created_at: now,
+    };
+
+    const applied = applyRemoteEvents(db, 'node-local', [legacyEvent]);
+    expect(applied).toBe(1);
+
+    const requirement = queryOne<{ title: string; status: string; godmode: number }>(
+      db,
+      `SELECT title, status, godmode FROM requirements WHERE id = 'REQ-LEGACY'`
+    );
+    expect(requirement?.title).toBe('Updated by legacy node');
+    expect(requirement?.status).toBe('in_progress');
+    expect(requirement?.godmode).toBe(1);
+
+    db.close();
   });
 
   it('merges similar duplicate stories into a canonical story', async () => {
