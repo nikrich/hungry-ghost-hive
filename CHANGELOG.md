@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.18.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.17.2...v0.18.0) (2026-02-07)
+
+
+### Features
+
+* auto-open dashboard when hive req spawns Tech Lead ([5a46d12](https://github.com/nikrich/hungry-ghost-hive/commit/5a46d12a4a77e04daaf6aa9a1e6041fd8de9f024))
+
+## [0.17.2](https://github.com/nikrich/hungry-ghost-hive/compare/v0.17.1...v0.17.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* include refactor and perf commits in release-please changelog ([a0448ec](https://github.com/nikrich/hungry-ghost-hive/commit/a0448ecc3dde60ef6b6d260aea71718a697bc6f8))
+
 ## [0.17.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.17.0...v0.17.1) (2026-02-07)
 
 
