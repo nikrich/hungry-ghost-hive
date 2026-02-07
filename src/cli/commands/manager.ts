@@ -61,7 +61,11 @@ import {
   type CLITool,
 } from '../../utils/cli-commands.js';
 import { getHivePaths } from '../../utils/paths.js';
-import { syncAllTeamOpenPRs, syncMergedPRsFromGitHub } from '../../utils/pr-sync.js';
+import {
+  closeStaleGitHubPRs,
+  syncAllTeamOpenPRs,
+  syncMergedPRsFromGitHub,
+} from '../../utils/pr-sync.js';
 import { withHiveContext, withHiveRoot } from '../../utils/with-hive-context.js';
 
 // --- Named constants (extracted from inline magic numbers) ---
@@ -442,6 +446,7 @@ async function managerCheck(
     await runAutoMerge(ctx);
     await syncMergedPRs(ctx);
     await syncOpenPRs(ctx);
+    await closeStalePRs(ctx);
 
     // Discover active tmux sessions
     const sessions = await getHiveSessions();
@@ -521,6 +526,14 @@ async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
   if (syncedPRs > 0) {
     console.log(chalk.yellow(`  Synced ${syncedPRs} GitHub PR(s) into merge queue`));
     await ctx.scheduler.checkMergeQueue();
+    ctx.db.save();
+  }
+}
+
+async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
+  const closedPRs = await closeStaleGitHubPRs(ctx.root, ctx.db.db);
+  if (closedPRs > 0) {
+    console.log(chalk.yellow(`  Closed ${closedPRs} stale GitHub PR(s)`));
     ctx.db.save();
   }
 }
