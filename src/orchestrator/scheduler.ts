@@ -20,6 +20,7 @@ import { type RequirementRow } from '../db/queries/requirements.js';
 import {
   getBatchStoryDependencies,
   getPlannedStories,
+  getStoriesDependingOn,
   getStoriesWithOrphanedAssignments,
   getStoryById,
   getStoryDependencies,
@@ -396,7 +397,23 @@ export class Scheduler {
 
       // Assign stories based on complexity and capacity policy
       const storiesToAssign = this.selectStoriesForCapacity(stories);
+
+      // Separate blocker stories from regular stories
+      const blockerStories: StoryRow[] = [];
+      const regularStories: StoryRow[] = [];
       for (const story of storiesToAssign) {
+        const dependents = getStoriesDependingOn(this.db, story.id);
+        if (dependents.length > 0) {
+          blockerStories.push(story);
+        } else {
+          regularStories.push(story);
+        }
+      }
+
+      // Process blocker stories first
+      const orderedStoriesToAssign = [...blockerStories, ...regularStories];
+
+      for (const story of orderedStoriesToAssign) {
         // Check if story is already assigned (prevent duplicate assignment)
         const currentStory = getStoryById(this.db, story.id);
         if (currentStory && currentStory.assigned_agent_id !== null) {
@@ -415,10 +432,17 @@ export class Scheduler {
           continue;
         }
 
+        // Check if this story is a blocker (has dependents)
+        const dependents = getStoriesDependingOn(this.db, story.id);
+        const isBlocker = dependents.length > 0;
+
         const complexity = story.complexity_score || 5;
         let targetAgent: AgentRow | undefined;
 
-        if (complexity <= this.config.scaling.junior_max_complexity) {
+        if (isBlocker) {
+          // Blocker stories always go to Senior regardless of complexity
+          targetAgent = senior;
+        } else if (complexity <= this.config.scaling.junior_max_complexity) {
           // Assign to Junior with least workload
           const juniors = agents.filter(a => a.type === 'junior' && a.status === 'idle');
           targetAgent = juniors.length > 0 ? this.selectAgentWithLeastWorkload(juniors) : undefined;
@@ -474,11 +498,15 @@ export class Scheduler {
               currentStoryId: story.id,
             });
 
+            const message = isBlocker
+              ? `Assigned to ${targetAgent.type} (escalated due to being a dependency blocker)`
+              : `Assigned to ${targetAgent.type}`;
+
             createLog(this.db, {
               agentId: targetAgent.id,
               storyId: story.id,
               eventType: 'STORY_ASSIGNED',
-              message: `Assigned to ${targetAgent.type}`,
+              message,
             });
           });
           assigned++;
