@@ -32,6 +32,7 @@ import {
   updateStory,
   updateStoryAssignment,
 } from '../../db/queries/stories.js';
+import { getAllTeams } from '../../db/queries/teams.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import {
   autoApprovePermission,
@@ -750,16 +751,26 @@ function batchMarkMessagesRead(ctx: ManagerCheckContext): void {
 }
 
 async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
-  const queuedPRs = getMergeQueue(ctx.db.db);
-  ctx.counters.queuedPRCount = queuedPRs.length;
+  const allQueuedPRs = getMergeQueue(ctx.db.db);
+  ctx.counters.queuedPRCount = allQueuedPRs.length;
 
-  if (queuedPRs.length > 0) {
-    const qaSessions = ctx.hiveSessions.filter(s => s.name.includes('-qa-'));
-    for (const qa of qaSessions) {
-      await sendToTmuxSession(
-        qa.name,
-        `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
-      );
+  if (allQueuedPRs.length > 0) {
+    const teams = getAllTeams(ctx.db.db);
+
+    for (const team of teams) {
+      const teamPRs = getMergeQueue(ctx.db.db, team.id);
+
+      if (teamPRs.length > 0) {
+        const qaSessionName = `hive-qa-${team.name}`;
+        const qaSession = ctx.hiveSessions.find(s => s.name === qaSessionName);
+
+        if (qaSession) {
+          await sendToTmuxSession(
+            qaSession.name,
+            `# ${teamPRs.length} PR(s) waiting in queue. Run: hive pr queue`
+          );
+        }
+      }
     }
   }
 }
