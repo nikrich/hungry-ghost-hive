@@ -9,6 +9,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "prepare": "husky install",
+    "postinstall": "node scripts/postinstall.js",
     "build": "tsc",
     "prepack": "npm run build",
     "dev": "tsx src/index.ts",
@@ -68,6 +69,7 @@
   },
   "files": [
     "dist",
+    "scripts",
     "src",
     "tsconfig.json"
   ],
