@@ -15,6 +15,10 @@ import { createTeam } from '../db/queries/teams.js';
 import * as worktreeModule from '../git/worktree.js';
 import { Scheduler } from './scheduler.js';
 
+vi.mock('../git/worktree.js', () => ({
+  removeWorktree: vi.fn().mockResolvedValue(true),
+}));
+
 let db: Database;
 let scheduler: Scheduler;
 
