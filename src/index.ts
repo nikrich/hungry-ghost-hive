@@ -8,6 +8,7 @@ import {
   agentsCommand,
   assignCommand,
   cleanupCommand,
+  clusterCommand,
   configCommand,
   escalationsCommand,
   initCommand,
@@ -36,6 +37,7 @@ program
 program.addCommand(versionCommand);
 program.addCommand(initCommand);
 program.addCommand(configCommand);
+program.addCommand(clusterCommand);
 
 // Repository and team management
 program.addCommand(addRepoCommand);

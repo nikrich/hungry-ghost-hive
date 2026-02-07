@@ -1,11 +1,19 @@
 import js from '@eslint/js';
-import eslintConfigPrettier from 'eslint-config-prettier';
+import { createRequire } from 'node:module';
 import tseslint from 'typescript-eslint';
+
+const require = createRequire(import.meta.url);
+let eslintConfigPrettier = null;
+try {
+  eslintConfigPrettier = require('eslint-config-prettier');
+} catch {
+  // Keep lint runnable when optional dev dependency is not installed in this environment.
+}
 
 export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  eslintConfigPrettier,
+  ...(eslintConfigPrettier ? [eslintConfigPrettier] : []),
   {
     ignores: ['dist/**', 'node_modules/**'],
   },

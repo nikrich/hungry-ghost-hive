@@ -67,6 +67,8 @@ describe('HiveConfigSchema', () => {
     if (result.success) {
       expect(result.data.version).toBe('1.0');
       expect(result.data.scaling.senior_capacity).toBe(20);
+      expect(result.data.cluster.enabled).toBe(false);
+      expect(result.data.cluster.node_id).toBe('node-local');
     }
   });
 
@@ -151,5 +153,38 @@ describe('HiveConfigSchema', () => {
     expect(config.models).toBeDefined();
     expect(config.models.junior.cli_tool).toBe('claude');
     expect(typeof config.models.junior.cli_tool).toBe('string');
+  });
+
+  it('should accept valid cluster config with peers', () => {
+    const config = {
+      cluster: {
+        enabled: true,
+        node_id: 'node-a',
+        listen_host: '0.0.0.0',
+        listen_port: 8787,
+        public_url: 'http://node-a.example.com:8787',
+        peers: [
+          { id: 'node-b', url: 'http://node-b.example.com:8787' },
+          { id: 'node-c', url: 'http://node-c.example.com:8787' },
+        ],
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+  });
+
+  it('should reject cluster peers with invalid URLs', () => {
+    const config = {
+      cluster: {
+        enabled: true,
+        node_id: 'node-a',
+        public_url: 'http://node-a.example.com:8787',
+        peers: [{ id: 'node-b', url: 'not-a-url' }],
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
   });
 });
