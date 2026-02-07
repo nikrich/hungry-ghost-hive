@@ -12,7 +12,7 @@ import {
 import { createEscalation } from '../db/queries/escalations.js';
 import { createLog } from '../db/queries/logs.js';
 import { isAgentReviewingPR } from '../db/queries/pull-requests.js';
-import { getRequirementById } from '../db/queries/requirements.js';
+import { type RequirementRow } from '../db/queries/requirements.js';
 import {
   getBatchStoryDependencies,
   getPlannedStories,
@@ -676,12 +676,16 @@ export class Scheduler {
    * - Scale down excess QA agents when queue shrinks
    */
   private async scaleQAAgents(teamId: string, teamName: string, repoPath: string): Promise<void> {
-    // Count pending QA work: stories in 'qa', 'pr_submitted', or 'qa_failed' status
+    // Count pending QA work: stories in QA-related statuses OR stories in review with queued PRs
     const qaStories = queryAll<StoryRow>(
       this.db,
       `
-      SELECT * FROM stories
-      WHERE team_id = ? AND status IN ('qa', 'pr_submitted', 'qa_failed')
+      SELECT DISTINCT s.* FROM stories s
+      LEFT JOIN pull_requests pr ON pr.story_id = s.id
+      WHERE s.team_id = ? AND (
+        s.status IN ('qa', 'pr_submitted', 'qa_failed')
+        OR (s.status = 'review' AND pr.status IN ('queued', 'reviewing'))
+      )
     `,
       [teamId]
     );
@@ -942,21 +946,16 @@ export class Scheduler {
   }
 
   /**
-   * Check if godmode is active (any planned story from a godmode requirement)
+   * Check if godmode is active (any active requirement with godmode enabled)
+   * Checks requirements directly rather than through stories, so godmode stays
+   * active even after stories move from planned to in_progress/review/qa.
    */
   private isGodmodeActive(): boolean {
-    const plannedStories = getPlannedStories(this.db);
-
-    for (const story of plannedStories) {
-      if (story.requirement_id) {
-        const requirement = getRequirementById(this.db, story.requirement_id);
-        if (requirement && requirement.godmode) {
-          return true;
-        }
-      }
-    }
-
-    return false;
+    const activeRequirements = queryAll<RequirementRow>(
+      this.db,
+      `SELECT * FROM requirements WHERE status IN ('planning', 'planned', 'in_progress') AND godmode = 1`
+    );
+    return activeRequirements.length > 0;
   }
 
   /**
