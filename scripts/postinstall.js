@@ -33,7 +33,10 @@ try {
     console.log('');
     console.log('  You can do this by running (PowerShell as Administrator):');
     console.log('');
-    console.log('\x1b[36m%s\x1b[0m', `    [Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";${npmBin}", "User")`);
+    console.log(
+      '\x1b[36m%s\x1b[0m',
+      `    [Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";${npmBin}", "User")`
+    );
     console.log('');
     console.log('  Then restart your terminal.');
     console.log('');
