@@ -45,6 +45,7 @@ import {
   sendMessageWithConfirmation,
   sendToTmuxSession,
   stopManager as stopManagerSession,
+  type TmuxSession,
 } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
 import {
@@ -57,6 +58,7 @@ import {
   getAvailableCommands,
   type CLITool,
 } from '../../utils/cli-commands.js';
+import { getHivePaths } from '../../utils/paths.js';
 import { getExistingPRIdentifiers, syncOpenGitHubPRs } from '../../utils/pr-sync.js';
 import { extractStoryIdFromBranch } from '../../utils/story-id.js';
 import { withHiveContext, withHiveRoot } from '../../utils/with-hive-context.js';
@@ -278,6 +280,28 @@ managerCommand
     });
   });
 
+// Shared context passed between helper functions during a manager check cycle
+interface ManagerCheckContext {
+  root: string;
+  config: HiveConfig;
+  paths: ReturnType<typeof getHivePaths>;
+  db: DatabaseClient;
+  scheduler: InstanceType<typeof Scheduler>;
+  hiveSessions: TmuxSession[];
+  // Counters accumulated across helpers
+  counters: {
+    nudged: number;
+    messagesForwarded: number;
+    escalationsCreated: number;
+    escalationsResolved: number;
+    queuedPRCount: number;
+  };
+  // Shared state for dedup
+  escalatedSessions: Set<string | null>;
+  agentsBySessionName: Map<string, ReturnType<typeof getAllAgents>[number]>;
+  messagesToMarkRead: string[];
+}
+
 async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
   const timestamp = new Date().toLocaleTimeString();
   console.log(chalk.gray(`[${timestamp}] Manager checking...`));
@@ -288,535 +312,602 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       config = loadConfig(paths.hiveDir);
     }
 
-    // Backfill github_pr_number for existing PRs on first run (idempotent)
-    const backfilled = backfillGithubPrNumbers(db.db);
-    if (backfilled > 0) {
-      console.log(chalk.yellow(`  Backfilled ${backfilled} PR(s) with github_pr_number from URL`));
-      db.save();
-    }
+    const ctx: ManagerCheckContext = {
+      root,
+      config,
+      paths,
+      db,
+      scheduler: new Scheduler(db.db, {
+        scaling: config.scaling,
+        models: config.models,
+        qa: config.qa,
+        rootDir: root,
+      }),
+      hiveSessions: [],
+      counters: {
+        nudged: 0,
+        messagesForwarded: 0,
+        escalationsCreated: 0,
+        escalationsResolved: 0,
+        queuedPRCount: 0,
+      },
+      escalatedSessions: new Set(),
+      agentsBySessionName: new Map(),
+      messagesToMarkRead: [],
+    };
 
-    // First, run health check to sync agent status with tmux
-    const scheduler = new Scheduler(db.db, {
-      scaling: config.scaling,
-      models: config.models,
-      qa: config.qa,
-      rootDir: root,
-    });
+    await backfillPRNumbers(ctx);
+    await runHealthCheck(ctx);
+    await checkMergeQueue(ctx);
+    await runAutoMerge(ctx);
+    await syncMergedPRs(ctx);
+    await syncOpenPRs(ctx);
 
-    const healthResult = await scheduler.healthCheck();
-    if (healthResult.terminated > 0) {
-      console.log(
-        chalk.yellow(`  Health check: ${healthResult.terminated} dead agent(s) cleaned up`)
-      );
-      if (healthResult.revived.length > 0) {
-        console.log(
-          chalk.yellow(`  Stories returned to queue: ${healthResult.revived.join(', ')}`)
-        );
-      }
-      db.save();
-    }
-
-    if (healthResult.orphanedRecovered.length > 0) {
-      console.log(
-        chalk.green(
-          `  Recovered ${healthResult.orphanedRecovered.length} orphaned story(ies): ${healthResult.orphanedRecovered.join(', ')}`
-        )
-      );
-      db.save();
-    }
-
-    // Check merge queue for QA spawning
-    await scheduler.checkMergeQueue();
-    db.save();
-
-    // Auto-merge approved PRs
-    const autoMerged = await autoMergeApprovedPRs(root, db);
-    if (autoMerged > 0) {
-      console.log(chalk.green(`  Auto-merged ${autoMerged} approved PR(s)`));
-      db.save();
-    }
-
-    // Sync merged PRs from GitHub to keep story statuses in sync
-    const mergedSynced = await syncMergedPRsFromGitHub(root, db);
-    if (mergedSynced > 0) {
-      console.log(chalk.green(`  Synced ${mergedSynced} merged story(ies) from GitHub`));
-    }
-
-    // Sync GitHub PRs that might not be in queue
-    const syncedPRs = await syncGitHubPRs(root, db, paths.hiveDir);
-    if (syncedPRs > 0) {
-      console.log(chalk.yellow(`  Synced ${syncedPRs} GitHub PR(s) into merge queue`));
-      // Recheck merge queue after syncing
-      await scheduler.checkMergeQueue();
-      db.save();
-    }
-
+    // Discover active tmux sessions
     const sessions = await getHiveSessions();
-    const hiveSessions = sessions.filter(s => s.name.startsWith('hive-'));
+    ctx.hiveSessions = sessions.filter(s => s.name.startsWith('hive-'));
 
-    if (hiveSessions.length === 0) {
+    if (ctx.hiveSessions.length === 0) {
       console.log(chalk.gray('  No agent sessions found'));
       return;
     }
 
-    let nudged = 0;
-    let messagesForwarded = 0;
-    let escalationsCreated = 0;
-    let escalationsResolved = 0;
+    prepareSessionData(ctx);
+    await scanAgentSessions(ctx);
+    batchMarkMessagesRead(ctx);
+    await notifyQAOfQueuedPRs(ctx);
+    await handleRejectedPRs(ctx);
+    await nudgeQAFailedStories(ctx);
+    await spinDownMergedAgents(ctx);
+    await spinDownIdleAgents(ctx);
+    await nudgeStuckStories(ctx);
+    await notifyUnassignedStories(ctx);
+    printSummary(ctx);
+  });
+}
 
-    // Get existing pending escalations to avoid duplicates
-    const existingEscalations = getPendingEscalations(db.db);
-    const escalatedSessions = new Set(
-      existingEscalations.filter(e => e.from_agent_id).map(e => e.from_agent_id)
+async function backfillPRNumbers(ctx: ManagerCheckContext): Promise<void> {
+  const backfilled = backfillGithubPrNumbers(ctx.db.db);
+  if (backfilled > 0) {
+    console.log(chalk.yellow(`  Backfilled ${backfilled} PR(s) with github_pr_number from URL`));
+    ctx.db.save();
+  }
+}
+
+async function runHealthCheck(ctx: ManagerCheckContext): Promise<void> {
+  const healthResult = await ctx.scheduler.healthCheck();
+  if (healthResult.terminated > 0) {
+    console.log(
+      chalk.yellow(`  Health check: ${healthResult.terminated} dead agent(s) cleaned up`)
     );
+    if (healthResult.revived.length > 0) {
+      console.log(chalk.yellow(`  Stories returned to queue: ${healthResult.revived.join(', ')}`));
+    }
+    ctx.db.save();
+  }
 
-    // Optimization: Batch fetch all agents and messages instead of per-session queries
-    const allAgents = getAllAgents(db.db);
-    const agentsBySessionName = new Map(allAgents.map(a => [`hive-${a.id}`, a]));
+  if (healthResult.orphanedRecovered.length > 0) {
+    console.log(
+      chalk.green(
+        `  Recovered ${healthResult.orphanedRecovered.length} orphaned story(ies): ${healthResult.orphanedRecovered.join(', ')}`
+      )
+    );
+    ctx.db.save();
+  }
+}
 
-    const allPendingMessages = getAllPendingMessages(db.db);
-    const messagesBySessionName = new Map<string, MessageRow[]>();
-    const messagesToMarkRead: string[] = [];
+async function checkMergeQueue(ctx: ManagerCheckContext): Promise<void> {
+  await ctx.scheduler.checkMergeQueue();
+  ctx.db.save();
+}
 
-    for (const msg of allPendingMessages) {
-      if (!messagesBySessionName.has(msg.to_session)) {
-        messagesBySessionName.set(msg.to_session, []);
-      }
-      messagesBySessionName.get(msg.to_session)!.push(msg);
+async function runAutoMerge(ctx: ManagerCheckContext): Promise<void> {
+  const autoMerged = await autoMergeApprovedPRs(ctx.root, ctx.db);
+  if (autoMerged > 0) {
+    console.log(chalk.green(`  Auto-merged ${autoMerged} approved PR(s)`));
+    ctx.db.save();
+  }
+}
+
+async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
+  const mergedSynced = await syncMergedPRsFromGitHub(ctx.root, ctx.db);
+  if (mergedSynced > 0) {
+    console.log(chalk.green(`  Synced ${mergedSynced} merged story(ies) from GitHub`));
+  }
+}
+
+async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
+  const syncedPRs = await syncGitHubPRs(ctx.root, ctx.db, ctx.paths.hiveDir);
+  if (syncedPRs > 0) {
+    console.log(chalk.yellow(`  Synced ${syncedPRs} GitHub PR(s) into merge queue`));
+    await ctx.scheduler.checkMergeQueue();
+    ctx.db.save();
+  }
+}
+
+function prepareSessionData(ctx: ManagerCheckContext): void {
+  // Pre-populate escalation dedup set
+  const existingEscalations = getPendingEscalations(ctx.db.db);
+  ctx.escalatedSessions = new Set(
+    existingEscalations.filter(e => e.from_agent_id).map(e => e.from_agent_id)
+  );
+
+  // Batch fetch all agents and index by session name
+  const allAgents = getAllAgents(ctx.db.db);
+  ctx.agentsBySessionName = new Map(allAgents.map(a => [`hive-${a.id}`, a]));
+}
+
+async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
+  // Batch fetch pending messages and group by recipient
+  const allPendingMessages = getAllPendingMessages(ctx.db.db);
+  const messagesBySessionName = new Map<string, MessageRow[]>();
+
+  for (const msg of allPendingMessages) {
+    if (!messagesBySessionName.has(msg.to_session)) {
+      messagesBySessionName.set(msg.to_session, []);
+    }
+    messagesBySessionName.get(msg.to_session)!.push(msg);
+  }
+
+  for (const session of ctx.hiveSessions) {
+    if (session.name === 'hive-manager') continue;
+
+    const agent = ctx.agentsBySessionName.get(session.name);
+    const agentCliTool = (agent?.cli_tool || 'claude') as CLITool;
+
+    // Forward unread messages
+    const unread = messagesBySessionName.get(session.name) || [];
+    if (unread.length > 0) {
+      await forwardMessages(session.name, unread, agentCliTool);
+      ctx.counters.messagesForwarded += unread.length;
+      ctx.messagesToMarkRead.push(...unread.map(msg => msg.id));
     }
 
-    for (const session of hiveSessions) {
-      // Skip manager itself
-      if (session.name === 'hive-manager') continue;
+    const output = await captureTmuxPane(session.name, TMUX_CAPTURE_LINES);
 
-      // Get agent information for CLI-aware messaging (from cached data)
-      const agent = agentsBySessionName.get(session.name);
-      const agentCliTool = (agent?.cli_tool || 'claude') as CLITool;
+    await enforceBypassMode(session.name, output, agentCliTool);
 
-      // Check if agent has unread messages (from cached data)
-      const unread = messagesBySessionName.get(session.name) || [];
-      if (unread.length > 0) {
-        await forwardMessages(session.name, unread, agentCliTool);
-        messagesForwarded += unread.length;
-        // Collect message IDs to mark as read in batch
-        messagesToMarkRead.push(...unread.map(msg => msg.id));
+    const stateResult = detectClaudeCodeState(output);
+    const now = Date.now();
+
+    updateAgentStateTracking(session.name, stateResult, now);
+
+    const handled = await handlePermissionPrompt(session.name, stateResult);
+    if (handled) continue;
+
+    await handlePlanApproval(session.name, stateResult, now);
+
+    await handleEscalationAndNudge(ctx, session.name, agent, stateResult, agentCliTool, now);
+  }
+}
+
+async function enforceBypassMode(
+  sessionName: string,
+  output: string,
+  agentCliTool: CLITool
+): Promise<void> {
+  const needsBypassEnforcement =
+    output.toLowerCase().includes('plan mode on') ||
+    output.toLowerCase().includes('safe mode on') ||
+    output.match(/permission.*required/i) ||
+    output.match(/approve.*\[y\/n\]/i);
+
+  if (needsBypassEnforcement) {
+    const enforced = await forceBypassMode(sessionName, agentCliTool, BYPASS_MODE_MAX_RETRIES);
+    if (enforced) {
+      console.log(chalk.yellow(`  Enforced bypass mode on ${sessionName}`));
+    } else {
+      console.log(chalk.red(`  Failed to enforce bypass mode on ${sessionName}`));
+    }
+  }
+}
+
+function updateAgentStateTracking(
+  sessionName: string,
+  stateResult: ReturnType<typeof detectClaudeCodeState>,
+  now: number
+): void {
+  const trackedState = agentStates.get(sessionName);
+
+  if (!trackedState) {
+    agentStates.set(sessionName, {
+      lastState: stateResult.state,
+      lastStateChangeTime: now,
+      lastNudgeTime: 0,
+    });
+  } else if (trackedState.lastState !== stateResult.state) {
+    trackedState.lastState = stateResult.state;
+    trackedState.lastStateChangeTime = now;
+  }
+}
+
+async function handlePermissionPrompt(
+  sessionName: string,
+  stateResult: ReturnType<typeof detectClaudeCodeState>
+): Promise<boolean> {
+  if (stateResult.state === ClaudeCodeState.PERMISSION_REQUIRED) {
+    const approved = await autoApprovePermission(sessionName);
+    if (approved) {
+      console.log(chalk.green(`  AUTO-APPROVED: ${sessionName} permission prompt`));
+      return true;
+    }
+  }
+  return false;
+}
+
+async function handlePlanApproval(
+  sessionName: string,
+  stateResult: ReturnType<typeof detectClaudeCodeState>,
+  now: number
+): Promise<void> {
+  if (stateResult.state === ClaudeCodeState.PLAN_APPROVAL) {
+    const restored = await forceBypassMode(sessionName);
+    if (restored) {
+      console.log(chalk.green(`  BYPASS MODE RESTORED: ${sessionName} cycled out of plan mode`));
+      const tracked = agentStates.get(sessionName);
+      if (tracked) {
+        tracked.lastState = ClaudeCodeState.IDLE_AT_PROMPT;
+        tracked.lastStateChangeTime = now;
       }
+    }
+  }
+}
 
-      // Check if agent appears stuck (capture last output)
-      const output = await captureTmuxPane(session.name, TMUX_CAPTURE_LINES);
+async function handleEscalationAndNudge(
+  ctx: ManagerCheckContext,
+  sessionName: string,
+  agent: ReturnType<typeof getAllAgents>[number] | undefined,
+  stateResult: ReturnType<typeof detectClaudeCodeState>,
+  agentCliTool: CLITool,
+  now: number
+): Promise<void> {
+  const waitingInfo = {
+    isWaiting: stateResult.isWaiting,
+    needsHuman: stateResult.needsHuman,
+    reason: stateResult.needsHuman ? getStateDescription(stateResult.state) : undefined,
+  };
 
-      // CRITICAL: Continuously enforce bypass mode on all agents
-      // Agents can drift into plan mode or hit permission prompts during work
-      // Detect and automatically cycle back to bypass mode
-      const needsBypassEnforcement =
-        output.toLowerCase().includes('plan mode on') ||
-        output.toLowerCase().includes('safe mode on') ||
-        output.match(/permission.*required/i) ||
-        output.match(/approve.*\[y\/n\]/i);
+  const hasRecentEscalation =
+    ctx.escalatedSessions.has(sessionName) ||
+    getRecentEscalationsForAgent(ctx.db.db, sessionName, RECENT_ESCALATION_LOOKBACK_MINUTES).length > 0;
 
-      if (needsBypassEnforcement) {
-        const enforced = await forceBypassMode(session.name, agentCliTool, BYPASS_MODE_MAX_RETRIES);
-        if (enforced) {
-          console.log(chalk.yellow(`  Enforced bypass mode on ${session.name}`));
-        } else {
-          console.log(chalk.red(`  Failed to enforce bypass mode on ${session.name}`));
-        }
-      }
+  if (waitingInfo.needsHuman && !hasRecentEscalation) {
+    // Create escalation for human attention
+    const storyId = agent?.current_story_id || null;
 
-      const stateResult = detectClaudeCodeState(output);
+    createEscalation(ctx.db.db, {
+      storyId,
+      fromAgentId: sessionName,
+      toAgentId: null,
+      reason: `Agent waiting for input: ${waitingInfo.reason || 'Unknown question'}`,
+    });
+    ctx.db.save();
+    ctx.counters.escalationsCreated++;
+    ctx.escalatedSessions.add(sessionName);
 
-      // Track state changes for this agent
-      const now = Date.now();
-      const trackedState = agentStates.get(session.name);
+    const reminder = buildAutoRecoveryReminder(sessionName, agentCliTool);
+    await sendToTmuxSession(sessionName, reminder);
 
-      if (!trackedState) {
-        // First time seeing this agent - initialize tracking
-        agentStates.set(session.name, {
-          lastState: stateResult.state,
-          lastStateChangeTime: now,
-          lastNudgeTime: 0,
-        });
-      } else if (trackedState.lastState !== stateResult.state) {
-        // State changed - update tracking
-        trackedState.lastState = stateResult.state;
-        trackedState.lastStateChangeTime = now;
-      }
+    console.log(chalk.red(`  ESCALATION: ${sessionName} needs human input`));
+  } else if (!waitingInfo.isWaiting && !waitingInfo.needsHuman) {
+    // Agent recovered - auto-resolve active escalations
+    const activeEscalations = getActiveEscalationsForAgent(ctx.db.db, sessionName);
+    for (const escalation of activeEscalations) {
+      updateEscalation(ctx.db.db, escalation.id, {
+        status: 'resolved',
+        resolution: `Agent recovered: no longer in waiting state`,
+      });
+      ctx.counters.escalationsResolved++;
+    }
+    if (activeEscalations.length > 0) {
+      ctx.db.save();
+      console.log(
+        chalk.green(
+          `  AUTO-RESOLVED: ${sessionName} recovered, resolved ${activeEscalations.length} escalation(s)`
+        )
+      );
+    }
+  } else if (waitingInfo.isWaiting && stateResult.state !== ClaudeCodeState.THINKING) {
+    // Agent idle/waiting - check if we should nudge
+    const currentTrackedState = agentStates.get(sessionName);
+    if (currentTrackedState) {
+      const timeSinceStateChange = now - currentTrackedState.lastStateChangeTime;
+      const timeSinceLastNudge = now - currentTrackedState.lastNudgeTime;
 
-      // Auto-handle permission prompts before escalation
-      if (stateResult.state === ClaudeCodeState.PERMISSION_REQUIRED) {
-        const approved = await autoApprovePermission(session.name);
-        if (approved) {
-          console.log(chalk.green(`  AUTO-APPROVED: ${session.name} permission prompt`));
-          // Don't escalate if we successfully auto-approved
-          continue;
-        }
-        // If auto-approval failed, fall through to escalation
-      }
+      if (
+        timeSinceStateChange > ctx.config.manager.stuck_threshold_ms &&
+        timeSinceLastNudge > ctx.config.manager.nudge_cooldown_ms
+      ) {
+        const recheckOutput = await captureTmuxPane(sessionName, TMUX_CAPTURE_LINES);
+        const recheckState = detectClaudeCodeState(recheckOutput);
 
-      // Re-enforce bypass mode if agent drifted away from it
-      if (stateResult.state === ClaudeCodeState.PLAN_APPROVAL) {
-        const restored = await forceBypassMode(session.name);
-        if (restored) {
-          console.log(
-            chalk.green(`  BYPASS MODE RESTORED: ${session.name} cycled out of plan mode`)
+        if (
+          recheckState.isWaiting &&
+          !recheckState.needsHuman &&
+          recheckState.state !== ClaudeCodeState.THINKING
+        ) {
+          const agentType = getAgentType(sessionName);
+          await nudgeAgent(
+            ctx.root,
+            sessionName,
+            undefined,
+            agentType,
+            waitingInfo.reason,
+            agentCliTool
           );
-          // Update tracked state since bypass was restored
-          const tracked = agentStates.get(session.name);
-          if (tracked) {
-            tracked.lastState = ClaudeCodeState.IDLE_AT_PROMPT;
-            tracked.lastStateChangeTime = now;
-          }
+          currentTrackedState.lastNudgeTime = now;
+          ctx.counters.nudged++;
         }
       }
+    }
+  }
+}
 
-      // Convert to legacy format for escalation logic
-      const waitingInfo = {
-        isWaiting: stateResult.isWaiting,
-        needsHuman: stateResult.needsHuman,
-        reason: stateResult.needsHuman ? getStateDescription(stateResult.state) : undefined,
-      };
+function batchMarkMessagesRead(ctx: ManagerCheckContext): void {
+  if (ctx.messagesToMarkRead.length > 0) {
+    markMessagesRead(ctx.db.db, ctx.messagesToMarkRead);
+    ctx.db.save();
+  }
+}
 
-      // Check for recent escalations from this agent to improve dedup (avoid duplicates even after restart)
-      const hasRecentEscalation =
-        escalatedSessions.has(session.name) ||
-        getRecentEscalationsForAgent(db.db, session.name, RECENT_ESCALATION_LOOKBACK_MINUTES)
-          .length > 0;
+async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
+  const queuedPRs = getMergeQueue(ctx.db.db);
+  ctx.counters.queuedPRCount = queuedPRs.length;
 
-      if (waitingInfo.needsHuman && !hasRecentEscalation) {
-        // Create escalation for human attention
-        const storyId = agent?.current_story_id || null;
+  if (queuedPRs.length > 0) {
+    const qaSessions = ctx.hiveSessions.filter(s => s.name.includes('-qa-'));
+    for (const qa of qaSessions) {
+      await sendToTmuxSession(
+        qa.name,
+        `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
+      );
+    }
+  }
+}
 
-        createEscalation(db.db, {
-          storyId,
-          fromAgentId: session.name,
-          toAgentId: null, // Escalate to human
-          reason: `Agent waiting for input: ${waitingInfo.reason || 'Unknown question'}`,
+async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
+  const rejectedPRs = getPullRequestsByStatus(ctx.db.db, 'rejected');
+  let rejectionNotified = 0;
+
+  for (const pr of rejectedPRs) {
+    if (pr.story_id) {
+      const storyId = pr.story_id;
+      await withTransaction(ctx.db.db, () => {
+        updateStory(ctx.db.db, storyId, { status: 'qa_failed' });
+        createLog(ctx.db.db, {
+          agentId: 'manager',
+          eventType: 'STORY_QA_FAILED',
+          message: `Story ${storyId} QA failed: ${pr.review_notes || 'See review comments'}`,
+          storyId: storyId,
         });
-        db.save();
-        escalationsCreated++;
-        escalatedSessions.add(session.name);
-
-        // Also remind the agent to continue autonomously if they can
-        const reminder = buildAutoRecoveryReminder(session.name, agentCliTool);
-        await sendToTmuxSession(session.name, reminder);
-
-        console.log(chalk.red(`  ESCALATION: ${session.name} needs human input`));
-      } else if (!waitingInfo.isWaiting && !waitingInfo.needsHuman) {
-        // Agent has recovered from the state that caused escalation - auto-resolve any active escalations
-        const activeEscalations = getActiveEscalationsForAgent(db.db, session.name);
-        for (const escalation of activeEscalations) {
-          updateEscalation(db.db, escalation.id, {
-            status: 'resolved',
-            resolution: `Agent recovered: no longer in waiting state`,
-          });
-          escalationsResolved++;
-        }
-        if (activeEscalations.length > 0) {
-          db.save();
-          console.log(
-            chalk.green(
-              `  AUTO-RESOLVED: ${session.name} recovered, resolved ${activeEscalations.length} escalation(s)`
-            )
-          );
-        }
-      } else if (waitingInfo.isWaiting && stateResult.state !== ClaudeCodeState.THINKING) {
-        // Agent is idle/waiting but doesn't need human
-        // Check if we should nudge based on state duration and cooldown
-        const currentTrackedState = agentStates.get(session.name);
-        if (currentTrackedState) {
-          const timeSinceStateChange = now - currentTrackedState.lastStateChangeTime;
-          const timeSinceLastNudge = now - currentTrackedState.lastNudgeTime;
-
-          // Only nudge if:
-          // 1. Agent stuck in same state for configured threshold
-          // 2. Haven't nudged within cooldown period
-          // 3. Not in THINKING state (extended thinking is normal)
-          if (
-            timeSinceStateChange > config.manager.stuck_threshold_ms &&
-            timeSinceLastNudge > config.manager.nudge_cooldown_ms
-          ) {
-            // Re-check state immediately before nudging to avoid interrupting active work
-            const recheckOutput = await captureTmuxPane(session.name, TMUX_CAPTURE_LINES);
-            const recheckState = detectClaudeCodeState(recheckOutput);
-
-            // Only proceed if still in a waiting state and not THINKING
-            if (
-              recheckState.isWaiting &&
-              !recheckState.needsHuman &&
-              recheckState.state !== ClaudeCodeState.THINKING
-            ) {
-              const agentType = getAgentType(session.name);
-              await nudgeAgent(
-                root,
-                session.name,
-                undefined,
-                agentType,
-                waitingInfo.reason,
-                agentCliTool
-              );
-              currentTrackedState.lastNudgeTime = now;
-              nudged++;
-            }
-          }
-        }
-      }
-      // If not waiting (actively working), do nothing - let them work
+      });
     }
 
-    // Batch mark all messages as read after processing
-    if (messagesToMarkRead.length > 0) {
-      markMessagesRead(db.db, messagesToMarkRead);
-      db.save();
-    }
-
-    // Check for PRs needing QA attention
-    const queuedPRs = getMergeQueue(db.db);
-    if (queuedPRs.length > 0) {
-      const qaSessions = hiveSessions.filter(s => s.name.includes('-qa-'));
-      for (const qa of qaSessions) {
+    if (pr.submitted_by) {
+      const devSession = ctx.hiveSessions.find(s => s.name === pr.submitted_by);
+      if (devSession) {
         await sendToTmuxSession(
-          qa.name,
-          `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
-        );
-      }
-    }
-
-    // Check for rejected PRs that need developer attention
-    // Only notify once by updating status to 'closed' after notification (prevents spam)
-    const rejectedPRs = getPullRequestsByStatus(db.db, 'rejected');
-    let rejectionNotified = 0;
-    for (const pr of rejectedPRs) {
-      // Update the story status to qa_failed so developer knows they need to act
-      if (pr.story_id) {
-        const storyId = pr.story_id;
-        await withTransaction(db.db, () => {
-          updateStory(db.db, storyId, { status: 'qa_failed' });
-          createLog(db.db, {
-            agentId: 'manager',
-            eventType: 'STORY_QA_FAILED',
-            message: `Story ${storyId} QA failed: ${pr.review_notes || 'See review comments'}`,
-            storyId: storyId,
-          });
-        });
-      }
-
-      if (pr.submitted_by) {
-        const devSession = hiveSessions.find(s => s.name === pr.submitted_by);
-        if (devSession) {
-          await sendToTmuxSession(
-            devSession.name,
-            `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
+          devSession.name,
+          `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
 # Story: ${pr.story_id || 'Unknown'}
 # Reason: ${pr.review_notes || 'See review comments'}
 #
 # You MUST fix this issue before doing anything else.
 # Fix the issues and resubmit: hive pr submit -b ${pr.branch_name} -s ${pr.story_id || 'STORY-ID'} --from ${devSession.name}`
-          );
-          await sendEnterToTmuxSession(devSession.name);
-          rejectionNotified++;
-        }
+        );
+        await sendEnterToTmuxSession(devSession.name);
+        rejectionNotified++;
       }
-      // Mark as closed to prevent re-notification spam
-      // Developer will create a new PR when they resubmit
-      await withTransaction(db.db, () => {
-        updatePullRequest(db.db, pr.id, { status: 'closed' });
-      });
-    }
-    if (rejectedPRs.length > 0) {
-      db.save();
-      console.log(chalk.yellow(`  Notified ${rejectionNotified} developer(s) of PR rejection(s)`));
     }
 
-    // Nudge developers who have qa_failed stories - they need to fix and resubmit
-    // Filter out merged/completed stories to avoid nudging about finished work
-    const qaFailedStories = getStoriesByStatus(db.db, 'qa_failed').filter(
-      story => !['merged', 'completed'].includes(story.status)
+    // Mark as closed to prevent re-notification spam
+    // Developer will create a new PR when they resubmit
+    await withTransaction(ctx.db.db, () => {
+      updatePullRequest(ctx.db.db, pr.id, { status: 'closed' });
+    });
+  }
+
+  if (rejectedPRs.length > 0) {
+    ctx.db.save();
+    console.log(chalk.yellow(`  Notified ${rejectionNotified} developer(s) of PR rejection(s)`));
+  }
+}
+
+async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
+  const qaFailedStories = getStoriesByStatus(ctx.db.db, 'qa_failed').filter(
+    story => !['merged', 'completed'].includes(story.status)
+  );
+
+  for (const story of qaFailedStories) {
+    if (!story.assigned_agent_id) continue;
+
+    const agent = getAgentById(ctx.db.db, story.assigned_agent_id);
+    if (!agent || agent.status !== 'working') continue;
+
+    const agentSession = ctx.hiveSessions.find(
+      s => s.name === agent.tmux_session || s.name.includes(agent.id)
     );
-    for (const story of qaFailedStories) {
-      if (story.assigned_agent_id) {
-        const agent = getAgentById(db.db, story.assigned_agent_id);
-        if (agent && agent.status === 'working') {
-          const agentSession = hiveSessions.find(
-            s => s.name === agent.tmux_session || s.name.includes(agent.id)
-          );
-          if (agentSession) {
-            // Check if agent is idle before nudging
-            const output = await captureTmuxPane(agentSession.name, TMUX_CAPTURE_LINES_SHORT);
-            const stateResult = detectClaudeCodeState(output);
-            // Only nudge if idle and not thinking (thinking is productive work)
-            if (
-              stateResult.isWaiting &&
-              !stateResult.needsHuman &&
-              stateResult.state !== ClaudeCodeState.THINKING
-            ) {
-              await sendToTmuxSession(
-                agentSession.name,
-                `# REMINDER: Story ${story.id} failed QA review!
+    if (!agentSession) continue;
+
+    const output = await captureTmuxPane(agentSession.name, TMUX_CAPTURE_LINES_SHORT);
+    const stateResult = detectClaudeCodeState(output);
+
+    if (
+      stateResult.isWaiting &&
+      !stateResult.needsHuman &&
+      stateResult.state !== ClaudeCodeState.THINKING
+    ) {
+      await sendToTmuxSession(
+        agentSession.name,
+        `# REMINDER: Story ${story.id} failed QA review!
 # You must fix the issues and resubmit the PR.
 # Check the QA feedback and address all concerns.
 hive pr queue`
-              );
-              await sendEnterToTmuxSession(agentSession.name);
-            }
-          }
-        }
-      }
-    }
-
-    // Spin down agents whose stories have been merged
-    // Find merged stories that still have assigned agents
-    const mergedStoriesWithAgents = queryAll<StoryRow>(
-      db.db,
-      `SELECT * FROM stories WHERE status = 'merged' AND assigned_agent_id IS NOT NULL`
-    );
-    let agentsSpunDown = 0;
-    for (const story of mergedStoriesWithAgents) {
-      if (story.assigned_agent_id) {
-        const agent = getAgentById(db.db, story.assigned_agent_id);
-        if (agent && agent.status !== 'terminated') {
-          // Find and kill the agent's tmux session
-          const agentSession = hiveSessions.find(
-            s => s.name === agent.tmux_session || s.name.includes(agent.id)
-          );
-
-          if (agentSession) {
-            // Thank the agent and terminate
-            await sendToTmuxSession(
-              agentSession.name,
-              `# Congratulations! Your story ${story.id} has been merged.
-# Your work is complete. Spinning down...`
-            );
-            await new Promise(resolve => setTimeout(resolve, AGENT_SPINDOWN_DELAY_MS));
-            await killTmuxSession(agentSession.name);
-          }
-
-          // Mark agent as terminated, log termination, and clear story assignment (atomic transaction)
-          await withTransaction(db.db, () => {
-            updateAgent(db.db, agent.id, { status: 'terminated', currentStoryId: null });
-
-            createLog(db.db, {
-              agentId: agent.id,
-              storyId: story.id,
-              eventType: 'AGENT_TERMINATED',
-              message: `Agent spun down after story ${story.id} was merged`,
-            });
-
-            updateStoryAssignment(db.db, story.id, null);
-          });
-
-          agentsSpunDown++;
-        }
-      }
-    }
-    if (agentsSpunDown > 0) {
-      db.save();
-      console.log(chalk.green(`  Spun down ${agentsSpunDown} agent(s) after successful merge`));
-    }
-
-    // Spin down all non-tech-lead agents when no work remains in the pipeline
-    const activeStories = queryAll<StoryRow>(
-      db.db,
-      `SELECT * FROM stories WHERE status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')`
-    );
-    if (activeStories.length === 0) {
-      // No active work - spin down all agents except tech lead
-      const workingAgents = queryAll<{ id: string; tmux_session: string | null; type: string }>(
-        db.db,
-        `SELECT id, tmux_session, type FROM agents WHERE status = 'working' AND type != 'tech_lead'`
       );
-      let idleSpunDown = 0;
-      for (const agent of workingAgents) {
-        const agentSession = hiveSessions.find(s => s.name === agent.tmux_session);
-        if (agentSession) {
-          await sendToTmuxSession(
-            agentSession.name,
-            `# All work complete. No stories in pipeline. Spinning down...`
-          );
-          await new Promise(resolve => setTimeout(resolve, IDLE_SPINDOWN_DELAY_MS));
-          await killTmuxSession(agentSession.name);
-        }
-        // Update agent and log spindown (atomic transaction)
-        await withTransaction(db.db, () => {
-          updateAgent(db.db, agent.id, { status: 'terminated', currentStoryId: null });
-          createLog(db.db, {
-            agentId: agent.id,
-            eventType: 'AGENT_TERMINATED',
-            message: 'Agent spun down - no work remaining in pipeline',
-          });
-        });
-        idleSpunDown++;
-      }
-      if (idleSpunDown > 0) {
-        db.save();
-        console.log(chalk.green(`  Spun down ${idleSpunDown} idle agent(s) - pipeline empty`));
-      }
+      await sendEnterToTmuxSession(agentSession.name);
+    }
+  }
+}
+
+async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<void> {
+  const mergedStoriesWithAgents = queryAll<StoryRow>(
+    ctx.db.db,
+    `SELECT * FROM stories WHERE status = 'merged' AND assigned_agent_id IS NOT NULL`
+  );
+
+  let agentsSpunDown = 0;
+  for (const story of mergedStoriesWithAgents) {
+    if (!story.assigned_agent_id) continue;
+
+    const agent = getAgentById(ctx.db.db, story.assigned_agent_id);
+    if (!agent || agent.status === 'terminated') continue;
+
+    const agentSession = ctx.hiveSessions.find(
+      s => s.name === agent.tmux_session || s.name.includes(agent.id)
+    );
+
+    if (agentSession) {
+      await sendToTmuxSession(
+        agentSession.name,
+        `# Congratulations! Your story ${story.id} has been merged.
+# Your work is complete. Spinning down...`
+      );
+      await new Promise(resolve => setTimeout(resolve, AGENT_SPINDOWN_DELAY_MS));
+      await killTmuxSession(agentSession.name);
     }
 
-    // Check for stories stuck in "in_progress" for too long (> 30 min without activity)
-    // Only nudge stories that haven't been merged or completed
-    const stuckStories = queryAll<StoryRow>(
-      db.db,
-      `SELECT * FROM stories
-       WHERE status = 'in_progress'
-       AND updated_at < datetime('now', '-${STUCK_STORY_THRESHOLD_MINUTES} minutes')`
-    ).filter(story => !['merged', 'completed'].includes(story.status));
-    for (const story of stuckStories) {
-      if (story.assigned_agent_id) {
-        const agentSession = hiveSessions.find(s =>
-          s.name.includes(story.assigned_agent_id?.replace(/^hive-/, '') || '')
-        );
-        if (agentSession) {
-          await sendToTmuxSession(
-            agentSession.name,
-            `# REMINDER: Story ${story.id} has been in progress for a while.
+    await withTransaction(ctx.db.db, () => {
+      updateAgent(ctx.db.db, agent.id, { status: 'terminated', currentStoryId: null });
+
+      createLog(ctx.db.db, {
+        agentId: agent.id,
+        storyId: story.id,
+        eventType: 'AGENT_TERMINATED',
+        message: `Agent spun down after story ${story.id} was merged`,
+      });
+
+      updateStoryAssignment(ctx.db.db, story.id, null);
+    });
+
+    agentsSpunDown++;
+  }
+
+  if (agentsSpunDown > 0) {
+    ctx.db.save();
+    console.log(chalk.green(`  Spun down ${agentsSpunDown} agent(s) after successful merge`));
+  }
+}
+
+async function spinDownIdleAgents(ctx: ManagerCheckContext): Promise<void> {
+  const activeStories = queryAll<StoryRow>(
+    ctx.db.db,
+    `SELECT * FROM stories WHERE status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')`
+  );
+
+  if (activeStories.length > 0) return;
+
+  const workingAgents = queryAll<{ id: string; tmux_session: string | null; type: string }>(
+    ctx.db.db,
+    `SELECT id, tmux_session, type FROM agents WHERE status = 'working' AND type != 'tech_lead'`
+  );
+
+  let idleSpunDown = 0;
+  for (const agent of workingAgents) {
+    const agentSession = ctx.hiveSessions.find(s => s.name === agent.tmux_session);
+    if (agentSession) {
+      await sendToTmuxSession(
+        agentSession.name,
+        `# All work complete. No stories in pipeline. Spinning down...`
+      );
+      await new Promise(resolve => setTimeout(resolve, IDLE_SPINDOWN_DELAY_MS));
+      await killTmuxSession(agentSession.name);
+    }
+
+    await withTransaction(ctx.db.db, () => {
+      updateAgent(ctx.db.db, agent.id, { status: 'terminated', currentStoryId: null });
+      createLog(ctx.db.db, {
+        agentId: agent.id,
+        eventType: 'AGENT_TERMINATED',
+        message: 'Agent spun down - no work remaining in pipeline',
+      });
+    });
+    idleSpunDown++;
+  }
+
+  if (idleSpunDown > 0) {
+    ctx.db.save();
+    console.log(chalk.green(`  Spun down ${idleSpunDown} idle agent(s) - pipeline empty`));
+  }
+}
+
+async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
+  const stuckStories = queryAll<StoryRow>(
+    ctx.db.db,
+    `SELECT * FROM stories
+     WHERE status = 'in_progress'
+     AND updated_at < datetime('now', '-${STUCK_STORY_THRESHOLD_MINUTES} minutes')`
+  ).filter(story => !['merged', 'completed'].includes(story.status));
+
+  for (const story of stuckStories) {
+    if (!story.assigned_agent_id) continue;
+
+    const agentSession = ctx.hiveSessions.find(s =>
+      s.name.includes(story.assigned_agent_id?.replace(/^hive-/, '') || '')
+    );
+    if (agentSession) {
+      await sendToTmuxSession(
+        agentSession.name,
+        `# REMINDER: Story ${story.id} has been in progress for a while.
 # If stuck, escalate to your Senior or Tech Lead.
 # If done, submit your PR: hive pr submit -b <branch> -s ${story.id} --from ${agentSession.name}
 # Then mark complete: hive my-stories complete ${story.id}`
-          );
-        }
-      }
+      );
     }
+  }
+}
 
-    // Check for unassigned planned stories
-    const plannedStories = queryAll<StoryRow>(
-      db.db,
-      "SELECT * FROM stories WHERE status = 'planned' AND assigned_agent_id IS NULL"
-    );
-    if (plannedStories.length > 0) {
-      // Notify idle seniors about unassigned work - don't interrupt working agents
-      const seniorSessions = hiveSessions.filter(s => s.name.includes('-senior-'));
-      for (const senior of seniorSessions) {
-        // Only notify if senior is idle, not actively working
-        const output = await captureTmuxPane(senior.name, TMUX_CAPTURE_LINES_SHORT);
-        const stateResult = detectClaudeCodeState(output);
-        // Only notify if idle and not thinking
-        if (
-          stateResult.isWaiting &&
-          !stateResult.needsHuman &&
-          stateResult.state !== ClaudeCodeState.THINKING
-        ) {
-          await sendToTmuxSession(
-            senior.name,
-            `# ${plannedStories.length} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
-          );
-        }
-      }
+async function notifyUnassignedStories(ctx: ManagerCheckContext): Promise<void> {
+  const plannedStories = queryAll<StoryRow>(
+    ctx.db.db,
+    "SELECT * FROM stories WHERE status = 'planned' AND assigned_agent_id IS NULL"
+  );
+
+  if (plannedStories.length === 0) return;
+
+  const seniorSessions = ctx.hiveSessions.filter(s => s.name.includes('-senior-'));
+  for (const senior of seniorSessions) {
+    const output = await captureTmuxPane(senior.name, TMUX_CAPTURE_LINES_SHORT);
+    const stateResult = detectClaudeCodeState(output);
+
+    if (
+      stateResult.isWaiting &&
+      !stateResult.needsHuman &&
+      stateResult.state !== ClaudeCodeState.THINKING
+    ) {
+      await sendToTmuxSession(
+        senior.name,
+        `# ${plannedStories.length} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
+      );
     }
+  }
+}
 
-    // Summary
-    const summary = [];
-    if (escalationsCreated > 0) summary.push(`${escalationsCreated} escalations created`);
-    if (escalationsResolved > 0) summary.push(`${escalationsResolved} escalations auto-resolved`);
-    if (nudged > 0) summary.push(`${nudged} nudged`);
-    if (messagesForwarded > 0) summary.push(`${messagesForwarded} messages forwarded`);
-    if (queuedPRs.length > 0) summary.push(`${queuedPRs.length} PRs queued`);
+function printSummary(ctx: ManagerCheckContext): void {
+  const { escalationsCreated, escalationsResolved, nudged, messagesForwarded, queuedPRCount } =
+    ctx.counters;
+  const summary = [];
 
-    if (summary.length > 0) {
-      console.log(chalk.yellow(`  ${summary.join(', ')}`));
-    } else {
-      console.log(chalk.green('  All agents productive'));
-    }
-  });
+  if (escalationsCreated > 0) summary.push(`${escalationsCreated} escalations created`);
+  if (escalationsResolved > 0) summary.push(`${escalationsResolved} escalations auto-resolved`);
+  if (nudged > 0) summary.push(`${nudged} nudged`);
+  if (messagesForwarded > 0) summary.push(`${messagesForwarded} messages forwarded`);
+  if (queuedPRCount > 0) summary.push(`${queuedPRCount} PRs queued`);
+
+  if (summary.length > 0) {
+    console.log(chalk.yellow(`  ${summary.join(', ')}`));
+  } else {
+    console.log(chalk.green('  All agents productive'));
+  }
 }
 
 function getAgentType(
