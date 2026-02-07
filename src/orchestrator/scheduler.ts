@@ -12,6 +12,7 @@ import {
 import { createEscalation } from '../db/queries/escalations.js';
 import { createLog } from '../db/queries/logs.js';
 import { isAgentReviewingPR } from '../db/queries/pull-requests.js';
+import { getRequirementById } from '../db/queries/requirements.js';
 import {
   getBatchStoryDependencies,
   getPlannedStories,
@@ -22,7 +23,6 @@ import {
   updateStory,
   type StoryRow,
 } from '../db/queries/stories.js';
-import { getRequirementById } from '../db/queries/requirements.js';
 import { getAllTeams, getTeamById } from '../db/queries/teams.js';
 import { FileSystemError, OperationalError } from '../errors/index.js';
 import {
