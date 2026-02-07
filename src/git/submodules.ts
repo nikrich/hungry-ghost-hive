@@ -97,7 +97,7 @@ export async function listSubmodules(rootDir: string): Promise<SubmoduleInfo[]> 
     }
 
     return submodules;
-  } catch {
+  } catch (_error) {
     return [];
   }
 }
@@ -113,7 +113,7 @@ export async function getSubmoduleUrl(rootDir: string, path: string): Promise<st
       { cwd: rootDir }
     );
     return stdout.trim();
-  } catch {
+  } catch (_error) {
     return '';
   }
 }

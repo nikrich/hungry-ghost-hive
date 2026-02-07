@@ -28,7 +28,7 @@ export function getVersion(): string {
           cachedVersion = packageJson.version as string;
           return cachedVersion!;
         }
-      } catch {
+      } catch (_error) {
         // Try next path
         continue;
       }
@@ -37,7 +37,7 @@ export function getVersion(): string {
     // Fallback version
     cachedVersion = '0.0.0';
     return cachedVersion;
-  } catch {
+  } catch (_error) {
     cachedVersion = '0.0.0';
     return cachedVersion;
   }

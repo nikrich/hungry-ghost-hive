@@ -87,7 +87,7 @@ export class Scheduler {
           stdio: 'pipe',
           timeout: 30000, // 30 second timeout for git operations
         });
-      } catch {
+      } catch (_error) {
         // If that fails too, log and throw
         throw new FileSystemError(
           `Failed to create worktree at ${fullWorktreePath}: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -413,7 +413,7 @@ export class Scheduler {
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnJunior(teamId, team.name, team.repo_path);
-            } catch {
+            } catch (_error) {
               // Fall back to Intermediate or Senior
               const intermediates = agents.filter(
                 a => a.type === 'intermediate' && a.status === 'idle'
@@ -434,7 +434,7 @@ export class Scheduler {
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnIntermediate(teamId, team.name, team.repo_path);
-            } catch {
+            } catch (_error) {
               // Fall back to Senior
               targetAgent = senior;
             }
@@ -534,8 +534,15 @@ export class Scheduler {
               message: `Spawned additional Senior for team ${team.name}`,
               metadata: { teamId: team.id, totalSeniors: currentSeniors + i + 1 },
             });
-          } catch {
+          } catch (error) {
             // Log error but continue
+            createLog(this.db, {
+              agentId: 'scheduler',
+              eventType: 'TEAM_SCALED_UP',
+              status: 'error',
+              message: `Failed to spawn Senior for team ${team.name}: ${error instanceof Error ? error.message : String(error)}`,
+              metadata: { teamId: team.id },
+            });
           }
         }
       }

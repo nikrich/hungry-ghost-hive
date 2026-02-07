@@ -69,7 +69,7 @@ export async function isLocked(lockPath: string): Promise<boolean> {
 
   try {
     return await lockfile.check(lockFile);
-  } catch {
+  } catch (_error) {
     return false;
   }
 }

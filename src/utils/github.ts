@@ -9,7 +9,7 @@ export function extractPRNumber(url: string): number | undefined {
     // Ensure it's a GitHub URL and has the /pull/number pattern
     const match = url.match(/^https?:\/\/github\.com\/[^/]+\/[^/]+\/pull\/(\d+)(?:[?#]|$)/);
     return match ? parseInt(match[1], 10) : undefined;
-  } catch {
+  } catch (_error) {
     return undefined;
   }
 }

@@ -25,7 +25,7 @@ function debugLog(msg: string) {
       }
     }
     appendFileSync(DEBUG_LOG_PATH, `${new Date().toISOString()} ${msg}\n`);
-  } catch {
+  } catch (_error) {
     // Silently fail if we can't write to debug log
   }
 }
@@ -110,7 +110,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
         const newDb = await getDatabase(paths.hiveDir);
         try {
           db.db.close();
-        } catch {
+        } catch (_error) {
           /* ignore close errors */
         }
         db = newDb;
@@ -145,7 +145,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
     if (currentTimeout) clearTimeout(currentTimeout);
     try {
       db.db.close();
-    } catch {
+    } catch (_error) {
       /* ignore */
     }
     screen.destroy();

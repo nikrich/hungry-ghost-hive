@@ -127,7 +127,7 @@ prCommand
           await scheduler.checkMergeQueue();
           db.save();
           console.log(chalk.gray('  QA agents notified'));
-        } catch {
+        } catch (_error) {
           // Non-fatal - QA can be triggered manually
         }
       } finally {
@@ -350,7 +350,7 @@ prCommand
               stdio: 'pipe',
               cwd: repoCwd,
             });
-          } catch {
+          } catch (_error) {
             // May fail if already approved or if it's our own PR - continue
           }
           // Then merge
@@ -479,7 +479,7 @@ prCommand
               )
             );
           }
-        } catch {
+        } catch (_error) {
           console.log(chalk.cyan(`\nNotify the developer:`));
           console.log(
             chalk.gray(
@@ -597,7 +597,7 @@ prCommand
           await scheduler.checkMergeQueue();
           db.save();
           console.log(chalk.gray('QA agents notified.'));
-        } catch {
+        } catch (_error) {
           // Non-fatal
         }
       } else {
