@@ -27,8 +27,9 @@ import {
   getMergeQueue,
   getPullRequestsByStatus,
   type PullRequestRow,
+  updatePullRequest,
 } from '../../db/queries/pull-requests.js';
-import { getStoriesByStatus, updateStory } from '../../db/queries/stories.js';
+import { getStoriesByStatus, updateStory, updateStoryAssignment } from '../../db/queries/stories.js';
 import { getAllTeams } from '../../db/queries/teams.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import {
@@ -627,7 +628,7 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       // Mark as closed to prevent re-notification spam
       // Developer will create a new PR when they resubmit
       await withTransaction(db.db, () => {
-        db.db.run("UPDATE pull_requests SET status = 'closed' WHERE id = ?", [pr.id]);
+        updatePullRequest(db.db, pr.id, { status: 'closed' });
       });
     }
     if (rejectedPRs.length > 0) {
@@ -709,7 +710,7 @@ hive pr queue`
               message: `Agent spun down after story ${story.id} was merged`,
             });
 
-            db.db.run('UPDATE stories SET assigned_agent_id = NULL WHERE id = ?', [story.id]);
+            updateStoryAssignment(db.db, story.id, null);
           });
 
           agentsSpunDown++;
@@ -971,10 +972,7 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
         if (story.length > 0) {
           // Update story to merged (atomic transaction)
           await withTransaction(db.db, () => {
-            db.db.run(
-              "UPDATE stories SET status = 'merged', assigned_agent_id = NULL, updated_at = datetime('now') WHERE id = ?",
-              [storyId]
-            );
+            updateStory(db.db, storyId, { status: 'merged', assignedAgentId: null });
 
             // Log the sync
             createLog(db.db, {
