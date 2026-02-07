@@ -270,7 +270,7 @@ describe('Scheduler Dependency Satisfaction', () => {
     expect(isSatisfied).toBe(true);
   });
 
-  it('should consider in-progress stories as satisfying dependencies', () => {
+  it('should not consider in-progress stories as satisfying dependencies', () => {
     const team = createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
@@ -285,10 +285,10 @@ describe('Scheduler Dependency Satisfaction', () => {
 
     addStoryDependency(db, mainStory.id, depStory.id);
 
-    // Mark dependency as in_progress
+    // Mark dependency as in_progress - this should NOT satisfy the dependency
     updateStory(db, depStory.id, { status: 'in_progress' });
     const isSatisfied = (scheduler as any).areDependenciesSatisfied.call(scheduler, mainStory.id);
-    expect(isSatisfied).toBe(true);
+    expect(isSatisfied).toBe(false);
   });
 
   it('should not consider planned stories as satisfying dependencies', () => {
