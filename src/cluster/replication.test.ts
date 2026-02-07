@@ -69,6 +69,36 @@ describe('cluster replication', () => {
     targetDb.close();
   });
 
+  it('replicates requirements including godmode flag', async () => {
+    const sourceDb = await createTestDatabase();
+    const targetDb = await createTestDatabase();
+
+    run(
+      sourceDb,
+      `
+      INSERT INTO requirements (id, title, description, submitted_by, status, godmode, created_at)
+      VALUES ('REQ-GODMODE', 'Godmode Req', 'High-priority execution', 'human', 'planning', 1, ?)
+    `,
+      [new Date().toISOString()]
+    );
+
+    scanLocalChanges(sourceDb, 'node-a');
+    const delta = getDeltaEvents(sourceDb, {}, 100);
+    const applied = applyRemoteEvents(targetDb, 'node-b', delta);
+
+    expect(applied).toBeGreaterThan(0);
+
+    const requirement = queryOne<{ id: string; godmode: number }>(
+      targetDb,
+      `SELECT id, godmode FROM requirements WHERE id = 'REQ-GODMODE'`
+    );
+    expect(requirement?.id).toBe('REQ-GODMODE');
+    expect(requirement?.godmode).toBe(1);
+
+    sourceDb.close();
+    targetDb.close();
+  });
+
   it('merges similar duplicate stories into a canonical story', async () => {
     const db = await createTestDatabase();
 

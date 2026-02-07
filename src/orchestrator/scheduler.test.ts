@@ -55,7 +55,7 @@ const mockConfig = {
       model: 'gpt-4o-mini',
       max_tokens: 4000,
       temperature: 0.2,
-      cli_tool: 'claude',
+      cli_tool: 'codex',
     },
     qa: {
       provider: 'anthropic',
@@ -1371,6 +1371,23 @@ describe('Scheduler Story Assignment Prevention', () => {
     // B should be ready for assignment
     const satisfied = (scheduler as any).areDependenciesSatisfied(storyB.id);
     expect(satisfied).toBe(true);
+  });
+
+  it('should map claude model IDs to claude runtime shorthands', () => {
+    const runtimeModel = (scheduler as any).getRuntimeModel('claude-sonnet-4-5-20250929', 'claude');
+    expect(runtimeModel).toBe('sonnet');
+  });
+
+  it('should preserve configured model for codex and gemini runtimes', () => {
+    const codexModel = (scheduler as any).getRuntimeModel('gpt-4o-mini', 'codex');
+    const geminiModel = (scheduler as any).getRuntimeModel('gemini-2.5-pro', 'gemini');
+    expect(codexModel).toBe('gpt-4o-mini');
+    expect(geminiModel).toBe('gemini-2.5-pro');
+  });
+
+  it('should not fallback unknown claude models to haiku', () => {
+    const runtimeModel = (scheduler as any).getRuntimeModel('claude-custom-model', 'claude');
+    expect(runtimeModel).toBe('claude-custom-model');
   });
 
   it('should detect godmode is active when an active requirement has godmode enabled', () => {

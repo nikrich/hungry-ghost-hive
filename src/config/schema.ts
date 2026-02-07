@@ -37,7 +37,7 @@ const ModelsConfigSchema = z.object({
     model: 'gpt-4o-mini',
     max_tokens: 4000,
     temperature: 0.2,
-    cli_tool: 'claude',
+    cli_tool: 'codex',
   }),
   qa: ModelConfigSchema.default({
     provider: 'anthropic',
@@ -238,7 +238,7 @@ models:
     model: gpt-4o-mini
     max_tokens: 4000
     temperature: 0.2
-    cli_tool: claude
+    cli_tool: codex
 
   qa:
     provider: anthropic
