@@ -135,6 +135,16 @@ CREATE TABLE IF NOT EXISTS agent_logs (
     metadata TEXT,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS requirements (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    submitted_by TEXT DEFAULT 'human',
+    status TEXT DEFAULT 'pending',
+    godmode INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 beforeEach(async () => {
