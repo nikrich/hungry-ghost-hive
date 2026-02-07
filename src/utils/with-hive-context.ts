@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import chalk from 'chalk';
 import { getDatabase, type DatabaseClient } from '../db/client.js';
 import { findHiveRoot, getHivePaths, type HivePaths } from './paths.js';

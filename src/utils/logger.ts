@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import chalk from 'chalk';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';

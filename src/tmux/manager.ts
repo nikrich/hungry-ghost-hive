@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { execa } from 'execa';
 import { mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';

@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 export type CliRuntimeType = 'claude' | 'codex' | 'gemini';
 
 export interface CliRuntimeBuilder {

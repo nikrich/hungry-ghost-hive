@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { queryAll, queryOne, run, type StoryRow } from '../../db/client.js';

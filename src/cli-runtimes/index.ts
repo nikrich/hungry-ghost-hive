@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { execa } from 'execa';
 import { UnsupportedFeatureError, ValidationError } from '../errors/index.js';
 import { ClaudeRuntimeBuilder } from './claude.js';

@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import OpenAI from 'openai';
 import { withTimeout } from '../utils/timeout.js';
 import type { CompletionOptions, CompletionResult, LLMProvider, Message } from './provider.js';

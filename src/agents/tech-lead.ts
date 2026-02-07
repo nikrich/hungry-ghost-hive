@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../cli-runtimes/index.js';
 import { loadConfig } from '../config/index.js';
 import { queryAll } from '../db/client.js';

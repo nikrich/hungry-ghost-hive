@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { getAgentsByTeam } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
 import { getStoryById, updateStory, type StoryRow } from '../db/queries/stories.js';

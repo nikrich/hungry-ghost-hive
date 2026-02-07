@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { z } from 'zod';
 
 // Model configuration for each agent type
