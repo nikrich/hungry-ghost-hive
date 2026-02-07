@@ -48,7 +48,7 @@ describe('Prompt Templates', () => {
 
       expect(prompt).toContain('Implement assigned stories');
       expect(prompt).toContain('Review code quality');
-      expect(prompt).toContain('Delegate simpler tasks');
+      expect(prompt).toContain('Ensure tests pass and code meets standards');
     });
 
     it('should list stories with complexity and description', () => {
