@@ -211,21 +211,14 @@ export class Scheduler {
 
   /**
    * Check if a story's dependencies are satisfied
-   * A dependency is satisfied if it's completed (merged) or in progress (being worked on)
+   * A dependency is satisfied only if it's merged (completed)
    */
   private areDependenciesSatisfied(storyId: string): boolean {
     const dependencies = getStoryDependencies(this.db, storyId);
 
     for (const dep of dependencies) {
-      // Check if dependency is in a terminal or in-progress state
-      if (
-        dep.status !== 'merged' &&
-        dep.status !== 'pr_submitted' &&
-        dep.status !== 'in_progress' &&
-        dep.status !== 'review' &&
-        dep.status !== 'qa' &&
-        dep.status !== 'qa_failed'
-      ) {
+      // Check if dependency is in a terminal state (merged)
+      if (dep.status !== 'merged') {
         return false;
       }
     }
