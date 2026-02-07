@@ -374,11 +374,26 @@ hive msg send <developer-session> "Your PR was rejected: <reason>" --from ${sess
 
 ## Review Checklist
 For each PR, verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`. If there ARE conflicts, see "Handling Merge Conflicts" below.
 2. **Tests pass** - Run the project's test suite
 3. **Code quality** - Check for code standards, no obvious bugs
 4. **Functionality** - Test that the changes work as expected
 5. **Story requirements** - Verify acceptance criteria are met
+
+## Handling Merge Conflicts
+When you find merge conflicts, **try to fix them yourself first** before rejecting back to the developer:
+
+1. Checkout the PR branch: \`git checkout <branch-name>\`
+2. Fetch and rebase onto main: \`git fetch origin && git rebase origin/main\`
+3. Resolve conflicts - usually one side is clearly correct (accept incoming for new work, keep ours for unrelated changes)
+4. After resolving: \`git rebase --continue\`
+5. Force push the fixed branch: \`git push --force-with-lease\`
+6. Continue with the rest of the review
+
+**Only reject back to the developer if:**
+- The conflicts are complex and involve competing logic changes that require the developer's judgment
+- You cannot determine the correct resolution with confidence
+- The rebase would require significant code changes beyond simple conflict resolution
 
 ## Communication
 If you need clarification from a developer:
