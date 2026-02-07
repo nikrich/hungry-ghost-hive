@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.19.0...hungry-ghost-hive-v0.19.1) (2026-02-07)
+
+
+### Performance Improvements
+
+* optimize PR sync hot-path lookups ([#231](https://github.com/nikrich/hungry-ghost-hive/issues/231)) ([dd118fb](https://github.com/nikrich/hungry-ghost-hive/commit/dd118fba9525377615e6c9d41dd8282f52f8eb49))
+
 ## [0.19.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.18.2...hungry-ghost-hive-v0.19.0) (2026-02-07)
 
 
