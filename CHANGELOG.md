@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.1...hungry-ghost-hive-v0.21.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* exclude terminated agents from tmux_session lookups in my-stories ([#248](https://github.com/nikrich/hungry-ghost-hive/issues/248)) ([f5eb0d7](https://github.com/nikrich/hungry-ghost-hive/commit/f5eb0d7744754a9a704d9c7d7de869d70660a59f))
+
 ## [0.21.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.0...hungry-ghost-hive-v0.21.1) (2026-02-07)
 
 
