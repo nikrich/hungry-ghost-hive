@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { createServer as createHttpServer, type Server as HttpServer } from 'http';
 import { createServer as createNetServer } from 'net';

@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { join } from 'path';
 import type { DatabaseClient } from '../db/client.js';
 import { queryOne, withTransaction } from '../db/client.js';

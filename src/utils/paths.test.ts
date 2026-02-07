@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { join } from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as paths from './paths.js';

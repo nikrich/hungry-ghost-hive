@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import blessed, { type Widgets } from 'blessed';
 import { spawnSync } from 'child_process';
 import type { Database } from 'sql.js';

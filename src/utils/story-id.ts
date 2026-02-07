@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 /**
  * Unified story ID validation and extraction utilities
  * Story IDs follow the pattern: STORY-<identifier>

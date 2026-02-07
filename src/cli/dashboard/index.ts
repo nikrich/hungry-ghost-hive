@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import blessed from 'blessed';
 import { appendFileSync, existsSync, renameSync, statSync } from 'fs';
 import { join } from 'path';

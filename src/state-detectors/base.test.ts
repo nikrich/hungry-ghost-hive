@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { describe, expect, it } from 'vitest';
 import { BaseStateDetector, StateIndicator } from './base.js';
 import { AgentState } from './types.js';

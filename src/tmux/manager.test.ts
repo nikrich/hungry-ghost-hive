@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Note: These tests validate the sendMessageWithConfirmation function behavior.

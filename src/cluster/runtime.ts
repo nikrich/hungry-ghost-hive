@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
 import { join } from 'path';
 import type { Database } from 'sql.js';
