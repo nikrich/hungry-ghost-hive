@@ -273,3 +273,81 @@ export async function syncMergedPRsFromGitHub(
 
   return storiesUpdated;
 }
+
+/**
+ * Close stale GitHub PRs that are superseded by newer PRs for the same story.
+ *
+ * Scans open GitHub PRs and closes any that have a story ID with a newer PR
+ * in the hive merge queue (i.e., the GitHub PR is stale/orphaned).
+ *
+ * @param root  - Root directory
+ * @param db    - sql.js Database instance
+ * @returns The number of stale PRs closed.
+ */
+export async function closeStaleGitHubPRs(root: string, db: Database): Promise<number> {
+  const teams = getAllTeams(db);
+  if (teams.length === 0) return 0;
+
+  let prsClosed = 0;
+
+  for (const team of teams) {
+    if (!team.repo_path) continue;
+
+    const repoDir = `${root}/${team.repo_path}`;
+
+    try {
+      // Fetch open GitHub PRs
+      const openGHPRs = await fetchOpenGitHubPRs(repoDir);
+
+      for (const ghPR of openGHPRs) {
+        const storyId = extractStoryIdFromBranch(ghPR.headRefName);
+        if (!storyId) continue;
+
+        // Check if there are other PRs for this story in the queue
+        const prsForStory = queryAll<{ id: string; github_pr_number: number | null }>(
+          db,
+          `
+          SELECT id, github_pr_number
+          FROM pull_requests
+          WHERE story_id = ?
+          AND status NOT IN ('closed')
+          ORDER BY created_at DESC
+        `,
+          [storyId]
+        );
+
+        // If there are PRs in the queue for this story, check if this GitHub PR is stale
+        if (prsForStory.length > 0) {
+          // Check if this GitHub PR number matches any of the queue PRs
+          const isInQueue = prsForStory.some(pr => pr.github_pr_number === ghPR.number);
+
+          // If this PR is not in the queue, it's stale and should be closed
+          if (!isInQueue) {
+            try {
+              await execa('gh', ['pr', 'close', String(ghPR.number)], { cwd: repoDir });
+              createLog(db, {
+                agentId: 'manager',
+                storyId,
+                eventType: 'PR_CLOSED',
+                message: `Auto-closed stale GitHub PR #${ghPR.number} (${ghPR.headRefName}) - superseded by newer PR`,
+                metadata: {
+                  github_pr_number: ghPR.number,
+                  branch: ghPR.headRefName,
+                  reason: 'stale',
+                },
+              });
+              prsClosed++;
+            } catch {
+              // Non-fatal - PR might already be closed or gh CLI issue
+            }
+          }
+        }
+      }
+    } catch {
+      // gh CLI might not be authenticated or repo might not have remote
+      continue;
+    }
+  }
+
+  return prsClosed;
+}
