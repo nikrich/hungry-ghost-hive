@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { existsSync, readFileSync } from 'fs';
 import ora from 'ora';
-import { getCliRuntimeBuilder } from '../../cli-runtimes/index.js';
+import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../../cli-runtimes/index.js';
 import { fetchLocalClusterStatus } from '../../cluster/runtime.js';
 import { loadConfig } from '../../config/loader.js';
 import { withTransaction } from '../../db/client.js';
@@ -110,9 +110,14 @@ export const reqCommand = new Command('req')
           // Get or create Tech Lead agent
           spinner.text = 'Spawning Tech Lead...';
           let techLead = getTechLead(db.db);
+          const techLeadCliTool = config.models.tech_lead.cli_tool;
+          const techLeadModel = resolveRuntimeModelForCli(
+            config.models.tech_lead.model,
+            techLeadCliTool
+          );
 
           if (!techLead) {
-            techLead = createAgent(db.db, { type: 'tech_lead', model: 'opus' });
+            techLead = createAgent(db.db, { type: 'tech_lead', model: techLeadModel });
           }
 
           // Update Tech Lead status and log event (atomic transaction)
@@ -141,9 +146,9 @@ export const reqCommand = new Command('req')
 
           try {
             // Build CLI command using the configured runtime for Tech Lead
-            const cliTool = config.models.tech_lead.cli_tool;
-            const model = 'opus';
-            const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
+            const commandArgs = getCliRuntimeBuilder(techLeadCliTool).buildSpawnCommand(
+              techLeadModel
+            );
             const command = commandArgs.join(' ');
 
             // Pass the prompt as initialPrompt so it's included as a CLI positional

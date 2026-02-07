@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import ora from 'ora';
-import { getCliRuntimeBuilder } from '../../cli-runtimes/index.js';
+import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../../cli-runtimes/index.js';
 import { loadConfig } from '../../config/index.js';
 import { withTransaction } from '../../db/client.js';
 import { getAgentById, getAllAgents, updateAgent, type AgentRow } from '../../db/queries/agents.js';
@@ -79,7 +79,7 @@ export const resumeCommand = new Command('resume')
           // Get CLI runtime configuration for this agent type
           const agentConfig = config.models[agent.type];
           const cliTool = agentConfig.cli_tool;
-          const model = agent.model || agentConfig.model;
+          const model = resolveRuntimeModelForCli(agent.model || agentConfig.model, cliTool);
 
           // Build resume command using CLI runtime builder
           const runtimeBuilder = getCliRuntimeBuilder(cliTool);

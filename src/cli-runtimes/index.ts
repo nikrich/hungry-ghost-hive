@@ -90,6 +90,31 @@ export function validateModelCliCompatibility(model: string, cliTool: CliRuntime
   }
 }
 
+/**
+ * Resolve model values for the target CLI runtime.
+ * - Claude CLI accepts compact aliases (sonnet/opus/haiku) for common model families.
+ * - Codex CLI should use full OpenAI model IDs; normalize legacy shorthand forms when possible.
+ * - Gemini CLI uses the model string as configured.
+ */
+export function resolveRuntimeModelForCli(model: string, cliTool: CliRuntimeType): string {
+  const normalized = model.toLowerCase();
+
+  if (cliTool === 'claude') {
+    if (normalized.includes('sonnet')) return 'sonnet';
+    if (normalized.includes('opus')) return 'opus';
+    if (normalized.includes('haiku')) return 'haiku';
+    return model;
+  }
+
+  if (cliTool === 'codex') {
+    if (normalized === 'gpt4o') return 'gpt-4o';
+    if (normalized === 'gpt4o-mini') return 'gpt-4o-mini';
+    return model;
+  }
+
+  return model;
+}
+
 export { ClaudeRuntimeBuilder } from './claude.js';
 export { CodexRuntimeBuilder } from './codex.js';
 export { GeminiRuntimeBuilder } from './gemini.js';

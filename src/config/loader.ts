@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { parse, stringify } from 'yaml';
+import { validateModelCliCompatibility } from '../cli-runtimes/index.js';
 import { generateDefaultConfigYaml, HiveConfigSchema, type HiveConfig } from './schema.js';
 
 export class ConfigError extends Error {
@@ -26,6 +27,8 @@ export function loadConfig(hiveDir: string): HiveConfig {
     const errors = result.error.errors.map(e => `  - ${e.path.join('.')}: ${e.message}`).join('\n');
     throw new ConfigError(`Invalid configuration:\n${errors}`);
   }
+
+  validateConfigModelRuntimeCompatibility(result.data);
 
   return result.data;
 }
@@ -85,5 +88,22 @@ export function setConfigValue(config: HiveConfig, path: string, value: unknown)
     throw new ConfigError(`Invalid configuration after update:\n${errors}`);
   }
 
+  validateConfigModelRuntimeCompatibility(result.data);
+
   return result.data;
+}
+
+function validateConfigModelRuntimeCompatibility(config: HiveConfig): void {
+  const models = config.models as Record<string, { model: string; cli_tool: 'claude' | 'codex' | 'gemini' }>;
+
+  for (const [agentType, modelConfig] of Object.entries(models)) {
+    try {
+      validateModelCliCompatibility(modelConfig.model, modelConfig.cli_tool);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ConfigError(
+        `Invalid configuration:\n  - models.${agentType}: ${message}`
+      );
+    }
+  }
 }

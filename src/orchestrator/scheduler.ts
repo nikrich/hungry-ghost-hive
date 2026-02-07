@@ -1,5 +1,9 @@
 import type { Database } from 'sql.js';
-import { getCliRuntimeBuilder, validateModelCliCompatibility } from '../cli-runtimes/index.js';
+import {
+  getCliRuntimeBuilder,
+  resolveRuntimeModelForCli,
+  validateModelCliCompatibility,
+} from '../cli-runtimes/index.js';
 import type { ModelsConfig, QAConfig, ScalingConfig } from '../config/schema.js';
 import { queryAll, queryOne, withTransaction } from '../db/client.js';
 import {
@@ -959,19 +963,9 @@ export class Scheduler {
 
   /**
    * Resolve the model value passed to the configured CLI runtime.
-   * Claude CLI expects shorthand aliases (sonnet/opus/haiku), while
-   * codex/gemini runtimes should use the configured model verbatim.
    */
   private getRuntimeModel(modelId: string, cliTool: 'claude' | 'codex' | 'gemini'): string {
-    if (cliTool !== 'claude') {
-      return modelId;
-    }
-
-    const normalized = modelId.toLowerCase();
-    if (normalized.includes('sonnet')) return 'sonnet';
-    if (normalized.includes('opus')) return 'opus';
-    if (normalized.includes('haiku')) return 'haiku';
-    return modelId;
+    return resolveRuntimeModelForCli(modelId, cliTool);
   }
 
   private async spawnQA(
