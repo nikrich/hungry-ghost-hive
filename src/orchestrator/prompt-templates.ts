@@ -27,8 +27,7 @@ Your tmux session: ${sessionName}
 ## Your Responsibilities
 1. Implement assigned stories
 2. Review code quality
-3. Delegate simpler tasks to Intermediate/Junior developers
-4. Ensure tests pass and code meets standards
+3. Ensure tests pass and code meets standards
 
 ## Pending Stories for Your Team
 ${storyList || 'No stories assigned yet.'}
