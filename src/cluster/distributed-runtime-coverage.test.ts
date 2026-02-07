@@ -67,6 +67,7 @@ describe('distributed runtime transport and status', () => {
     const fixture = await startRuntimeFixture({
       node_id: 'node-any',
       listen_host: '0.0.0.0',
+      auth_token: 'token-listen-any',
     });
 
     const status = await fetchLocalClusterStatus(fixture.config);
@@ -206,7 +207,7 @@ describe('distributed runtime transport and status', () => {
     expect(res.status).toBe(404);
   });
 
-  it('returns 500 for malformed JSON request bodies', async () => {
+  it('returns 400 for malformed JSON request bodies', async () => {
     if (!(await canListenOnLocalhost())) return;
 
     const fixture = await startRuntimeFixture({ node_id: 'node-bad-json' });
@@ -217,8 +218,24 @@ describe('distributed runtime transport and status', () => {
     });
     const body = (await res.json()) as { error?: string };
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
     expect(typeof body.error).toBe('string');
+  });
+
+  it('returns 413 for request bodies that exceed the maximum payload size', async () => {
+    if (!(await canListenOnLocalhost())) return;
+
+    const fixture = await startRuntimeFixture({ node_id: 'node-payload-too-large' });
+    const largePayload = 'x'.repeat(1_100_000);
+    const res = await fetch(`${fixture.config.public_url}/cluster/v1/events/delta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version_vector: {}, largePayload }),
+    });
+    const body = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(413);
+    expect(body.error).toContain('Payload too large');
   });
 
   it('returns null status after runtime stop closes HTTP listener', async () => {

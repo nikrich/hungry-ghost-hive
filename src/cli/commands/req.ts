@@ -148,7 +148,6 @@ export const reqCommand = new Command('req')
             // Build CLI command using the configured runtime for Tech Lead
             const commandArgs =
               getCliRuntimeBuilder(techLeadCliTool).buildSpawnCommand(techLeadModel);
-            const command = commandArgs.join(' ');
 
             // Pass the prompt as initialPrompt so it's included as a CLI positional
             // argument via $(cat ...). This delivers the full multi-line prompt
@@ -156,7 +155,7 @@ export const reqCommand = new Command('req')
             await spawnTmuxSession({
               sessionName,
               workDir: root,
-              command,
+              commandArgs,
               initialPrompt: techLeadPrompt,
             });
 

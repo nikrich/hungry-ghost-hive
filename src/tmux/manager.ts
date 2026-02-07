@@ -39,7 +39,7 @@ const DEFAULT_MANAGER_INTERVAL = 60;
 export interface TmuxSessionOptions {
   sessionName: string;
   workDir: string;
-  command: string;
+  commandArgs: string[];
   initialPrompt?: string;
   env?: Record<string, string>;
 }
@@ -99,8 +99,29 @@ export async function getHiveSessions(): Promise<TmuxSession[]> {
   return sessions.filter(s => s.name.startsWith('hive-'));
 }
 
+export function shellEscapeArg(arg: string): string {
+  return `'${arg.replace(/'/g, `'"'"'`)}'`;
+}
+
+function sanitizeSessionNameForFilename(sessionName: string): string {
+  return sessionName.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+export function buildShellCommand(commandArgs: string[], promptFile?: string): string {
+  if (commandArgs.length === 0) return '';
+
+  const escapedCommand = commandArgs.map(shellEscapeArg).join(' ');
+
+  if (!promptFile) {
+    return escapedCommand;
+  }
+
+  // Keep prompt substitution quoted so the full multi-line prompt is passed as one argument.
+  return `${escapedCommand} -- "$(cat ${shellEscapeArg(promptFile)})"`;
+}
+
 export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<void> {
-  const { sessionName, workDir, command, initialPrompt, env } = options;
+  const { sessionName, workDir, commandArgs, initialPrompt, env } = options;
 
   // Kill existing session if it exists
   if (await isTmuxSessionRunning(sessionName)) {
@@ -121,22 +142,20 @@ export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<voi
   await new Promise(resolve => setTimeout(resolve, SESSION_INIT_DELAY_MS));
 
   // Send the command to the session
-  if (command) {
-    let fullCommand = command;
+  if (commandArgs.length > 0) {
+    let promptFile: string | undefined;
 
     if (initialPrompt) {
-      // Write the prompt to a temp file and use $(cat ...) to pass it as
-      // a CLI positional argument. This avoids multi-line tmux send-keys issues
-      // because the command itself is a single line - the shell expands the
-      // $(cat ...) at execution time. The double quotes around $() ensure the
-      // prompt is passed as one argument with newlines preserved.
+      // Write the prompt to a temp file and pass it as a single positional argument.
+      // The generated command line is shell-escaped to prevent argument injection.
       const promptDir = join(tmpdir(), 'hive-prompts');
       mkdirSync(promptDir, { recursive: true });
-      const promptFile = join(promptDir, `${sessionName}-${Date.now()}.md`);
+      const safeSessionName = sanitizeSessionNameForFilename(sessionName);
+      promptFile = join(promptDir, `${safeSessionName}-${Date.now()}.md`);
       writeFileSync(promptFile, initialPrompt, 'utf-8');
-      fullCommand += ` -- "$(cat '${promptFile}')"`;
     }
 
+    const fullCommand = buildShellCommand(commandArgs, promptFile);
     await execa('tmux', ['send-keys', '-t', sessionName, fullCommand, 'Enter']);
   }
 }
