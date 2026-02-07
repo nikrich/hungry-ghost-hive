@@ -398,6 +398,22 @@ function runMigrations(db: SqlJsDatabase): void {
     }
     db.run("INSERT INTO migrations (name) VALUES ('008-add-godmode.sql')");
   }
+
+  // Migration 009: Add pull request sync indexes for faster identifier lookups
+  const result009 = db.exec(
+    "SELECT name FROM migrations WHERE name = '009-add-pr-sync-indexes.sql'"
+  );
+  const migration009Applied = result009.length > 0 && result009[0].values.length > 0;
+
+  if (!migration009Applied) {
+    db.run(
+      'CREATE INDEX IF NOT EXISTS idx_pull_requests_status_branch ON pull_requests(status, branch_name)'
+    );
+    db.run(
+      'CREATE INDEX IF NOT EXISTS idx_pull_requests_github_pr_number ON pull_requests(github_pr_number)'
+    );
+    db.run("INSERT INTO migrations (name) VALUES ('009-add-pr-sync-indexes.sql')");
+  }
 }
 
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
