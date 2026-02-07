@@ -3,6 +3,39 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
+// --- Named constants (extracted from inline magic numbers) ---
+
+/** Default number of pane lines to capture */
+const DEFAULT_CAPTURE_LINES = 100;
+/** Delay in ms after creating a tmux session to let shell initialize */
+const SESSION_INIT_DELAY_MS = 500;
+/** Delay in ms between clear-input key presses (Escape, Ctrl+U) */
+const CLEAR_INPUT_DELAY_MS = 50;
+/** Number of pane lines to capture for session ready check */
+const READY_CHECK_CAPTURE_LINES = 50;
+/** Default max wait time in ms for session ready */
+const DEFAULT_READY_WAIT_MS = 15000;
+/** Default poll interval in ms for session ready check */
+const DEFAULT_READY_POLL_MS = 200;
+/** Default max retries for forcing bypass mode */
+const DEFAULT_BYPASS_MAX_RETRIES = 5;
+/** Number of pane lines to capture for mode/permission checks */
+const MODE_CHECK_CAPTURE_LINES = 100;
+/** Delay in ms after sending BTab for mode change */
+const MODE_CHANGE_DELAY_MS = 500;
+/** Default max retries for message delivery confirmation */
+const DEFAULT_CONFIRM_MAX_RETRIES = 3;
+/** Default initial wait in ms before message verification */
+const DEFAULT_CONFIRM_INITIAL_WAIT_MS = 300;
+/** Maximum backoff delay in ms for message delivery retries */
+const MAX_CONFIRM_BACKOFF_MS = 2000;
+/** Default max retries for auto-approve permission */
+const DEFAULT_APPROVE_MAX_RETRIES = 3;
+/** Delay in ms after sending approval response */
+const POST_APPROVAL_DELAY_MS = 500;
+/** Default manager check interval in seconds */
+const DEFAULT_MANAGER_INTERVAL = 60;
+
 export interface TmuxSessionOptions {
   sessionName: string;
   workDir: string;
@@ -85,7 +118,7 @@ export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<voi
   await execa('tmux', args, execaOptions);
 
   // Small delay to let shell initialize
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise(resolve => setTimeout(resolve, SESSION_INIT_DELAY_MS));
 
   // Send the command to the session
   if (command) {
@@ -142,9 +175,9 @@ export async function sendToTmuxSession(
     // Escape: exit any menu/selection state
     // Ctrl+U: clear line from cursor to beginning
     await execa('tmux', ['send-keys', '-t', sessionName, 'Escape']);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, CLEAR_INPUT_DELAY_MS));
     await execa('tmux', ['send-keys', '-t', sessionName, 'C-u']);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, CLEAR_INPUT_DELAY_MS));
   }
 
   // For single-line text, use send-keys with literal flag then Enter separately.
@@ -164,7 +197,10 @@ export async function sendEnterToTmuxSession(sessionName: string): Promise<void>
   await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
 }
 
-export async function captureTmuxPane(sessionName: string, lines = 100): Promise<string> {
+export async function captureTmuxPane(
+  sessionName: string,
+  lines = DEFAULT_CAPTURE_LINES
+): Promise<string> {
   try {
     const { stdout } = await execa('tmux', [
       'capture-pane',
@@ -190,14 +226,14 @@ export async function captureTmuxPane(sessionName: string, lines = 100): Promise
  */
 export async function waitForTmuxSessionReady(
   sessionName: string,
-  maxWaitMs = 15000,
-  pollIntervalMs = 200
+  maxWaitMs = DEFAULT_READY_WAIT_MS,
+  pollIntervalMs = DEFAULT_READY_POLL_MS
 ): Promise<boolean> {
   const startTime = Date.now();
   let lastOutput = '';
 
   while (Date.now() - startTime < maxWaitMs) {
-    const output = await captureTmuxPane(sessionName, 50);
+    const output = await captureTmuxPane(sessionName, READY_CHECK_CAPTURE_LINES);
 
     // Check if we have Claude prompt indicator or substantial output
     // Claude typically shows a prompt with "> " or similar
@@ -231,7 +267,7 @@ export async function waitForTmuxSessionReady(
 export async function forceBypassMode(
   sessionName: string,
   _cliTool: 'claude' | 'codex' | 'gemini' = 'claude',
-  maxRetries = 5
+  maxRetries = DEFAULT_BYPASS_MAX_RETRIES
 ): Promise<boolean> {
   // Note: cliTool parameter is reserved for future Codex/Gemini CLI integration
   // Currently, all CLIs use the same BTab key sequence for cycling permissions
@@ -239,7 +275,7 @@ export async function forceBypassMode(
 
   while (retries < maxRetries) {
     // Capture pane output to check current permission mode
-    const output = await captureTmuxPane(sessionName, 100);
+    const output = await captureTmuxPane(sessionName, MODE_CHECK_CAPTURE_LINES);
 
     // Check if already in bypass mode
     if (output.toLowerCase().includes('bypass permissions on')) {
@@ -253,7 +289,7 @@ export async function forceBypassMode(
       await execa('tmux', ['send-keys', '-t', sessionName, 'BTab']);
 
       // Wait for the mode change to take effect
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, MODE_CHANGE_DELAY_MS));
 
       retries++;
       continue;
@@ -262,7 +298,7 @@ export async function forceBypassMode(
     // If neither plan mode nor bypass mode is detected, try cycling anyway
     // This handles cases where the mode indicator might not be visible
     await execa('tmux', ['send-keys', '-t', sessionName, 'BTab']);
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, MODE_CHANGE_DELAY_MS));
 
     retries++;
   }
@@ -285,8 +321,8 @@ export async function forceBypassMode(
 export async function sendMessageWithConfirmation(
   sessionName: string,
   message: string,
-  maxRetries = 3,
-  initialWaitMs = 300
+  maxRetries = DEFAULT_CONFIRM_MAX_RETRIES,
+  initialWaitMs = DEFAULT_CONFIRM_INITIAL_WAIT_MS
 ): Promise<boolean> {
   // Send the message to the session
   await sendToTmuxSession(sessionName, message);
@@ -300,7 +336,7 @@ export async function sendMessageWithConfirmation(
 
   while (retries < maxRetries) {
     // Capture pane output to verify message was received
-    const output = await captureTmuxPane(sessionName, 100);
+    const output = await captureTmuxPane(sessionName, MODE_CHECK_CAPTURE_LINES);
 
     // Check if the first line of the message appears in the output
     // Extract first meaningful part of message for verification
@@ -316,7 +352,7 @@ export async function sendMessageWithConfirmation(
     retries++;
     if (retries < maxRetries) {
       // Exponential backoff: double the wait time for next retry
-      waitTime = Math.min(waitTime * 2, 2000); // Cap at 2 seconds
+      waitTime = Math.min(waitTime * 2, MAX_CONFIRM_BACKOFF_MS);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
@@ -332,12 +368,15 @@ export async function sendMessageWithConfirmation(
  * @param maxRetries - Maximum attempts to detect and approve prompt
  * @returns true if permission was approved, false if approval failed or no prompt detected
  */
-export async function autoApprovePermission(sessionName: string, maxRetries = 3): Promise<boolean> {
+export async function autoApprovePermission(
+  sessionName: string,
+  maxRetries = DEFAULT_APPROVE_MAX_RETRIES
+): Promise<boolean> {
   let retries = 0;
 
   while (retries < maxRetries) {
     // Capture pane output to check for permission prompts
-    const output = await captureTmuxPane(sessionName, 100);
+    const output = await captureTmuxPane(sessionName, MODE_CHECK_CAPTURE_LINES);
 
     // Check for common permission prompt patterns
     const permissionPatterns = [
@@ -360,10 +399,10 @@ export async function autoApprovePermission(sessionName: string, maxRetries = 3)
     await execa('tmux', ['send-keys', '-t', sessionName, 'y', 'Enter']);
 
     // Wait for response to process
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, POST_APPROVAL_DELAY_MS));
 
     // Check if the prompt is gone (approval succeeded)
-    const newOutput = await captureTmuxPane(sessionName, 100);
+    const newOutput = await captureTmuxPane(sessionName, MODE_CHECK_CAPTURE_LINES);
     const promptGone = !permissionPatterns.some(pattern => pattern.test(newOutput));
 
     if (promptGone) {
@@ -394,7 +433,7 @@ export async function isManagerRunning(): Promise<boolean> {
   return isTmuxSessionRunning(MANAGER_SESSION);
 }
 
-export async function startManager(interval = 60): Promise<boolean> {
+export async function startManager(interval = DEFAULT_MANAGER_INTERVAL): Promise<boolean> {
   if (await isManagerRunning()) {
     return false; // Already running
   }

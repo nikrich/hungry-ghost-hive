@@ -1,6 +1,9 @@
 import type { Database } from 'sql.js';
 import { run } from '../client.js';
 
+/** Default timeout in seconds for considering an agent stale */
+const DEFAULT_STALE_TIMEOUT_SECONDS = 15;
+
 /**
  * Update agent's last_seen timestamp (heartbeat)
  */
@@ -13,7 +16,7 @@ export function updateAgentHeartbeat(db: Database, agentId: string): void {
  */
 export function getStaleAgents(
   db: Database,
-  timeoutSeconds: number = 15
+  timeoutSeconds: number = DEFAULT_STALE_TIMEOUT_SECONDS
 ): Array<{
   id: string;
   type: string;
@@ -69,7 +72,7 @@ export function getStaleAgents(
 export function isAgentHeartbeatCurrent(
   db: Database,
   agentId: string,
-  timeoutSeconds: number = 15
+  timeoutSeconds: number = DEFAULT_STALE_TIMEOUT_SECONDS
 ): boolean {
   const query = `
     SELECT

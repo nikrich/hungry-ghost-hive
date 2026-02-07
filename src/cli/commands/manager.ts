@@ -57,6 +57,29 @@ import {
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { extractStoryIdFromBranch } from '../../utils/story-id.js';
 
+// --- Named constants (extracted from inline magic numbers) ---
+
+/** Number of tmux pane lines to capture for agent state detection */
+const TMUX_CAPTURE_LINES = 50;
+/** Number of tmux pane lines to capture for brief status checks */
+const TMUX_CAPTURE_LINES_SHORT = 30;
+/** Max retries when forcing bypass mode on an agent */
+const BYPASS_MODE_MAX_RETRIES = 3;
+/** Lookback window in minutes for recent escalations to avoid duplicates */
+const RECENT_ESCALATION_LOOKBACK_MINUTES = 30;
+/** Delay in ms after sending a message to an agent before killing session */
+const AGENT_SPINDOWN_DELAY_MS = 1000;
+/** Delay in ms before killing tmux session when pipeline is empty */
+const IDLE_SPINDOWN_DELAY_MS = 500;
+/** Delay in ms before sending Enter to prompt after nudge */
+const POST_NUDGE_DELAY_MS = 100;
+/** Delay in ms between forwarding messages to an agent */
+const MESSAGE_FORWARD_DELAY_MS = 100;
+/** Limit for GitHub PR list queries */
+const GITHUB_PR_LIST_LIMIT = 20;
+/** Minutes a story can be in_progress before being considered stuck */
+const STUCK_STORY_THRESHOLD_MINUTES = 30;
+
 // Agent state tracking for nudge logic
 interface AgentStateTracking {
   lastState: ClaudeCodeState;
@@ -412,7 +435,7 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       }
 
       // Check if agent appears stuck (capture last output)
-      const output = await captureTmuxPane(session.name, 50);
+      const output = await captureTmuxPane(session.name, TMUX_CAPTURE_LINES);
 
       // CRITICAL: Continuously enforce bypass mode on all agents
       // Agents can drift into plan mode or hit permission prompts during work
@@ -424,7 +447,7 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
         output.match(/approve.*\[y\/n\]/i);
 
       if (needsBypassEnforcement) {
-        const enforced = await forceBypassMode(session.name, agentCliTool, 3);
+        const enforced = await forceBypassMode(session.name, agentCliTool, BYPASS_MODE_MAX_RETRIES);
         if (enforced) {
           console.log(chalk.yellow(`  Enforced bypass mode on ${session.name}`));
         } else {
@@ -488,7 +511,8 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       // Check for recent escalations from this agent to improve dedup (avoid duplicates even after restart)
       const hasRecentEscalation =
         escalatedSessions.has(session.name) ||
-        getRecentEscalationsForAgent(db.db, session.name, 30).length > 0;
+        getRecentEscalationsForAgent(db.db, session.name, RECENT_ESCALATION_LOOKBACK_MINUTES)
+          .length > 0;
 
       if (waitingInfo.needsHuman && !hasRecentEscalation) {
         // Create escalation for human attention
@@ -544,7 +568,7 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
             timeSinceLastNudge > config.manager.nudge_cooldown_ms
           ) {
             // Re-check state immediately before nudging to avoid interrupting active work
-            const recheckOutput = await captureTmuxPane(session.name, 50);
+            const recheckOutput = await captureTmuxPane(session.name, TMUX_CAPTURE_LINES);
             const recheckState = detectClaudeCodeState(recheckOutput);
 
             // Only proceed if still in a waiting state and not THINKING
@@ -649,7 +673,7 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
           );
           if (agentSession) {
             // Check if agent is idle before nudging
-            const output = await captureTmuxPane(agentSession.name, 30);
+            const output = await captureTmuxPane(agentSession.name, TMUX_CAPTURE_LINES_SHORT);
             const stateResult = detectClaudeCodeState(output);
             // Only nudge if idle and not thinking (thinking is productive work)
             if (
@@ -694,7 +718,7 @@ hive pr queue`
               `# Congratulations! Your story ${story.id} has been merged.
 # Your work is complete. Spinning down...`
             );
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, AGENT_SPINDOWN_DELAY_MS));
             await killTmuxSession(agentSession.name);
           }
 
@@ -740,7 +764,7 @@ hive pr queue`
             agentSession.name,
             `# All work complete. No stories in pipeline. Spinning down...`
           );
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, IDLE_SPINDOWN_DELAY_MS));
           await killTmuxSession(agentSession.name);
         }
         // Update agent and log spindown (atomic transaction)
@@ -766,7 +790,7 @@ hive pr queue`
       db.db,
       `SELECT * FROM stories
        WHERE status = 'in_progress'
-       AND updated_at < datetime('now', '-30 minutes')`
+       AND updated_at < datetime('now', '-${STUCK_STORY_THRESHOLD_MINUTES} minutes')`
     ).filter(story => !['merged', 'completed'].includes(story.status));
     for (const story of stuckStories) {
       if (story.assigned_agent_id) {
@@ -795,7 +819,7 @@ hive pr queue`
       const seniorSessions = hiveSessions.filter(s => s.name.includes('-senior-'));
       for (const senior of seniorSessions) {
         // Only notify if senior is idle, not actively working
-        const output = await captureTmuxPane(senior.name, 30);
+        const output = await captureTmuxPane(senior.name, TMUX_CAPTURE_LINES_SHORT);
         const stateResult = detectClaudeCodeState(output);
         // Only notify if idle and not thinking
         if (
@@ -889,7 +913,7 @@ hive status`;
   await sendToTmuxSession(sessionName, nudge);
 
   // Also send Enter to ensure prompt is activated
-  await new Promise(resolve => setTimeout(resolve, 100));
+  await new Promise(resolve => setTimeout(resolve, POST_NUDGE_DELAY_MS));
   await sendEnterToTmuxSession(sessionName);
 }
 
@@ -915,7 +939,7 @@ async function forwardMessages(
     }
 
     // Small delay between messages to allow recipient time to read
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, MESSAGE_FORWARD_DELAY_MS));
   }
 }
 
@@ -947,7 +971,7 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
           '--state',
           'merged',
           '--limit',
-          '20',
+          String(GITHUB_PR_LIST_LIMIT),
         ],
         {
           cwd: repoDir,

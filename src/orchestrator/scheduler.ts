@@ -41,6 +41,23 @@ import {
   generateSeniorPrompt,
 } from './prompt-templates.js';
 
+// --- Named constants (extracted from inline magic numbers) ---
+
+/** Timeout in ms for git worktree operations */
+const GIT_WORKTREE_TIMEOUT_MS = 30000;
+/** Max tokens for Opus 4.6 in godmode */
+const GODMODE_MAX_TOKENS = 16000;
+/** Temperature for Opus 4.6 in godmode */
+const GODMODE_TEMPERATURE = 0.7;
+/** Default number of pending PRs per QA agent for scaling */
+const DEFAULT_PENDING_PER_QA_AGENT = 2.5;
+/** Default maximum number of QA agents per team */
+const DEFAULT_MAX_QA_AGENTS = 5;
+/** Minimum refactor budget points when capacity is low */
+const MIN_REFACTOR_BUDGET_POINTS = 1;
+/** Default manager check interval in seconds */
+const DEFAULT_MANAGER_INTERVAL_SECONDS = 60;
+
 export interface SchedulerConfig {
   scaling: ScalingConfig;
   models: ModelsConfig;
@@ -77,7 +94,7 @@ export class Scheduler {
       execSync(`git worktree add "${fullWorktreePath}" -b "${branchName}"`, {
         cwd: fullRepoPath,
         stdio: 'pipe',
-        timeout: 30000, // 30 second timeout for git operations
+        timeout: GIT_WORKTREE_TIMEOUT_MS,
       });
     } catch (err) {
       // If worktree or branch already exists, try to add without creating branch
@@ -85,7 +102,7 @@ export class Scheduler {
         execSync(`git worktree add "${fullWorktreePath}" "${branchName}"`, {
           cwd: fullRepoPath,
           stdio: 'pipe',
-          timeout: 30000, // 30 second timeout for git operations
+          timeout: GIT_WORKTREE_TIMEOUT_MS,
         });
       } catch {
         // If that fails too, log and throw
@@ -111,7 +128,7 @@ export class Scheduler {
       execSync(`git worktree remove "${fullWorktreePath}" --force`, {
         cwd: this.config.rootDir,
         stdio: 'pipe',
-        timeout: 30000, // 30 second timeout for git operations
+        timeout: GIT_WORKTREE_TIMEOUT_MS,
       });
     } catch (err) {
       // Log failure to database for tracking and potential recovery
@@ -306,7 +323,7 @@ export class Scheduler {
       : Number.POSITIVE_INFINITY;
 
     if (hasFeatureWork && refactorConfig.capacity_percent > 0 && refactorBudgetPoints === 0) {
-      refactorBudgetPoints = 1;
+      refactorBudgetPoints = MIN_REFACTOR_BUDGET_POINTS;
     }
 
     let usedRefactorPoints = 0;
@@ -672,9 +689,12 @@ export class Scheduler {
     const pendingCount = qaStories.length;
 
     // Calculate needed QA agents using configurable values
-    const qaScaling = this.config.qa?.scaling || { pending_per_agent: 2.5, max_agents: 5 };
-    const pendingPerAgent = qaScaling.pending_per_agent || 2.5;
-    const maxAgents = qaScaling.max_agents || 5;
+    const qaScaling = this.config.qa?.scaling || {
+      pending_per_agent: DEFAULT_PENDING_PER_QA_AGENT,
+      max_agents: DEFAULT_MAX_QA_AGENTS,
+    };
+    const pendingPerAgent = qaScaling.pending_per_agent || DEFAULT_PENDING_PER_QA_AGENT;
+    const maxAgents = qaScaling.max_agents || DEFAULT_MAX_QA_AGENTS;
 
     // If no pending work, scale down to 0 agents
     const neededQAs =
@@ -790,7 +810,7 @@ export class Scheduler {
 
   private async ensureManagerRunning(): Promise<void> {
     if (!(await isManagerRunning())) {
-      await startManager(60);
+      await startManager(DEFAULT_MANAGER_INTERVAL_SECONDS);
     }
   }
 
@@ -826,8 +846,8 @@ export class Scheduler {
       modelConfig = {
         provider: 'anthropic',
         model: 'claude-opus-4-6',
-        max_tokens: 16000,
-        temperature: 0.7,
+        max_tokens: GODMODE_MAX_TOKENS,
+        temperature: GODMODE_TEMPERATURE,
         cli_tool: modelConfig.cli_tool || 'claude',
       };
     }
