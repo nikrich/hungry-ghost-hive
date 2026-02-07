@@ -2,9 +2,7 @@ import { execa } from 'execa';
 import type { Database } from 'sql.js';
 import { queryAll, withTransaction, type PullRequestRow } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
-import {
-  createPullRequest,
-} from '../db/queries/pull-requests.js';
+import { createPullRequest } from '../db/queries/pull-requests.js';
 import { updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
 import { extractStoryIdFromBranch } from './story-id.js';
@@ -127,7 +125,7 @@ export async function syncOpenGitHubPRs(
 export async function syncAllTeamOpenPRs(
   root: string,
   db: Database,
-  saveFn: () => void,
+  saveFn: () => void
 ): Promise<number> {
   const teams = getAllTeams(db);
   if (teams.length === 0) return 0;
@@ -139,7 +137,13 @@ export async function syncAllTeamOpenPRs(
     if (!team.repo_path) continue;
     const repoDir = `${root}/${team.repo_path}`;
     try {
-      const result = await syncOpenGitHubPRs(db, repoDir, team.id, existingBranches, existingPrNumbers);
+      const result = await syncOpenGitHubPRs(
+        db,
+        repoDir,
+        team.id,
+        existingBranches,
+        existingPrNumbers
+      );
       totalSynced += result.synced;
     } catch {
       // gh CLI might not be authenticated or repo might not have remote
@@ -161,7 +165,7 @@ export async function syncAllTeamOpenPRs(
 export async function syncMergedPRsFromGitHub(
   root: string,
   db: Database,
-  saveFn: () => void,
+  saveFn: () => void
 ): Promise<number> {
   const teams = getAllTeams(db);
   if (teams.length === 0) return 0;
@@ -177,12 +181,16 @@ export async function syncMergedPRsFromGitHub(
       const result = await execa(
         'gh',
         [
-          'pr', 'list',
-          '--json', 'number,headRefName,mergedAt',
-          '--state', 'merged',
-          '--limit', String(GITHUB_PR_LIST_LIMIT),
+          'pr',
+          'list',
+          '--json',
+          'number,headRefName,mergedAt',
+          '--state',
+          'merged',
+          '--limit',
+          String(GITHUB_PR_LIST_LIMIT),
         ],
-        { cwd: repoDir },
+        { cwd: repoDir }
       );
       const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> =
         JSON.parse(result.stdout);
@@ -191,11 +199,9 @@ export async function syncMergedPRsFromGitHub(
         const storyId = extractStoryIdFromBranch(pr.headRefName);
         if (!storyId) continue;
 
-        const story = queryAll(
-          db,
-          "SELECT * FROM stories WHERE id = ? AND status != 'merged'",
-          [storyId],
-        );
+        const story = queryAll(db, "SELECT * FROM stories WHERE id = ? AND status != 'merged'", [
+          storyId,
+        ]);
 
         if (story.length > 0) {
           await withTransaction(db, () => {

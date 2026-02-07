@@ -569,7 +569,8 @@ async function handleEscalationAndNudge(
 
   const hasRecentEscalation =
     ctx.escalatedSessions.has(sessionName) ||
-    getRecentEscalationsForAgent(ctx.db.db, sessionName, RECENT_ESCALATION_LOOKBACK_MINUTES).length > 0;
+    getRecentEscalationsForAgent(ctx.db.db, sessionName, RECENT_ESCALATION_LOOKBACK_MINUTES)
+      .length > 0;
 
   if (waitingInfo.needsHuman && !hasRecentEscalation) {
     // Create escalation for human attention
