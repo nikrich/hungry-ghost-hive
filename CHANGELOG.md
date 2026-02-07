@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.20.0...hungry-ghost-hive-v0.20.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* prevent manager from killing busy agents after story merge ([#240](https://github.com/nikrich/hungry-ghost-hive/issues/240)) ([a83adaa](https://github.com/nikrich/hungry-ghost-hive/commit/a83adaa178d7d67bc208fcd6213bc07f0d172626))
+
 ## [0.20.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.19.1...hungry-ghost-hive-v0.20.0) (2026-02-07)
 
 
