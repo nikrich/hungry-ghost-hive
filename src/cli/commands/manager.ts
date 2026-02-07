@@ -758,10 +758,14 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
   if (queuedPRs.length > 0) {
     const qaSessions = ctx.hiveSessions.filter(s => s.name.includes('-qa-'));
     for (const qa of qaSessions) {
-      await sendToTmuxSession(
-        qa.name,
-        `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
-      );
+      // Only notify idle QA agents to avoid interrupting their work
+      const agent = ctx.agentsBySessionName.get(qa.name);
+      if (agent && agent.status === 'idle') {
+        await sendToTmuxSession(
+          qa.name,
+          `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
+        );
+      }
     }
   }
 }
