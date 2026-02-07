@@ -41,7 +41,7 @@ export const myStoriesCommand = new Command('my-stories')
       // Find agent by tmux session
       const agent = queryOne<{ id: string; team_id: string }>(
         db.db,
-        'SELECT id, team_id FROM agents WHERE tmux_session = ?',
+        "SELECT id, team_id FROM agents WHERE tmux_session = ? AND status != 'terminated'",
         [session]
       );
 
@@ -50,7 +50,7 @@ export const myStoriesCommand = new Command('my-stories')
         console.log(chalk.gray('Available sessions:'));
         const agents = queryAll<{ tmux_session: string }>(
           db.db,
-          'SELECT tmux_session FROM agents WHERE tmux_session IS NOT NULL'
+          "SELECT tmux_session FROM agents WHERE tmux_session IS NOT NULL AND status != 'terminated'"
         );
         for (const a of agents) {
           console.log(chalk.gray(`  - ${a.tmux_session}`));
@@ -119,7 +119,7 @@ myStoriesCommand
       // Find agent by session
       const agent = queryOne<{ id: string }>(
         db.db,
-        'SELECT id FROM agents WHERE tmux_session = ?',
+        "SELECT id FROM agents WHERE tmux_session = ? AND status != 'terminated'",
         [options.session]
       );
 
@@ -235,7 +235,7 @@ myStoriesCommand
       await withHiveContext(async ({ db }) => {
         const agent = queryOne<{ id: string; team_id: string | null }>(
           db.db,
-          'SELECT id, team_id FROM agents WHERE tmux_session = ?',
+          "SELECT id, team_id FROM agents WHERE tmux_session = ? AND status != 'terminated'",
           [options.session]
         );
 
