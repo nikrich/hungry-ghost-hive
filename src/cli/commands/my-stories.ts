@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { queryAll, queryOne, run, type StoryRow } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
-import { createStory, updateStory } from '../../db/queries/stories.js';
+import { createStory, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const myStoriesCommand = new Command('my-stories')
@@ -135,6 +135,20 @@ myStoriesCommand
 
       if (story.assigned_agent_id && story.assigned_agent_id !== agent.id) {
         console.error(chalk.red(`Story already assigned to another agent.`));
+        process.exit(1);
+      }
+
+      // Check if all dependencies are resolved (merged)
+      const dependencies = getStoryDependencies(db.db, storyId);
+      const unresolvedDeps = dependencies.filter(dep => dep.status !== 'merged');
+      if (unresolvedDeps.length > 0) {
+        console.error(chalk.red(`Cannot claim story: unresolved dependencies`));
+        console.log(chalk.yellow('\nBlocking stories:'));
+        for (const dep of unresolvedDeps) {
+          console.log(
+            chalk.yellow(`  - [${dep.id}] ${dep.title} (status: ${dep.status.toUpperCase()})`)
+          );
+        }
         process.exit(1);
       }
 
