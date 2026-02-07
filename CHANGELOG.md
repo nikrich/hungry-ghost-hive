@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.20.1...hungry-ghost-hive-v0.21.0) (2026-02-07)
+
+
+### Features
+
+* **config:** upgrade agent models - Senior to Opus 4.6, Intermediate to Sonnet ([#234](https://github.com/nikrich/hungry-ghost-hive/issues/234)) ([253c18f](https://github.com/nikrich/hungry-ghost-hive/commit/253c18f15080d7a864007e8ccb3b890827714315))
+* **my-stories:** enforce dependency checking in claim command ([#237](https://github.com/nikrich/hungry-ghost-hive/issues/237)) ([6687d26](https://github.com/nikrich/hungry-ghost-hive/commit/6687d260be6738f32735f8a5756155211b5e2266))
+
 ## [0.20.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.20.0...hungry-ghost-hive-v0.20.1) (2026-02-07)
 
 
