@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   extractStoryIdFromBranch,
   isValidStoryId,
@@ -34,9 +34,7 @@ describe('Story ID utilities', () => {
   describe('extractStoryIdFromBranch', () => {
     it('should extract story ID from feature branch with prefix', () => {
       expect(extractStoryIdFromBranch('feature/STORY-001-test')).toBe('STORY-001');
-      expect(extractStoryIdFromBranch('feature/STORY-FIX-004-description')).toBe(
-        'STORY-FIX-004'
-      );
+      expect(extractStoryIdFromBranch('feature/STORY-FIX-004-description')).toBe('STORY-FIX-004');
     });
 
     it('should extract story ID from branch names with different prefixes', () => {
@@ -50,9 +48,7 @@ describe('Story ID utilities', () => {
     });
 
     it('should extract story ID with dashes in description', () => {
-      expect(extractStoryIdFromBranch('feature/STORY-123_fix-bug-with-dashes')).toBe(
-        'STORY-123'
-      );
+      expect(extractStoryIdFromBranch('feature/STORY-123_fix-bug-with-dashes')).toBe('STORY-123');
     });
 
     it('should handle empty branch name', () => {
