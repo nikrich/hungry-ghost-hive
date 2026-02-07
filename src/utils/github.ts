@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 /**
  * Extract GitHub PR number from a GitHub PR URL
  * @param url GitHub PR URL (e.g., https://github.com/owner/repo/pull/123)

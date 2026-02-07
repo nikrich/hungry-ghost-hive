@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { getActiveAgents, getAllAgents } from '../../db/queries/agents.js';

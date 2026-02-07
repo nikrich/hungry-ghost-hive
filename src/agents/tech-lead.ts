@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../cli-runtimes/index.js';
 import { loadConfig } from '../config/index.js';
 import { queryAll } from '../db/client.js';
@@ -273,13 +275,12 @@ Respond in JSON format:
 
           // Build spawn command using CLI runtime builder (spawn fresh session, will be resumed later)
           const runtimeBuilder = getCliRuntimeBuilder(cliTool);
-          const commandArray = runtimeBuilder.buildSpawnCommand(model);
-          const command = commandArray.join(' ');
+          const commandArgs = runtimeBuilder.buildSpawnCommand(model);
 
           await spawnTmuxSession({
             sessionName,
             workDir: `${this.workDir}/${team.repo_path}`,
-            command,
+            commandArgs,
           });
 
           updateAgent(this.db, senior.id, {

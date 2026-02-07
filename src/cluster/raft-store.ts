@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { createHash } from 'crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -243,9 +245,17 @@ export class RaftMetadataStore {
   }
 
   private persistState(): void {
-    const temp = `${this.statePath}.tmp`;
-    writeFileSync(temp, JSON.stringify(this.state, null, 2), 'utf-8');
-    renameSync(temp, this.statePath);
+    try {
+      const temp = `${this.statePath}.tmp`;
+      writeFileSync(temp, JSON.stringify(this.state, null, 2), 'utf-8');
+      renameSync(temp, this.statePath);
+    } catch (error) {
+      // Gracefully handle ENOENT during shutdown when directory may be deleted
+      // This can happen in tests or during rapid start/stop cycles
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
   }
 }
 

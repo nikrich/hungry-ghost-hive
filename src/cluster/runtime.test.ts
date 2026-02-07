@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { createServer } from 'net';
 import { tmpdir } from 'os';
@@ -37,6 +39,39 @@ describe('cluster runtime helpers', () => {
     expect(status?.role).toBe('leader');
     expect(status?.node_id).toBe('node-local');
     expect(status?.raft_last_log_index).toBe(0);
+  });
+
+  it('rejects starting on non-loopback hosts without auth token', async () => {
+    if (!(await canListenOnLocalhost())) {
+      return;
+    }
+
+    const root = mkdtempSync(join(tmpdir(), 'hive-cluster-runtime-insecure-'));
+    tempRoots.push(root);
+
+    const hiveDir = join(root, '.hive');
+    mkdirSync(hiveDir, { recursive: true });
+
+    const port = await getFreePort();
+    const runtime = new ClusterRuntime(
+      {
+        enabled: true,
+        node_id: 'node-insecure',
+        listen_host: '0.0.0.0',
+        listen_port: port,
+        public_url: `http://127.0.0.1:${port}`,
+        peers: [],
+        heartbeat_interval_ms: 100,
+        election_timeout_min_ms: 150,
+        election_timeout_max_ms: 250,
+        sync_interval_ms: 200,
+        request_timeout_ms: 500,
+        story_similarity_threshold: 0.92,
+      },
+      { hiveDir }
+    );
+
+    await expect(runtime.start()).rejects.toThrow(/auth_token is required/i);
   });
 
   it('persists durable raft term and log metadata across restart', async () => {

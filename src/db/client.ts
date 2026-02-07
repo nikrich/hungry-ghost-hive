@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { copyFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';

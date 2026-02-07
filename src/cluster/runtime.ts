@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
 import { join } from 'path';
 import type { Database } from 'sql.js';
@@ -56,6 +58,8 @@ interface ClusterStatusFetchOptions {
   timeoutMs: number;
 }
 
+const MAX_CLUSTER_REQUEST_BODY_BYTES = 1024 * 1024; // 1 MiB
+
 export interface ClusterStatus {
   enabled: boolean;
   node_id: string;
@@ -103,6 +107,7 @@ export class ClusterRuntime {
   async start(): Promise<void> {
     if (!this.config.enabled || this.started) return;
 
+    this.validateNetworkSecurity();
     this.initializeRaftStore();
     this.resetElectionDeadline();
     await this.startServer();
@@ -497,6 +502,15 @@ export class ClusterRuntime {
     this.raftStore.appendEntry({ type, term: this.currentTerm, metadata });
   }
 
+  private validateNetworkSecurity(): void {
+    if (isLoopbackHost(this.config.listen_host)) return;
+    if (this.config.auth_token) return;
+
+    throw new Error(
+      `Cluster auth_token is required when listen_host is not loopback (received: ${this.config.listen_host})`
+    );
+  }
+
   private async startServer(): Promise<void> {
     this.server = createServer((req, res) => {
       void this.handleHttpRequest(req, res);
@@ -560,6 +574,11 @@ export class ClusterRuntime {
 
       sendJson(res, 404, { error: 'Not found' });
     } catch (error) {
+      if (error instanceof HttpRequestError) {
+        sendJson(res, error.statusCode, { error: error.message });
+        return;
+      }
+
       const message = error instanceof Error ? error.message : String(error);
       sendJson(res, 500, { error: message });
     }
@@ -745,11 +764,32 @@ function toVersionVector(input: unknown): VersionVector {
   return vector;
 }
 
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+class HttpRequestError extends Error {
+  constructor(
+    public readonly statusCode: number,
+    message: string
+  ) {
+    super(message);
+    this.name = 'HttpRequestError';
+  }
+}
+
+async function readJsonBody(
+  req: IncomingMessage,
+  maxBytes: number = MAX_CLUSTER_REQUEST_BODY_BYTES
+): Promise<unknown> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
 
   for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const normalizedChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += normalizedChunk.length;
+
+    if (totalBytes > maxBytes) {
+      throw new HttpRequestError(413, `Payload too large (max ${maxBytes} bytes)`);
+    }
+
+    chunks.push(normalizedChunk);
   }
 
   if (chunks.length === 0) return {};
@@ -757,7 +797,11 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const raw = Buffer.concat(chunks).toString('utf-8');
   if (!raw.trim()) return {};
 
-  return JSON.parse(raw) as unknown;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    throw new HttpRequestError(400, 'Invalid JSON payload');
+  }
 }
 
 function sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
@@ -770,4 +814,14 @@ function toInt(value: unknown): number {
   const parsed = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(parsed)) return 0;
   return Math.floor(parsed);
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return (
+    normalized === '127.0.0.1' ||
+    normalized === 'localhost' ||
+    normalized === '::1' ||
+    normalized === '[::1]'
+  );
 }

@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 /**
  * CLI Command Builder
  * Generates appropriate CLI commands for spawning agents based on configured tool and model
