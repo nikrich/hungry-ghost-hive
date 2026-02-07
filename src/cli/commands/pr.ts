@@ -15,6 +15,7 @@ import {
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
+import { getPullRequest } from '../../git/github.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
@@ -295,23 +296,33 @@ prCommand
           }
         }
         try {
-          const { execSync } = await import('child_process');
-          // First approve the PR on GitHub
-          try {
-            execSync(`gh pr review ${pr.github_pr_number} --approve`, {
+          // First check if PR is already merged on GitHub
+          const prInfo = await getPullRequest(repoCwd, pr.github_pr_number);
+
+          if (prInfo.state === 'merged') {
+            // PR is already merged on GitHub
+            actuallyMerged = true;
+            console.log(chalk.green(`PR ${prId} is already merged on GitHub!`));
+          } else {
+            // PR is not merged yet, try to merge it
+            const { execSync } = await import('child_process');
+            // First approve the PR on GitHub
+            try {
+              execSync(`gh pr review ${pr.github_pr_number} --approve`, {
+                stdio: 'pipe',
+                cwd: repoCwd,
+              });
+            } catch (_error) {
+              // May fail if already approved or if it's our own PR - continue
+            }
+            // Then merge
+            execSync(`gh pr merge ${pr.github_pr_number} --squash --delete-branch`, {
               stdio: 'pipe',
               cwd: repoCwd,
             });
-          } catch (_error) {
-            // May fail if already approved or if it's our own PR - continue
+            actuallyMerged = true;
+            console.log(chalk.green(`PR ${prId} approved and merged on GitHub!`));
           }
-          // Then merge
-          execSync(`gh pr merge ${pr.github_pr_number} --squash --delete-branch`, {
-            stdio: 'pipe',
-            cwd: repoCwd,
-          });
-          actuallyMerged = true;
-          console.log(chalk.green(`PR ${prId} approved and merged on GitHub!`));
         } catch (mergeErr: unknown) {
           const errMsg = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
           console.log(chalk.yellow(`GitHub merge failed: ${errMsg}`));
