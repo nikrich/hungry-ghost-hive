@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { join } from 'path';
+import { fetchLocalClusterStatus } from '../../cluster/runtime.js';
 import { loadConfig } from '../../config/loader.js';
 import { createLog } from '../../db/queries/logs.js';
 import {
@@ -107,16 +108,22 @@ prCommand
         // Check if QA agents need to be spawned for the merge queue
         try {
           const config = loadConfig(paths.hiveDir);
-          const scheduler = new Scheduler(db.db, {
-            scaling: config.scaling,
-            models: config.models,
-            qa: config.qa,
-            rootDir: root,
-          });
-          await scheduler.checkMergeQueue();
-          db.save();
-          console.log(chalk.gray('  QA agents notified'));
-        } catch (_error) {
+          const clusterStatus = config.cluster.enabled
+            ? await fetchLocalClusterStatus(config.cluster)
+            : null;
+
+          if (!config.cluster.enabled || clusterStatus?.is_leader) {
+            const scheduler = new Scheduler(db.db, {
+              scaling: config.scaling,
+              models: config.models,
+              qa: config.qa,
+              rootDir: root,
+            });
+            await scheduler.checkMergeQueue();
+            db.save();
+            console.log(chalk.gray('  QA agents notified'));
+          }
+        } catch {
           // Non-fatal - QA can be triggered manually
         }
       });
@@ -470,15 +477,21 @@ prCommand
         // Trigger QA check
         try {
           const config = loadConfig(paths.hiveDir);
-          const scheduler = new Scheduler(db.db, {
-            scaling: config.scaling,
-            models: config.models,
-            rootDir: root,
-          });
-          await scheduler.checkMergeQueue();
-          db.save();
-          console.log(chalk.gray('QA agents notified.'));
-        } catch (_error) {
+          const clusterStatus = config.cluster.enabled
+            ? await fetchLocalClusterStatus(config.cluster)
+            : null;
+
+          if (!config.cluster.enabled || clusterStatus?.is_leader) {
+            const scheduler = new Scheduler(db.db, {
+              scaling: config.scaling,
+              models: config.models,
+              rootDir: root,
+            });
+            await scheduler.checkMergeQueue();
+            db.save();
+            console.log(chalk.gray('QA agents notified.'));
+          }
+        } catch {
           // Non-fatal
         }
       } else {

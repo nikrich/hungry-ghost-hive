@@ -139,6 +139,42 @@ const LoggingConfigSchema = z.object({
   retention_days: z.number().int().positive().default(30),
 });
 
+// Cluster peer configuration
+const ClusterPeerSchema = z.object({
+  id: z.string().min(1),
+  url: z.string().url(),
+});
+
+// Distributed cluster configuration (feature-flagged)
+const ClusterConfigSchema = z.object({
+  // Enable distributed mode
+  enabled: z.boolean().default(false),
+  // Stable unique ID for this host/node
+  node_id: z.string().min(1).default('node-local'),
+  // HTTP bind host for cluster API
+  listen_host: z.string().min(1).default('0.0.0.0'),
+  // HTTP bind port for cluster API
+  listen_port: z.number().int().min(1).max(65535).default(8787),
+  // Public URL peers can use to reach this node
+  public_url: z.string().url().default('http://127.0.0.1:8787'),
+  // Other nodes in this cluster
+  peers: z.array(ClusterPeerSchema).default([]),
+  // Optional bearer token for cluster API
+  auth_token: z.string().min(1).optional(),
+  // Leader election heartbeat interval
+  heartbeat_interval_ms: z.number().int().positive().default(2000),
+  // Randomized election timeout lower bound
+  election_timeout_min_ms: z.number().int().positive().default(3000),
+  // Randomized election timeout upper bound
+  election_timeout_max_ms: z.number().int().positive().default(6000),
+  // Anti-entropy sync cadence
+  sync_interval_ms: z.number().int().positive().default(5000),
+  // Outbound HTTP request timeout for peer calls
+  request_timeout_ms: z.number().int().positive().default(5000),
+  // Story similarity threshold [0..1] for duplicate merge detection
+  story_similarity_threshold: z.number().min(0).max(1).default(0.92),
+});
+
 // Main configuration schema
 export const HiveConfigSchema = z.object({
   version: z.string().default('1.0'),
@@ -149,6 +185,7 @@ export const HiveConfigSchema = z.object({
   agents: AgentsConfigSchema.default({}),
   manager: ManagerConfigSchema.default({}),
   logging: LoggingConfigSchema.default({}),
+  cluster: ClusterConfigSchema.default({}),
 });
 
 // Export types
@@ -160,6 +197,8 @@ export type QAConfig = z.infer<typeof QAConfigSchema>;
 export type AgentsConfig = z.infer<typeof AgentsConfigSchema>;
 export type ManagerConfig = z.infer<typeof ManagerConfigSchema>;
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
+export type ClusterPeerConfig = z.infer<typeof ClusterPeerSchema>;
+export type ClusterConfig = z.infer<typeof ClusterConfigSchema>;
 export type HiveConfig = z.infer<typeof HiveConfigSchema>;
 
 // Default configuration
@@ -288,5 +327,30 @@ logging:
   level: info
   # Retain logs for N days
   retention_days: 30
+
+# Distributed cluster mode (disabled by default)
+cluster:
+  # Feature flag
+  enabled: false
+  # Unique stable ID for this host
+  node_id: node-local
+  # HTTP listen address for cluster coordination/sync
+  listen_host: 0.0.0.0
+  listen_port: 8787
+  # Publicly reachable URL for peers
+  public_url: http://127.0.0.1:8787
+  # Optional bearer auth token shared across hosts
+  # auth_token: your-shared-token
+  # Cluster members (other hosts in the same cluster)
+  peers: []
+  # Leader election cadence
+  heartbeat_interval_ms: 2000
+  election_timeout_min_ms: 3000
+  election_timeout_max_ms: 6000
+  # State replication cadence
+  sync_interval_ms: 5000
+  request_timeout_ms: 5000
+  # Duplicate story detection sensitivity
+  story_similarity_threshold: 0.92
 `;
 }

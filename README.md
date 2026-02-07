@@ -209,6 +209,10 @@ hive manager health
 # Nudge a specific agent
 hive manager nudge <session>
 hive manager nudge hive-senior-alpha -m "Check the failing tests"
+
+# Cluster status (when cluster.enabled=true)
+hive cluster status
+hive cluster status --json
 ```
 
 ### Communication
@@ -309,7 +313,34 @@ qa:
     - npm run type-check
   build_command: npm run build
   test_command: npm test
+
+# Optional distributed mode (HTTP + peer replication)
+cluster:
+  enabled: false
+  node_id: node-a
+  listen_host: 0.0.0.0
+  listen_port: 8787
+  public_url: http://203.0.113.10:8787
+  peers:
+    - id: node-b
+      url: http://198.51.100.20:8787
+    - id: node-c
+      url: http://192.0.2.30:8787
+  heartbeat_interval_ms: 2000
+  election_timeout_min_ms: 3000
+  election_timeout_max_ms: 6000
+  sync_interval_ms: 5000
+  request_timeout_ms: 5000
+  story_similarity_threshold: 0.92
 ```
+
+### Distributed Mode
+
+- Run `hive manager start` on every host in the same cluster.
+- Each host runs manager/scheduler runtime, but only one node is elected leader at a time.
+- Leader is the only node allowed to run orchestration decisions (`assign`, scheduler loops, tech lead spawn).
+- Followers stay in sync and do not schedule work.
+- State replication is logical row/event sync over HTTP (no centralized DB).
 
 ## Escalation Protocol
 

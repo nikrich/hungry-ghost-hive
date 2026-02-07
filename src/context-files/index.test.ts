@@ -170,6 +170,20 @@ describe('context-files module', () => {
         tmux_timeout_ms: 10000,
       },
       logging: { level: 'info', retention_days: 30 },
+      cluster: {
+        enabled: false,
+        node_id: 'node-local',
+        listen_host: '0.0.0.0',
+        listen_port: 8787,
+        public_url: 'http://127.0.0.1:8787',
+        peers: [],
+        heartbeat_interval_ms: 2000,
+        election_timeout_min_ms: 3000,
+        election_timeout_max_ms: 6000,
+        sync_interval_ms: 5000,
+        request_timeout_ms: 5000,
+        story_similarity_threshold: 0.92,
+      },
     };
 
     it('should create a new context file if it does not exist', () => {

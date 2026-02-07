@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { existsSync, readFileSync } from 'fs';
 import ora from 'ora';
 import { getCliRuntimeBuilder } from '../../cli-runtimes/index.js';
+import { fetchLocalClusterStatus } from '../../cluster/runtime.js';
 import { loadConfig } from '../../config/loader.js';
 import { withTransaction } from '../../db/client.js';
 import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.js';
@@ -45,6 +46,34 @@ export const reqCommand = new Command('req')
         const lines = reqText.split('\n');
         const title = options.title || lines[0].replace(/^#\s*/, '').substring(0, 100);
         const description = reqText;
+
+        const config = loadConfig(paths.hiveDir);
+        if (config.cluster.enabled) {
+          const clusterStatus = await fetchLocalClusterStatus(config.cluster);
+          if (!clusterStatus) {
+            console.error(
+              chalk.red(
+                'Cluster mode is enabled, but local cluster runtime is unavailable. Start manager first:'
+              )
+            );
+            console.log(chalk.gray('  hive manager start'));
+            process.exit(1);
+          }
+
+          if (!clusterStatus.is_leader) {
+            console.error(
+              chalk.red(
+                `This node is not the active cluster leader (leader: ${clusterStatus.leader_id || 'unknown'}).`
+              )
+            );
+            if (clusterStatus.leader_url) {
+              console.log(
+                chalk.gray(`Run this command on leader host: ${clusterStatus.leader_url}`)
+              );
+            }
+            process.exit(1);
+          }
+        }
 
         const spinner = ora('Processing requirement...').start();
 
@@ -112,7 +141,6 @@ export const reqCommand = new Command('req')
 
           try {
             // Build CLI command using the configured runtime for Tech Lead
-            const config = loadConfig(paths.hiveDir);
             const cliTool = config.models.tech_lead.cli_tool;
             const model = 'opus';
             const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
