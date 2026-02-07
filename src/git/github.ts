@@ -34,7 +34,7 @@ export async function isGitHubCLIAvailable(): Promise<boolean> {
   try {
     await execa('gh', ['auth', 'status']);
     return true;
-  } catch {
+  } catch (_error) {
     return false;
   }
 }

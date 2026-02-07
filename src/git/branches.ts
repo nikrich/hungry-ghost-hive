@@ -91,7 +91,7 @@ export async function branchExists(workDir: string, name: string): Promise<boole
   try {
     await execa('git', ['rev-parse', '--verify', name], { cwd: workDir });
     return true;
-  } catch {
+  } catch (_error) {
     return false;
   }
 }
@@ -127,7 +127,7 @@ export async function getBranchTracking(
       ahead,
       behind,
     };
-  } catch {
+  } catch (_error) {
     return { upstream: null, ahead: 0, behind: 0 };
   }
 }
@@ -171,7 +171,7 @@ export async function createFeatureBranch(
 
   try {
     await execa('git', ['pull', 'origin', baseBranch], { cwd: workDir });
-  } catch {
+  } catch (_error) {
     // Pull might fail if no remote tracking, continue anyway
   }
 

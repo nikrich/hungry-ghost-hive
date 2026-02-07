@@ -169,7 +169,7 @@ Respond in JSON format:
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
       }
-    } catch {
+    } catch (_error) {
       // If parsing fails, request clarification
     }
 

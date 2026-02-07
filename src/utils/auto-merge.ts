@@ -97,7 +97,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
           );
           prState = JSON.parse(prViewOutput);
           mergeableStatus = prState.mergeable === 'MERGEABLE';
-        } catch {
+        } catch (_error) {
           // If we can't determine PR status, skip this PR
           createLog(db.db, {
             agentId: 'manager',
@@ -190,7 +190,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         });
         db.save();
       }
-    } catch {
+    } catch (_error) {
       // Non-fatal - continue with other PRs
       continue;
     }

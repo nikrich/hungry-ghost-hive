@@ -107,7 +107,7 @@ storiesCommand
           for (const c of criteria) {
             console.log(chalk.gray(`  • ${c}`));
           }
-        } catch {
+        } catch (_error) {
           console.log(chalk.gray(story.acceptance_criteria));
         }
       }

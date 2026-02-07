@@ -55,7 +55,7 @@ export async function isTmuxAvailable(): Promise<boolean> {
   try {
     await execa('which', ['tmux']);
     return true;
-  } catch {
+  } catch (_error) {
     return false;
   }
 }
@@ -64,7 +64,7 @@ export async function isTmuxSessionRunning(sessionName: string): Promise<boolean
   try {
     await execa('tmux', ['has-session', '-t', sessionName]);
     return true;
-  } catch {
+  } catch (_error) {
     return false;
   }
 }
@@ -89,7 +89,7 @@ export async function listTmuxSessions(): Promise<TmuxSession[]> {
           attached: attached === '1',
         };
       });
-  } catch {
+  } catch (_error) {
     return [];
   }
 }
@@ -144,7 +144,7 @@ export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<voi
 export async function killTmuxSession(sessionName: string): Promise<void> {
   try {
     await execa('tmux', ['kill-session', '-t', sessionName]);
-  } catch {
+  } catch (_error) {
     // Session might not exist, ignore error
   }
 }
@@ -157,7 +157,7 @@ export async function killAllHiveSessions(): Promise<number> {
     try {
       await killTmuxSession(session.name);
       killed++;
-    } catch {
+    } catch (_error) {
       // Ignore errors
     }
   }
@@ -211,7 +211,7 @@ export async function captureTmuxPane(
       `-${lines}`,
     ]);
     return stdout;
-  } catch {
+  } catch (_error) {
     return '';
   }
 }

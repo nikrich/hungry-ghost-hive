@@ -33,7 +33,7 @@ export async function validateCliBinary(binary: string): Promise<boolean> {
   try {
     await execa('which', [binary]);
     return true;
-  } catch {
+  } catch (_error) {
     return false;
   }
 }

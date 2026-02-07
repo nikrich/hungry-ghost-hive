@@ -1010,7 +1010,7 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
           storiesUpdated++;
         }
       }
-    } catch {
+    } catch (_error) {
       // gh CLI might not be authenticated or repo might not have remote
       continue;
     }
@@ -1071,7 +1071,7 @@ async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string)
 
         synced++;
       }
-    } catch {
+    } catch (_error) {
       // gh CLI might not be authenticated or repo might not have remote
       continue;
     }

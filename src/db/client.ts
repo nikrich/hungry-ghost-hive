@@ -446,7 +446,7 @@ export async function withTransaction<T>(db: SqlJsDatabase, fn: () => Promise<T>
   } catch (error) {
     try {
       db.run('ROLLBACK');
-    } catch {
+    } catch (_error) {
       // Ignore rollback errors - transaction may have already been rolled back
     }
     throw error;

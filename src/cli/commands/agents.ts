@@ -113,7 +113,7 @@ agentsCommand
           try {
             const meta = JSON.parse(log.metadata);
             console.log(chalk.gray(`  ${JSON.stringify(meta)}`));
-          } catch {
+          } catch (_error) {
             // Ignore parse errors
           }
         }
@@ -159,7 +159,7 @@ agentsCommand
         try {
           const state = JSON.parse(agent.memory_state);
           console.log(JSON.stringify(state, null, 2));
-        } catch {
+        } catch (_error) {
           console.log(agent.memory_state);
         }
       }

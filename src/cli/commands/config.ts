@@ -98,7 +98,7 @@ configCommand
       let parsedValue: unknown;
       try {
         parsedValue = JSON.parse(value);
-      } catch {
+      } catch (_error) {
         // Check for boolean strings
         if (value.toLowerCase() === 'true') {
           parsedValue = true;
