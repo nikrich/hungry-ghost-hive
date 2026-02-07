@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.18.0...v0.18.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* delay manager start until DB is closed to prevent race condition ([9601ebd](https://github.com/nikrich/hungry-ghost-hive/commit/9601ebdd751ad4fd714eca2e898255d03b82af53))
+* STORY-FIX-DBRACE - Delay manager start to prevent DB race condition ([8df07fd](https://github.com/nikrich/hungry-ghost-hive/commit/8df07fd4302df608a219ece1724dc556f235ce85))
+
 ## [0.18.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.17.2...v0.18.0) (2026-02-07)
 
 
