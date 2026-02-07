@@ -23,7 +23,6 @@ import {
 } from '../../db/queries/messages.js';
 import {
   backfillGithubPrNumbers,
-  createPullRequest,
   getMergeQueue,
   getPullRequestsByStatus,
   updatePullRequest,
@@ -60,6 +59,7 @@ import {
   type CLITool,
 } from '../../utils/cli-commands.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { getExistingPRIdentifiers, syncOpenGitHubPRs } from '../../utils/pr-sync.js';
 import { extractStoryIdFromBranch } from '../../utils/story-id.js';
 
 // --- Named constants (extracted from inline magic numbers) ---
@@ -1031,11 +1031,8 @@ async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string)
   const teams = getAllTeams(db.db);
   if (teams.length === 0) return 0;
 
-  // Get ALL existing PRs (including merged/closed) to prevent duplicate imports
-  const existingPRs = queryAll<PullRequestRow>(db.db, 'SELECT * FROM pull_requests');
-  // Include ALL branch names to prevent duplicate entries for merged/closed PRs
-  const existingBranches = new Set(existingPRs.map(pr => pr.branch_name));
-  const existingPrNumbers = new Set(existingPRs.map(pr => pr.github_pr_number).filter(Boolean));
+  // Include ALL branch names (including merged/closed) to prevent duplicate entries
+  const { existingBranches, existingPrNumbers } = getExistingPRIdentifiers(db.db, true);
 
   let synced = 0;
 
@@ -1045,36 +1042,14 @@ async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string)
     const repoDir = `${root}/${team.repo_path}`;
 
     try {
-      const result = await execa(
-        'gh',
-        ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'],
-        {
-          cwd: repoDir,
-        }
+      const result = await syncOpenGitHubPRs(
+        db.db,
+        repoDir,
+        team.id,
+        existingBranches,
+        existingPrNumbers
       );
-      const ghPRs: Array<{ number: number; headRefName: string; url: string; title: string }> =
-        JSON.parse(result.stdout);
-
-      for (const ghPR of ghPRs) {
-        // Skip if already in queue
-        if (existingBranches.has(ghPR.headRefName) || existingPrNumbers.has(ghPR.number)) {
-          continue;
-        }
-
-        // Try to match to a story by parsing branch name using unified pattern
-        const storyId = extractStoryIdFromBranch(ghPR.headRefName);
-
-        createPullRequest(db.db, {
-          storyId,
-          teamId: team.id,
-          branchName: ghPR.headRefName,
-          githubPrNumber: ghPR.number,
-          githubPrUrl: ghPR.url,
-          submittedBy: null,
-        });
-
-        synced++;
-      }
+      synced += result.synced;
     } catch (_error) {
       // gh CLI might not be authenticated or repo might not have remote
       continue;

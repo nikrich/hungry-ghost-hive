@@ -12,6 +12,7 @@ import {
   updateStory,
 } from '../db/queries/stories.js';
 import { createTeam } from '../db/queries/teams.js';
+import * as worktreeModule from '../git/worktree.js';
 import { Scheduler } from './scheduler.js';
 
 let db: Database;
@@ -403,17 +404,16 @@ describe('Scheduler Build Dependency Graph', () => {
 });
 
 describe('Scheduler Worktree Removal', () => {
-  it('should log worktree removal failures to the database', async () => {
-    // Mock execSync to throw an error
-    const mockExecSync = vi.fn().mockImplementation(() => {
-      throw new Error('Permission denied');
+  it('should log worktree removal failures to the database', () => {
+    // Mock the shared removeWorktree to simulate failure
+    vi.spyOn(worktreeModule, 'removeWorktree').mockReturnValue({
+      success: false,
+      error: 'Permission denied',
+      fullWorktreePath: '/tmp/repos/test-agent-1',
     });
-    vi.doMock('child_process', () => ({
-      execSync: mockExecSync,
-    }));
 
-    const removeMethod = (scheduler as any).removeWorktree;
-    await removeMethod.call(scheduler, 'repos/test-agent-1', 'agent-test-1');
+    const removeMethod = (scheduler as any).removeAgentWorktree;
+    removeMethod.call(scheduler, 'repos/test-agent-1', 'agent-test-1');
 
     // Check that the failure was logged
     const logs = getLogsByEventType(db, 'WORKTREE_REMOVAL_FAILED');
@@ -423,15 +423,14 @@ describe('Scheduler Worktree Removal', () => {
     expect(logs[0].status).toBe('error');
     expect(logs[0].message).toContain('Permission denied');
 
-    // Restore original execSync
-    vi.unmock('child_process');
+    vi.restoreAllMocks();
   });
 
-  it('should handle empty worktree paths gracefully', async () => {
-    const removeMethod = (scheduler as any).removeWorktree;
+  it('should handle empty worktree paths gracefully', () => {
+    const removeMethod = (scheduler as any).removeAgentWorktree;
 
     // Should return without error for empty path
-    await expect(removeMethod.call(scheduler, '', 'agent-test-1')).resolves.toBeUndefined();
+    removeMethod.call(scheduler, '', 'agent-test-1');
 
     // Should not log anything
     const logs = getLogsByEventType(db, 'WORKTREE_REMOVAL_FAILED');

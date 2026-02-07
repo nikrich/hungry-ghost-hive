@@ -1,9 +1,8 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { execa } from 'execa';
 import { join } from 'path';
 import { loadConfig } from '../../config/loader.js';
-import { getDatabase, queryAll } from '../../db/client.js';
+import { getDatabase } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import {
   createPullRequest,
@@ -13,7 +12,6 @@ import {
   getPullRequestById,
   getQueuePosition,
   updatePullRequest,
-  type PullRequestRow,
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
@@ -21,6 +19,7 @@ import { Scheduler } from '../../orchestrator/scheduler.js';
 import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { getExistingPRIdentifiers, syncOpenGitHubPRs } from '../../utils/pr-sync.js';
 import { extractStoryIdFromBranch, normalizeStoryId } from '../../utils/story-id.js';
 
 export const prCommand = new Command('pr').description('Manage pull requests and merge queue');
@@ -520,71 +519,29 @@ prCommand
     const db = await getDatabase(paths.hiveDir);
 
     try {
-      // Get ALL existing PRs (including merged/closed) to prevent duplicate imports
-      const existingPRs = queryAll<PullRequestRow>(db.db, 'SELECT * FROM pull_requests');
-      const existingBranches = new Set(
-        existingPRs
-          .filter(pr => !['merged', 'closed'].includes(pr.status))
-          .map(pr => pr.branch_name)
-      );
-      const existingPrNumbers = new Set(existingPRs.map(pr => pr.github_pr_number).filter(Boolean));
+      const { existingBranches, existingPrNumbers } = getExistingPRIdentifiers(db.db, false);
 
       // Find repo directories
       const repoDir = options.repo ? `${root}/repos/${options.repo}` : process.cwd();
 
       console.log(chalk.cyan(`Checking for open PRs in ${repoDir}...`));
 
-      // Get open PRs from GitHub
-      let ghPRs: Array<{ number: number; headRefName: string; url: string; title: string }> = [];
+      let result;
       try {
-        const result = await execa(
-          'gh',
-          ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'],
-          {
-            cwd: repoDir,
-          }
-        );
-        ghPRs = JSON.parse(result.stdout);
+        result = await syncOpenGitHubPRs(db.db, repoDir, null, existingBranches, existingPrNumbers);
       } catch (err) {
         console.error(chalk.red('Failed to list GitHub PRs. Is gh CLI authenticated?'), err);
         process.exit(1);
       }
 
-      if (ghPRs.length === 0) {
-        console.log(chalk.yellow('No open PRs found on GitHub.'));
-        return;
-      }
-
-      let imported = 0;
-      for (const ghPR of ghPRs) {
-        // Skip if already in queue
-        if (existingBranches.has(ghPR.headRefName) || existingPrNumbers.has(ghPR.number)) {
-          console.log(
-            chalk.gray(`  Skipping PR #${ghPR.number} (${ghPR.headRefName}) - already in queue`)
-          );
-          continue;
-        }
-
-        // Try to match to a story by parsing branch name using unified pattern
-        const storyId = extractStoryIdFromBranch(ghPR.headRefName);
-
-        const pr = createPullRequest(db.db, {
-          storyId,
-          teamId: null,
-          branchName: ghPR.headRefName,
-          githubPrNumber: ghPR.number,
-          githubPrUrl: ghPR.url,
-          submittedBy: null,
-        });
-
-        console.log(chalk.green(`  Imported: PR #${ghPR.number} (${ghPR.headRefName}) → ${pr.id}`));
-        imported++;
+      for (const pr of result.imported) {
+        console.log(chalk.green(`  Imported: PR #${pr.number} (${pr.branch}) → ${pr.prId}`));
       }
 
       db.save();
 
-      if (imported > 0) {
-        console.log(chalk.green(`\nImported ${imported} PR(s) into merge queue.`));
+      if (result.synced > 0) {
+        console.log(chalk.green(`\nImported ${result.synced} PR(s) into merge queue.`));
 
         // Trigger QA check
         try {
