@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.1](https://github.com/nikrich/hungry-ghost-hive/compare/v0.17.0...v0.17.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* add .prettierignore to exclude auto-generated CHANGELOG.md ([afe9b96](https://github.com/nikrich/hungry-ghost-hive/commit/afe9b960d62ebd515f75c1d7215c2fa5bc487671))
+* format 3 files to restore CI ([12a4a9f](https://github.com/nikrich/hungry-ghost-hive/commit/12a4a9fc5bad310e124f006c128cc4ef33781a2e))
+* format manager.ts and CHANGELOG.md with Prettier ([2f551d6](https://github.com/nikrich/hungry-ghost-hive/commit/2f551d61238dc4b14a87594578a3f12554888c82))
+* format manager.ts, resume.ts, and with-hive-context.test.ts with Prettier ([b741abf](https://github.com/nikrich/hungry-ghost-hive/commit/b741abf3f9ef3fd88651497902bd03519e5b5db3))
+* prettier formatting in manager.ts and pr-sync.ts ([ad97405](https://github.com/nikrich/hungry-ghost-hive/commit/ad974052503bf20b0dc9199c15e750b5e0fa8857))
+* remove unused PullRequestRow import breaking build ([2984b3e](https://github.com/nikrich/hungry-ghost-hive/commit/2984b3e2d64ce1259f76f15d9f3643b0f040c20d))
+
 ## [0.17.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.16.0...v0.17.0) (2026-02-07)
 
 ### Features
