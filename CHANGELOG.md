@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.19.1...hungry-ghost-hive-v0.20.0) (2026-02-07)
+
+
+### Features
+
+* route stories that block others to senior agents regardless of complexity ([#238](https://github.com/nikrich/hungry-ghost-hive/issues/238)) ([ce18092](https://github.com/nikrich/hungry-ghost-hive/commit/ce1809200bcdeb64ab769a064b911c5f179d1dce))
+
 ## [0.19.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.19.0...hungry-ghost-hive-v0.19.1) (2026-02-07)
 
 
