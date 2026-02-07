@@ -13,6 +13,9 @@ export const assignCommand = new Command('assign')
   .description('Assign planned stories to agents (spawns Seniors as needed)')
   .option('--dry-run', 'Show what would be assigned without making changes')
   .action(async (options: { dryRun?: boolean }) => {
+    // Track if we need to start the manager after DB is closed
+    let shouldStartManager = false;
+
     await withHiveContext(async ({ root, paths, db }) => {
       const spinner = ora('Assigning stories...').start();
 
@@ -128,17 +131,10 @@ export const assignCommand = new Command('assign')
           spinner.succeed(chalk.green(summaryMsg));
         }
 
-        // Auto-start the manager if work was assigned and it's not running
+        // Determine if we should start the manager, but don't start it yet
+        // Wait until after withHiveContext closes the DB to prevent race condition
         if (result.assigned > 0) {
-          if (!(await isManagerRunning())) {
-            spinner.start('Starting manager daemon...');
-            const started = await startManager(60);
-            if (started) {
-              spinner.succeed(chalk.green('Manager daemon started (checking every 60s)'));
-            } else {
-              spinner.info(chalk.gray('Manager daemon already running'));
-            }
-          }
+          shouldStartManager = !(await isManagerRunning());
         }
 
         console.log();
@@ -151,4 +147,16 @@ export const assignCommand = new Command('assign')
         process.exit(1);
       }
     });
+
+    // DB is now closed - safe to start the manager daemon
+    // This prevents the race condition where manager loads stale DB state
+    if (shouldStartManager) {
+      const spinner = ora('Starting manager daemon...').start();
+      const started = await startManager(60);
+      if (started) {
+        spinner.succeed(chalk.green('Manager daemon started (checking every 60s)'));
+      } else {
+        spinner.info(chalk.gray('Manager daemon already running'));
+      }
+    }
   });
