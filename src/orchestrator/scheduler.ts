@@ -25,6 +25,7 @@ import {
 } from '../db/queries/stories.js';
 import { getAllTeams, getTeamById } from '../db/queries/teams.js';
 import { FileSystemError, OperationalError } from '../errors/index.js';
+import { removeWorktree } from '../git/worktree.js';
 import {
   generateSessionName,
   getHiveSessions,
@@ -118,27 +119,17 @@ export class Scheduler {
   /**
    * Remove a git worktree for an agent
    */
-  private async removeWorktree(worktreePath: string, agentId: string): Promise<void> {
+  private removeAgentWorktree(worktreePath: string, agentId: string): void {
     if (!worktreePath) return;
 
-    const { execSync } = await import('child_process');
-    const fullWorktreePath = `${this.config.rootDir}/${worktreePath}`;
-
-    try {
-      execSync(`git worktree remove "${fullWorktreePath}" --force`, {
-        cwd: this.config.rootDir,
-        stdio: 'pipe',
-        timeout: GIT_WORKTREE_TIMEOUT_MS,
-      });
-    } catch (err) {
-      // Log failure to database for tracking and potential recovery
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    const result = removeWorktree(this.config.rootDir, worktreePath);
+    if (!result.success) {
       createLog(this.db, {
         agentId,
         eventType: 'WORKTREE_REMOVAL_FAILED',
         status: 'error',
-        message: `Failed to remove worktree at ${fullWorktreePath}: ${errorMessage}`,
-        metadata: { worktreePath, fullWorktreePath },
+        message: `Failed to remove worktree at ${result.fullWorktreePath}: ${result.error}`,
+        metadata: { worktreePath, fullWorktreePath: result.fullWorktreePath },
       });
     }
   }
@@ -631,7 +622,7 @@ export class Scheduler {
       if (!sessionAlive && agent.status !== 'terminated') {
         // Remove worktree if exists
         if (agent.worktree_path) {
-          await this.removeWorktree(agent.worktree_path, agent.id);
+          this.removeAgentWorktree(agent.worktree_path, agent.id);
         }
 
         updateAgent(this.db, agent.id, {
@@ -776,7 +767,7 @@ export class Scheduler {
 
           // Remove worktree
           if (agent.worktree_path) {
-            await this.removeWorktree(agent.worktree_path, agent.id);
+            this.removeAgentWorktree(agent.worktree_path, agent.id);
           }
 
           // Update database

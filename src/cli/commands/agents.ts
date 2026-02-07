@@ -9,6 +9,7 @@ import {
   getAllAgents,
 } from '../../db/queries/agents.js';
 import { getLogsByAgent } from '../../db/queries/logs.js';
+import { removeWorktree } from '../../git/worktree.js';
 import { statusColor } from '../../utils/logger.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 
@@ -229,18 +230,10 @@ agentsCommand
         try {
           // Remove worktree if exists
           if (agent.worktree_path) {
-            try {
-              const { execSync } = await import('child_process');
-              const fullWorktreePath = `${root}/${agent.worktree_path}`;
-              execSync(`git worktree remove "${fullWorktreePath}" --force`, {
-                cwd: root,
-                stdio: 'pipe',
-              });
-            } catch (err) {
+            const result = removeWorktree(root, agent.worktree_path);
+            if (!result.success) {
               console.error(
-                chalk.yellow(
-                  `Warning: Failed to remove worktree for ${agent.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
-                )
+                chalk.yellow(`Warning: Failed to remove worktree for ${agent.id}: ${result.error}`)
               );
             }
           }
