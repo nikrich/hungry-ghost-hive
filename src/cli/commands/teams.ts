@@ -1,10 +1,9 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { getDatabase } from '../../db/client.js';
 import { getAgentsByTeam } from '../../db/queries/agents.js';
 import { getStoriesByTeam, getStoryPointsByTeam } from '../../db/queries/stories.js';
 import { deleteTeam, getAllTeams, getTeamByName } from '../../db/queries/teams.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const teamsCommand = new Command('teams').description('Manage teams');
 
@@ -13,16 +12,7 @@ teamsCommand
   .description('List all teams')
   .option('--json', 'Output as JSON')
   .action(async (options: { json?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(async ({ db }) => {
       const teams = getAllTeams(db.db);
 
       if (options.json) {
@@ -52,25 +42,14 @@ teamsCommand
         console.log(chalk.gray(`    Story Points: ${storyPoints}`));
         console.log();
       }
-    } finally {
-      db.close();
-    }
+    });
   });
 
 teamsCommand
   .command('show <name>')
   .description('Show team details')
   .action(async (name: string) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(async ({ db }) => {
       const team = getTeamByName(db.db, name);
 
       if (!team) {
@@ -123,9 +102,7 @@ teamsCommand
       console.log(`  Total Stories: ${stories.length}`);
       console.log(`  Active Story Points: ${storyPoints}`);
       console.log(`  Active Agents: ${agents.filter(a => a.status !== 'terminated').length}`);
-    } finally {
-      db.close();
-    }
+    });
   });
 
 teamsCommand
@@ -133,16 +110,7 @@ teamsCommand
   .description('Remove a team')
   .option('--force', 'Force removal even if team has active stories')
   .action(async (name: string, options: { force?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(async ({ db }) => {
       const team = getTeamByName(db.db, name);
 
       if (!team) {
@@ -169,7 +137,5 @@ teamsCommand
       );
       console.log(chalk.gray(`  git submodule deinit -f ${team.repo_path}`));
       console.log(chalk.gray(`  git rm -f ${team.repo_path}`));
-    } finally {
-      db.close();
-    }
+    });
   });
