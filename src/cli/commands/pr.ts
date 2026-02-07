@@ -445,7 +445,7 @@ prCommand
     await withHiveContext(async ({ root, paths, db }) => {
       const { existingBranches, existingPrNumbers } = getExistingPRIdentifiers(db.db, false);
 
-      // Find repo directories
+      // Find repo directory
       const repoDir = options.repo ? `${root}/repos/${options.repo}` : process.cwd();
 
       console.log(chalk.cyan(`Checking for open PRs in ${repoDir}...`));

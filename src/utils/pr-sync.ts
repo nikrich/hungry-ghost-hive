@@ -1,8 +1,15 @@
 import { execa } from 'execa';
 import type { Database } from 'sql.js';
-import { queryAll, type PullRequestRow } from '../db/client.js';
-import { createPullRequest } from '../db/queries/pull-requests.js';
+import { queryAll, withTransaction, type PullRequestRow } from '../db/client.js';
+import { createLog } from '../db/queries/logs.js';
+import {
+  createPullRequest,
+} from '../db/queries/pull-requests.js';
+import { updateStory } from '../db/queries/stories.js';
+import { getAllTeams } from '../db/queries/teams.js';
 import { extractStoryIdFromBranch } from './story-id.js';
+
+const GITHUB_PR_LIST_LIMIT = 20;
 
 export interface GitHubPR {
   number: number;
@@ -108,4 +115,112 @@ export async function syncOpenGitHubPRs(
   }
 
   return { synced: imported.length, imported };
+}
+
+/**
+ * Sync open GitHub PRs across all teams into the merge queue.
+ * Convenience wrapper over syncOpenGitHubPRs for the common case of
+ * syncing all teams at once.
+ *
+ * @returns Total number of newly imported PRs.
+ */
+export async function syncAllTeamOpenPRs(
+  root: string,
+  db: Database,
+  saveFn: () => void,
+): Promise<number> {
+  const teams = getAllTeams(db);
+  if (teams.length === 0) return 0;
+
+  const { existingBranches, existingPrNumbers } = getExistingPRIdentifiers(db, true);
+  let totalSynced = 0;
+
+  for (const team of teams) {
+    if (!team.repo_path) continue;
+    const repoDir = `${root}/${team.repo_path}`;
+    try {
+      const result = await syncOpenGitHubPRs(db, repoDir, team.id, existingBranches, existingPrNumbers);
+      totalSynced += result.synced;
+    } catch {
+      // gh CLI might not be authenticated or repo might not have remote
+    }
+  }
+
+  if (totalSynced > 0) {
+    saveFn();
+  }
+
+  return totalSynced;
+}
+
+/**
+ * Sync recently merged PRs from GitHub and update story statuses accordingly.
+ *
+ * @returns The number of stories updated to 'merged'.
+ */
+export async function syncMergedPRsFromGitHub(
+  root: string,
+  db: Database,
+  saveFn: () => void,
+): Promise<number> {
+  const teams = getAllTeams(db);
+  if (teams.length === 0) return 0;
+
+  let storiesUpdated = 0;
+
+  for (const team of teams) {
+    if (!team.repo_path) continue;
+
+    const repoDir = `${root}/${team.repo_path}`;
+
+    try {
+      const result = await execa(
+        'gh',
+        [
+          'pr', 'list',
+          '--json', 'number,headRefName,mergedAt',
+          '--state', 'merged',
+          '--limit', String(GITHUB_PR_LIST_LIMIT),
+        ],
+        { cwd: repoDir },
+      );
+      const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> =
+        JSON.parse(result.stdout);
+
+      for (const pr of mergedPRs) {
+        const storyId = extractStoryIdFromBranch(pr.headRefName);
+        if (!storyId) continue;
+
+        const story = queryAll(
+          db,
+          "SELECT * FROM stories WHERE id = ? AND status != 'merged'",
+          [storyId],
+        );
+
+        if (story.length > 0) {
+          await withTransaction(db, () => {
+            updateStory(db, storyId, { status: 'merged', assignedAgentId: null });
+
+            createLog(db, {
+              agentId: 'manager',
+              storyId,
+              eventType: 'STORY_MERGED',
+              message: `Story synced to merged from GitHub PR #${pr.number}`,
+            });
+          });
+
+          storiesUpdated++;
+        }
+      }
+    } catch {
+      // gh CLI might not be authenticated or repo might not have remote
+      continue;
+    }
+  }
+
+  if (storiesUpdated > 0) {
+    saveFn();
+  }
+
+  return storiesUpdated;
 }

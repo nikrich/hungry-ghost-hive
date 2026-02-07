@@ -1,10 +1,9 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { execa } from 'execa';
 import { join } from 'path';
 import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
-import type { DatabaseClient, StoryRow } from '../../db/client.js';
+import type { StoryRow } from '../../db/client.js';
 import { queryAll, withTransaction } from '../../db/client.js';
 import { acquireLock } from '../../db/lock.js';
 import { getAgentById, getAllAgents, updateAgent } from '../../db/queries/agents.js';
@@ -32,7 +31,6 @@ import {
   updateStory,
   updateStoryAssignment,
 } from '../../db/queries/stories.js';
-import { getAllTeams } from '../../db/queries/teams.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import {
   autoApprovePermission,
@@ -57,9 +55,11 @@ import {
   getAvailableCommands,
   type CLITool,
 } from '../../utils/cli-commands.js';
+import {
+  syncAllTeamOpenPRs,
+  syncMergedPRsFromGitHub as syncMergedPRs,
+} from '../../utils/pr-sync.js';
 import { withHiveContext, withHiveRoot } from '../../utils/with-hive-context.js';
-import { getExistingPRIdentifiers, syncOpenGitHubPRs } from '../../utils/pr-sync.js';
-import { extractStoryIdFromBranch } from '../../utils/story-id.js';
 
 // --- Named constants (extracted from inline magic numbers) ---
 
@@ -79,8 +79,6 @@ const IDLE_SPINDOWN_DELAY_MS = 500;
 const POST_NUDGE_DELAY_MS = 100;
 /** Delay in ms between forwarding messages to an agent */
 const MESSAGE_FORWARD_DELAY_MS = 100;
-/** Limit for GitHub PR list queries */
-const GITHUB_PR_LIST_LIMIT = 20;
 /** Minutes a story can be in_progress before being considered stuck */
 const STUCK_STORY_THRESHOLD_MINUTES = 30;
 
@@ -337,13 +335,13 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     }
 
     // Sync merged PRs from GitHub to keep story statuses in sync
-    const mergedSynced = await syncMergedPRsFromGitHub(root, db);
+    const mergedSynced = await syncMergedPRs(root, db.db, () => db.save());
     if (mergedSynced > 0) {
       console.log(chalk.green(`  Synced ${mergedSynced} merged story(ies) from GitHub`));
     }
 
     // Sync GitHub PRs that might not be in queue
-    const syncedPRs = await syncGitHubPRs(root, db, paths.hiveDir);
+    const syncedPRs = await syncAllTeamOpenPRs(root, db.db, () => db.save());
     if (syncedPRs > 0) {
       console.log(chalk.yellow(`  Synced ${syncedPRs} GitHub PR(s) into merge queue`));
       // Recheck merge queue after syncing
@@ -907,116 +905,6 @@ async function forwardMessages(
     // Small delay between messages to allow recipient time to read
     await new Promise(resolve => setTimeout(resolve, MESSAGE_FORWARD_DELAY_MS));
   }
-}
-
-async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promise<number> {
-  const teams = getAllTeams(db.db);
-  if (teams.length === 0) return 0;
-
-  let storiesUpdated = 0;
-
-  for (const team of teams) {
-    if (!team.repo_path) continue;
-
-    const repoDir = `${root}/${team.repo_path}`;
-
-    try {
-      // Get recently merged PRs from GitHub
-      const result = await execa(
-        'gh',
-        [
-          'pr',
-          'list',
-          '--json',
-          'number,headRefName,mergedAt',
-          '--state',
-          'merged',
-          '--limit',
-          String(GITHUB_PR_LIST_LIMIT),
-        ],
-        {
-          cwd: repoDir,
-        }
-      );
-      const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> =
-        JSON.parse(result.stdout);
-
-      for (const pr of mergedPRs) {
-        // Extract story ID from branch name using unified pattern
-        const storyId = extractStoryIdFromBranch(pr.headRefName);
-        if (!storyId) continue;
-
-        // Check if story exists and isn't already merged
-        const story = queryAll<StoryRow>(
-          db.db,
-          "SELECT * FROM stories WHERE id = ? AND status != 'merged'",
-          [storyId]
-        );
-
-        if (story.length > 0) {
-          // Update story to merged (atomic transaction)
-          await withTransaction(db.db, () => {
-            updateStory(db.db, storyId, { status: 'merged', assignedAgentId: null });
-
-            // Log the sync
-            createLog(db.db, {
-              agentId: 'manager',
-              storyId: storyId,
-              eventType: 'STORY_MERGED',
-              message: `Story synced to merged from GitHub PR #${pr.number}`,
-            });
-          });
-
-          storiesUpdated++;
-        }
-      }
-    } catch (_error) {
-      // gh CLI might not be authenticated or repo might not have remote
-      continue;
-    }
-  }
-
-  if (storiesUpdated > 0) {
-    db.save();
-  }
-
-  return storiesUpdated;
-}
-
-async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string): Promise<number> {
-  const teams = getAllTeams(db.db);
-  if (teams.length === 0) return 0;
-
-  // Include ALL branch names (including merged/closed) to prevent duplicate entries
-  const { existingBranches, existingPrNumbers } = getExistingPRIdentifiers(db.db, true);
-
-  let synced = 0;
-
-  for (const team of teams) {
-    if (!team.repo_path) continue;
-
-    const repoDir = `${root}/${team.repo_path}`;
-
-    try {
-      const result = await syncOpenGitHubPRs(
-        db.db,
-        repoDir,
-        team.id,
-        existingBranches,
-        existingPrNumbers
-      );
-      synced += result.synced;
-    } catch (_error) {
-      // gh CLI might not be authenticated or repo might not have remote
-      continue;
-    }
-  }
-
-  if (synced > 0) {
-    db.save();
-  }
-
-  return synced;
 }
 
 // autoMergeApprovedPRs moved to src/utils/auto-merge.ts for reuse in pr.ts
