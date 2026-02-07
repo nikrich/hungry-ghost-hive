@@ -19,10 +19,10 @@ export class SqliteRequirementDao implements RequirementDao {
     run(
       this.db,
       `
-      INSERT INTO requirements (id, title, description, submitted_by, created_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO requirements (id, title, description, submitted_by, godmode, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
     `,
-      [id, input.title, input.description, input.submittedBy || 'human', now]
+      [id, input.title, input.description, input.submittedBy || 'human', input.godmode ? 1 : 0, now]
     );
 
     return (await this.getRequirementById(id))!;
@@ -63,7 +63,7 @@ export class SqliteRequirementDao implements RequirementDao {
     input: UpdateRequirementInput
   ): Promise<RequirementRow | undefined> {
     const updates: string[] = [];
-    const values: string[] = [];
+    const values: (string | number)[] = [];
 
     if (input.title !== undefined) {
       updates.push('title = ?');
@@ -76,6 +76,10 @@ export class SqliteRequirementDao implements RequirementDao {
     if (input.status !== undefined) {
       updates.push('status = ?');
       values.push(input.status);
+    }
+    if (input.godmode !== undefined) {
+      updates.push('godmode = ?');
+      values.push(input.godmode ? 1 : 0);
     }
 
     if (updates.length === 0) {

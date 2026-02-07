@@ -10,12 +10,14 @@ export interface CreateRequirementInput {
   title: string;
   description: string;
   submittedBy?: string;
+  godmode?: boolean;
 }
 
 export interface UpdateRequirementInput {
   title?: string;
   description?: string;
   status?: RequirementStatus;
+  godmode?: boolean;
 }
 
 export function createRequirement(db: Database, input: CreateRequirementInput): RequirementRow {
@@ -25,10 +27,10 @@ export function createRequirement(db: Database, input: CreateRequirementInput): 
   run(
     db,
     `
-    INSERT INTO requirements (id, title, description, submitted_by, created_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO requirements (id, title, description, submitted_by, godmode, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
   `,
-    [id, input.title, input.description, input.submittedBy || 'human', now]
+    [id, input.title, input.description, input.submittedBy || 'human', input.godmode ? 1 : 0, now]
   );
 
   return getRequirementById(db, id)!;
@@ -70,7 +72,7 @@ export function updateRequirement(
   input: UpdateRequirementInput
 ): RequirementRow | undefined {
   const updates: string[] = [];
-  const values: string[] = [];
+  const values: (string | number)[] = [];
 
   if (input.title !== undefined) {
     updates.push('title = ?');
@@ -83,6 +85,10 @@ export function updateRequirement(
   if (input.status !== undefined) {
     updates.push('status = ?');
     values.push(input.status);
+  }
+  if (input.godmode !== undefined) {
+    updates.push('godmode = ?');
+    values.push(input.godmode ? 1 : 0);
   }
 
   if (updates.length === 0) {
