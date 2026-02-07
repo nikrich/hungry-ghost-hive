@@ -1,7 +1,9 @@
 import blessed from 'blessed';
 import { appendFileSync, existsSync, renameSync, statSync } from 'fs';
 import { join } from 'path';
+import type { Database } from 'sql.js';
 import { getDatabase, type DatabaseClient } from '../../db/client.js';
+import { getAllRequirements } from '../../db/queries/requirements.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { createActivityPanel, updateActivityPanel } from './panels/activity.js';
 import { createAgentsPanel, updateAgentsPanel } from './panels/agents.js';
@@ -34,6 +36,14 @@ export interface DashboardOptions {
   refreshInterval?: number;
 }
 
+/**
+ * Check if godmode is active by looking for any non-completed requirement with godmode enabled.
+ */
+export function isGodmodeActive(db: Database): boolean {
+  const requirements = getAllRequirements(db);
+  return requirements.some(req => req.godmode && req.status !== 'completed');
+}
+
 export async function startDashboard(options: DashboardOptions = {}): Promise<void> {
   const root = findHiveRoot();
   if (!root) {
@@ -55,7 +65,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   });
 
   // Header
-  blessed.box({
+  const header = blessed.box({
     parent: screen,
     top: 0,
     left: 0,
@@ -115,6 +125,13 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
         }
         db = newDb;
       }
+
+      // Update header with godmode indicator
+      const godmode = isGodmodeActive(db.db);
+      const godmodeLabel = godmode ? '  {yellow-fg}{bold}GODMODE ACTIVE{/bold}{/yellow-fg}' : '';
+      header.setContent(
+        ` {bold}HIVE ORCHESTRATOR{/bold}${godmodeLabel}                                    [R]efresh [Q]uit`
+      );
 
       await updateAgentsPanel(agentsPanel, db.db);
       await updateStoriesPanel(storiesPanel, db.db);
