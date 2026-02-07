@@ -94,16 +94,17 @@ export function setConfigValue(config: HiveConfig, path: string, value: unknown)
 }
 
 function validateConfigModelRuntimeCompatibility(config: HiveConfig): void {
-  const models = config.models as Record<string, { model: string; cli_tool: 'claude' | 'codex' | 'gemini' }>;
+  const models = config.models as Record<
+    string,
+    { model: string; cli_tool: 'claude' | 'codex' | 'gemini' }
+  >;
 
   for (const [agentType, modelConfig] of Object.entries(models)) {
     try {
       validateModelCliCompatibility(modelConfig.model, modelConfig.cli_tool);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new ConfigError(
-        `Invalid configuration:\n  - models.${agentType}: ${message}`
-      );
+      throw new ConfigError(`Invalid configuration:\n  - models.${agentType}: ${message}`);
     }
   }
 }
