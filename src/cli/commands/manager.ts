@@ -26,7 +26,6 @@ import {
   getMergeQueue,
   getPullRequestsByStatus,
   updatePullRequest,
-  type PullRequestRow,
 } from '../../db/queries/pull-requests.js';
 import {
   getStoriesByStatus,
