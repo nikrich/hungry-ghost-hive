@@ -659,12 +659,16 @@ export class Scheduler {
    * - Scale down excess QA agents when queue shrinks
    */
   private async scaleQAAgents(teamId: string, teamName: string, repoPath: string): Promise<void> {
-    // Count pending QA work: stories in 'qa', 'pr_submitted', or 'qa_failed' status
+    // Count pending QA work: stories in QA-related statuses OR stories in review with queued PRs
     const qaStories = queryAll<StoryRow>(
       this.db,
       `
-      SELECT * FROM stories
-      WHERE team_id = ? AND status IN ('qa', 'pr_submitted', 'qa_failed')
+      SELECT DISTINCT s.* FROM stories s
+      LEFT JOIN pull_requests pr ON pr.story_id = s.id
+      WHERE s.team_id = ? AND (
+        s.status IN ('qa', 'pr_submitted', 'qa_failed')
+        OR (s.status = 'review' AND pr.status IN ('queued', 'reviewing'))
+      )
     `,
       [teamId]
     );
