@@ -16,6 +16,7 @@ import {
   updateEscalation,
 } from '../../db/queries/escalations.js';
 import { createLog } from '../../db/queries/logs.js';
+import { updatePullRequest } from '../../db/queries/pull-requests.js';
 import {
   getAllPendingMessages,
   markMessagesRead,
@@ -59,7 +60,11 @@ import {
   type CLITool,
 } from '../../utils/cli-commands.js';
 import { getHivePaths } from '../../utils/paths.js';
-import { getExistingPRIdentifiers, syncOpenGitHubPRs } from '../../utils/pr-sync.js';
+import {
+  getExistingPRIdentifiers,
+  syncClosedPRsFromGitHub,
+  syncOpenGitHubPRs,
+} from '../../utils/pr-sync.js';
 import { extractStoryIdFromBranch } from '../../utils/story-id.js';
 import { withHiveContext, withHiveRoot } from '../../utils/with-hive-context.js';
 
@@ -341,6 +346,7 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
     await checkMergeQueue(ctx);
     await runAutoMerge(ctx);
     await syncMergedPRs(ctx);
+    await syncClosedPRs(ctx);
     await syncOpenPRs(ctx);
 
     // Discover active tmux sessions
@@ -413,6 +419,13 @@ async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
   const mergedSynced = await syncMergedPRsFromGitHub(ctx.root, ctx.db);
   if (mergedSynced > 0) {
     console.log(chalk.green(`  Synced ${mergedSynced} merged story(ies) from GitHub`));
+  }
+}
+
+async function syncClosedPRs(ctx: ManagerCheckContext): Promise<void> {
+  const closedSynced = await syncClosedPRsFromGitHub(ctx.root, ctx.db);
+  if (closedSynced > 0) {
+    console.log(chalk.yellow(`  Synced ${closedSynced} closed PR(s) from GitHub`));
   }
 }
 
@@ -1073,6 +1086,78 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
   }
 
   return storiesUpdated;
+}
+
+async function syncClosedPRsFromGitHub(root: string, db: DatabaseClient): Promise<number> {
+  const teams = getAllTeams(db.db);
+  if (teams.length === 0) return 0;
+
+  let prsUpdated = 0;
+
+  for (const team of teams) {
+    if (!team.repo_path) continue;
+
+    const repoDir = `${root}/${team.repo_path}`;
+
+    try {
+      // Get recently closed (but not merged) PRs from GitHub
+      const result = await execa(
+        'gh',
+        [
+          'pr',
+          'list',
+          '--json',
+          'number,headRefName,closedAt',
+          '--state',
+          'closed',
+          '--limit',
+          String(GITHUB_PR_LIST_LIMIT),
+        ],
+        {
+          cwd: repoDir,
+        }
+      );
+      const closedPRs: Array<{ number: number; headRefName: string; closedAt: string }> =
+        JSON.parse(result.stdout);
+
+      for (const pr of closedPRs) {
+        // Find matching PR in local DB that isn't already closed
+        const localPRs = queryAll<PullRequestRow>(
+          db.db,
+          "SELECT * FROM pull_requests WHERE branch_name = ? AND status NOT IN ('closed', 'merged')",
+          [pr.headRefName]
+        );
+
+        if (localPRs.length > 0) {
+          const localPR = localPRs[0];
+
+          // Update PR to closed (atomic transaction)
+          await withTransaction(db.db, () => {
+            updatePullRequest(db.db, localPR.id, { status: 'closed' });
+
+            // Log the sync
+            createLog(db.db, {
+              agentId: 'manager',
+              storyId: localPR.story_id || undefined,
+              eventType: 'PR_CLOSED',
+              message: `PR #${pr.number} synced to closed from GitHub (branch: ${pr.headRefName})`,
+            });
+          });
+
+          prsUpdated++;
+        }
+      }
+    } catch (_error) {
+      // gh CLI might not be authenticated or repo might not have remote
+      continue;
+    }
+  }
+
+  if (prsUpdated > 0) {
+    db.save();
+  }
+
+  return prsUpdated;
 }
 
 async function syncGitHubPRs(root: string, db: DatabaseClient, _hiveDir: string): Promise<number> {

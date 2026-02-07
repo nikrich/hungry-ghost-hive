@@ -2,12 +2,12 @@ import { execa } from 'execa';
 import type { Database } from 'sql.js';
 import { queryAll, withTransaction, type PullRequestRow } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
-import { createPullRequest } from '../db/queries/pull-requests.js';
+import { createPullRequest, updatePullRequest } from '../db/queries/pull-requests.js';
 import { updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
 import { extractStoryIdFromBranch } from './story-id.js';
 
-const GITHUB_PR_LIST_LIMIT = 20;
+const GITHUB_PR_LIST_LIMIT = 50;
 
 export interface GitHubPR {
   number: number;
@@ -229,4 +229,81 @@ export async function syncMergedPRsFromGitHub(
   }
 
   return storiesUpdated;
+}
+
+/**
+ * Sync recently closed (but not merged) PRs from GitHub and update PR statuses accordingly.
+ * This prevents auto-merge from retrying forever on PRs that were closed/rejected on GitHub.
+ *
+ * @returns The number of PRs updated to 'closed'.
+ */
+export async function syncClosedPRsFromGitHub(
+  root: string,
+  db: Database,
+  saveFn: () => void
+): Promise<number> {
+  const teams = getAllTeams(db);
+  if (teams.length === 0) return 0;
+
+  let prsUpdated = 0;
+
+  for (const team of teams) {
+    if (!team.repo_path) continue;
+
+    const repoDir = `${root}/${team.repo_path}`;
+
+    try {
+      const result = await execa(
+        'gh',
+        [
+          'pr',
+          'list',
+          '--json',
+          'number,headRefName,closedAt',
+          '--state',
+          'closed',
+          '--limit',
+          String(GITHUB_PR_LIST_LIMIT),
+        ],
+        { cwd: repoDir }
+      );
+      const closedPRs: Array<{ number: number; headRefName: string; closedAt: string }> =
+        JSON.parse(result.stdout);
+
+      for (const pr of closedPRs) {
+        // Find matching PR in local DB that isn't already closed
+        const localPRs = queryAll<PullRequestRow>(
+          db,
+          "SELECT * FROM pull_requests WHERE branch_name = ? AND status NOT IN ('closed', 'merged')",
+          [pr.headRefName]
+        );
+
+        if (localPRs.length > 0) {
+          const localPR = localPRs[0];
+
+          await withTransaction(db, () => {
+            updatePullRequest(db, localPR.id, { status: 'closed' });
+
+            createLog(db, {
+              agentId: 'manager',
+              storyId: localPR.story_id || undefined,
+              eventType: 'PR_CLOSED',
+              message: `PR #${pr.number} synced to closed from GitHub (branch: ${pr.headRefName})`,
+            });
+          });
+
+          prsUpdated++;
+        }
+      }
+    } catch {
+      // gh CLI might not be authenticated or repo might not have remote
+      continue;
+    }
+  }
+
+  if (prsUpdated > 0) {
+    saveFn();
+  }
+
+  return prsUpdated;
 }
