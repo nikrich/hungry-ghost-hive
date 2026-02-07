@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.3...hungry-ghost-hive-v0.21.4) (2026-02-07)
+
+
+### Bug Fixes
+
+* detect already-merged PRs to correctly transition story status ([#249](https://github.com/nikrich/hungry-ghost-hive/issues/249)) ([0f768a4](https://github.com/nikrich/hungry-ghost-hive/commit/0f768a407c58d37a02d280a4efd486ac5cf7ef85))
+
 ## [0.21.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.2...hungry-ghost-hive-v0.21.3) (2026-02-07)
 
 
