@@ -8,8 +8,15 @@ import { findHiveRoot, getHivePaths } from './paths.js';
 import { withHiveContext, withHiveRoot } from './with-hive-context.js';
 
 describe('withHiveContext', () => {
-  const mockDb = { db: {}, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() } as unknown as Awaited<ReturnType<typeof getDatabase>>;
-  const mockPaths = { hiveDir: '/mock/.hive', reposDir: '/mock/repos' } as ReturnType<typeof getHivePaths>;
+  const mockDb = {
+    db: {},
+    save: vi.fn(),
+    close: vi.fn(),
+    runMigrations: vi.fn(),
+  } as unknown as Awaited<ReturnType<typeof getDatabase>>;
+  const mockPaths = { hiveDir: '/mock/.hive', reposDir: '/mock/repos' } as ReturnType<
+    typeof getHivePaths
+  >;
 
   beforeEach(() => {
     vi.mocked(findHiveRoot).mockReturnValue('/mock');

@@ -59,9 +59,9 @@ import {
   type CLITool,
 } from '../../utils/cli-commands.js';
 import { getHivePaths } from '../../utils/paths.js';
-import { withHiveContext, withHiveRoot } from '../../utils/with-hive-context.js';
 import { getExistingPRIdentifiers, syncOpenGitHubPRs } from '../../utils/pr-sync.js';
 import { extractStoryIdFromBranch } from '../../utils/story-id.js';
+import { withHiveContext, withHiveRoot } from '../../utils/with-hive-context.js';
 
 // --- Named constants (extracted from inline magic numbers) ---
 

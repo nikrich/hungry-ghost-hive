@@ -17,7 +17,9 @@ export const resumeCommand = new Command('resume')
   .action(async (options: { agent?: string; all?: boolean }) => {
     await withHiveContext(async ({ root, paths, db }) => {
       if (!(await isTmuxAvailable())) {
-        console.error(chalk.red('tmux is not available. Please install tmux to use agent features.'));
+        console.error(
+          chalk.red('tmux is not available. Please install tmux to use agent features.')
+        );
         process.exit(1);
       }
 
