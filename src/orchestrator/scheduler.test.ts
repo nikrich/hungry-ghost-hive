@@ -1370,64 +1370,79 @@ describe('Scheduler Story Assignment Prevention', () => {
     expect(satisfied).toBe(true);
   });
 
-  it('should detect godmode is active when a planned story has a godmode requirement', () => {
-    const team = createTeam(db, {
-      name: 'Test Team',
-      repoUrl: 'https://github.com/test/repo',
-      repoPath: 'test',
-    });
-
-    // Create a requirement with godmode
+  it('should detect godmode is active when an active requirement has godmode enabled', () => {
+    // Create a requirement with godmode and set it to planning status
     const req = createRequirement(db, {
       title: 'Godmode Requirement',
       description: 'Test requirement with godmode',
       godmode: true,
     });
-
-    // Create a story linked to the godmode requirement
-    const story = createStory(db, {
-      requirementId: req.id,
-      teamId: team.id,
-      title: 'Godmode Story',
-      description: 'Test',
-    });
-    updateStory(db, story.id, { status: 'planned' });
+    db.run(`UPDATE requirements SET status = 'planning' WHERE id = ?`, [req.id]);
 
     // Godmode should be detected as active
     const isGodmodeActive = (scheduler as any).isGodmodeActive();
     expect(isGodmodeActive).toBe(true);
   });
 
-  it('should not detect godmode when no planned stories have godmode requirements', () => {
+  it('should detect godmode even when all stories have moved to in_progress', () => {
     const team = createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    // Create a normal requirement (without godmode)
+    // Create a godmode requirement in in_progress status
+    const req = createRequirement(db, {
+      title: 'Godmode Requirement',
+      description: 'Test requirement with godmode',
+      godmode: true,
+    });
+    db.run(`UPDATE requirements SET status = 'in_progress' WHERE id = ?`, [req.id]);
+
+    // Create a story that has moved to in_progress (no longer planned)
+    const story = createStory(db, {
+      requirementId: req.id,
+      teamId: team.id,
+      title: 'Godmode Story',
+      description: 'Test',
+    });
+    updateStory(db, story.id, { status: 'in_progress' });
+
+    // Godmode should still be active even though no stories are planned
+    const isGodmodeActive = (scheduler as any).isGodmodeActive();
+    expect(isGodmodeActive).toBe(true);
+  });
+
+  it('should not detect godmode when no requirements have godmode enabled', () => {
+    // Create a normal requirement (without godmode) in planning status
     const req = createRequirement(db, {
       title: 'Normal Requirement',
       description: 'Test requirement without godmode',
       godmode: false,
     });
-
-    // Create a story linked to the normal requirement
-    const story = createStory(db, {
-      requirementId: req.id,
-      teamId: team.id,
-      title: 'Normal Story',
-      description: 'Test',
-    });
-    updateStory(db, story.id, { status: 'planned' });
+    db.run(`UPDATE requirements SET status = 'planning' WHERE id = ?`, [req.id]);
 
     // Godmode should not be detected as active
     const isGodmodeActive = (scheduler as any).isGodmodeActive();
     expect(isGodmodeActive).toBe(false);
   });
 
-  it('should not detect godmode when no stories are planned', () => {
-    // No stories created, so godmode cannot be active
+  it('should not detect godmode when godmode requirement is completed', () => {
+    // Create a godmode requirement that is already completed
+    const req = createRequirement(db, {
+      title: 'Godmode Requirement',
+      description: 'Test requirement with godmode',
+      godmode: true,
+    });
+    db.run(`UPDATE requirements SET status = 'completed' WHERE id = ?`, [req.id]);
+
+    // Godmode should not be active for completed requirements
+    const isGodmodeActive = (scheduler as any).isGodmodeActive();
+    expect(isGodmodeActive).toBe(false);
+  });
+
+  it('should not detect godmode when no requirements exist', () => {
+    // No requirements created, so godmode cannot be active
     const isGodmodeActive = (scheduler as any).isGodmodeActive();
     expect(isGodmodeActive).toBe(false);
   });

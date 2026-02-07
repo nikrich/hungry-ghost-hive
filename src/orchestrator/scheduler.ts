@@ -12,7 +12,7 @@ import {
 import { createEscalation } from '../db/queries/escalations.js';
 import { createLog } from '../db/queries/logs.js';
 import { isAgentReviewingPR } from '../db/queries/pull-requests.js';
-import { getRequirementById } from '../db/queries/requirements.js';
+import { type RequirementRow } from '../db/queries/requirements.js';
 import {
   getBatchStoryDependencies,
   getPlannedStories,
@@ -922,21 +922,16 @@ export class Scheduler {
   }
 
   /**
-   * Check if godmode is active (any planned story from a godmode requirement)
+   * Check if godmode is active (any active requirement with godmode enabled)
+   * Checks requirements directly rather than through stories, so godmode stays
+   * active even after stories move from planned to in_progress/review/qa.
    */
   private isGodmodeActive(): boolean {
-    const plannedStories = getPlannedStories(this.db);
-
-    for (const story of plannedStories) {
-      if (story.requirement_id) {
-        const requirement = getRequirementById(this.db, story.requirement_id);
-        if (requirement && requirement.godmode) {
-          return true;
-        }
-      }
-    }
-
-    return false;
+    const activeRequirements = queryAll<RequirementRow>(
+      this.db,
+      `SELECT * FROM requirements WHERE status IN ('planning', 'planned', 'in_progress') AND godmode = 1`
+    );
+    return activeRequirements.length > 0;
   }
 
   /**
