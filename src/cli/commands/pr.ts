@@ -17,6 +17,7 @@ import {
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
+import { validatePullRequest } from '../../git/github.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
@@ -66,6 +67,96 @@ prCommand
         }
 
         teamId = story.team_id;
+
+        // Validate PR if GitHub PR number is provided
+        if (options.prNumber) {
+          const prNumber = parseInt(options.prNumber, 10);
+          try {
+            const validation = await validatePullRequest(root, prNumber);
+
+            // Check if PR is open
+            if (!validation.isOpen) {
+              console.error(chalk.red(`PR #${prNumber} is already closed`));
+              createLog(db.db, {
+                agentId: options.from || 'system',
+                storyId,
+                eventType: 'PR_VALIDATION_FAILED',
+                message: `PR #${prNumber} validation failed: PR is closed`,
+                metadata: { pr_number: prNumber, reason: 'pr_closed' },
+              });
+              db.save();
+              process.exit(1);
+            }
+
+            // Check if PR is mergeable
+            if (!validation.isMergeable) {
+              console.error(
+                chalk.red(`PR #${prNumber} has merge conflicts with the base branch`)
+              );
+              console.error(chalk.yellow('Please resolve conflicts and try again.'));
+              createLog(db.db, {
+                agentId: options.from || 'system',
+                storyId,
+                eventType: 'PR_VALIDATION_FAILED',
+                message: `PR #${prNumber} validation failed: has merge conflicts`,
+                metadata: { pr_number: prNumber, reason: 'merge_conflicts' },
+              });
+              db.save();
+              process.exit(1);
+            }
+
+            // Check CI status
+            if (validation.ciStatus === 'fail') {
+              const failedCount = validation.failedChecks.length;
+              console.error(
+                chalk.red(
+                  `PR #${prNumber} has ${failedCount} failed CI check${failedCount !== 1 ? 's' : ''}`
+                )
+              );
+              console.error(chalk.yellow(`Failed checks:`));
+              validation.failedChecks.forEach(check => {
+                console.error(chalk.yellow(`  - ${check}`));
+              });
+              console.error(chalk.yellow('Please fix the failures and try again.'));
+              createLog(db.db, {
+                agentId: options.from || 'system',
+                storyId,
+                eventType: 'PR_VALIDATION_FAILED',
+                message: `PR #${prNumber} validation failed: ${failedCount} failed CI check(s)`,
+                metadata: {
+                  pr_number: prNumber,
+                  reason: 'ci_failed',
+                  failed_checks: validation.failedChecks,
+                },
+              });
+              db.save();
+              process.exit(1);
+            }
+
+            // Warn if CI is still pending, but allow submission
+            if (validation.ciStatus === 'pending') {
+              console.warn(chalk.yellow(`Warning: CI checks are still running for PR #${prNumber}`));
+              console.warn(chalk.yellow('Submission will proceed, but please monitor the checks.'));
+            }
+          } catch (validationError: unknown) {
+            const errMsg =
+              validationError instanceof Error ? validationError.message : String(validationError);
+            if (errMsg.includes('not found')) {
+              console.error(chalk.red(`PR #${prNumber} not found on GitHub`));
+            } else {
+              console.error(chalk.red(`Failed to validate PR #${prNumber}: ${errMsg}`));
+            }
+            createLog(db.db, {
+              agentId: options.from || 'system',
+              storyId,
+              eventType: 'PR_VALIDATION_FAILED',
+              message: `PR #${prNumber} validation error: ${errMsg}`,
+              metadata: { pr_number: prNumber, reason: 'validation_error' },
+            });
+            db.save();
+            process.exit(1);
+          }
+        }
 
         // Auto-close any existing open PRs for this story
         const existingPRs = getOpenPullRequestsByStory(db.db, storyId);

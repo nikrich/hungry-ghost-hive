@@ -27,6 +27,13 @@ export interface PRReview {
   body: string;
 }
 
+export interface PRValidationStatus {
+  isOpen: boolean;
+  isMergeable: boolean;
+  ciStatus: 'pass' | 'fail' | 'pending' | 'unknown';
+  failedChecks: string[];
+}
+
 /**
  * Check if gh CLI is available and authenticated
  */
@@ -263,4 +270,67 @@ export async function getPullRequestReviews(
 
   const data = JSON.parse(stdout);
   return data.reviews || [];
+}
+
+/**
+ * Validate a pull request before submission
+ * Checks if PR is open, mergeable, and has no failed CI checks
+ */
+export async function validatePullRequest(
+  workDir: string,
+  prNumber: number
+): Promise<PRValidationStatus> {
+  // Get PR state and mergeable status
+  const { stdout: prStdout } = await execa(
+    'gh',
+    ['pr', 'view', prNumber.toString(), '--json', 'state,mergeable'],
+    { cwd: workDir, stdio: 'pipe' }
+  );
+
+  const prData = JSON.parse(prStdout);
+  const isOpen = prData.state === 'OPEN';
+  const isMergeable = prData.mergeable === 'MERGEABLE';
+
+  // Get CI check status
+  let ciStatus: 'pass' | 'fail' | 'pending' | 'unknown' = 'unknown';
+  let failedChecks: string[] = [];
+
+  try {
+    const { stdout: checksStdout } = await execa(
+      'gh',
+      ['pr', 'checks', prNumber.toString(), '--json', 'bucket,name,status'],
+      { cwd: workDir, stdio: 'pipe' }
+    );
+
+    const checksData = JSON.parse(checksStdout);
+    if (checksData && checksData.length > 0) {
+      const hasFailed = checksData.some(
+        (check: { status: string }) => check.status === 'FAILURE'
+      );
+      const hasPending = checksData.some(
+        (check: { status: string }) => check.status === 'PENDING'
+      );
+
+      if (hasFailed) {
+        ciStatus = 'fail';
+        failedChecks = checksData
+          .filter((check: { status: string }) => check.status === 'FAILURE')
+          .map((check: { name: string }) => check.name);
+      } else if (hasPending) {
+        ciStatus = 'pending';
+      } else {
+        ciStatus = 'pass';
+      }
+    }
+  } catch {
+    // If we can't get CI status, treat as unknown but continue
+    ciStatus = 'unknown';
+  }
+
+  return {
+    isOpen,
+    isMergeable,
+    ciStatus,
+    failedChecks,
+  };
 }
