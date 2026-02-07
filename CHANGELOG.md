@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.0...hungry-ghost-hive-v0.21.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* harden tmux spawn command handling and cluster API exposure ([#243](https://github.com/nikrich/hungry-ghost-hive/issues/243)) ([34b1a28](https://github.com/nikrich/hungry-ghost-hive/commit/34b1a280967788b3d3b8fdc0a0b4f84f9322ca81))
+
 ## [0.21.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.20.1...hungry-ghost-hive-v0.21.0) (2026-02-07)
 
 

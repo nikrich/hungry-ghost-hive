@@ -1,6 +1,6 @@
 {
   "name": "hungry-ghost-hive",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "description": "AI Agent Orchestrator - Manages agile software development teams of AI agents",
   "type": "module",
   "bin": {
