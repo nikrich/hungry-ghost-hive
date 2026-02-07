@@ -2,24 +2,22 @@
 
 ## [0.17.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.16.0...v0.17.0) (2026-02-07)
 
-
 ### Features
 
-* add godmode indicator to hive status output (STORY-GOD-003) ([#194](https://github.com/nikrich/hungry-ghost-hive/issues/194)) ([ffc46ba](https://github.com/nikrich/hungry-ghost-hive/commit/ffc46ba82d370ca2973ddad4988848ab08ad8e58))
-* override all agent models to Opus 4.6 when godmode is active (STORY-GOD-002) ([6b7a8ac](https://github.com/nikrich/hungry-ghost-hive/commit/6b7a8ac4b67c46eec35787e1e1b3edac71877f57))
-
+- add godmode indicator to hive status output (STORY-GOD-003) ([#194](https://github.com/nikrich/hungry-ghost-hive/issues/194)) ([ffc46ba](https://github.com/nikrich/hungry-ghost-hive/commit/ffc46ba82d370ca2973ddad4988848ab08ad8e58))
+- override all agent models to Opus 4.6 when godmode is active (STORY-GOD-002) ([6b7a8ac](https://github.com/nikrich/hungry-ghost-hive/commit/6b7a8ac4b67c46eec35787e1e1b3edac71877f57))
 
 ### Bug Fixes
 
-* add godmode support to SQLite and LevelDB requirement DAOs ([461f4fd](https://github.com/nikrich/hungry-ghost-hive/commit/461f4fdef769bc917980dfedae3b039f7c72638a))
-* correct extractStoryIdFromBranch regex to handle branch prefixes ([bd260b2](https://github.com/nikrich/hungry-ghost-hive/commit/bd260b296740e674fa7c08f8484f3a557dd0ed47))
-* format story-id.test.ts with Prettier ([0dc00df](https://github.com/nikrich/hungry-ghost-hive/commit/0dc00df43c30941be4ac630d81889e7a79ebce47))
-* format story-id.test.ts with Prettier ([#198](https://github.com/nikrich/hungry-ghost-hive/issues/198)) ([4ba753b](https://github.com/nikrich/hungry-ghost-hive/commit/4ba753b5c9f4c4cdb820f9fae698ff3d716a2785))
-* godmode detection failing for late-spawned agents ([89a6b6a](https://github.com/nikrich/hungry-ghost-hive/commit/89a6b6aab353866f0dfe6e46b639d112983e34b4))
-* godmode detection failing for late-spawned agents (e.g. QA) ([0da859a](https://github.com/nikrich/hungry-ghost-hive/commit/0da859a90564c0606db84869dd90f73c12ba555f))
-* qa scaling not counting stories in review with queued PRs ([ccd5f10](https://github.com/nikrich/hungry-ghost-hive/commit/ccd5f101a2175f61bf9d39917be75432f2dd10f4))
-* repair broken tests from GOD-002 and FIX-001 merges ([55f2f4c](https://github.com/nikrich/hungry-ghost-hive/commit/55f2f4c6406df77b087c378b382b2da3223f8b78))
-* repair broken tests from GOD-002 and FIX-001 merges ([#200](https://github.com/nikrich/hungry-ghost-hive/issues/200)) ([83d9619](https://github.com/nikrich/hungry-ghost-hive/commit/83d96192e42e8bc59f5073fda5c38e04c4c4c3e0))
+- add godmode support to SQLite and LevelDB requirement DAOs ([461f4fd](https://github.com/nikrich/hungry-ghost-hive/commit/461f4fdef769bc917980dfedae3b039f7c72638a))
+- correct extractStoryIdFromBranch regex to handle branch prefixes ([bd260b2](https://github.com/nikrich/hungry-ghost-hive/commit/bd260b296740e674fa7c08f8484f3a557dd0ed47))
+- format story-id.test.ts with Prettier ([0dc00df](https://github.com/nikrich/hungry-ghost-hive/commit/0dc00df43c30941be4ac630d81889e7a79ebce47))
+- format story-id.test.ts with Prettier ([#198](https://github.com/nikrich/hungry-ghost-hive/issues/198)) ([4ba753b](https://github.com/nikrich/hungry-ghost-hive/commit/4ba753b5c9f4c4cdb820f9fae698ff3d716a2785))
+- godmode detection failing for late-spawned agents ([89a6b6a](https://github.com/nikrich/hungry-ghost-hive/commit/89a6b6aab353866f0dfe6e46b639d112983e34b4))
+- godmode detection failing for late-spawned agents (e.g. QA) ([0da859a](https://github.com/nikrich/hungry-ghost-hive/commit/0da859a90564c0606db84869dd90f73c12ba555f))
+- qa scaling not counting stories in review with queued PRs ([ccd5f10](https://github.com/nikrich/hungry-ghost-hive/commit/ccd5f101a2175f61bf9d39917be75432f2dd10f4))
+- repair broken tests from GOD-002 and FIX-001 merges ([55f2f4c](https://github.com/nikrich/hungry-ghost-hive/commit/55f2f4c6406df77b087c378b382b2da3223f8b78))
+- repair broken tests from GOD-002 and FIX-001 merges ([#200](https://github.com/nikrich/hungry-ghost-hive/issues/200)) ([83d9619](https://github.com/nikrich/hungry-ghost-hive/commit/83d96192e42e8bc59f5073fda5c38e04c4c4c3e0))
 
 ## [0.16.0](https://github.com/nikrich/hungry-ghost-hive/compare/v0.15.0...v0.16.0) (2026-02-07)
 
