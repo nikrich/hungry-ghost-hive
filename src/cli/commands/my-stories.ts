@@ -10,7 +10,7 @@ export const myStoriesCommand = new Command('my-stories')
   .argument('[session]', 'Tmux session name (e.g., hive-senior-myteam)')
   .option('--all', 'Show all stories for the team, not just assigned')
   .action(async (session: string | undefined, options: { all?: boolean }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       if (!session) {
         // Show all in-progress stories
         const stories = queryAll<StoryRow & { tmux_session?: string }>(
@@ -113,7 +113,7 @@ myStoriesCommand
   .description('Claim a story to work on')
   .requiredOption('-s, --session <session>', 'Your tmux session name')
   .action(async (storyId: string, options: { session: string }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       // Find agent by session
       const agent = queryOne<{ id: string }>(
         db.db,
@@ -159,7 +159,7 @@ myStoriesCommand
   .command('complete <story-id>')
   .description('Mark a story as complete (ready for review)')
   .action(async (storyId: string) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const story = queryOne<StoryRow>(db.db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
       if (!story) {
         console.error(chalk.red(`Story not found: ${storyId}`));
@@ -216,7 +216,7 @@ myStoriesCommand
         process.exit(1);
       }
 
-      await withHiveContext(({ db }) => {
+      await withHiveContext(async ({ db }) => {
         const agent = queryOne<{ id: string; team_id: string | null }>(
           db.db,
           'SELECT id, team_id FROM agents WHERE tmux_session = ?',

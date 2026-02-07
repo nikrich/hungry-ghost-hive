@@ -15,12 +15,14 @@ export const resumeCommand = new Command('resume')
   .option('--agent <id>', 'Resume a specific agent')
   .option('--all', 'Resume all non-terminated agents')
   .action(async (options: { agent?: string; all?: boolean }) => {
-    if (!(await isTmuxAvailable())) {
-      console.error(chalk.red('tmux is not available. Please install tmux to use agent features.'));
-      process.exit(1);
-    }
-
     await withHiveContext(async ({ root, paths, db }) => {
+      if (!(await isTmuxAvailable())) {
+        console.error(
+          chalk.red('tmux is not available. Please install tmux to use agent features.')
+        );
+        process.exit(1);
+      }
+
       const config = loadConfig(paths.hiveDir);
 
       let agentsToResume: AgentRow[];

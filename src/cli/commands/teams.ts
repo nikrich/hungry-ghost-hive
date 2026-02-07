@@ -12,7 +12,7 @@ teamsCommand
   .description('List all teams')
   .option('--json', 'Output as JSON')
   .action(async (options: { json?: boolean }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const teams = getAllTeams(db.db);
 
       if (options.json) {
@@ -49,7 +49,7 @@ teamsCommand
   .command('show <name>')
   .description('Show team details')
   .action(async (name: string) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const team = getTeamByName(db.db, name);
 
       if (!team) {
@@ -110,7 +110,7 @@ teamsCommand
   .description('Remove a team')
   .option('--force', 'Force removal even if team has active stories')
   .action(async (name: string, options: { force?: boolean }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const team = getTeamByName(db.db, name);
 
       if (!team) {

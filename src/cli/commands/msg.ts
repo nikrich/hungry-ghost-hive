@@ -25,7 +25,7 @@ msgCommand
   .option('-f, --from <session>', 'Your session name (defaults to hive-tech-lead)')
   .action(
     async (toSession: string, message: string, options: { subject?: string; from?: string }) => {
-      await withHiveContext(({ db }) => {
+      await withHiveContext(async ({ db }) => {
         const id = `msg-${nanoid(8)}`;
         const fromSession = options.from || 'hive-tech-lead';
 
@@ -51,7 +51,7 @@ msgCommand
   .description('Check inbox for messages')
   .option('--all', 'Show all messages including read')
   .action(async (session: string | undefined, options: { all?: boolean }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const targetSession = session || 'hive-tech-lead';
 
       let query = `
@@ -100,7 +100,7 @@ msgCommand
   .command('read <msg-id>')
   .description('Read a specific message')
   .action(async (msgId: string) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const msg = queryOne<MessageRow>(db.db, 'SELECT * FROM messages WHERE id = ?', [msgId]);
 
       if (!msg) {
@@ -136,7 +136,7 @@ msgCommand
   .command('reply <msg-id> <response>')
   .description('Reply to a message')
   .action(async (msgId: string, response: string) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const msg = queryOne<MessageRow>(db.db, 'SELECT * FROM messages WHERE id = ?', [msgId]);
 
       if (!msg) {
@@ -163,7 +163,7 @@ msgCommand
   .command('outbox [session]')
   .description('Check sent messages and their replies')
   .action(async (session: string | undefined) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const fromSession = session || 'hive-tech-lead';
 
       const messages = queryAll<MessageRow>(

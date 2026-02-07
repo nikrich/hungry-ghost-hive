@@ -130,7 +130,7 @@ prCommand
   .option('-t, --team <team-id>', 'Filter by team')
   .option('--json', 'Output as JSON')
   .action(async (options: { team?: string; json?: boolean }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const queue = getMergeQueue(db.db, options.team);
 
       if (options.json) {
@@ -172,7 +172,7 @@ prCommand
   .option('-t, --team <team-id>', 'Filter by team')
   .option('--from <session>', 'QA agent session')
   .action(async (options: { team?: string; from?: string }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const pr = getNextInQueue(db.db, options.team);
 
       if (!pr) {
@@ -216,7 +216,7 @@ prCommand
   .command('show <pr-id>')
   .description('View details of a PR')
   .action(async (prId: string) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const pr = getPullRequestById(db.db, prId);
       if (!pr) {
         console.error(chalk.red(`PR not found: ${prId}`));

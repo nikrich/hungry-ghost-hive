@@ -18,7 +18,7 @@ escalationsCommand
   .option('--all', 'Show all escalations (including resolved)')
   .option('--json', 'Output as JSON')
   .action(async (options: { all?: boolean; json?: boolean }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const escalations = options.all ? getAllEscalations(db.db) : getPendingEscalations(db.db);
 
       if (options.json) {
@@ -61,7 +61,7 @@ escalationsCommand
   .command('show <id>')
   .description('Show escalation details')
   .action(async (id: string) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const escalation = getEscalationById(db.db, id);
       if (!escalation) {
         console.error(chalk.red(`Escalation not found: ${id}`));
@@ -92,7 +92,7 @@ escalationsCommand
   .description('Resolve an escalation')
   .requiredOption('-m, --message <message>', 'Resolution message/guidance')
   .action(async (id: string, options: { message: string }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const escalation = getEscalationById(db.db, id);
       if (!escalation) {
         console.error(chalk.red(`Escalation not found: ${id}`));
@@ -126,7 +126,7 @@ escalationsCommand
   .command('acknowledge <id>')
   .description('Acknowledge an escalation (mark as being worked on)')
   .action(async (id: string) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const escalation = getEscalationById(db.db, id);
       if (!escalation) {
         console.error(chalk.red(`Escalation not found: ${id}`));

@@ -19,17 +19,13 @@ function resolveRoot(): { root: string; paths: HivePaths } {
     console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
     process.exit(1);
   }
-
   const paths = getHivePaths(root);
   return { root, paths };
 }
 
-export async function withHiveContext<T>(
-  fn: (ctx: HiveContext) => Promise<T> | T,
-): Promise<T> {
+export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | T): Promise<T> {
   const { root, paths } = resolveRoot();
   const db = await getDatabase(paths.hiveDir);
-
   try {
     return await fn({ root, paths, db });
   } finally {

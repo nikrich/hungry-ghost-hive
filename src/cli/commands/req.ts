@@ -24,27 +24,27 @@ export const reqCommand = new Command('req')
       requirement: string | undefined,
       options: { file?: string; title?: string; dryRun?: boolean; godmode?: boolean }
     ) => {
-      // Get requirement text (before opening db)
-      let reqText: string;
-      if (options.file) {
-        if (!existsSync(options.file)) {
-          console.error(chalk.red(`File not found: ${options.file}`));
+      await withHiveContext(async ({ root, paths, db }) => {
+        // Get requirement text
+        let reqText: string;
+        if (options.file) {
+          if (!existsSync(options.file)) {
+            console.error(chalk.red(`File not found: ${options.file}`));
+            process.exit(1);
+          }
+          reqText = readFileSync(options.file, 'utf-8').trim();
+        } else if (requirement) {
+          reqText = requirement;
+        } else {
+          console.error(chalk.red('Please provide a requirement or use --file'));
           process.exit(1);
         }
-        reqText = readFileSync(options.file, 'utf-8').trim();
-      } else if (requirement) {
-        reqText = requirement;
-      } else {
-        console.error(chalk.red('Please provide a requirement or use --file'));
-        process.exit(1);
-      }
 
-      // Parse title and description
-      const lines = reqText.split('\n');
-      const title = options.title || lines[0].replace(/^#\s*/, '').substring(0, 100);
-      const description = reqText;
+        // Parse title and description
+        const lines = reqText.split('\n');
+        const title = options.title || lines[0].replace(/^#\s*/, '').substring(0, 100);
+        const description = reqText;
 
-      await withHiveContext(async ({ root, paths, db }) => {
         const spinner = ora('Processing requirement...').start();
 
         try {

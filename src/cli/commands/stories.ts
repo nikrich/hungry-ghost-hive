@@ -18,7 +18,7 @@ storiesCommand
   .option('--status <status>', 'Filter by status')
   .option('--json', 'Output as JSON')
   .action(async (options: { status?: string; json?: boolean }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       let stories;
       if (options.status) {
         stories = getStoriesByStatus(db.db, options.status as StoryStatus);
@@ -63,7 +63,7 @@ storiesCommand
   .command('show <story-id>')
   .description('Show story details')
   .action(async (storyId: string) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const story = getStoryById(db.db, storyId);
       if (!story) {
         console.error(chalk.red(`Story not found: ${storyId}`));

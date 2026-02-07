@@ -20,7 +20,7 @@ agentsCommand
   .option('--active', 'Show only active agents')
   .option('--json', 'Output as JSON')
   .action(async (options: { active?: boolean; json?: boolean }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const agents = options.active ? getActiveAgents(db.db) : getAllAgents(db.db);
 
       if (options.json) {
@@ -61,7 +61,7 @@ agentsCommand
   .option('-n, --limit <number>', 'Number of logs to show', '50')
   .option('--json', 'Output as JSON')
   .action(async (agentId: string, options: { limit: string; json?: boolean }) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const agent = getAgentById(db.db, agentId);
       if (!agent) {
         console.error(chalk.red(`Agent not found: ${agentId}`));
@@ -106,7 +106,7 @@ agentsCommand
   .command('inspect <agent-id>')
   .description('View detailed agent state')
   .action(async (agentId: string) => {
-    await withHiveContext(({ db }) => {
+    await withHiveContext(async ({ db }) => {
       const agent = getAgentById(db.db, agentId);
       if (!agent) {
         console.error(chalk.red(`Agent not found: ${agentId}`));
