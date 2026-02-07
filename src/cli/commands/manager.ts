@@ -861,6 +861,29 @@ async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<void> {
     const agent = getAgentById(ctx.db.db, story.assigned_agent_id);
     if (!agent || agent.status === 'terminated') continue;
 
+    // Safety: Don't kill agents that are working on other stories
+    if (agent.current_story_id && agent.current_story_id !== story.id) {
+      // Agent moved on to another story - just clear the merged story's assignment
+      await withTransaction(ctx.db.db, () => {
+        updateStoryAssignment(ctx.db.db, story.id, null);
+      });
+      continue;
+    }
+
+    // Check if agent has other non-merged stories assigned
+    const otherActiveStories = queryAll<StoryRow>(
+      ctx.db.db,
+      `SELECT * FROM stories WHERE assigned_agent_id = ? AND id != ? AND status NOT IN ('merged', 'draft')`,
+      [agent.id, story.id]
+    );
+    if (otherActiveStories.length > 0) {
+      // Agent has other work - just clear the merged story's assignment
+      await withTransaction(ctx.db.db, () => {
+        updateStoryAssignment(ctx.db.db, story.id, null);
+      });
+      continue;
+    }
+
     const agentSession = ctx.hiveSessions.find(
       s => s.name === agent.tmux_session || s.name.includes(agent.id)
     );

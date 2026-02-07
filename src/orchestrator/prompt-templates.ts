@@ -73,7 +73,13 @@ Before submitting your PR to the merge queue, always verify:
 
 After verifying these checks, create and submit your PR:
 \`\`\`bash
-gh pr create --title "Story <story-id>: <title>" --body "..."
+gh pr create --title "<type>: <description>" --body "..."
+# IMPORTANT: PR titles MUST follow conventional commit format!
+# Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
+# Examples: "feat: add dependency checking to scheduler"
+#           "fix: resolve merge conflict in story assignment"
+#           "refactor: extract prompt templates into separate module"
+# Include the story ID in the PR body, NOT the title.
 hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
 \`\`\`
 
@@ -180,7 +186,13 @@ Before submitting your PR to the merge queue, always verify:
 
 After verifying these checks, create and submit your PR:
 \`\`\`bash
-gh pr create --title "Story <story-id>: <title>" --body "..."
+gh pr create --title "<type>: <description>" --body "..."
+# IMPORTANT: PR titles MUST follow conventional commit format!
+# Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
+# Examples: "feat: add dependency checking to scheduler"
+#           "fix: resolve merge conflict in story assignment"
+#           "refactor: extract prompt templates into separate module"
+# Include the story ID in the PR body, NOT the title.
 hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
 \`\`\`
 
@@ -283,7 +295,13 @@ Before submitting your PR to the merge queue, always verify:
 
 After verifying these checks, create and submit your PR:
 \`\`\`bash
-gh pr create --title "Story <story-id>: <title>" --body "..."
+gh pr create --title "<type>: <description>" --body "..."
+# IMPORTANT: PR titles MUST follow conventional commit format!
+# Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
+# Examples: "feat: add dependency checking to scheduler"
+#           "fix: resolve merge conflict in story assignment"
+#           "refactor: extract prompt templates into separate module"
+# Include the story ID in the PR body, NOT the title.
 hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
 \`\`\`
 
