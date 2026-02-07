@@ -92,14 +92,13 @@ export const resumeCommand = new Command('resume')
 
           // Build resume command using CLI runtime builder
           const runtimeBuilder = getCliRuntimeBuilder(cliTool);
-          const commandArray = runtimeBuilder.buildResumeCommand(model, sessionName);
-          const command = commandArray.join(' ');
+          const commandArgs = runtimeBuilder.buildResumeCommand(model, sessionName);
 
           // Spawn new session
           await spawnTmuxSession({
             sessionName,
             workDir,
-            command,
+            commandArgs,
           });
 
           // Update agent state and log event (atomic transaction)

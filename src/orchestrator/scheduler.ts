@@ -957,7 +957,6 @@ export class Scheduler {
 
       // Build CLI command using the configured runtime
       const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(runtimeModel);
-      const command = commandArgs.join(' ');
 
       // Pass the prompt as initialPrompt so it's included as a CLI positional
       // argument via $(cat ...). This delivers the full multi-line prompt
@@ -965,7 +964,7 @@ export class Scheduler {
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command,
+        commandArgs,
         initialPrompt: prompt,
       });
 

@@ -145,35 +145,57 @@ const ClusterPeerSchema = z.object({
   url: z.string().url(),
 });
 
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return (
+    normalized === '127.0.0.1' ||
+    normalized === 'localhost' ||
+    normalized === '::1' ||
+    normalized === '[::1]'
+  );
+}
+
 // Distributed cluster configuration (feature-flagged)
-const ClusterConfigSchema = z.object({
-  // Enable distributed mode
-  enabled: z.boolean().default(false),
-  // Stable unique ID for this host/node
-  node_id: z.string().min(1).default('node-local'),
-  // HTTP bind host for cluster API
-  listen_host: z.string().min(1).default('0.0.0.0'),
-  // HTTP bind port for cluster API
-  listen_port: z.number().int().min(1).max(65535).default(8787),
-  // Public URL peers can use to reach this node
-  public_url: z.string().url().default('http://127.0.0.1:8787'),
-  // Other nodes in this cluster
-  peers: z.array(ClusterPeerSchema).default([]),
-  // Optional bearer token for cluster API
-  auth_token: z.string().min(1).optional(),
-  // Leader election heartbeat interval
-  heartbeat_interval_ms: z.number().int().positive().default(2000),
-  // Randomized election timeout lower bound
-  election_timeout_min_ms: z.number().int().positive().default(3000),
-  // Randomized election timeout upper bound
-  election_timeout_max_ms: z.number().int().positive().default(6000),
-  // Anti-entropy sync cadence
-  sync_interval_ms: z.number().int().positive().default(5000),
-  // Outbound HTTP request timeout for peer calls
-  request_timeout_ms: z.number().int().positive().default(5000),
-  // Story similarity threshold [0..1] for duplicate merge detection
-  story_similarity_threshold: z.number().min(0).max(1).default(0.92),
-});
+const ClusterConfigSchema = z
+  .object({
+    // Enable distributed mode
+    enabled: z.boolean().default(false),
+    // Stable unique ID for this host/node
+    node_id: z.string().min(1).default('node-local'),
+    // HTTP bind host for cluster API
+    listen_host: z.string().min(1).default('127.0.0.1'),
+    // HTTP bind port for cluster API
+    listen_port: z.number().int().min(1).max(65535).default(8787),
+    // Public URL peers can use to reach this node
+    public_url: z.string().url().default('http://127.0.0.1:8787'),
+    // Other nodes in this cluster
+    peers: z.array(ClusterPeerSchema).default([]),
+    // Bearer token for cluster API (required when exposed beyond loopback)
+    auth_token: z.string().min(1).optional(),
+    // Leader election heartbeat interval
+    heartbeat_interval_ms: z.number().int().positive().default(2000),
+    // Randomized election timeout lower bound
+    election_timeout_min_ms: z.number().int().positive().default(3000),
+    // Randomized election timeout upper bound
+    election_timeout_max_ms: z.number().int().positive().default(6000),
+    // Anti-entropy sync cadence
+    sync_interval_ms: z.number().int().positive().default(5000),
+    // Outbound HTTP request timeout for peer calls
+    request_timeout_ms: z.number().int().positive().default(5000),
+    // Story similarity threshold [0..1] for duplicate merge detection
+    story_similarity_threshold: z.number().min(0).max(1).default(0.92),
+  })
+  .superRefine((cluster, ctx) => {
+    if (!cluster.enabled) return;
+
+    if (!isLoopbackHost(cluster.listen_host) && !cluster.auth_token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['auth_token'],
+        message: 'auth_token is required when cluster.listen_host is not loopback',
+      });
+    }
+  });
 
 // Main configuration schema
 export const HiveConfigSchema = z.object({
@@ -335,11 +357,11 @@ cluster:
   # Unique stable ID for this host
   node_id: node-local
   # HTTP listen address for cluster coordination/sync
-  listen_host: 0.0.0.0
+  listen_host: 127.0.0.1
   listen_port: 8787
   # Publicly reachable URL for peers
   public_url: http://127.0.0.1:8787
-  # Optional bearer auth token shared across hosts
+  # Required when listen_host is not loopback
   # auth_token: your-shared-token
   # Cluster members (other hosts in the same cluster)
   peers: []

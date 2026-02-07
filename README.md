@@ -318,9 +318,11 @@ qa:
 cluster:
   enabled: false
   node_id: node-a
-  listen_host: 0.0.0.0
+  listen_host: 127.0.0.1
   listen_port: 8787
   public_url: http://203.0.113.10:8787
+  # Required if listen_host is not loopback (127.0.0.1/localhost/::1)
+  # auth_token: replace-with-strong-shared-secret
   peers:
     - id: node-b
       url: http://198.51.100.20:8787

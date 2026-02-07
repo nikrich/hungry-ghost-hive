@@ -65,3 +65,25 @@ describe('sendMessageWithConfirmation', () => {
     expect(sig).toContain('return false');
   });
 });
+
+describe('tmux shell command hardening', () => {
+  it('shellEscapeArg should safely escape single quotes', async () => {
+    const { shellEscapeArg } = await import('./manager.js');
+    expect(shellEscapeArg(`abc'def`)).toBe(`'abc'"'"'def'`);
+  });
+
+  it('buildShellCommand should quote every command argument', async () => {
+    const { buildShellCommand } = await import('./manager.js');
+    const command = buildShellCommand(['claude', '--model', 'gpt-4o-mini; touch /tmp/pwned']);
+
+    expect(command).toBe(`'claude' '--model' 'gpt-4o-mini; touch /tmp/pwned'`);
+  });
+
+  it('buildShellCommand should safely escape prompt file path in substitution', async () => {
+    const { buildShellCommand } = await import('./manager.js');
+    const command = buildShellCommand(['claude'], `/tmp/prompt's file.md`);
+
+    expect(command).toContain(`'claude'`);
+    expect(command).toContain(`$(cat '/tmp/prompt'"'"'s file.md')`);
+  });
+});
