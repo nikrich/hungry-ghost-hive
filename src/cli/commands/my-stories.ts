@@ -1,25 +1,16 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { getDatabase, queryAll, queryOne, run, type StoryRow } from '../../db/client.js';
+import { queryAll, queryOne, run, type StoryRow } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import { createStory, updateStory } from '../../db/queries/stories.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const myStoriesCommand = new Command('my-stories')
   .description('View and manage stories assigned to an agent')
   .argument('[session]', 'Tmux session name (e.g., hive-senior-myteam)')
   .option('--all', 'Show all stories for the team, not just assigned')
   .action(async (session: string | undefined, options: { all?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       if (!session) {
         // Show all in-progress stories
         const stories = queryAll<StoryRow & { tmux_session?: string }>(
@@ -114,9 +105,7 @@ export const myStoriesCommand = new Command('my-stories')
       for (const story of stories) {
         printStory(story);
       }
-    } finally {
-      db.close();
-    }
+    });
   });
 
 myStoriesCommand
@@ -124,16 +113,7 @@ myStoriesCommand
   .description('Claim a story to work on')
   .requiredOption('-s, --session <session>', 'Your tmux session name')
   .action(async (storyId: string, options: { session: string }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       // Find agent by session
       const agent = queryOne<{ id: string }>(
         db.db,
@@ -172,25 +152,14 @@ myStoriesCommand
 
       console.log(chalk.green(`Claimed story: ${storyId}`));
       console.log(chalk.gray(`Title: ${story.title}`));
-    } finally {
-      db.close();
-    }
+    });
   });
 
 myStoriesCommand
   .command('complete <story-id>')
   .description('Mark a story as complete (ready for review)')
   .action(async (storyId: string) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const story = queryOne<StoryRow>(db.db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
       if (!story) {
         console.error(chalk.red(`Story not found: ${storyId}`));
@@ -209,9 +178,7 @@ myStoriesCommand
       db.save();
 
       console.log(chalk.green(`Story ${storyId} marked as ready for review.`));
-    } finally {
-      db.close();
-    }
+    });
   });
 
 myStoriesCommand
@@ -232,12 +199,6 @@ myStoriesCommand
       status?: string;
       criteria?: string[];
     }) => {
-      const root = findHiveRoot();
-      if (!root) {
-        console.error(chalk.red('Not in a Hive workspace.'));
-        process.exit(1);
-      }
-
       const points = parseInt(options.points, 10);
       if (!Number.isInteger(points) || points < 1 || points > 13) {
         console.error(chalk.red('Points must be an integer between 1 and 13.'));
@@ -255,10 +216,7 @@ myStoriesCommand
         process.exit(1);
       }
 
-      const paths = getHivePaths(root);
-      const db = await getDatabase(paths.hiveDir);
-
-      try {
+      await withHiveContext(({ db }) => {
         const agent = queryOne<{ id: string; team_id: string | null }>(
           db.db,
           'SELECT id, team_id FROM agents WHERE tmux_session = ?',
@@ -323,9 +281,7 @@ myStoriesCommand
         console.log(
           chalk.gray('Run `hive assign` to schedule work based on current capacity policy.')
         );
-      } finally {
-        db.close();
-      }
+      });
     }
   );
 

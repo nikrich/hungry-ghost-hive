@@ -5,7 +5,7 @@ import { join } from 'path';
 import { loadConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import type { StoryRow } from '../../db/client.js';
-import { getDatabase, queryAll, withTransaction } from '../../db/client.js';
+import { type DatabaseClient, queryAll, withTransaction } from '../../db/client.js';
 import { acquireLock } from '../../db/lock.js';
 import { getAgentById, getAllAgents, updateAgent } from '../../db/queries/agents.js';
 import {
@@ -54,7 +54,7 @@ import {
   getAvailableCommands,
   type CLITool,
 } from '../../utils/cli-commands.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { withHiveContext, withHiveRoot } from '../../utils/with-hive-context.js';
 import { extractStoryIdFromBranch } from '../../utils/story-id.js';
 
 // Agent state tracking for nudge logic
@@ -78,13 +78,7 @@ managerCommand
   .option('-i, --interval <seconds>', 'Check interval in seconds', '60')
   .option('--once', 'Run once and exit')
   .action(async (options: { interval: string; once?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
+    const { paths } = withHiveRoot(ctx => ctx);
 
     // Load config first to get all settings
     const config = loadConfig(paths.hiveDir);
@@ -131,7 +125,7 @@ managerCommand
 
       const runCheck = async () => {
         try {
-          await managerCheck(root, config);
+          await managerCheck(config);
         } catch (err) {
           console.error(chalk.red('Manager error:'), err);
         }
@@ -152,7 +146,7 @@ managerCommand
 
       const runCheck = async () => {
         try {
-          await managerCheck(root, config);
+          await managerCheck(config);
         } catch (err) {
           console.error(chalk.red('Manager error:'), err);
         }
@@ -173,16 +167,10 @@ managerCommand
   .command('check')
   .description('Run a single manager check')
   .action(async () => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
+    const { paths } = withHiveRoot(ctx => ctx);
     const config = loadConfig(paths.hiveDir);
 
-    await managerCheck(root, config);
+    await managerCheck(config);
   });
 
 // Run health check to sync agents with tmux
@@ -190,16 +178,7 @@ managerCommand
   .command('health')
   .description('Sync agent status with actual tmux sessions')
   .action(async () => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(async ({ root, paths, db }) => {
       const config = loadConfig(paths.hiveDir);
       const scheduler = new Scheduler(db.db, {
         scaling: config.scaling,
@@ -226,9 +205,7 @@ managerCommand
       await scheduler.checkMergeQueue();
       db.save();
       console.log(chalk.green('Done'));
-    } finally {
-      db.close();
-    }
+    });
   });
 
 // Check manager status
@@ -266,32 +243,19 @@ managerCommand
   .description('Nudge an agent to check for work')
   .option('-m, --message <msg>', 'Custom message to send')
   .action(async (session: string, options: { message?: string }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-    try {
+    await withHiveContext(async ({ root, db }) => {
       const agent = getAgentById(db.db, session.replace('hive-', ''));
       const cliTool = (agent?.cli_tool || 'claude') as CLITool;
       await nudgeAgent(root, session, options.message, undefined, undefined, cliTool);
       console.log(chalk.green(`Nudged ${session}`));
-    } finally {
-      db.close();
-    }
+    });
   });
 
-async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
+async function managerCheck(config?: HiveConfig): Promise<void> {
   const timestamp = new Date().toLocaleTimeString();
   console.log(chalk.gray(`[${timestamp}] Manager checking...`));
 
-  const paths = getHivePaths(root);
-  const db = await getDatabase(paths.hiveDir);
-
-  try {
+  await withHiveContext(async ({ root, paths, db }) => {
     // Load config if not provided (for backwards compatibility)
     if (!config) {
       config = loadConfig(paths.hiveDir);
@@ -824,9 +788,7 @@ hive pr queue`
     } else {
       console.log(chalk.green('  All agents productive'));
     }
-  } finally {
-    db.close();
-  }
+  });
 }
 
 function getAgentType(
@@ -917,11 +879,6 @@ async function forwardMessages(
     // Small delay between messages to allow recipient time to read
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-}
-
-interface DatabaseClient {
-  db: import('sql.js').Database;
-  save: () => void;
 }
 
 async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promise<number> {

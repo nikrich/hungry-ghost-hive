@@ -4,13 +4,13 @@ import { existsSync, readFileSync } from 'fs';
 import ora from 'ora';
 import { getCliRuntimeBuilder } from '../../cli-runtimes/index.js';
 import { loadConfig } from '../../config/loader.js';
-import { getDatabase, withTransaction } from '../../db/client.js';
+import { withTransaction } from '../../db/client.js';
 import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { createRequirement, updateRequirement } from '../../db/queries/requirements.js';
 import { getAllTeams } from '../../db/queries/teams.js';
 import { isTmuxAvailable, spawnTmuxSession } from '../../tmux/manager.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const reqCommand = new Command('req')
   .description('Submit a requirement')
@@ -24,15 +24,7 @@ export const reqCommand = new Command('req')
       requirement: string | undefined,
       options: { file?: string; title?: string; dryRun?: boolean; godmode?: boolean }
     ) => {
-      const root = findHiveRoot();
-      if (!root) {
-        console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-        process.exit(1);
-      }
-
-      const paths = getHivePaths(root);
-
-      // Get requirement text
+      // Get requirement text (before opening db)
       let reqText: string;
       if (options.file) {
         if (!existsSync(options.file)) {
@@ -52,129 +44,128 @@ export const reqCommand = new Command('req')
       const title = options.title || lines[0].replace(/^#\s*/, '').substring(0, 100);
       const description = reqText;
 
-      const db = await getDatabase(paths.hiveDir);
-      const spinner = ora('Processing requirement...').start();
-
-      try {
-        // Check if there are any teams
-        const teams = getAllTeams(db.db);
-        if (teams.length === 0) {
-          spinner.fail(chalk.red('No teams found. Add a repository first:'));
-          console.log(chalk.gray('  hive add-repo --url <repo-url> --team <team-name>'));
-          process.exit(1);
-        }
-
-        // Create requirement
-        spinner.text = 'Creating requirement...';
-        const req = createRequirement(db.db, { title, description, godmode: options.godmode });
-        console.log(chalk.green(`\n✓ Requirement created: ${req.id}`));
-        if (options.godmode) {
-          console.log(chalk.yellow('⚡ GODMODE enabled - using Opus 4.6 for all agents'));
-        }
-
-        if (options.dryRun) {
-          console.log(chalk.yellow('Dry run - not spawning agents'));
-          spinner.succeed('Requirement created (dry run)');
-          return;
-        }
-
-        // Check for tmux
-        if (!(await isTmuxAvailable())) {
-          spinner.warn(chalk.yellow('tmux not available - agents will not be spawned'));
-          console.log(chalk.gray('Install tmux to enable agent orchestration'));
-          return;
-        }
-
-        // Get or create Tech Lead agent
-        spinner.text = 'Spawning Tech Lead...';
-        let techLead = getTechLead(db.db);
-
-        if (!techLead) {
-          techLead = createAgent(db.db, { type: 'tech_lead', model: 'opus' });
-        }
-
-        // Update Tech Lead status and log event (atomic transaction)
-        await withTransaction(db.db, () => {
-          updateAgent(db.db, techLead.id, { status: 'working' });
-
-          createLog(db.db, {
-            agentId: techLead.id,
-            eventType: 'REQUIREMENT_RECEIVED',
-            message: title,
-            metadata: { requirement_id: req.id },
-          });
-
-          updateRequirement(db.db, req.id, { status: 'planning' });
-        });
-
-        // Spawn Tech Lead tmux session
-        const sessionName = `hive-tech-lead`;
-        const techLeadPrompt = generateTechLeadPrompt(
-          req.id,
-          title,
-          description,
-          teams,
-          options.godmode
-        );
+      await withHiveContext(async ({ root, paths, db }) => {
+        const spinner = ora('Processing requirement...').start();
 
         try {
-          // Build CLI command using the configured runtime for Tech Lead
-          const config = loadConfig(paths.hiveDir);
-          const cliTool = config.models.tech_lead.cli_tool;
-          const model = 'opus';
-          const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
-          const command = commandArgs.join(' ');
+          // Check if there are any teams
+          const teams = getAllTeams(db.db);
+          if (teams.length === 0) {
+            spinner.fail(chalk.red('No teams found. Add a repository first:'));
+            console.log(chalk.gray('  hive add-repo --url <repo-url> --team <team-name>'));
+            process.exit(1);
+          }
 
-          // Pass the prompt as initialPrompt so it's included as a CLI positional
-          // argument via $(cat ...). This delivers the full multi-line prompt
-          // reliably without tmux send-keys newline issues.
-          await spawnTmuxSession({
-            sessionName,
-            workDir: root,
-            command,
-            initialPrompt: techLeadPrompt,
-          });
+          // Create requirement
+          spinner.text = 'Creating requirement...';
+          const req = createRequirement(db.db, { title, description, godmode: options.godmode });
+          console.log(chalk.green(`\n✓ Requirement created: ${req.id}`));
+          if (options.godmode) {
+            console.log(chalk.yellow('⚡ GODMODE enabled - using Opus 4.6 for all agents'));
+          }
 
-          // Update agent and log spawning/planning events (atomic transaction)
+          if (options.dryRun) {
+            console.log(chalk.yellow('Dry run - not spawning agents'));
+            spinner.succeed('Requirement created (dry run)');
+            return;
+          }
+
+          // Check for tmux
+          if (!(await isTmuxAvailable())) {
+            spinner.warn(chalk.yellow('tmux not available - agents will not be spawned'));
+            console.log(chalk.gray('Install tmux to enable agent orchestration'));
+            return;
+          }
+
+          // Get or create Tech Lead agent
+          spinner.text = 'Spawning Tech Lead...';
+          let techLead = getTechLead(db.db);
+
+          if (!techLead) {
+            techLead = createAgent(db.db, { type: 'tech_lead', model: 'opus' });
+          }
+
+          // Update Tech Lead status and log event (atomic transaction)
           await withTransaction(db.db, () => {
-            updateAgent(db.db, techLead.id, { tmuxSession: sessionName });
+            updateAgent(db.db, techLead.id, { status: 'working' });
 
             createLog(db.db, {
               agentId: techLead.id,
-              eventType: 'AGENT_SPAWNED',
-              message: `Tech Lead spawned for requirement ${req.id}`,
-              metadata: { tmux_session: sessionName },
-            });
-
-            createLog(db.db, {
-              agentId: techLead.id,
-              eventType: 'PLANNING_STARTED',
-              message: `Planning started for requirement ${req.id}`,
+              eventType: 'REQUIREMENT_RECEIVED',
+              message: title,
               metadata: { requirement_id: req.id },
             });
+
+            updateRequirement(db.db, req.id, { status: 'planning' });
           });
 
-          spinner.succeed(chalk.green('Requirement submitted and Tech Lead spawned'));
-          console.log();
-          console.log(chalk.bold('Requirement:'), req.id);
-          console.log(chalk.bold('Title:'), title);
-          console.log(chalk.bold('Tech Lead Session:'), sessionName);
-          console.log();
-          console.log(chalk.gray('View progress:'));
-          console.log(chalk.cyan(`  hive status`));
-          console.log(chalk.cyan(`  tmux attach -t ${sessionName}`));
-          console.log();
-        } catch (tmuxErr) {
-          spinner.warn(chalk.yellow('Requirement created but failed to spawn Tech Lead'));
-          console.error(tmuxErr);
+          // Spawn Tech Lead tmux session
+          const sessionName = `hive-tech-lead`;
+          const techLeadPrompt = generateTechLeadPrompt(
+            req.id,
+            title,
+            description,
+            teams,
+            options.godmode
+          );
+
+          try {
+            // Build CLI command using the configured runtime for Tech Lead
+            const config = loadConfig(paths.hiveDir);
+            const cliTool = config.models.tech_lead.cli_tool;
+            const model = 'opus';
+            const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(model);
+            const command = commandArgs.join(' ');
+
+            // Pass the prompt as initialPrompt so it's included as a CLI positional
+            // argument via $(cat ...). This delivers the full multi-line prompt
+            // reliably without tmux send-keys newline issues.
+            await spawnTmuxSession({
+              sessionName,
+              workDir: root,
+              command,
+              initialPrompt: techLeadPrompt,
+            });
+
+            // Update agent and log spawning/planning events (atomic transaction)
+            await withTransaction(db.db, () => {
+              updateAgent(db.db, techLead.id, { tmuxSession: sessionName });
+
+              createLog(db.db, {
+                agentId: techLead.id,
+                eventType: 'AGENT_SPAWNED',
+                message: `Tech Lead spawned for requirement ${req.id}`,
+                metadata: { tmux_session: sessionName },
+              });
+
+              createLog(db.db, {
+                agentId: techLead.id,
+                eventType: 'PLANNING_STARTED',
+                message: `Planning started for requirement ${req.id}`,
+                metadata: { requirement_id: req.id },
+              });
+            });
+
+            spinner.succeed(chalk.green('Requirement submitted and Tech Lead spawned'));
+            console.log();
+            console.log(chalk.bold('Requirement:'), req.id);
+            console.log(chalk.bold('Title:'), title);
+            console.log(chalk.bold('Tech Lead Session:'), sessionName);
+            console.log();
+            console.log(chalk.gray('View progress:'));
+            console.log(chalk.cyan(`  hive status`));
+            console.log(chalk.cyan(`  tmux attach -t ${sessionName}`));
+            console.log();
+          } catch (tmuxErr) {
+            spinner.warn(chalk.yellow('Requirement created but failed to spawn Tech Lead'));
+            console.error(tmuxErr);
+          }
+        } catch (err) {
+          spinner.fail(chalk.red('Failed to process requirement'));
+          console.error(err);
+          process.exit(1);
         }
-      } catch (err) {
-        spinner.fail(chalk.red('Failed to process requirement'));
-        console.error(err);
-        process.exit(1);
-      } finally {
-        db.close();
-      }
+      });
     }
   );
 

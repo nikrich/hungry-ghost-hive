@@ -1,8 +1,8 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { nanoid } from 'nanoid';
-import { getDatabase, queryAll, queryOne, run } from '../../db/client.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { queryAll, queryOne, run } from '../../db/client.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 interface MessageRow {
   id: string;
@@ -25,16 +25,7 @@ msgCommand
   .option('-f, --from <session>', 'Your session name (defaults to hive-tech-lead)')
   .action(
     async (toSession: string, message: string, options: { subject?: string; from?: string }) => {
-      const root = findHiveRoot();
-      if (!root) {
-        console.error(chalk.red('Not in a Hive workspace.'));
-        process.exit(1);
-      }
-
-      const paths = getHivePaths(root);
-      const db = await getDatabase(paths.hiveDir);
-
-      try {
+      await withHiveContext(({ db }) => {
         const id = `msg-${nanoid(8)}`;
         const fromSession = options.from || 'hive-tech-lead';
 
@@ -51,9 +42,7 @@ msgCommand
         console.log(chalk.green(`Message sent: ${id}`));
         console.log(chalk.gray(`To: ${toSession}`));
         console.log(chalk.gray(`Subject: ${options.subject || '(none)'}`));
-      } finally {
-        db.close();
-      }
+      });
     }
   );
 
@@ -62,16 +51,7 @@ msgCommand
   .description('Check inbox for messages')
   .option('--all', 'Show all messages including read')
   .action(async (session: string | undefined, options: { all?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const targetSession = session || 'hive-tech-lead';
 
       let query = `
@@ -113,25 +93,14 @@ msgCommand
         }
         console.log();
       }
-    } finally {
-      db.close();
-    }
+    });
   });
 
 msgCommand
   .command('read <msg-id>')
   .description('Read a specific message')
   .action(async (msgId: string) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const msg = queryOne<MessageRow>(db.db, 'SELECT * FROM messages WHERE id = ?', [msgId]);
 
       if (!msg) {
@@ -160,25 +129,14 @@ msgCommand
         console.log(msg.reply);
       }
       console.log();
-    } finally {
-      db.close();
-    }
+    });
   });
 
 msgCommand
   .command('reply <msg-id> <response>')
   .description('Reply to a message')
   .action(async (msgId: string, response: string) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const msg = queryOne<MessageRow>(db.db, 'SELECT * FROM messages WHERE id = ?', [msgId]);
 
       if (!msg) {
@@ -198,25 +156,14 @@ msgCommand
       db.save();
 
       console.log(chalk.green(`Reply sent to ${msg.from_session}`));
-    } finally {
-      db.close();
-    }
+    });
   });
 
 msgCommand
   .command('outbox [session]')
   .description('Check sent messages and their replies')
   .action(async (session: string | undefined) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const fromSession = session || 'hive-tech-lead';
 
       const messages = queryAll<MessageRow>(
@@ -253,7 +200,5 @@ msgCommand
         }
         console.log();
       }
-    } finally {
-      db.close();
-    }
+    });
   });

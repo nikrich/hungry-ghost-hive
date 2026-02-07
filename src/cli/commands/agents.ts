@@ -1,6 +1,5 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { getDatabase } from '../../db/client.js';
 import {
   deleteAgent,
   getActiveAgents,
@@ -10,7 +9,7 @@ import {
 } from '../../db/queries/agents.js';
 import { getLogsByAgent } from '../../db/queries/logs.js';
 import { statusColor } from '../../utils/logger.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const agentsCommand = new Command('agents').description('Manage agents');
 
@@ -20,16 +19,7 @@ agentsCommand
   .option('--active', 'Show only active agents')
   .option('--json', 'Output as JSON')
   .action(async (options: { active?: boolean; json?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const agents = options.active ? getActiveAgents(db.db) : getAllAgents(db.db);
 
       if (options.json) {
@@ -61,9 +51,7 @@ agentsCommand
         );
       }
       console.log();
-    } finally {
-      db.close();
-    }
+    });
   });
 
 agentsCommand
@@ -72,16 +60,7 @@ agentsCommand
   .option('-n, --limit <number>', 'Number of logs to show', '50')
   .option('--json', 'Output as JSON')
   .action(async (agentId: string, options: { limit: string; json?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const agent = getAgentById(db.db, agentId);
       if (!agent) {
         console.error(chalk.red(`Agent not found: ${agentId}`));
@@ -119,25 +98,14 @@ agentsCommand
         }
       }
       console.log();
-    } finally {
-      db.close();
-    }
+    });
   });
 
 agentsCommand
   .command('inspect <agent-id>')
   .description('View detailed agent state')
   .action(async (agentId: string) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const agent = getAgentById(db.db, agentId);
       if (!agent) {
         console.error(chalk.red(`Agent not found: ${agentId}`));
@@ -175,9 +143,7 @@ agentsCommand
         }
       }
       console.log();
-    } finally {
-      db.close();
-    }
+    });
   });
 
 agentsCommand
@@ -185,16 +151,7 @@ agentsCommand
   .description('Clean up terminated agents from the database')
   .option('--dry-run', 'Show what would be deleted without actually deleting')
   .action(async (options: { dryRun?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace. Run "hive init" first.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(async ({ root, db }) => {
       const terminatedAgents = getAgentsByStatus(db.db, 'terminated');
 
       if (terminatedAgents.length === 0) {
@@ -257,7 +214,5 @@ agentsCommand
       }
 
       console.log(chalk.green(`✓ Cleaned up ${deleted} terminated agent(s).`));
-    } finally {
-      db.close();
-    }
+    });
   });

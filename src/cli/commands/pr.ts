@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import { execa } from 'execa';
 import { join } from 'path';
 import { loadConfig } from '../../config/loader.js';
-import { getDatabase, queryAll } from '../../db/client.js';
+import { queryAll } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import {
   createPullRequest,
@@ -20,8 +20,8 @@ import { getTeamById } from '../../db/queries/teams.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { extractStoryIdFromBranch, normalizeStoryId } from '../../utils/story-id.js';
+import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const prCommand = new Command('pr').description('Manage pull requests and merge queue');
 
@@ -44,16 +44,7 @@ prCommand
       prUrl?: string;
       from?: string;
     }) => {
-      const root = findHiveRoot();
-      if (!root) {
-        console.error(chalk.red('Not in a Hive workspace.'));
-        process.exit(1);
-      }
-
-      const paths = getHivePaths(root);
-      const db = await getDatabase(paths.hiveDir);
-
-      try {
+      await withHiveContext(async ({ root, paths, db }) => {
         // Story ID is now required - normalize it
         const storyId = normalizeStoryId(options.story);
 
@@ -130,9 +121,7 @@ prCommand
         } catch {
           // Non-fatal - QA can be triggered manually
         }
-      } finally {
-        db.close();
-      }
+      });
     }
   );
 
@@ -143,16 +132,7 @@ prCommand
   .option('-t, --team <team-id>', 'Filter by team')
   .option('--json', 'Output as JSON')
   .action(async (options: { team?: string; json?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const queue = getMergeQueue(db.db, options.team);
 
       if (options.json) {
@@ -184,9 +164,7 @@ prCommand
         );
       });
       console.log();
-    } finally {
-      db.close();
-    }
+    });
   });
 
 // Claim next PR for review (QA)
@@ -196,16 +174,7 @@ prCommand
   .option('-t, --team <team-id>', 'Filter by team')
   .option('--from <session>', 'QA agent session')
   .action(async (options: { team?: string; from?: string }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const pr = getNextInQueue(db.db, options.team);
 
       if (!pr) {
@@ -241,9 +210,7 @@ prCommand
         });
         db.save();
       }
-    } finally {
-      db.close();
-    }
+    });
   });
 
 // View specific PR
@@ -251,16 +218,7 @@ prCommand
   .command('show <pr-id>')
   .description('View details of a PR')
   .action(async (prId: string) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(({ db }) => {
       const pr = getPullRequestById(db.db, prId);
       if (!pr) {
         console.error(chalk.red(`PR not found: ${prId}`));
@@ -289,9 +247,7 @@ prCommand
         console.log(chalk.cyan(`\nQueue Position: ${position}`));
       }
       console.log();
-    } finally {
-      db.close();
-    }
+    });
   });
 
 // Approve and merge PR
@@ -302,16 +258,7 @@ prCommand
   .option('--from <session>', 'QA agent session')
   .option('--no-merge', 'Approve without merging (manual merge needed)')
   .action(async (prId: string, options: { notes?: string; from?: string; merge?: boolean }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(async ({ root, db }) => {
       const pr = getPullRequestById(db.db, prId);
       if (!pr) {
         console.error(chalk.red(`PR not found: ${prId}`));
@@ -414,9 +361,7 @@ prCommand
         });
         db.save();
       }
-    } finally {
-      db.close();
-    }
+    });
   });
 
 // Reject PR
@@ -426,16 +371,7 @@ prCommand
   .requiredOption('-r, --reason <reason>', 'Reason for rejection')
   .option('--from <session>', 'QA agent session')
   .action(async (prId: string, options: { reason: string; from?: string }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(async ({ db }) => {
       const pr = getPullRequestById(db.db, prId);
       if (!pr) {
         console.error(chalk.red(`PR not found: ${prId}`));
@@ -499,9 +435,7 @@ prCommand
         });
         db.save();
       }
-    } finally {
-      db.close();
-    }
+    });
   });
 
 // Sync GitHub PRs into the merge queue
@@ -510,16 +444,7 @@ prCommand
   .description('Import open GitHub PRs into the merge queue')
   .option('-r, --repo <path>', 'Repository path (relative to repos/)')
   .action(async (options: { repo?: string }) => {
-    const root = findHiveRoot();
-    if (!root) {
-      console.error(chalk.red('Not in a Hive workspace.'));
-      process.exit(1);
-    }
-
-    const paths = getHivePaths(root);
-    const db = await getDatabase(paths.hiveDir);
-
-    try {
+    await withHiveContext(async ({ root, paths, db }) => {
       // Get ALL existing PRs (including merged/closed) to prevent duplicate imports
       const existingPRs = queryAll<PullRequestRow>(db.db, 'SELECT * FROM pull_requests');
       const existingBranches = new Set(
@@ -603,7 +528,5 @@ prCommand
       } else {
         console.log(chalk.yellow('\nNo new PRs to import.'));
       }
-    } finally {
-      db.close();
-    }
+    });
   });
