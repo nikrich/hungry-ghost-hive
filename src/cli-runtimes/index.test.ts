@@ -4,6 +4,8 @@ import {
   CodexRuntimeBuilder,
   GeminiRuntimeBuilder,
   getCliRuntimeBuilder,
+  resolveRuntimeModelForCli,
+  selectCompatibleModelForCli,
   validateCliBinary,
   validateCliRuntime,
   validateModelCliCompatibility,
@@ -348,6 +350,47 @@ describe('CLI Runtime Builders', () => {
           validateModelCliCompatibility('gemini-pro', 'claude');
         }).toThrow("For Google Gemini models, use cli_tool: 'gemini'");
       });
+    });
+  });
+
+  describe('resolveRuntimeModelForCli', () => {
+    it('should resolve Claude model families to shorthand aliases', () => {
+      expect(resolveRuntimeModelForCli('claude-sonnet-4-5-20250929', 'claude')).toBe('sonnet');
+      expect(resolveRuntimeModelForCli('claude-opus-4-6', 'claude')).toBe('opus');
+      expect(resolveRuntimeModelForCli('claude-haiku-4-5-20251001', 'claude')).toBe('haiku');
+    });
+
+    it('should preserve unknown Claude model IDs', () => {
+      expect(resolveRuntimeModelForCli('claude-custom-model', 'claude')).toBe(
+        'claude-custom-model'
+      );
+    });
+
+    it('should normalize legacy Codex model shorthands', () => {
+      expect(resolveRuntimeModelForCli('gpt4o', 'codex')).toBe('gpt-4o');
+      expect(resolveRuntimeModelForCli('gpt4o-mini', 'codex')).toBe('gpt-4o-mini');
+    });
+
+    it('should preserve configured model IDs for codex and gemini', () => {
+      expect(resolveRuntimeModelForCli('gpt-4o-mini', 'codex')).toBe('gpt-4o-mini');
+      expect(resolveRuntimeModelForCli('gemini-2.5-pro', 'gemini')).toBe('gemini-2.5-pro');
+    });
+  });
+
+  describe('selectCompatibleModelForCli', () => {
+    it('should prefer persisted model when compatible', () => {
+      const selected = selectCompatibleModelForCli('codex', 'gpt-4o-mini', 'gpt-4o');
+      expect(selected).toBe('gpt-4o-mini');
+    });
+
+    it('should fall back to configured model when persisted model is incompatible', () => {
+      const selected = selectCompatibleModelForCli('codex', 'claude-opus-4-6', 'gpt-4o-mini');
+      expect(selected).toBe('gpt-4o-mini');
+    });
+
+    it('should validate and return configured model when persisted model is missing', () => {
+      const selected = selectCompatibleModelForCli('claude', null, 'claude-sonnet-4-5-20250929');
+      expect(selected).toBe('claude-sonnet-4-5-20250929');
     });
   });
 });

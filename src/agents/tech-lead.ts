@@ -1,4 +1,4 @@
-import { getCliRuntimeBuilder } from '../cli-runtimes/index.js';
+import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../cli-runtimes/index.js';
 import { loadConfig } from '../config/index.js';
 import { queryAll } from '../db/client.js';
 import { createAgent, getAgentsByType, updateAgent } from '../db/queries/agents.js';
@@ -269,7 +269,7 @@ Respond in JSON format:
           const config = loadConfig(paths.hiveDir);
           const agentConfig = config.models.senior;
           const cliTool = agentConfig.cli_tool;
-          const model = agentConfig.model;
+          const model = resolveRuntimeModelForCli(agentConfig.model, cliTool);
 
           // Build spawn command using CLI runtime builder (spawn fresh session, will be resumed later)
           const runtimeBuilder = getCliRuntimeBuilder(cliTool);
