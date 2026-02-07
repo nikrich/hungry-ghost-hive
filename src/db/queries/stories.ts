@@ -187,6 +187,23 @@ export function getStoriesDependingOn(db: Database, storyId: string): StoryRow[]
   `, [storyId]);
 }
 
+/**
+ * Check if a story has unresolved dependencies
+ * Returns true if any dependency is not in 'merged' status
+ */
+export function hasUnresolvedDependencies(db: Database, storyId: string): boolean {
+  const dependencies = getStoryDependencies(db, storyId);
+  return dependencies.some(dep => dep.status !== 'merged');
+}
+
+/**
+ * Get planned stories that are assignable (no unresolved dependencies)
+ */
+export function getAssignableStories(db: Database): StoryRow[] {
+  const plannedStories = getPlannedStories(db);
+  return plannedStories.filter(story => !hasUnresolvedDependencies(db, story.id));
+}
+
 export function getStoryCounts(db: Database): Record<StoryStatus, number> {
   const rows = queryAll<{ status: StoryStatus; count: number }>(db, `
     SELECT status, COUNT(*) as count

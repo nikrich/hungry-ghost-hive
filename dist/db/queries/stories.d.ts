@@ -37,5 +37,14 @@ export declare function addStoryDependency(db: Database, storyId: string, depend
 export declare function removeStoryDependency(db: Database, storyId: string, dependsOnStoryId: string): void;
 export declare function getStoryDependencies(db: Database, storyId: string): StoryRow[];
 export declare function getStoriesDependingOn(db: Database, storyId: string): StoryRow[];
+/**
+ * Check if a story has unresolved dependencies
+ * Returns true if any dependency is not in 'merged' status
+ */
+export declare function hasUnresolvedDependencies(db: Database, storyId: string): boolean;
+/**
+ * Get planned stories that are assignable (no unresolved dependencies)
+ */
+export declare function getAssignableStories(db: Database): StoryRow[];
 export declare function getStoryCounts(db: Database): Record<StoryStatus, number>;
 //# sourceMappingURL=stories.d.ts.map

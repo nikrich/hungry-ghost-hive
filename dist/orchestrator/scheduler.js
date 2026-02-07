@@ -1,8 +1,8 @@
-import { getPlannedStories, updateStory, getStoryPointsByTeam } from '../db/queries/stories.js';
+import { getPlannedStories, getAssignableStories, hasUnresolvedDependencies, updateStory, getStoryPointsByTeam } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { getMergeQueue } from '../db/queries/pull-requests.js';
-import { queryOne, queryAll } from '../db/client.js';
+import { queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { spawnTmuxSession, generateSessionName, isTmuxSessionRunning, sendToTmuxSession, startManager, isManagerRunning, getHiveSessions } from '../tmux/manager.js';
 export class Scheduler {
@@ -17,11 +17,22 @@ export class Scheduler {
      */
     async assignStories() {
         const plannedStories = getPlannedStories(this.db);
+        const assignableStories = getAssignableStories(this.db);
         const errors = [];
         let assigned = 0;
-        // Group stories by team
+        // Log stories skipped due to unresolved dependencies
+        const skippedStories = plannedStories.filter(story => !assignableStories.find(assignable => assignable.id === story.id));
+        for (const story of skippedStories) {
+            createLog(this.db, {
+                agentId: 'scheduler',
+                storyId: story.id,
+                eventType: 'STORY_SKIPPED',
+                message: `Skipped assignment: unresolved dependencies`,
+            });
+        }
+        // Group assignable stories by team
         const storiesByTeam = new Map();
-        for (const story of plannedStories) {
+        for (const story of assignableStories) {
             if (!story.team_id)
                 continue;
             const existing = storiesByTeam.get(story.team_id) || [];
@@ -113,15 +124,20 @@ export class Scheduler {
         if (!agent || !agent.team_id)
             return null;
         // Find an unassigned planned story for this team
-        const story = queryOne(this.db, `
+        const stories = queryAll(this.db, `
       SELECT * FROM stories
       WHERE team_id = ?
         AND status = 'planned'
         AND assigned_agent_id IS NULL
       ORDER BY story_points DESC, created_at
-      LIMIT 1
     `, [agent.team_id]);
-        return story || null;
+        // Filter out stories with unresolved dependencies
+        for (const story of stories) {
+            if (!hasUnresolvedDependencies(this.db, story.id)) {
+                return story;
+            }
+        }
+        return null;
     }
     /**
      * Check if scaling is needed based on workload
