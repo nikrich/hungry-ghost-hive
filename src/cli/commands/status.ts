@@ -67,6 +67,11 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
     stories: storyCounts,
     requirements: {
       pending: requirements.length,
+      items: requirements.map(r => ({
+        id: r.id,
+        title: r.title,
+        godmode: r.godmode ? true : false,
+      })),
     },
     escalations: {
       pending: escalations.length,
@@ -122,7 +127,8 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
   if (requirements.length > 0) {
     console.log(chalk.bold('Pending Requirements:'), requirements.length);
     for (const req of requirements.slice(0, 3)) {
-      console.log(chalk.gray(`  • ${req.id}: ${req.title.substring(0, 50)}...`));
+      const godmodeIndicator = req.godmode ? chalk.yellow(' ⚡') : '';
+      console.log(chalk.gray(`  • ${req.id}: ${req.title.substring(0, 50)}...${godmodeIndicator}`));
     }
     console.log();
   }
