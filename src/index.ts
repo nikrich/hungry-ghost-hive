@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import chalk from 'chalk';
 import { spawnSync } from 'child_process';
 import { Command } from 'commander';

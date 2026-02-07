@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { execa } from 'execa';
 import { getAgentsByType } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';

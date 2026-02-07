@@ -1,3 +1,5 @@
+-- Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 -- Migration 005: Add agent heartbeat mechanism
 -- Adds last_seen column to track agent liveness
 

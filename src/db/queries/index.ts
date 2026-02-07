@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 export * from './agents.js';
 export * from './escalations.js';
 export * from './logs.js';

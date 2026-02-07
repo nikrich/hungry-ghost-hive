@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import lockfile from 'proper-lockfile';

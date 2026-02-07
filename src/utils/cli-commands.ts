@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 /**
  * CLI Command Builders for Multi-CLI Agent Support
  * Provides CLI-aware command generation for manager communication with agents

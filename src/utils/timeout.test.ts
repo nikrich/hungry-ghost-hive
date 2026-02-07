@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TimeoutError, withRetry, withTimeout, withTimeoutAndRetry } from './timeout.js';
 

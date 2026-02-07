@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import js from '@eslint/js';
 import { createRequire } from 'node:module';
 import tseslint from 'typescript-eslint';

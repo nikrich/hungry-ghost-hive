@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import type { StoryRow } from '../db/client.js';
 
 /**

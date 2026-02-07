@@ -1,3 +1,5 @@
+-- Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 -- Hive Orchestrator Initial Schema
 -- Version: 1.0
 

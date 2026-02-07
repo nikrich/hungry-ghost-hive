@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { describe, expect, it } from 'vitest';
 import * as queries from './index.js';
 

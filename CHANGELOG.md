@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.21.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.1...hungry-ghost-hive-v0.21.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* exclude terminated agents from tmux_session lookups in my-stories ([#248](https://github.com/nikrich/hungry-ghost-hive/issues/248)) ([f5eb0d7](https://github.com/nikrich/hungry-ghost-hive/commit/f5eb0d7744754a9a704d9c7d7de869d70660a59f))
+
+## [0.21.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.0...hungry-ghost-hive-v0.21.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* harden tmux spawn command handling and cluster API exposure ([#243](https://github.com/nikrich/hungry-ghost-hive/issues/243)) ([34b1a28](https://github.com/nikrich/hungry-ghost-hive/commit/34b1a280967788b3d3b8fdc0a0b4f84f9322ca81))
+
+## [0.21.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.20.1...hungry-ghost-hive-v0.21.0) (2026-02-07)
+
+
+### Features
+
+* **config:** upgrade agent models - Senior to Opus 4.6, Intermediate to Sonnet ([#234](https://github.com/nikrich/hungry-ghost-hive/issues/234)) ([253c18f](https://github.com/nikrich/hungry-ghost-hive/commit/253c18f15080d7a864007e8ccb3b890827714315))
+* **my-stories:** enforce dependency checking in claim command ([#237](https://github.com/nikrich/hungry-ghost-hive/issues/237)) ([6687d26](https://github.com/nikrich/hungry-ghost-hive/commit/6687d260be6738f32735f8a5756155211b5e2266))
+
+## [0.20.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.20.0...hungry-ghost-hive-v0.20.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* prevent manager from killing busy agents after story merge ([#240](https://github.com/nikrich/hungry-ghost-hive/issues/240)) ([a83adaa](https://github.com/nikrich/hungry-ghost-hive/commit/a83adaa178d7d67bc208fcd6213bc07f0d172626))
+
+## [0.20.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.19.1...hungry-ghost-hive-v0.20.0) (2026-02-07)
+
+
+### Features
+
+* route stories that block others to senior agents regardless of complexity ([#238](https://github.com/nikrich/hungry-ghost-hive/issues/238)) ([ce18092](https://github.com/nikrich/hungry-ghost-hive/commit/ce1809200bcdeb64ab769a064b911c5f179d1dce))
+
 ## [0.19.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.19.0...hungry-ghost-hive-v0.19.1) (2026-02-07)
 
 

@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import Anthropic from '@anthropic-ai/sdk';
 import { withTimeout } from '../utils/timeout.js';
 import type { CompletionOptions, CompletionResult, LLMProvider, Message } from './provider.js';

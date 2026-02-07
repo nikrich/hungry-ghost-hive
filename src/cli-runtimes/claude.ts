@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { CliRuntimeBuilder } from './types.js';
 
 export class ClaudeRuntimeBuilder implements CliRuntimeBuilder {

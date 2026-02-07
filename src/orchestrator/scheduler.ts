@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import type { Database } from 'sql.js';
 import {
   getCliRuntimeBuilder,
@@ -528,8 +530,8 @@ export class Scheduler {
     const agent = getAgentById(this.db, agentId);
     if (!agent || !agent.team_id) return null;
 
-    // Find an unassigned planned story for this team
-    const story = queryOne<StoryRow>(
+    // Find unassigned planned stories for this team
+    const stories = queryAll<StoryRow>(
       this.db,
       `
       SELECT * FROM stories
@@ -537,12 +539,18 @@ export class Scheduler {
         AND status = 'planned'
         AND assigned_agent_id IS NULL
       ORDER BY story_points DESC, created_at
-      LIMIT 1
     `,
       [agent.team_id]
     );
 
-    return story || null;
+    // Filter out stories with unresolved dependencies
+    for (const story of stories) {
+      if (this.areDependenciesSatisfied(story.id)) {
+        return story;
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -951,7 +959,6 @@ export class Scheduler {
 
       // Build CLI command using the configured runtime
       const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(runtimeModel);
-      const command = commandArgs.join(' ');
 
       // Pass the prompt as initialPrompt so it's included as a CLI positional
       // argument via $(cat ...). This delivers the full multi-line prompt
@@ -959,7 +966,7 @@ export class Scheduler {
       await spawnTmuxSession({
         sessionName,
         workDir,
-        command,
+        commandArgs,
         initialPrompt: prompt,
       });
 
