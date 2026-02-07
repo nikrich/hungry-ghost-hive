@@ -1,6 +1,6 @@
 import { execa } from 'execa';
 import type { Database } from 'sql.js';
-import { queryAll, withTransaction, type PullRequestRow } from '../db/client.js';
+import { queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { createPullRequest } from '../db/queries/pull-requests.js';
 import { updateStory } from '../db/queries/stories.js';
@@ -27,6 +27,14 @@ export interface SyncGitHubPRsResult {
   imported: SyncedPR[];
 }
 
+interface ExistingPRBranchRow {
+  branch_name: string;
+}
+
+interface ExistingPRNumberRow {
+  github_pr_number: number;
+}
+
 /**
  * Build sets of existing branch names and PR numbers from the database.
  *
@@ -39,19 +47,21 @@ export function getExistingPRIdentifiers(
   db: Database,
   includeTerminalBranches = true
 ): { existingBranches: Set<string>; existingPrNumbers: Set<number> } {
-  const existingPRs = queryAll<PullRequestRow>(db, 'SELECT * FROM pull_requests');
+  const branchQuery = includeTerminalBranches
+    ? 'SELECT branch_name FROM pull_requests'
+    : "SELECT branch_name FROM pull_requests WHERE status NOT IN ('merged', 'closed')";
+  const branchRows = queryAll<ExistingPRBranchRow>(db, branchQuery);
+  const existingBranches = new Set(branchRows.map(row => row.branch_name));
 
-  const existingBranches = new Set(
-    includeTerminalBranches
-      ? existingPRs.map(pr => pr.branch_name)
-      : existingPRs
-          .filter(pr => !['merged', 'closed'].includes(pr.status))
-          .map(pr => pr.branch_name)
+  const numberRows = queryAll<ExistingPRNumberRow>(
+    db,
+    `
+    SELECT DISTINCT github_pr_number
+    FROM pull_requests
+    WHERE github_pr_number IS NOT NULL
+  `
   );
-
-  const existingPrNumbers = new Set(
-    existingPRs.map(pr => pr.github_pr_number).filter((n): n is number => n != null)
-  );
+  const existingPrNumbers = new Set(numberRows.map(row => Number(row.github_pr_number)));
 
   return { existingBranches, existingPrNumbers };
 }
@@ -110,6 +120,11 @@ export async function syncOpenGitHubPRs(
       branch: ghPR.headRefName,
       prId: pr.id,
     });
+
+    // Keep the caller-provided identifier sets hot to avoid duplicate work
+    // during multi-team sync runs that reuse these sets.
+    existingBranches.add(ghPR.headRefName);
+    existingPrNumbers.add(ghPR.number);
   }
 
   return { synced: imported.length, imported };
@@ -195,29 +210,57 @@ export async function syncMergedPRsFromGitHub(
       const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> =
         JSON.parse(result.stdout);
 
+      const candidateStoryIds = Array.from(
+        new Set(
+          mergedPRs
+            .map(pr => extractStoryIdFromBranch(pr.headRefName))
+            .filter((storyId): storyId is string => Boolean(storyId))
+        )
+      );
+
+      if (candidateStoryIds.length === 0) {
+        continue;
+      }
+
+      const placeholders = candidateStoryIds.map(() => '?').join(',');
+      const updatableStories = queryAll<{ id: string }>(
+        db,
+        `
+        SELECT id
+        FROM stories
+        WHERE status != 'merged'
+        AND id IN (${placeholders})
+      `,
+        candidateStoryIds
+      );
+      const updatableStoryIds = new Set(updatableStories.map(story => story.id));
+      const toUpdate: Array<{ storyId: string; prNumber: number }> = [];
+
       for (const pr of mergedPRs) {
         const storyId = extractStoryIdFromBranch(pr.headRefName);
-        if (!storyId) continue;
+        if (!storyId || !updatableStoryIds.has(storyId)) continue;
 
-        const story = queryAll(db, "SELECT * FROM stories WHERE id = ? AND status != 'merged'", [
-          storyId,
-        ]);
-
-        if (story.length > 0) {
-          await withTransaction(db, () => {
-            updateStory(db, storyId, { status: 'merged', assignedAgentId: null });
-
-            createLog(db, {
-              agentId: 'manager',
-              storyId,
-              eventType: 'STORY_MERGED',
-              message: `Story synced to merged from GitHub PR #${pr.number}`,
-            });
-          });
-
-          storiesUpdated++;
-        }
+        updatableStoryIds.delete(storyId);
+        toUpdate.push({ storyId, prNumber: pr.number });
       }
+
+      if (toUpdate.length === 0) {
+        continue;
+      }
+
+      await withTransaction(db, () => {
+        for (const update of toUpdate) {
+          updateStory(db, update.storyId, { status: 'merged', assignedAgentId: null });
+          createLog(db, {
+            agentId: 'manager',
+            storyId: update.storyId,
+            eventType: 'STORY_MERGED',
+            message: `Story synced to merged from GitHub PR #${update.prNumber}`,
+          });
+        }
+      });
+
+      storiesUpdated += toUpdate.length;
     } catch {
       // gh CLI might not be authenticated or repo might not have remote
       continue;

@@ -146,6 +146,50 @@ describe('syncOpenGitHubPRs', () => {
     expect(result.imported[0].number).toBe(11);
   });
 
+  it('should update identifier sets to avoid duplicate imports across sequential sync calls', async () => {
+    mockExeca
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify([
+          {
+            number: 10,
+            headRefName: 'feature/shared',
+            url: 'https://github.com/test/repo/pull/10',
+            title: 'Shared PR',
+          },
+        ]),
+      } as any)
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify([
+          {
+            number: 10,
+            headRefName: 'feature/shared',
+            url: 'https://github.com/test/repo/pull/10',
+            title: 'Shared PR',
+          },
+        ]),
+      } as any);
+
+    const existingBranches = new Set<string>();
+    const existingPrNumbers = new Set<number>();
+
+    const first = await syncOpenGitHubPRs(db, '/repo-a', null, existingBranches, existingPrNumbers);
+    const second = await syncOpenGitHubPRs(
+      db,
+      '/repo-b',
+      null,
+      existingBranches,
+      existingPrNumbers
+    );
+
+    expect(first.synced).toBe(1);
+    expect(second.synced).toBe(0);
+    expect(existingBranches.has('feature/shared')).toBe(true);
+    expect(existingPrNumbers.has(10)).toBe(true);
+
+    const countResult = db.exec('SELECT COUNT(*) as count FROM pull_requests');
+    expect(countResult[0].values[0][0]).toBe(1);
+  });
+
   it('should return empty results when no new PRs', async () => {
     mockExeca.mockResolvedValue({
       stdout: JSON.stringify([
