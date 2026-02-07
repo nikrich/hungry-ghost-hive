@@ -101,7 +101,7 @@ export const reqCommand = new Command('req')
             agentId: techLead.id,
             eventType: 'REQUIREMENT_RECEIVED',
             message: title,
-            metadata: { requirement_id: req.id },
+            metadata: { requirement_id: req.id, godmode: req.godmode ? true : false },
           });
 
           updateRequirement(db.db, req.id, { status: 'planning' });
