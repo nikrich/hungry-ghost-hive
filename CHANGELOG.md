@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.5](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.4...hungry-ghost-hive-v0.21.5) (2026-02-07)
+
+
+### Bug Fixes
+
+* auto-close stale GitHub PRs when submitting new PRs ([#254](https://github.com/nikrich/hungry-ghost-hive/issues/254)) ([44ad714](https://github.com/nikrich/hungry-ghost-hive/commit/44ad7140d879372227ee477304c3b515944fbc57))
+
 ## [0.21.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.3...hungry-ghost-hive-v0.21.4) (2026-02-07)
 
 
