@@ -974,12 +974,44 @@ async function syncMergedPRsFromGitHub(root: string, db: DatabaseClient): Promis
         );
 
         if (story.length > 0) {
+          // Capture the assigned agent before clearing the assignment
+          const assignedAgentId = story[0].assigned_agent_id;
+
           // Update story to merged (atomic transaction)
           await withTransaction(db.db, () => {
             db.db.run(
               "UPDATE stories SET status = 'merged', assigned_agent_id = NULL, updated_at = datetime('now') WHERE id = ?",
               [storyId]
             );
+
+            // Spin down the assigned agent if it exists
+            if (assignedAgentId) {
+              const agent = getAgentById(db.db, assignedAgentId);
+              if (agent && agent.status !== 'terminated') {
+                updateAgent(db.db, agent.id, { status: 'terminated', currentStoryId: null });
+                createLog(db.db, {
+                  agentId: agent.id,
+                  storyId: storyId,
+                  eventType: 'AGENT_TERMINATED',
+                  message: `Agent spun down after story ${storyId} was merged (PR #${pr.number})`,
+                });
+
+                // Kill tmux session asynchronously (outside transaction)
+                if (agent.tmux_session) {
+                  const sessionToKill = agent.tmux_session;
+                  setTimeout(async () => {
+                    try {
+                      await sendToTmuxSession(
+                        sessionToKill,
+                        `# Your story ${storyId} has been merged. Spinning down...`
+                      );
+                      await new Promise(resolve => setTimeout(resolve, 1000));
+                      await killTmuxSession(sessionToKill);
+                    } catch {}
+                  }, 0);
+                }
+              }
+            }
 
             // Log the sync
             createLog(db.db, {
