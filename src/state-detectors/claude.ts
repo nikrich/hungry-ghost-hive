@@ -5,13 +5,8 @@
  * Refactored from src/utils/claude-code-state.ts
  */
 
-import { AgentState, StateDetectionResult, StateDetector } from './types.js';
-
-interface StateIndicator {
-  state: AgentState;
-  patterns: RegExp[];
-  priority: number;
-}
+import { BaseStateDetector, StateIndicator } from './base.js';
+import { AgentState } from './types.js';
 
 /**
  * Priority-based state indicators for Claude Code
@@ -91,41 +86,15 @@ const CLAUDE_STATE_INDICATORS: StateIndicator[] = [
 /**
  * Claude Code State Detector Implementation
  */
-export class ClaudeStateDetector implements StateDetector {
-  /**
-   * Detect the current Claude Code UI state from output text
-   */
-  detectState(output: string): StateDetectionResult {
-    // Sort indicators by priority (highest first)
-    const sortedIndicators = [...CLAUDE_STATE_INDICATORS].sort((a, b) => b.priority - a.priority);
-
-    // Check each indicator in priority order
-    for (const indicator of sortedIndicators) {
-      for (const pattern of indicator.patterns) {
-        if (pattern.test(output)) {
-          const result = this.mapStateToWaitingStatus(indicator.state);
-          return {
-            ...result,
-            confidence: 0.9,
-            reason: `Detected pattern for ${indicator.state}`,
-          };
-        }
-      }
-    }
-
-    // No clear state detected
-    return {
-      state: AgentState.UNKNOWN,
-      confidence: 0.3,
-      reason: 'No clear state indicators found',
-      isWaiting: false,
-      needsHuman: false,
-    };
+export class ClaudeStateDetector extends BaseStateDetector {
+  constructor() {
+    super('Claude', 0.9);
   }
 
-  /**
-   * Get a human-readable description of a state
-   */
+  protected getIndicators(): StateIndicator[] {
+    return CLAUDE_STATE_INDICATORS;
+  }
+
   getStateDescription(state: AgentState): string {
     switch (state) {
       case AgentState.THINKING:
@@ -152,75 +121,6 @@ export class ClaudeStateDetector implements StateDetector {
         return 'Unknown state';
       default:
         return 'Unknown';
-    }
-  }
-
-  /**
-   * Check if a state represents active work (not waiting)
-   */
-  isActiveState(state: AgentState): boolean {
-    return [AgentState.THINKING, AgentState.TOOL_RUNNING, AgentState.PROCESSING].includes(state);
-  }
-
-  /**
-   * Check if a state requires human intervention
-   */
-  isBlockedState(state: AgentState): boolean {
-    return [
-      AgentState.ASKING_QUESTION,
-      AgentState.AWAITING_SELECTION,
-      AgentState.PLAN_APPROVAL,
-      AgentState.PERMISSION_REQUIRED,
-      AgentState.USER_DECLINED,
-    ].includes(state);
-  }
-
-  /**
-   * Map a state to waiting status flags
-   */
-  private mapStateToWaitingStatus(
-    state: AgentState
-  ): Omit<StateDetectionResult, 'confidence' | 'reason'> {
-    switch (state) {
-      // Active states - not waiting
-      case AgentState.THINKING:
-      case AgentState.TOOL_RUNNING:
-      case AgentState.PROCESSING:
-        return {
-          state,
-          isWaiting: false,
-          needsHuman: false,
-        };
-
-      // Idle states - waiting but not blocked
-      case AgentState.IDLE_AT_PROMPT:
-      case AgentState.WORK_COMPLETE:
-        return {
-          state,
-          isWaiting: true,
-          needsHuman: false,
-        };
-
-      // Blocked states - waiting and needs human
-      case AgentState.ASKING_QUESTION:
-      case AgentState.AWAITING_SELECTION:
-      case AgentState.PLAN_APPROVAL:
-      case AgentState.PERMISSION_REQUIRED:
-      case AgentState.USER_DECLINED:
-        return {
-          state,
-          isWaiting: true,
-          needsHuman: true,
-        };
-
-      // Unknown state - assume not waiting
-      case AgentState.UNKNOWN:
-      default:
-        return {
-          state,
-          isWaiting: false,
-          needsHuman: false,
-        };
     }
   }
 }
