@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.2...hungry-ghost-hive-v0.21.3) (2026-02-07)
+
+
+### Bug Fixes
+
+* only notify idle QA agents to prevent work interruptions ([#252](https://github.com/nikrich/hungry-ghost-hive/issues/252)) ([0878b39](https://github.com/nikrich/hungry-ghost-hive/commit/0878b39a438e69abe12270f36261bb2479568d3d))
+
 ## [0.21.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.1...hungry-ghost-hive-v0.21.2) (2026-02-07)
 
 
