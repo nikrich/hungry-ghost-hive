@@ -204,7 +204,7 @@ const REPLICATED_TABLES: TableAdapter[] = [
   {
     table: 'requirements',
     selectSql:
-      'SELECT id, title, description, submitted_by, status, created_at FROM requirements ORDER BY id',
+      'SELECT id, title, description, submitted_by, status, godmode, created_at FROM requirements ORDER BY id',
     rowId: row => asString(row.id),
     payload: row => ({
       id: asString(row.id),
@@ -212,19 +212,21 @@ const REPLICATED_TABLES: TableAdapter[] = [
       description: asString(row.description),
       submitted_by: asString(row.submitted_by),
       status: asString(row.status),
+      godmode: asNumber(row.godmode),
       created_at: asString(row.created_at),
     }),
     upsert: (db, payload) => {
       run(
         db,
         `
-        INSERT INTO requirements (id, title, description, submitted_by, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO requirements (id, title, description, submitted_by, status, godmode, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           title = excluded.title,
           description = excluded.description,
           submitted_by = excluded.submitted_by,
           status = excluded.status,
+          godmode = excluded.godmode,
           created_at = excluded.created_at
       `,
         [
@@ -233,6 +235,7 @@ const REPLICATED_TABLES: TableAdapter[] = [
           asString(payload.description),
           asString(payload.submitted_by),
           asString(payload.status),
+          asNumber(payload.godmode),
           asString(payload.created_at),
         ]
       );

@@ -843,19 +843,20 @@ export class Scheduler {
     // Get model info from config
     let modelConfig = this.config.models[type as keyof typeof this.config.models];
 
-    // Override models to Opus 4.6 when godmode is active
-    if (this.isGodmodeActive()) {
+    // Override Claude runtime models to Opus 4.6 when godmode is active
+    const configuredCliTool = modelConfig.cli_tool || 'claude';
+    if (this.isGodmodeActive() && configuredCliTool === 'claude') {
       modelConfig = {
         provider: 'anthropic',
         model: 'claude-opus-4-6',
         max_tokens: GODMODE_MAX_TOKENS,
         temperature: GODMODE_TEMPERATURE,
-        cli_tool: modelConfig.cli_tool || 'claude',
+        cli_tool: 'claude',
       };
     }
 
-    const modelShorthand = this.getModelShorthand(modelConfig.model);
     const cliTool = modelConfig.cli_tool || 'claude';
+    const runtimeModel = this.getRuntimeModel(modelConfig.model, cliTool);
 
     // Validate that the model is compatible with the CLI tool
     try {
@@ -888,7 +889,7 @@ export class Scheduler {
     const agent = createAgent(this.db, {
       type,
       teamId,
-      model: modelShorthand,
+      model: runtimeModel,
     });
 
     // Create git worktree for this agent
@@ -917,7 +918,7 @@ export class Scheduler {
       }
 
       // Build CLI command using the configured runtime
-      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(modelShorthand);
+      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(runtimeModel);
       const command = commandArgs.join(' ');
 
       // Pass the prompt as initialPrompt so it's included as a CLI positional
@@ -957,15 +958,20 @@ export class Scheduler {
   }
 
   /**
-   * Extract model shorthand from full model ID
-   * E.g., 'claude-sonnet-4-20250514' -> 'sonnet', 'claude-haiku-3-5-20241022' -> 'haiku'
+   * Resolve the model value passed to the configured CLI runtime.
+   * Claude CLI expects shorthand aliases (sonnet/opus/haiku), while
+   * codex/gemini runtimes should use the configured model verbatim.
    */
-  private getModelShorthand(modelId: string): string {
-    if (modelId.includes('sonnet')) return 'sonnet';
-    if (modelId.includes('opus')) return 'opus';
-    if (modelId.includes('haiku')) return 'haiku';
-    if (modelId.includes('gpt-4o')) return 'gpt4o';
-    return 'haiku'; // default fallback
+  private getRuntimeModel(modelId: string, cliTool: 'claude' | 'codex' | 'gemini'): string {
+    if (cliTool !== 'claude') {
+      return modelId;
+    }
+
+    const normalized = modelId.toLowerCase();
+    if (normalized.includes('sonnet')) return 'sonnet';
+    if (normalized.includes('opus')) return 'opus';
+    if (normalized.includes('haiku')) return 'haiku';
+    return modelId;
   }
 
   private async spawnQA(
