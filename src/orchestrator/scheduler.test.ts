@@ -3,6 +3,7 @@ import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getLogsByEventType } from '../db/queries/logs.js';
+import { createRequirement } from '../db/queries/requirements.js';
 import type { StoryRow } from '../db/queries/stories.js';
 import {
   addStoryDependency,
@@ -1357,5 +1358,67 @@ describe('Scheduler Story Assignment Prevention', () => {
     // B should be ready for assignment
     const satisfied = (scheduler as any).areDependenciesSatisfied(storyB.id);
     expect(satisfied).toBe(true);
+  });
+
+  it('should detect godmode is active when a planned story has a godmode requirement', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a requirement with godmode
+    const req = createRequirement(db, {
+      title: 'Godmode Requirement',
+      description: 'Test requirement with godmode',
+      godmode: true,
+    });
+
+    // Create a story linked to the godmode requirement
+    const story = createStory(db, {
+      requirementId: req.id,
+      teamId: team.id,
+      title: 'Godmode Story',
+      description: 'Test',
+    });
+    updateStory(db, story.id, { status: 'planned' });
+
+    // Godmode should be detected as active
+    const isGodmodeActive = (scheduler as any).isGodmodeActive();
+    expect(isGodmodeActive).toBe(true);
+  });
+
+  it('should not detect godmode when no planned stories have godmode requirements', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a normal requirement (without godmode)
+    const req = createRequirement(db, {
+      title: 'Normal Requirement',
+      description: 'Test requirement without godmode',
+      godmode: false,
+    });
+
+    // Create a story linked to the normal requirement
+    const story = createStory(db, {
+      requirementId: req.id,
+      teamId: team.id,
+      title: 'Normal Story',
+      description: 'Test',
+    });
+    updateStory(db, story.id, { status: 'planned' });
+
+    // Godmode should not be detected as active
+    const isGodmodeActive = (scheduler as any).isGodmodeActive();
+    expect(isGodmodeActive).toBe(false);
+  });
+
+  it('should not detect godmode when no stories are planned', () => {
+    // No stories created, so godmode cannot be active
+    const isGodmodeActive = (scheduler as any).isGodmodeActive();
+    expect(isGodmodeActive).toBe(false);
   });
 });
