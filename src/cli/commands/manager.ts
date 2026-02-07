@@ -577,15 +577,20 @@ async function managerCheck(root: string, config?: HiveConfig): Promise<void> {
       db.save();
     }
 
-    // Check for PRs needing QA attention
+    // Check for PRs needing QA attention - only notify idle QA agents
     const queuedPRs = getMergeQueue(db.db);
     if (queuedPRs.length > 0) {
       const qaSessions = hiveSessions.filter(s => s.name.includes('-qa-'));
       for (const qa of qaSessions) {
-        await sendToTmuxSession(
-          qa.name,
-          `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
-        );
+        const qaOutput = await captureTmuxPane(qa.name, 30);
+        const qaState = detectClaudeCodeState(qaOutput);
+        // Only notify QA agents that are idle/waiting, not ones actively working or thinking
+        if (qaState.isWaiting && qaState.state !== ClaudeCodeState.THINKING) {
+          await sendToTmuxSession(
+            qa.name,
+            `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
+          );
+        }
       }
     }
 
