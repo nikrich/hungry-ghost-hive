@@ -19,6 +19,7 @@ import {
   getStoriesWithOrphanedAssignments,
   getStoryById,
   getStoryDependencies,
+  getStoriesDependingOn,
   getStoryPointsByTeam,
   updateStory,
   type StoryRow,
@@ -236,6 +237,15 @@ export class Scheduler {
   }
 
   /**
+   * Check if a story is a blocker (has other stories depending on it)
+   * Blocker stories should be prioritized and assigned to Senior agents
+   */
+  private isBlockerStory(storyId: string): boolean {
+    const dependents = getStoriesDependingOn(this.db, storyId);
+    return dependents.length > 0;
+  }
+
+  /**
    * Select the agent with the least workload (queue-depth aware)
    * Returns the agent with fewest active stories; breaks ties by creation order
    */
@@ -392,7 +402,17 @@ export class Scheduler {
 
       // Assign stories based on complexity and capacity policy
       const storiesToAssign = this.selectStoriesForCapacity(stories);
-      for (const story of storiesToAssign) {
+
+      // Sort stories to process blockers first (stories with dependents)
+      const sortedForAssignment = [...storiesToAssign].sort((a, b) => {
+        const aIsBlocker = this.isBlockerStory(a.id);
+        const bIsBlocker = this.isBlockerStory(b.id);
+        if (aIsBlocker && !bIsBlocker) return -1;
+        if (!aIsBlocker && bIsBlocker) return 1;
+        return 0;
+      });
+
+      for (const story of sortedForAssignment) {
         // Check if story is already assigned (prevent duplicate assignment)
         const currentStory = getStoryById(this.db, story.id);
         if (currentStory && currentStory.assigned_agent_id !== null) {
@@ -408,6 +428,45 @@ export class Scheduler {
 
         // Check if dependencies are satisfied before assigning
         if (!this.areDependenciesSatisfied(story.id)) {
+          continue;
+        }
+
+        // Check if story is a blocker (has dependents) - route to Senior regardless of complexity
+        const isBlocker = this.isBlockerStory(story.id);
+        if (isBlocker) {
+          createLog(this.db, {
+            agentId: 'scheduler',
+            storyId: story.id,
+            eventType: 'STORY_ASSIGNED',
+            message: `Escalated to Senior: blocker story with dependents`,
+          });
+
+          // Assign directly to Senior (atomic transaction)
+          try {
+            await withTransaction(this.db, () => {
+              updateStory(this.db, story.id, {
+                assignedAgentId: senior.id,
+                status: 'in_progress',
+              });
+
+              updateAgent(this.db, senior.id, {
+                status: 'working',
+                currentStoryId: story.id,
+              });
+
+              createLog(this.db, {
+                agentId: senior.id,
+                storyId: story.id,
+                eventType: 'STORY_ASSIGNED',
+                message: `Assigned to ${senior.type} (blocker story)`,
+              });
+            });
+            assigned++;
+          } catch (err) {
+            errors.push(
+              `Failed to assign blocker story ${story.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
+            );
+          }
           continue;
         }
 
