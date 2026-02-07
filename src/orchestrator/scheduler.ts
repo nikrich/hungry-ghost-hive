@@ -844,7 +844,11 @@ export class Scheduler {
       }
     }
 
-    // Get model info from config
+    // Get model info from config (models are configured in src/config/schema.ts):
+    // - senior: claude-opus-4-6 (STORY-DEP003)
+    // - intermediate: claude-sonnet-4-5-20250929 (STORY-DEP003)
+    // - junior: gpt-4o-mini
+    // - qa: claude-sonnet-4-5-20250929
     let modelConfig = this.config.models[type as keyof typeof this.config.models];
 
     // Override Claude runtime models to Opus 4.6 when godmode is active
