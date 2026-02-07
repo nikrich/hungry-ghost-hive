@@ -109,6 +109,20 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('No stories assigned yet.');
     });
 
+    it('should include instructions to check for merge conflicts before submission', () => {
+      const stories: StoryRow[] = [];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories);
+
+      expect(prompt).toContain('merge conflict');
+    });
+
+    it('should include instructions to check CI checks before submission', () => {
+      const stories: StoryRow[] = [];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories);
+
+      expect(prompt).toContain('CI');
+    });
+
     it('should include multiple stories', () => {
       const stories: StoryRow[] = [
         {
@@ -195,6 +209,18 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('DO NOT ask "Is there anything else?"');
       expect(prompt).toContain('autonomous agent');
     });
+
+    it('should include instructions to check for merge conflicts before submission', () => {
+      const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName);
+
+      expect(prompt).toContain('merge conflict');
+    });
+
+    it('should include instructions to check CI checks before submission', () => {
+      const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName);
+
+      expect(prompt).toContain('CI');
+    });
   });
 
   describe('generateJuniorPrompt', () => {
@@ -238,6 +264,18 @@ describe('Prompt Templates', () => {
 
       expect(prompt).toContain('Follow existing patterns exactly');
       expect(prompt).toContain('Ask questions if requirements are unclear');
+    });
+
+    it('should include instructions to check for merge conflicts before submission', () => {
+      const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName);
+
+      expect(prompt).toContain('merge conflict');
+    });
+
+    it('should include instructions to check CI checks before submission', () => {
+      const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName);
+
+      expect(prompt).toContain('CI');
     });
   });
 

@@ -66,7 +66,12 @@ hive pr submit -b feature/<story-id>-<description> -s <story-id> --from ${sessio
 \`\`\`
 
 ## Submitting PRs
-After creating your GitHub PR, submit it to the merge queue:
+Before submitting your PR to the merge queue, always verify:
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
+3. **All tests pass locally** - Run \`npm test\` before submitting
+
+After verifying these checks, create and submit your PR:
 \`\`\`bash
 gh pr create --title "Story <story-id>: <title>" --body "..."
 hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
@@ -168,7 +173,12 @@ hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 \`\`\`
 
 ## Submitting PRs
-After creating your GitHub PR:
+Before submitting your PR to the merge queue, always verify:
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
+3. **All tests pass locally** - Run \`npm test\` before submitting
+
+After verifying these checks, create and submit your PR:
 \`\`\`bash
 gh pr create --title "Story <story-id>: <title>" --body "..."
 hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
@@ -266,7 +276,12 @@ hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 \`\`\`
 
 ## Submitting PRs
-After creating your GitHub PR:
+Before submitting your PR to the merge queue, always verify:
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
+3. **All tests pass locally** - Run \`npm test\` before submitting
+
+After verifying these checks, create and submit your PR:
 \`\`\`bash
 gh pr create --title "Story <story-id>: <title>" --body "..."
 hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
