@@ -1,4 +1,4 @@
-import { getPlannedStories, updateStory, getStoryPointsByTeam } from '../db/queries/stories.js';
+import { getPlannedStories, getStoriesDependingOn, updateStory, getStoryPointsByTeam } from '../db/queries/stories.js';
 import { getAgentsByTeam, getAgentById, createAgent, updateAgent } from '../db/queries/agents.js';
 import { getTeamById, getAllTeams } from '../db/queries/teams.js';
 import { getMergeQueue } from '../db/queries/pull-requests.js';
@@ -47,39 +47,63 @@ export class Scheduler {
                     continue;
                 }
             }
-            // Assign stories based on complexity
+            // Separate blocker stories from regular stories
+            const blockerStories = [];
+            const regularStories = [];
             for (const story of stories) {
-                const complexity = story.complexity_score || 5;
-                let targetAgent;
-                if (complexity <= this.config.scaling.junior_max_complexity) {
-                    // Assign to Junior
-                    targetAgent = agents.find(a => a.type === 'junior' && a.status === 'idle');
-                    if (!targetAgent) {
-                        try {
-                            targetAgent = await this.spawnJunior(teamId, team.name, team.repo_path);
-                        }
-                        catch {
-                            // Fall back to Intermediate or Senior
-                            targetAgent = agents.find(a => a.type === 'intermediate' && a.status === 'idle') || senior;
-                        }
-                    }
-                }
-                else if (complexity <= this.config.scaling.intermediate_max_complexity) {
-                    // Assign to Intermediate
-                    targetAgent = agents.find(a => a.type === 'intermediate' && a.status === 'idle');
-                    if (!targetAgent) {
-                        try {
-                            targetAgent = await this.spawnIntermediate(teamId, team.name, team.repo_path);
-                        }
-                        catch {
-                            // Fall back to Senior
-                            targetAgent = senior;
-                        }
-                    }
+                const dependents = getStoriesDependingOn(this.db, story.id);
+                if (dependents.length > 0) {
+                    blockerStories.push(story);
                 }
                 else {
-                    // Senior handles directly
+                    regularStories.push(story);
+                }
+            }
+            // Process blocker stories first
+            const storiesToAssign = [...blockerStories, ...regularStories];
+            // Assign stories based on complexity or blocker status
+            for (const story of storiesToAssign) {
+                // Check if this story is a blocker (has dependents)
+                const dependents = getStoriesDependingOn(this.db, story.id);
+                const isBlocker = dependents.length > 0;
+                let targetAgent;
+                if (isBlocker) {
+                    // Blocker stories always go to Senior
                     targetAgent = senior;
+                }
+                else {
+                    // Non-blockers use complexity-based routing
+                    const complexity = story.complexity_score || 5;
+                    if (complexity <= this.config.scaling.junior_max_complexity) {
+                        // Assign to Junior
+                        targetAgent = agents.find(a => a.type === 'junior' && a.status === 'idle');
+                        if (!targetAgent) {
+                            try {
+                                targetAgent = await this.spawnJunior(teamId, team.name, team.repo_path);
+                            }
+                            catch {
+                                // Fall back to Intermediate or Senior
+                                targetAgent = agents.find(a => a.type === 'intermediate' && a.status === 'idle') || senior;
+                            }
+                        }
+                    }
+                    else if (complexity <= this.config.scaling.intermediate_max_complexity) {
+                        // Assign to Intermediate
+                        targetAgent = agents.find(a => a.type === 'intermediate' && a.status === 'idle');
+                        if (!targetAgent) {
+                            try {
+                                targetAgent = await this.spawnIntermediate(teamId, team.name, team.repo_path);
+                            }
+                            catch {
+                                // Fall back to Senior
+                                targetAgent = senior;
+                            }
+                        }
+                    }
+                    else {
+                        // Senior handles directly
+                        targetAgent = senior;
+                    }
                 }
                 if (!targetAgent) {
                     errors.push(`No available agent for story ${story.id}`);
@@ -94,11 +118,14 @@ export class Scheduler {
                     status: 'working',
                     currentStoryId: story.id,
                 });
+                const message = isBlocker
+                    ? `Assigned to ${targetAgent.type} (escalated due to being a dependency blocker)`
+                    : `Assigned to ${targetAgent.type}`;
                 createLog(this.db, {
                     agentId: targetAgent.id,
                     storyId: story.id,
                     eventType: 'STORY_ASSIGNED',
-                    message: `Assigned to ${targetAgent.type}`,
+                    message,
                 });
                 assigned++;
             }
