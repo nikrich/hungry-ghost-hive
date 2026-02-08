@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.0...hungry-ghost-hive-v0.22.1) (2026-02-08)
+
+
+### Bug Fixes
+
+* format manager.ts and tmux/manager.ts to pass prettier check ([4e0db99](https://github.com/nikrich/hungry-ghost-hive/commit/4e0db99658f64635c5dea45eca67d231a963778d))
+
 ## [0.22.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.8...hungry-ghost-hive-v0.22.0) (2026-02-08)
 
 
