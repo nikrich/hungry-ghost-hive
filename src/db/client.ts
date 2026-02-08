@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS story_dependencies (
 -- Agent Logs (event sourcing - immutable append-only log)
 CREATE TABLE IF NOT EXISTS agent_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agent_id TEXT NOT NULL REFERENCES agents(id),
+    agent_id TEXT NOT NULL,
     story_id TEXT REFERENCES stories(id),
     event_type TEXT NOT NULL,
     status TEXT,
