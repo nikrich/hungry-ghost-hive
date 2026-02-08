@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
-import { InitializationError } from '../errors/index.js';
+import { DatabaseCorruptionError, InitializationError } from '../errors/index.js';
 
 export interface DatabaseClient {
   db: SqlJsDatabase;
@@ -162,32 +162,95 @@ async function getSqlJs(): Promise<typeof SQL> {
   return SQL;
 }
 
+// Minimum file size (in bytes) that indicates a database had meaningful data.
+// Files below this threshold are likely new or schema-only databases.
+const CORRUPTION_CHECK_MIN_FILE_SIZE = 50 * 1024; // 50KB
+
+// Core tables that should have rows in a populated database
+const CORE_TABLES = ['teams', 'agents', 'stories'];
+
+/**
+ * Validate that a loaded database is not a silently-corrupted empty copy.
+ * If the source file was large (>50KB) but the loaded DB has core tables
+ * with zero rows, that indicates sql.js silently returned an empty DB.
+ */
+function validateLoadedDatabase(db: SqlJsDatabase, fileSize: number): void {
+  if (fileSize < CORRUPTION_CHECK_MIN_FILE_SIZE) {
+    return; // Small file — likely a new or schema-only DB, skip validation
+  }
+
+  // Check if any core table has data
+  for (const table of CORE_TABLES) {
+    try {
+      const result = db.exec(`SELECT COUNT(*) FROM ${table}`);
+      if (result.length > 0 && (result[0].values[0][0] as number) > 0) {
+        return; // At least one core table has data — DB looks valid
+      }
+    } catch {
+      // Table doesn't exist yet — that's fine, migrations haven't run
+      continue;
+    }
+  }
+
+  // File was large but all core tables are empty — likely corruption
+  throw new DatabaseCorruptionError(
+    `Database file is ${fileSize} bytes but loaded with zero rows in core tables (${CORE_TABLES.join(', ')}). ` +
+      'This likely indicates a corrupted or partially-read database file. ' +
+      'Refusing to proceed to prevent data loss. Check the backup at hive.db.bak if available.'
+  );
+}
+
 export async function createDatabase(dbPath: string): Promise<DatabaseClient> {
   const SqlJs = await getSqlJs();
   if (!SqlJs) throw new InitializationError('Failed to initialize sql.js');
 
   let db: SqlJsDatabase;
+  const backupPath = dbPath + '.bak';
 
   // Load existing database or create new one
   if (existsSync(dbPath)) {
     const buffer = readFileSync(dbPath);
-    db = new SqlJs.Database(buffer);
+    const fileSize = statSync(dbPath).size;
+
+    try {
+      db = new SqlJs.Database(buffer);
+      // Verify the database is usable by running a basic command
+      db.run('PRAGMA foreign_keys = ON');
+      db.exec('SELECT 1');
+    } catch (error) {
+      throw new DatabaseCorruptionError(
+        `Failed to load database file at ${dbPath}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    // Validate the loaded DB is not silently empty from a corrupt file
+    validateLoadedDatabase(db, fileSize);
+
+    // Run migrations on loaded DB — wrap in try-catch to detect subtle corruption
+    try {
+      runMigrations(db);
+    } catch (error) {
+      throw new DatabaseCorruptionError(
+        `Database file at ${dbPath} appears corrupted (migrations failed): ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   } else {
     db = new SqlJs.Database();
+    // Enable foreign keys
+    db.run('PRAGMA foreign_keys = ON');
+    // Run migrations on new DB
+    runMigrations(db);
   }
 
-  // Enable foreign keys
-  db.run('PRAGMA foreign_keys = ON');
-
   const save = () => {
+    // Write backup before overwriting the main database file
+    if (existsSync(dbPath)) {
+      copyFileSync(dbPath, backupPath);
+    }
     const data = db.export();
     const buffer = Buffer.from(data);
     writeFileSync(dbPath, buffer);
   };
-
-  // Auto-run migrations
-  runMigrations(db);
-  save();
 
   const client: DatabaseClient = {
     db,

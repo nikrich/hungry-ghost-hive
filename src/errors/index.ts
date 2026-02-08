@@ -105,6 +105,16 @@ export class NotFoundError extends HiveError {
 }
 
 /**
+ * Database corruption errors (empty DB loaded from non-empty file, parse failures)
+ */
+export class DatabaseCorruptionError extends HiveError {
+  constructor(message: string) {
+    super(message, 'DATABASE_CORRUPTION_ERROR');
+    Object.setPrototypeOf(this, DatabaseCorruptionError.prototype);
+  }
+}
+
+/**
  * Helper function to convert generic errors to Hive errors
  */
 export function toHiveError(error: unknown, fallbackType: typeof HiveError = HiveError): HiveError {
