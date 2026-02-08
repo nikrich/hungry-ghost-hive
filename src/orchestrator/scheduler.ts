@@ -26,7 +26,6 @@ import {
   getStoriesWithOrphanedAssignments,
   getStoryById,
   getStoryDependencies,
-  getStoryPointsByTeam,
   updateStory,
   type StoryRow,
 } from '../db/queries/stories.js';
@@ -558,19 +557,33 @@ export class Scheduler {
 
   /**
    * Check if scaling is needed based on workload
+   * Only spawns agents when there is assignable work (stories with satisfied dependencies)
    */
   async checkScaling(): Promise<void> {
     const teams = getAllTeams(this.db);
 
     for (const team of teams) {
-      const storyPoints = getStoryPointsByTeam(this.db, team.id);
+      // Get planned stories for this team
+      const plannedStories = getPlannedStories(this.db).filter(s => s.team_id === team.id);
+
+      // Filter to only assignable stories (dependencies satisfied, within refactor capacity)
+      const assignableStories = this.selectStoriesForCapacity(plannedStories).filter(story =>
+        this.areDependenciesSatisfied(story.id)
+      );
+
+      // Count story points only from assignable work
+      const assignableStoryPoints = assignableStories.reduce(
+        (sum, story) => sum + this.getCapacityPoints(story),
+        0
+      );
+
       const seniors = getAgentsByTeam(this.db, team.id).filter(
         a => a.type === 'senior' && a.status !== 'terminated'
       );
 
-      // Calculate needed seniors
+      // Calculate needed seniors based on assignable work only
       const seniorCapacity = this.config.scaling.senior_capacity;
-      const neededSeniors = Math.ceil(storyPoints / seniorCapacity);
+      const neededSeniors = Math.ceil(assignableStoryPoints / seniorCapacity);
       const currentSeniors = seniors.length;
 
       if (neededSeniors > currentSeniors) {
