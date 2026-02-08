@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.8...hungry-ghost-hive-v0.22.0) (2026-02-08)
+
+
+### Features
+
+* add version number to dashboard top bar ([#266](https://github.com/nikrich/hungry-ghost-hive/issues/266)) ([39eb9a3](https://github.com/nikrich/hungry-ghost-hive/commit/39eb9a30bea37ac6d55691a2fe88fb709000d4e1))
+
 ## [0.21.8](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.7...hungry-ghost-hive-v0.21.8) (2026-02-08)
 
 
