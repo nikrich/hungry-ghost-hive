@@ -7,6 +7,7 @@ import type { Database } from 'sql.js';
 import { getDatabase, type DatabaseClient } from '../../db/client.js';
 import { getAllRequirements } from '../../db/queries/requirements.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { getVersion } from '../../utils/version.js';
 import { createActivityPanel, updateActivityPanel } from './panels/activity.js';
 import { createAgentsPanel, updateAgentsPanel } from './panels/agents.js';
 import { createEscalationsPanel, updateEscalationsPanel } from './panels/escalations.js';
@@ -59,6 +60,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   let db: DatabaseClient = await getDatabase(paths.hiveDir);
   let lastDbMtime = statSync(dbPath).mtimeMs;
   const refreshInterval = options.refreshInterval || 5000;
+  const version = getVersion();
 
   // Create screen
   const screen = blessed.screen({
@@ -73,7 +75,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
     left: 0,
     width: '100%',
     height: 1,
-    content: ' {bold}HIVE ORCHESTRATOR{/bold}                                    [R]efresh [Q]uit',
+    content: ` {bold}HIVE ORCHESTRATOR{/bold} v${version}                                    [R]efresh [Q]uit`,
     style: {
       bg: 'blue',
       fg: 'white',
@@ -132,7 +134,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
       const godmode = isGodmodeActive(db.db);
       const godmodeLabel = godmode ? '  {yellow-fg}{bold}GODMODE ACTIVE{/bold}{/yellow-fg}' : '';
       header.setContent(
-        ` {bold}HIVE ORCHESTRATOR{/bold}${godmodeLabel}                                    [R]efresh [Q]uit`
+        ` {bold}HIVE ORCHESTRATOR{/bold} v${version}${godmodeLabel}                                    [R]efresh [Q]uit`
       );
 
       await updateAgentsPanel(agentsPanel, db.db);
