@@ -1,5 +1,8 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import chalk from 'chalk';
 import { Command } from 'commander';
+import { execa } from 'execa';
 import { join } from 'path';
 import { fetchLocalClusterStatus } from '../../cluster/runtime.js';
 import { loadConfig } from '../../config/loader.js';
@@ -68,6 +71,35 @@ prCommand
             message: `Auto-closed duplicate PR ${existingPR.id}`,
             metadata: { pr_id: existingPR.id, reason: 'duplicate' },
           });
+
+          // Close the PR on GitHub if it has a PR number
+          if (existingPR.github_pr_number) {
+            try {
+              // Determine repo directory for gh CLI
+              let repoCwd = root;
+              if (teamId) {
+                const team = getTeamById(db.db, teamId);
+                if (team?.repo_path) {
+                  repoCwd = join(root, team.repo_path);
+                }
+              }
+              await execa('gh', ['pr', 'close', String(existingPR.github_pr_number)], {
+                cwd: repoCwd,
+              });
+              console.log(
+                chalk.gray(
+                  `  Closed stale GitHub PR #${existingPR.github_pr_number} for ${storyId}`
+                )
+              );
+            } catch (error) {
+              // Non-fatal - PR might already be closed or gh CLI not authenticated
+              console.log(
+                chalk.yellow(
+                  `  Warning: Could not close GitHub PR #${existingPR.github_pr_number}: ${error instanceof Error ? error.message : String(error)}`
+                )
+              );
+            }
+          }
         }
 
         // Update story status
@@ -314,8 +346,13 @@ prCommand
           console.log(chalk.green(`PR ${prId} approved and merged on GitHub!`));
         } catch (mergeErr: unknown) {
           const errMsg = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
-          console.log(chalk.yellow(`GitHub merge failed: ${errMsg}`));
-          console.log(chalk.yellow('Marking as approved (manual merge needed).'));
+          if (/already merged/i.test(errMsg)) {
+            actuallyMerged = true;
+            console.log(chalk.green(`PR ${prId} was already merged on GitHub.`));
+          } else {
+            console.log(chalk.yellow(`GitHub merge failed: ${errMsg}`));
+            console.log(chalk.yellow('Marking as approved (manual merge needed).'));
+          }
         }
       } else if (shouldMerge && !pr.github_pr_number) {
         console.log(chalk.yellow('No GitHub PR number linked - marking as approved only.'));

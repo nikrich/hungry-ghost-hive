@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 export { addRepoCommand } from './add-repo.js';
 export { agentsCommand } from './agents.js';
 export { assignCommand } from './assign.js';

@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { ConfigurationError } from '../errors/index.js';
 
 export interface Message {

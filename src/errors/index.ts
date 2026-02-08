@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 /**
  * Base error class for all Hive errors
  */
@@ -99,6 +101,16 @@ export class NotFoundError extends HiveError {
   constructor(message: string) {
     super(message, 'NOT_FOUND_ERROR');
     Object.setPrototypeOf(this, NotFoundError.prototype);
+  }
+}
+
+/**
+ * Database corruption errors (empty DB loaded from non-empty file, parse failures)
+ */
+export class DatabaseCorruptionError extends HiveError {
+  constructor(message: string) {
+    super(message, 'DATABASE_CORRUPTION_ERROR');
+    Object.setPrototypeOf(this, DatabaseCorruptionError.prototype);
   }
 }
 

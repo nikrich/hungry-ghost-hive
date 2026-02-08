@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import blessed, { type Widgets } from 'blessed';
 import type { Database } from 'sql.js';
 import { getStoryCounts } from '../../../db/queries/stories.js';

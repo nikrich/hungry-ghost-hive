@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { describe, expect, it } from 'vitest';
 import { queryOne, run } from '../db/client.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';

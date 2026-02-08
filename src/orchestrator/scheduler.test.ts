@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

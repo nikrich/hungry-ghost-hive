@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js');

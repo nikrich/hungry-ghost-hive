@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { parse, stringify } from 'yaml';

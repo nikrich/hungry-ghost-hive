@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as branches from './branches.js';
 

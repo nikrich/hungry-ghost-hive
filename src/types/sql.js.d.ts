@@ -1,3 +1,5 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
 declare module 'sql.js' {
   export interface SqlJsStatic {
     Database: typeof Database;
