@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { InitializationError } from '../errors/index.js';
@@ -169,7 +169,46 @@ export async function createDatabase(dbPath: string): Promise<DatabaseClient> {
   // Load existing database or create new one
   if (existsSync(dbPath)) {
     const buffer = readFileSync(dbPath);
-    db = new SqlJs.Database(buffer);
+    const fileSize = buffer.length;
+
+    try {
+      db = new SqlJs.Database(buffer);
+      // Run a basic query to verify the DB is actually usable.
+      // sql.js may accept garbage buffers in the constructor but fail on queries.
+      db.exec('SELECT 1');
+    } catch (error) {
+      throw new InitializationError(
+        `Failed to load database from ${dbPath}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    // Validate loaded DB integrity: if the file was >50KB but the loaded DB
+    // has zero rows in core tables, the buffer was likely corrupt/partial.
+    // Refuse to proceed to prevent overwriting good data with an empty DB.
+    if (fileSize > 50 * 1024) {
+      const coreTables = ['teams', 'agents', 'stories'];
+      let totalRows = 0;
+
+      for (const table of coreTables) {
+        try {
+          const result = db.exec(`SELECT COUNT(*) FROM ${table}`);
+          if (result.length > 0 && result[0].values.length > 0) {
+            totalRows += Number(result[0].values[0][0]);
+          }
+        } catch {
+          // Table might not exist yet — skip
+        }
+      }
+
+      if (totalRows === 0) {
+        db.close();
+        throw new InitializationError(
+          `Database integrity check failed: file ${dbPath} is ${fileSize} bytes but loaded database ` +
+            `has no data in core tables. This likely indicates a corrupt or partially-written database file. ` +
+            `Refusing to proceed to prevent data loss.`
+        );
+      }
+    }
   } else {
     db = new SqlJs.Database();
   }
@@ -180,12 +219,15 @@ export async function createDatabase(dbPath: string): Promise<DatabaseClient> {
   const save = () => {
     const data = db.export();
     const buffer = Buffer.from(data);
+    // Write backup before overwriting to prevent data loss
+    if (existsSync(dbPath)) {
+      copyFileSync(dbPath, dbPath + '.bak');
+    }
     writeFileSync(dbPath, buffer);
   };
 
-  // Auto-run migrations
+  // Auto-run migrations (no auto-save — only save after explicit data writes)
   runMigrations(db);
-  save();
 
   const client: DatabaseClient = {
     db,
