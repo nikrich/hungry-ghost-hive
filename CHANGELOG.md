@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.7](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.6...hungry-ghost-hive-v0.21.7) (2026-02-08)
+
+
+### Bug Fixes
+
+* prevent agent record loss from concurrent database access ([#260](https://github.com/nikrich/hungry-ghost-hive/issues/260)) ([56b7787](https://github.com/nikrich/hungry-ghost-hive/commit/56b7787de26367436057605eef95950ca9d84f08))
+* save database immediately after spawning agents ([#261](https://github.com/nikrich/hungry-ghost-hive/issues/261)) ([e091056](https://github.com/nikrich/hungry-ghost-hive/commit/e0910566faa305f8b1bc6c318ceb6800a23ded7d))
+
 ## [0.21.6](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.5...hungry-ghost-hive-v0.21.6) (2026-02-08)
 
 
