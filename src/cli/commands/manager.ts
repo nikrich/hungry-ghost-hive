@@ -677,7 +677,9 @@ async function runAutoAssignmentAfterHandoff(ctx: ManagerCheckContext): Promise<
   ctx.counters.handoffAutoAssigned += result.assigned;
 
   if (result.assigned > 0) {
-    console.log(chalk.green(`  Auto-assigned ${result.assigned} story(ies) after handoff recovery`));
+    console.log(
+      chalk.green(`  Auto-assigned ${result.assigned} story(ies) after handoff recovery`)
+    );
   }
 
   if (result.errors.length > 0) {
@@ -690,7 +692,9 @@ async function runAutoAssignmentAfterHandoff(ctx: ManagerCheckContext): Promise<
       message: reason,
     });
     ctx.db.save();
-    console.log(chalk.red(`  Auto-assignment errors after handoff recovery (${result.errors.length})`));
+    console.log(
+      chalk.red(`  Auto-assignment errors after handoff recovery (${result.errors.length})`)
+    );
   }
 }
 
@@ -727,7 +731,10 @@ async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Promise<v
       continue;
     }
 
-    const activePipelineCount = getActivePipelineCountForRequirement(ctx.db.db, group.requirementId);
+    const activePipelineCount = getActivePipelineCountForRequirement(
+      ctx.db.db,
+      group.requirementId
+    );
     if (activePipelineCount > 0) {
       planningHandoffState.delete(key);
       continue;

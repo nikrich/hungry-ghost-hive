@@ -534,13 +534,7 @@ export async function startManager(interval = DEFAULT_MANAGER_INTERVAL): Promise
 
   // Send the manager command
   const managerCommand = `${buildHiveInvokeCommand()} manager start -i ${interval}`;
-  await execa('tmux', [
-    'send-keys',
-    '-t',
-    MANAGER_SESSION,
-    managerCommand,
-    'Enter',
-  ]);
+  await execa('tmux', ['send-keys', '-t', MANAGER_SESSION, managerCommand, 'Enter']);
 
   return true;
 }
