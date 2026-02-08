@@ -11,6 +11,15 @@ import { extractStoryIdFromBranch } from './story-id.js';
 
 const GITHUB_PR_LIST_LIMIT = 20;
 
+/**
+ * Extract 'owner/repo' slug from a GitHub URL for use with `gh -R`.
+ * Handles https://github.com/owner/repo.git and similar variants.
+ */
+export function ghRepoSlug(repoUrl: string): string | null {
+  const match = repoUrl.match(/github\.com[/:]([^/]+\/[^/.]+)/);
+  return match ? match[1] : null;
+}
+
 export interface GitHubPR {
   number: number;
   headRefName: string;
@@ -71,12 +80,10 @@ export function getExistingPRIdentifiers(
 /**
  * Fetch open GitHub PRs for a given repository directory.
  */
-export async function fetchOpenGitHubPRs(repoDir: string): Promise<GitHubPR[]> {
-  const result = await execa(
-    'gh',
-    ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'],
-    { cwd: repoDir }
-  );
+export async function fetchOpenGitHubPRs(repoDir: string, repoSlug?: string | null): Promise<GitHubPR[]> {
+  const args = ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'];
+  if (repoSlug) args.push('-R', repoSlug);
+  const result = await execa('gh', args, { cwd: repoDir });
   return JSON.parse(result.stdout) as GitHubPR[];
 }
 
@@ -90,15 +97,17 @@ export async function fetchOpenGitHubPRs(repoDir: string): Promise<GitHubPR[]> {
  * @param teamId    - Team ID to associate with created PRs (null for CLI usage)
  * @param existingBranches  - Set of branch names already in the queue
  * @param existingPrNumbers - Set of GitHub PR numbers already in the queue
+ * @param repoSlug - Optional 'owner/repo' slug for `-R` flag (needed for forks)
  */
 export async function syncOpenGitHubPRs(
   db: Database,
   repoDir: string,
   teamId: string | null,
   existingBranches: Set<string>,
-  existingPrNumbers: Set<number>
+  existingPrNumbers: Set<number>,
+  repoSlug?: string | null
 ): Promise<SyncGitHubPRsResult> {
-  const ghPRs = await fetchOpenGitHubPRs(repoDir);
+  const ghPRs = await fetchOpenGitHubPRs(repoDir, repoSlug);
   const imported: SyncedPR[] = [];
 
   for (const ghPR of ghPRs) {
@@ -159,7 +168,8 @@ export async function syncAllTeamOpenPRs(
         repoDir,
         team.id,
         existingBranches,
-        existingPrNumbers
+        existingPrNumbers,
+        ghRepoSlug(team.repo_url)
       );
       totalSynced += result.synced;
     } catch {
@@ -195,20 +205,19 @@ export async function syncMergedPRsFromGitHub(
     const repoDir = `${root}/${team.repo_path}`;
 
     try {
-      const result = await execa(
-        'gh',
-        [
-          'pr',
-          'list',
-          '--json',
-          'number,headRefName,mergedAt',
-          '--state',
-          'merged',
-          '--limit',
-          String(GITHUB_PR_LIST_LIMIT),
-        ],
-        { cwd: repoDir }
-      );
+      const slug = ghRepoSlug(team.repo_url);
+      const args = [
+        'pr',
+        'list',
+        '--json',
+        'number,headRefName,mergedAt',
+        '--state',
+        'merged',
+        '--limit',
+        String(GITHUB_PR_LIST_LIMIT),
+      ];
+      if (slug) args.push('-R', slug);
+      const result = await execa('gh', args, { cwd: repoDir });
       const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> =
         JSON.parse(result.stdout);
 

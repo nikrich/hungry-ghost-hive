@@ -7,6 +7,7 @@ import { createLog } from '../db/queries/logs.js';
 import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-requests.js';
 import { updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
+import { ghRepoSlug } from './pr-sync.js';
 
 /** Timeout in ms for checking PR state via GitHub API */
 const PR_STATE_CHECK_TIMEOUT_MS = 30000;
@@ -60,14 +61,18 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
       // If we didn't claim the PR, another manager is already merging it
       if (!claimed) continue;
 
-      // Get team to find repo path
+      // Get team to find repo path and repo slug for gh -R flag
       let teamId = pr.team_id;
       let repoCwd = root;
+      let repoSlug: string | null = null;
 
       if (teamId) {
         const team = getAllTeams(db.db).find(t => t.id === teamId);
         if (team?.repo_path) {
           repoCwd = join(root, team.repo_path);
+        }
+        if (team?.repo_url) {
+          repoSlug = ghRepoSlug(team.repo_url);
         }
       } else if (pr.branch_name) {
         // Try to find team by matching branch name pattern
@@ -76,10 +81,14 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
           if (team.repo_path) {
             repoCwd = join(root, team.repo_path);
             teamId = team.id;
+            if (team.repo_url) {
+              repoSlug = ghRepoSlug(team.repo_url);
+            }
             break;
           }
         }
       }
+      const repoFlag = repoSlug ? ` -R ${repoSlug}` : '';
 
       // Check if PR is still open and mergeable before attempting merge
       const { execSync } = await import('child_process');
@@ -89,7 +98,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
         let mergeableStatus: boolean;
         try {
           const prViewOutput = execSync(
-            `gh pr view ${pr.github_pr_number} --json state,mergeable`,
+            `gh pr view ${pr.github_pr_number} --json state,mergeable${repoFlag}`,
             {
               stdio: 'pipe',
               cwd: repoCwd,
@@ -118,6 +127,17 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
           const newStatus = prState.state === 'MERGED' ? 'merged' : 'closed';
           await withTransaction(db.db, () => {
             updatePullRequest(db.db, pr.id, { status: newStatus });
+            // Also update story status to stay in sync with GitHub
+            if (pr.story_id && prState.state === 'MERGED') {
+              updateStory(db.db, pr.story_id, { status: 'merged', assignedAgentId: null });
+              createLog(db.db, {
+                agentId: 'manager',
+                storyId: pr.story_id,
+                eventType: 'STORY_MERGED',
+                message: `Story merged (PR #${pr.github_pr_number} was already merged on GitHub)`,
+                metadata: { pr_id: pr.id },
+              });
+            }
             createLog(db.db, {
               agentId: 'manager',
               storyId: pr.story_id || undefined,
@@ -146,7 +166,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
 
         // Use --auto flag to enable GitHub's auto-merge feature (idempotent if already merged)
         // Add timeout to prevent blocking the manager daemon (60s for GitHub API operations)
-        execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch`, {
+        execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch${repoFlag}`, {
           stdio: 'pipe',
           cwd: repoCwd,
           timeout: PR_MERGE_TIMEOUT_MS,
