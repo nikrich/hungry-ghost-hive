@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.8](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.7...hungry-ghost-hive-v0.21.8) (2026-02-08)
+
+
+### Bug Fixes
+
+* format pr-sync.ts to pass prettier check ([03e2514](https://github.com/nikrich/hungry-ghost-hive/commit/03e2514dead8ba638deced6daddfd415dc64a60b))
+* use explicit -R flag for gh CLI to prevent fork repo resolution ([#263](https://github.com/nikrich/hungry-ghost-hive/issues/263)) ([62b6b88](https://github.com/nikrich/hungry-ghost-hive/commit/62b6b8811476bc8f4c7ea4f784988eab3224210d))
+
 ## [0.21.7](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.6...hungry-ghost-hive-v0.21.7) (2026-02-08)
 
 
