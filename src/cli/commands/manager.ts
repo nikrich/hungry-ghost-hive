@@ -279,6 +279,7 @@ managerCommand
         models: config.models,
         qa: config.qa,
         rootDir: root,
+        saveFn: () => db.save(),
       });
 
       console.log(chalk.cyan('Running health check...'));
@@ -426,6 +427,7 @@ async function managerCheck(
         models: config.models,
         qa: config.qa,
         rootDir: root,
+        saveFn: () => db.save(),
       }),
       hiveSessions: [],
       counters: {
