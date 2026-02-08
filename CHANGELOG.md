@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.1...hungry-ghost-hive-v0.22.2) (2026-02-08)
+
+
+### Bug Fixes
+
+* enforce no-work-without-assignment rule in agent prompts ([b247539](https://github.com/nikrich/hungry-ghost-hive/commit/b247539c36d2f1700ddd68ddb8c81361eb704039))
+* remove FK constraint on agent_logs.agent_id ([b88b8cb](https://github.com/nikrich/hungry-ghost-hive/commit/b88b8cb7e98e767bceb9c4872f12c976cbaeb6a8))
+
 ## [0.22.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.0...hungry-ghost-hive-v0.22.1) (2026-02-08)
 
 
