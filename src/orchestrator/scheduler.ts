@@ -69,15 +69,18 @@ export interface SchedulerConfig {
   models: ModelsConfig;
   qa?: QAConfig;
   rootDir: string;
+  saveFn?: () => void;
 }
 
 export class Scheduler {
   private db: Database;
   private config: SchedulerConfig;
+  private saveFn?: () => void;
 
   constructor(db: Database, config: SchedulerConfig) {
     this.db = db;
     this.config = config;
+    this.saveFn = config.saveFn;
   }
 
   /**
@@ -972,6 +975,11 @@ export class Scheduler {
       status: 'working',
       worktreePath,
     });
+
+    // Save database immediately so spawned agent can see itself when querying
+    if (this.saveFn) {
+      this.saveFn();
+    }
 
     return agent;
   }

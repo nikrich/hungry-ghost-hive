@@ -115,6 +115,7 @@ export const assignCommand = new Command('assign')
           models: config.models,
           qa: config.qa,
           rootDir: root,
+          saveFn: () => db.save(),
         });
 
         // Check scaling first (spawns additional seniors if needed)

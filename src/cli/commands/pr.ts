@@ -118,6 +118,7 @@ prCommand
               models: config.models,
               qa: config.qa,
               rootDir: root,
+              saveFn: () => db.save(),
             });
             await scheduler.checkMergeQueue();
             db.save();
@@ -486,6 +487,7 @@ prCommand
               scaling: config.scaling,
               models: config.models,
               rootDir: root,
+              saveFn: () => db.save(),
             });
             await scheduler.checkMergeQueue();
             db.save();
