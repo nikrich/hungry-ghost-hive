@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.6](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.5...hungry-ghost-hive-v0.21.6) (2026-02-08)
+
+
+### Bug Fixes
+
+* prevent database wipe from corrupted sql.js buffer loading ([#257](https://github.com/nikrich/hungry-ghost-hive/issues/257)) ([c9942b6](https://github.com/nikrich/hungry-ghost-hive/commit/c9942b65b554211712396753a132d297becbcf87))
+
 ## [0.21.5](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.21.4...hungry-ghost-hive-v0.21.5) (2026-02-07)
 
 
