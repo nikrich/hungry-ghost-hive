@@ -40,16 +40,6 @@ Check your assigned stories:
 hive my-stories ${sessionName}
 \`\`\`
 
-See all team stories:
-\`\`\`bash
-hive my-stories ${sessionName} --all
-\`\`\`
-
-Claim a story:
-\`\`\`bash
-hive my-stories claim <story-id> --session ${sessionName}
-\`\`\`
-
 Mark story complete:
 \`\`\`bash
 hive my-stories complete <story-id>
@@ -117,16 +107,26 @@ Include affected files and rationale in the description. Refactor stories are sc
 - Keep commits atomic and well-documented
 - Message the Tech Lead if blocked or need clarification
 
-## IMPORTANT: Autonomous Workflow
+## CRITICAL RULE: No Assignment = No Work
+You MUST have a story explicitly assigned to you before doing ANY work.
+Run \`hive my-stories ${sessionName}\` to check your assignments.
+If NO story is assigned to you:
+- Do NOT explore the codebase
+- Do NOT write any code
+- Do NOT create branches or PRs
+- Do NOT claim stories from the team pool
+- WAIT. The Tech Lead or scheduler will assign you a story.
+- Re-check every 60 seconds: \`hive my-stories ${sessionName}\`
+
+## Autonomous Workflow
 You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
 After completing a story:
 1. Run \`hive my-stories ${sessionName}\` to get your next assignment
-2. If no stories assigned, run \`hive my-stories ${sessionName} --all\` to see available work
-3. Claim available work with \`hive my-stories claim <story-id> --session ${sessionName}\`
-4. ALWAYS submit PRs to hive after creating them on GitHub:
+2. If no stories assigned, WAIT — do not self-assign or claim work
+3. ALWAYS submit PRs to hive after creating them on GitHub:
    \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
 
-Start by exploring the codebase to understand its structure, then begin working on the highest priority story.`;
+Start by running \`hive my-stories ${sessionName}\`. If you have an assigned story, begin working on it. If not, WAIT for assignment.`;
 }
 
 /**
@@ -157,11 +157,6 @@ Your tmux session: ${sessionName}
 Check your assigned stories:
 \`\`\`bash
 hive my-stories ${sessionName}
-\`\`\`
-
-Claim a story:
-\`\`\`bash
-hive my-stories claim <story-id> --session ${sessionName}
 \`\`\`
 
 Mark story complete:
@@ -226,16 +221,26 @@ Include affected files and rationale in the description. Refactor stories are sc
 - Keep commits focused and clear
 - Message Senior or Tech Lead if blocked
 
-## IMPORTANT: Autonomous Workflow
+## CRITICAL RULE: No Assignment = No Work
+You MUST have a story explicitly assigned to you before doing ANY work.
+Run \`hive my-stories ${sessionName}\` to check your assignments.
+If NO story is assigned to you:
+- Do NOT explore the codebase
+- Do NOT write any code
+- Do NOT create branches or PRs
+- Do NOT claim stories from the team pool
+- WAIT. The Tech Lead or scheduler will assign you a story.
+- Re-check every 60 seconds: \`hive my-stories ${sessionName}\`
+
+## Autonomous Workflow
 You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
 After completing a story:
 1. Run \`hive my-stories ${sessionName}\` to get your next assignment
-2. If no stories assigned, run \`hive my-stories ${sessionName} --all\` to see available work
-3. Claim available work with \`hive my-stories claim <story-id> --session ${sessionName}\`
-4. ALWAYS submit PRs to hive after creating them on GitHub:
+2. If no stories assigned, WAIT — do not self-assign or claim work
+3. ALWAYS submit PRs to hive after creating them on GitHub:
    \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
 
-Start by exploring the codebase, then run \`hive my-stories ${sessionName}\` to see your assignments.`;
+Start by running \`hive my-stories ${sessionName}\`. If you have an assigned story, begin working on it. If not, WAIT for assignment.`;
 }
 
 /**
@@ -266,11 +271,6 @@ Your tmux session: ${sessionName}
 Check your assigned stories:
 \`\`\`bash
 hive my-stories ${sessionName}
-\`\`\`
-
-Claim a story:
-\`\`\`bash
-hive my-stories claim <story-id> --session ${sessionName}
 \`\`\`
 
 Mark story complete:
@@ -335,16 +335,26 @@ Include affected files and rationale in the description. Refactor stories are sc
 - Test thoroughly before submitting
 - Keep changes small and focused
 
-## IMPORTANT: Autonomous Workflow
+## CRITICAL RULE: No Assignment = No Work
+You MUST have a story explicitly assigned to you before doing ANY work.
+Run \`hive my-stories ${sessionName}\` to check your assignments.
+If NO story is assigned to you:
+- Do NOT explore the codebase
+- Do NOT write any code
+- Do NOT create branches or PRs
+- Do NOT claim stories from the team pool
+- WAIT. The Tech Lead or scheduler will assign you a story.
+- Re-check every 60 seconds: \`hive my-stories ${sessionName}\`
+
+## Autonomous Workflow
 You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
 After completing a story:
 1. Run \`hive my-stories ${sessionName}\` to get your next assignment
-2. If no stories assigned, run \`hive my-stories ${sessionName} --all\` to see available work
-3. Claim available work with \`hive my-stories claim <story-id> --session ${sessionName}\`
-4. ALWAYS submit PRs to hive after creating them on GitHub:
+2. If no stories assigned, WAIT — do not self-assign or claim work
+3. ALWAYS submit PRs to hive after creating them on GitHub:
    \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
 
-Start by exploring the codebase to understand how things work, then run \`hive my-stories ${sessionName}\` to see your assignments.`;
+Start by running \`hive my-stories ${sessionName}\`. If you have an assigned story, begin working on it. If not, WAIT for assignment.`;
 }
 
 /**
