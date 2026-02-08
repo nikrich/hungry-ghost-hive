@@ -88,4 +88,17 @@ describe('tmux shell command hardening', () => {
     expect(command).toContain(`'claude'`);
     expect(command).toContain(`$(cat '/tmp/prompt'"'"'s file.md')`);
   });
+
+  it('buildHiveInvokeCommand should invoke current CLI entry script via node', async () => {
+    const { buildHiveInvokeCommand } = await import('./manager.js');
+    const originalArgv1 = process.argv[1];
+    process.argv[1] = '/tmp/hive test/index.js';
+
+    try {
+      const command = buildHiveInvokeCommand();
+      expect(command).toBe(`'${process.execPath}' '/tmp/hive test/index.js'`);
+    } finally {
+      process.argv[1] = originalArgv1;
+    }
+  });
 });

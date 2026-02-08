@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { execa } from 'execa';
-import { mkdirSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, isAbsolute, join, resolve } from 'path';
 
 // --- Named constants (extracted from inline magic numbers) ---
 
@@ -51,6 +51,72 @@ export interface TmuxSession {
   windows: number;
   created: string;
   attached: boolean;
+}
+
+function findHiveRootFromDir(startDir: string): string | null {
+  let currentDir = resolve(startDir);
+
+  while (currentDir !== '/') {
+    if (existsSync(join(currentDir, '.hive'))) {
+      return currentDir;
+    }
+
+    const parentDir = dirname(currentDir);
+    if (parentDir === currentDir) break;
+    currentDir = parentDir;
+  }
+
+  return null;
+}
+
+function resolveHiveEntryScriptPath(): string | null {
+  const argvPath = process.argv[1];
+  if (!argvPath) return null;
+  return isAbsolute(argvPath) ? argvPath : resolve(process.cwd(), argvPath);
+}
+
+export function buildHiveInvokeCommand(): string {
+  const entryScript = resolveHiveEntryScriptPath();
+  if (!entryScript) {
+    return 'hive';
+  }
+  return `${shellEscapeArg(process.execPath)} ${shellEscapeArg(entryScript)}`;
+}
+
+function ensureHiveShimOnPath(workDir: string): string | null {
+  const hiveRoot = findHiveRootFromDir(workDir);
+  if (!hiveRoot) return null;
+
+  const hiveInvokeCommand = buildHiveInvokeCommand();
+  if (hiveInvokeCommand === 'hive') return null;
+
+  const shimDir = join(hiveRoot, '.hive', 'bin');
+  mkdirSync(shimDir, { recursive: true });
+
+  const shimPath = join(shimDir, 'hive');
+  const shimContent = `#!/usr/bin/env bash
+set -euo pipefail
+exec ${hiveInvokeCommand} "$@"
+`;
+
+  writeFileSync(shimPath, shimContent, 'utf-8');
+  chmodSync(shimPath, 0o755);
+
+  return shimDir;
+}
+
+function buildTmuxSessionEnv(workDir: string, env?: Record<string, string>): NodeJS.ProcessEnv {
+  const mergedEnv: NodeJS.ProcessEnv = { ...process.env, ...(env || {}) };
+  const shimDir = ensureHiveShimOnPath(workDir);
+
+  if (shimDir) {
+    const pathParts = (mergedEnv.PATH || '').split(':').filter(Boolean);
+    if (!pathParts.includes(shimDir)) {
+      mergedEnv.PATH = mergedEnv.PATH ? `${shimDir}:${mergedEnv.PATH}` : shimDir;
+    }
+  }
+
+  return mergedEnv;
 }
 
 export async function isTmuxAvailable(): Promise<boolean> {
@@ -133,10 +199,9 @@ export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<voi
   // Create new detached session with default shell
   const args = ['new-session', '-d', '-s', sessionName, '-c', workDir];
 
-  const execaOptions: { env?: NodeJS.ProcessEnv } = {};
-  if (env) {
-    execaOptions.env = { ...process.env, ...env };
-  }
+  const execaOptions: { env?: NodeJS.ProcessEnv } = {
+    env: buildTmuxSessionEnv(workDir, env),
+  };
 
   await execa('tmux', args, execaOptions);
 
@@ -459,15 +524,21 @@ export async function startManager(interval = DEFAULT_MANAGER_INTERVAL): Promise
     return false; // Already running
   }
 
+  const workDir = findHiveRootFromDir(process.cwd()) || process.cwd();
+  const sessionEnv = buildTmuxSessionEnv(workDir);
+
   // Start the manager in a detached tmux session
-  await execa('tmux', ['new-session', '-d', '-s', MANAGER_SESSION]);
+  await execa('tmux', ['new-session', '-d', '-s', MANAGER_SESSION, '-c', workDir], {
+    env: sessionEnv,
+  });
 
   // Send the manager command
+  const managerCommand = `${buildHiveInvokeCommand()} manager start -i ${interval}`;
   await execa('tmux', [
     'send-keys',
     '-t',
     MANAGER_SESSION,
-    `hive manager start -i ${interval}`,
+    managerCommand,
     'Enter',
   ]);
 
