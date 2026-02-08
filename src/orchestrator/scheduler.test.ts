@@ -1469,3 +1469,104 @@ describe('Scheduler Story Assignment Prevention', () => {
     expect(isGodmodeActive).toBe(false);
   });
 });
+
+describe('Scheduler checkScaling', () => {
+  it('should only spawn agents for assignable stories (unblocked dependencies)', async () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a blocker story that is not yet merged
+    const blockerStory = createStory(db, {
+      teamId: team.id,
+      title: 'Blocker Story',
+      description: 'Must be completed first',
+    });
+    updateStory(db, blockerStory.id, { status: 'planned', storyPoints: 10 });
+
+    // Create 4 stories that depend on the blocker (cannot be assigned yet)
+    for (let i = 1; i <= 4; i++) {
+      const story = createStory(db, {
+        teamId: team.id,
+        title: `Blocked Story ${i}`,
+        description: 'Depends on blocker',
+      });
+      updateStory(db, story.id, { status: 'planned', storyPoints: 10 });
+      addStoryDependency(db, story.id, blockerStory.id);
+    }
+
+    // Create 1 story with no dependencies (can be assigned)
+    const unblockedStory = createStory(db, {
+      teamId: team.id,
+      title: 'Unblocked Story',
+      description: 'No dependencies',
+    });
+    updateStory(db, unblockedStory.id, { status: 'planned', storyPoints: 10 });
+
+    // Total: 50 story points, but only 10 are assignable
+    // With senior_capacity: 50, this should spawn 1 senior (10/50 = 0.2, ceil = 1)
+    // NOT 1 senior (50/50 = 1)
+
+    // Mock spawnSenior to track calls
+    const spawnSeniorSpy = vi.spyOn(scheduler as any, 'spawnSenior').mockResolvedValue({
+      id: 'test-senior',
+      type: 'senior',
+      team_id: team.id,
+      status: 'idle',
+    });
+
+    // Run checkScaling
+    await scheduler.checkScaling();
+
+    // Should spawn exactly 1 senior for 10 assignable points (not 0 seniors)
+    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+
+    spawnSeniorSpy.mockRestore();
+  });
+
+  it('should not spawn agents when all stories are blocked', async () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a blocker story that is not yet merged
+    const blockerStory = createStory(db, {
+      teamId: team.id,
+      title: 'Blocker Story',
+      description: 'Must be completed first',
+    });
+    updateStory(db, blockerStory.id, { status: 'planned', storyPoints: 10 });
+
+    // Create stories that all depend on the blocker
+    for (let i = 1; i <= 5; i++) {
+      const story = createStory(db, {
+        teamId: team.id,
+        title: `Blocked Story ${i}`,
+        description: 'Depends on blocker',
+      });
+      updateStory(db, story.id, { status: 'planned', storyPoints: 10 });
+      addStoryDependency(db, story.id, blockerStory.id);
+    }
+
+    // Mock spawnSenior to track calls
+    const spawnSeniorSpy = vi.spyOn(scheduler as any, 'spawnSenior').mockResolvedValue({
+      id: 'test-senior',
+      type: 'senior',
+      team_id: team.id,
+      status: 'idle',
+    });
+
+    // Run checkScaling
+    await scheduler.checkScaling();
+
+    // Should not spawn any agents because all stories except the blocker are blocked
+    // The blocker itself (10 points) would need agents, so we expect 1 spawn
+    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+
+    spawnSeniorSpy.mockRestore();
+  });
+});

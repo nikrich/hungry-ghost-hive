@@ -728,6 +728,11 @@ export class Scheduler {
    * - Calculate needed QA agents: 1 QA per 2-3 pending PRs, max 5
    * - Spawn QA agents in parallel with unique session names
    * - Scale down excess QA agents when queue shrinks
+   *
+   * Note: Unlike checkScaling(), this method does not need to filter by dependencies
+   * because it only counts stories with PRs already created ('pr_submitted', 'qa', etc).
+   * By the time a story reaches these statuses, its work is complete and dependencies
+   * are no longer a blocking concern for QA review.
    */
   private async scaleQAAgents(teamId: string, teamName: string, repoPath: string): Promise<void> {
     // Count pending QA work: stories in QA-related statuses OR stories in review with queued PRs
