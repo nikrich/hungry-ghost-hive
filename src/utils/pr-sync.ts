@@ -80,7 +80,10 @@ export function getExistingPRIdentifiers(
 /**
  * Fetch open GitHub PRs for a given repository directory.
  */
-export async function fetchOpenGitHubPRs(repoDir: string, repoSlug?: string | null): Promise<GitHubPR[]> {
+export async function fetchOpenGitHubPRs(
+  repoDir: string,
+  repoSlug?: string | null
+): Promise<GitHubPR[]> {
   const args = ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'];
   if (repoSlug) args.push('-R', repoSlug);
   const result = await execa('gh', args, { cwd: repoDir });
