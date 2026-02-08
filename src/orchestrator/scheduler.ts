@@ -26,7 +26,6 @@ import {
   getStoriesWithOrphanedAssignments,
   getStoryById,
   getStoryDependencies,
-  getStoryPointsByTeam,
   updateStory,
   type StoryRow,
 } from '../db/queries/stories.js';
@@ -558,19 +557,33 @@ export class Scheduler {
 
   /**
    * Check if scaling is needed based on workload
+   * Only spawns agents when there is assignable work (stories with satisfied dependencies)
    */
   async checkScaling(): Promise<void> {
     const teams = getAllTeams(this.db);
 
     for (const team of teams) {
-      const storyPoints = getStoryPointsByTeam(this.db, team.id);
+      // Get planned stories for this team
+      const plannedStories = getPlannedStories(this.db).filter(s => s.team_id === team.id);
+
+      // Filter to only assignable stories (dependencies satisfied, within refactor capacity)
+      const assignableStories = this.selectStoriesForCapacity(plannedStories).filter(story =>
+        this.areDependenciesSatisfied(story.id)
+      );
+
+      // Count story points only from assignable work
+      const assignableStoryPoints = assignableStories.reduce(
+        (sum, story) => sum + this.getCapacityPoints(story),
+        0
+      );
+
       const seniors = getAgentsByTeam(this.db, team.id).filter(
         a => a.type === 'senior' && a.status !== 'terminated'
       );
 
-      // Calculate needed seniors
+      // Calculate needed seniors based on assignable work only
       const seniorCapacity = this.config.scaling.senior_capacity;
-      const neededSeniors = Math.ceil(storyPoints / seniorCapacity);
+      const neededSeniors = Math.ceil(assignableStoryPoints / seniorCapacity);
       const currentSeniors = seniors.length;
 
       if (neededSeniors > currentSeniors) {
@@ -715,6 +728,11 @@ export class Scheduler {
    * - Calculate needed QA agents: 1 QA per 2-3 pending PRs, max 5
    * - Spawn QA agents in parallel with unique session names
    * - Scale down excess QA agents when queue shrinks
+   *
+   * Note: Unlike checkScaling(), this method does not need to filter by dependencies
+   * because it only counts stories with PRs already created ('pr_submitted', 'qa', etc).
+   * By the time a story reaches these statuses, its work is complete and dependencies
+   * are no longer a blocking concern for QA review.
    */
   private async scaleQAAgents(teamId: string, teamName: string, repoPath: string): Promise<void> {
     // Count pending QA work: stories in QA-related statuses OR stories in review with queued PRs
