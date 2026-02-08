@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js');
+vi.mock('../db/lock.js');
 vi.mock('./paths.js');
 
 import { getDatabase } from '../db/client.js';
+import { acquireLock } from '../db/lock.js';
 import { findHiveRoot, getHivePaths } from './paths.js';
 import { withHiveContext, withHiveRoot } from './with-hive-context.js';
 
@@ -17,11 +19,13 @@ describe('withHiveContext', () => {
   const mockPaths = { hiveDir: '/mock/.hive', reposDir: '/mock/repos' } as ReturnType<
     typeof getHivePaths
   >;
+  const mockReleaseLock = vi.fn();
 
   beforeEach(() => {
     vi.mocked(findHiveRoot).mockReturnValue('/mock');
     vi.mocked(getHivePaths).mockReturnValue(mockPaths);
     vi.mocked(getDatabase).mockResolvedValue(mockDb);
+    vi.mocked(acquireLock).mockResolvedValue(mockReleaseLock);
   });
 
   afterEach(() => {
@@ -60,6 +64,22 @@ describe('withHiveContext', () => {
       return Promise.resolve('async-result');
     });
     expect(result).toBe('async-result');
+  });
+
+  it('acquires and releases DB lock', async () => {
+    await withHiveContext(() => {});
+    expect(acquireLock).toHaveBeenCalledOnce();
+    expect(mockReleaseLock).toHaveBeenCalledOnce();
+  });
+
+  it('releases DB lock even if callback throws', async () => {
+    await expect(
+      withHiveContext(() => {
+        throw new Error('test-error');
+      })
+    ).rejects.toThrow('test-error');
+    expect(acquireLock).toHaveBeenCalledOnce();
+    expect(mockReleaseLock).toHaveBeenCalledOnce();
   });
 
   it('exits when not in a Hive workspace', async () => {

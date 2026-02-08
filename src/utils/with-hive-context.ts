@@ -1,5 +1,7 @@
 import chalk from 'chalk';
+import { join } from 'path';
 import { getDatabase, type DatabaseClient } from '../db/client.js';
+import { acquireLock } from '../db/lock.js';
 import { findHiveRoot, getHivePaths, type HivePaths } from './paths.js';
 
 export interface HiveContext {
@@ -25,11 +27,35 @@ function resolveRoot(): { root: string; paths: HivePaths } {
 
 export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | T): Promise<T> {
   const { root, paths } = resolveRoot();
+  const dbLockPath = join(paths.hiveDir, 'db');
+
+  // Acquire database lock to prevent concurrent access and race conditions
+  // This ensures that only one process can read/write the database at a time
+  let releaseLock: (() => Promise<void>) | null = null;
+  try {
+    releaseLock = await acquireLock(dbLockPath, {
+      stale: 30000, // 30s stale timeout
+      retries: {
+        retries: 20, // More retries for DB lock contention
+        minTimeout: 50,
+        maxTimeout: 500,
+      },
+    });
+  } catch (err) {
+    console.error(
+      chalk.red('Failed to acquire database lock. Another process may be accessing the database.')
+    );
+    throw err;
+  }
+
   const db = await getDatabase(paths.hiveDir);
   try {
     return await fn({ root, paths, db });
   } finally {
     db.close();
+    if (releaseLock) {
+      await releaseLock();
+    }
   }
 }
 
