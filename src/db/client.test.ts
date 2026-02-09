@@ -3,8 +3,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import initSqlJs from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DatabaseCorruptionError } from '../errors/index.js';
-import { createDatabase } from './client.js';
+import { DatabaseCorruptionError, ReadOnlyDatabaseError } from '../errors/index.js';
+import { createDatabase, createReadOnlyDatabase } from './client.js';
 
 /**
  * Helper to create a valid SQLite database buffer with the core schema
@@ -316,6 +316,135 @@ describe('createDatabase', () => {
       // File stays corrupt — all 3 retries should fail
       await expect(createDatabase(dbPath)).rejects.toThrow(DatabaseCorruptionError);
       await expect(createDatabase(dbPath)).rejects.toThrow('zero rows in core tables');
+    });
+  });
+
+  describe('createReadOnlyDatabase', () => {
+    it('should load an existing database in read-only mode', async () => {
+      const dbPath = join(tempDir, 'readonly-load.db');
+      const data = await createValidDbBuffer({ withData: true });
+      writeFileSync(dbPath, Buffer.from(data));
+
+      const client = await createReadOnlyDatabase(dbPath);
+      const result = client.db.exec('SELECT COUNT(*) FROM teams');
+      expect(result[0].values[0][0]).toBe(1);
+
+      client.close();
+    });
+
+    it('should allow SELECT queries', async () => {
+      const dbPath = join(tempDir, 'readonly-select.db');
+      const data = await createValidDbBuffer({ withData: true });
+      writeFileSync(dbPath, Buffer.from(data));
+
+      const client = await createReadOnlyDatabase(dbPath);
+      // SELECT via exec should work
+      const result = client.db.exec('SELECT * FROM teams');
+      expect(result.length).toBeGreaterThan(0);
+
+      client.close();
+    });
+
+    it('should allow PRAGMA queries via run', async () => {
+      const dbPath = join(tempDir, 'readonly-pragma.db');
+      const data = await createValidDbBuffer({ withData: true });
+      writeFileSync(dbPath, Buffer.from(data));
+
+      const client = await createReadOnlyDatabase(dbPath);
+      // PRAGMA should work
+      expect(() => client.db.run('PRAGMA foreign_keys = ON')).not.toThrow();
+
+      client.close();
+    });
+
+    it('should throw ReadOnlyDatabaseError on INSERT via run', async () => {
+      const dbPath = join(tempDir, 'readonly-insert.db');
+      const data = await createValidDbBuffer({ withData: true });
+      writeFileSync(dbPath, Buffer.from(data));
+
+      const client = await createReadOnlyDatabase(dbPath);
+      expect(() =>
+        client.db.run(
+          "INSERT INTO teams VALUES ('t2', 'https://example.com', '/tmp/repo2', 'Team 2', datetime('now'))"
+        )
+      ).toThrow(ReadOnlyDatabaseError);
+
+      client.close();
+    });
+
+    it('should throw ReadOnlyDatabaseError on UPDATE via run', async () => {
+      const dbPath = join(tempDir, 'readonly-update.db');
+      const data = await createValidDbBuffer({ withData: true });
+      writeFileSync(dbPath, Buffer.from(data));
+
+      const client = await createReadOnlyDatabase(dbPath);
+      expect(() =>
+        client.db.run("UPDATE teams SET name = 'Updated' WHERE id = 't1'")
+      ).toThrow(ReadOnlyDatabaseError);
+
+      client.close();
+    });
+
+    it('should throw ReadOnlyDatabaseError on DELETE via run', async () => {
+      const dbPath = join(tempDir, 'readonly-delete.db');
+      const data = await createValidDbBuffer({ withData: true });
+      writeFileSync(dbPath, Buffer.from(data));
+
+      const client = await createReadOnlyDatabase(dbPath);
+      expect(() =>
+        client.db.run("DELETE FROM teams WHERE id = 't1'")
+      ).toThrow(ReadOnlyDatabaseError);
+
+      client.close();
+    });
+
+    it('should throw ReadOnlyDatabaseError on CREATE TABLE via exec', async () => {
+      const dbPath = join(tempDir, 'readonly-create.db');
+      const data = await createValidDbBuffer({ withData: true });
+      writeFileSync(dbPath, Buffer.from(data));
+
+      const client = await createReadOnlyDatabase(dbPath);
+      expect(() =>
+        client.db.exec('CREATE TABLE test_table (id TEXT PRIMARY KEY)')
+      ).toThrow(ReadOnlyDatabaseError);
+
+      client.close();
+    });
+
+    it('should throw ReadOnlyDatabaseError on DROP TABLE via exec', async () => {
+      const dbPath = join(tempDir, 'readonly-drop.db');
+      const data = await createValidDbBuffer({ withData: true });
+      writeFileSync(dbPath, Buffer.from(data));
+
+      const client = await createReadOnlyDatabase(dbPath);
+      expect(() =>
+        client.db.exec('DROP TABLE teams')
+      ).toThrow(ReadOnlyDatabaseError);
+
+      client.close();
+    });
+
+    it('should not have save or runMigrations methods', async () => {
+      const dbPath = join(tempDir, 'readonly-no-save.db');
+      const data = await createValidDbBuffer({ withData: true });
+      writeFileSync(dbPath, Buffer.from(data));
+
+      const client = await createReadOnlyDatabase(dbPath);
+      expect(client).not.toHaveProperty('save');
+      expect(client).not.toHaveProperty('runMigrations');
+
+      client.close();
+    });
+
+    it('should create a new database if file does not exist', async () => {
+      const dbPath = join(tempDir, 'readonly-new.db');
+      const client = await createReadOnlyDatabase(dbPath);
+
+      // Should be able to read from it (empty tables)
+      const result = client.db.exec('SELECT COUNT(*) FROM teams');
+      expect(result[0].values[0][0]).toBe(0);
+
+      client.close();
     });
   });
 

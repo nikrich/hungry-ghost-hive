@@ -3,7 +3,11 @@
 import { copyFileSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
-import { DatabaseCorruptionError, InitializationError } from '../errors/index.js';
+import {
+  DatabaseCorruptionError,
+  InitializationError,
+  ReadOnlyDatabaseError,
+} from '../errors/index.js';
 
 export interface DatabaseClient {
   db: SqlJsDatabase;
@@ -525,6 +529,113 @@ function runMigrations(db: SqlJsDatabase): void {
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
   const dbPath = join(hiveDir, 'hive.db');
   return createDatabase(dbPath);
+}
+
+export interface ReadOnlyDatabaseClient {
+  db: SqlJsDatabase;
+  close: () => void;
+}
+
+/**
+ * Load the database in read-only mode without acquiring a file lock.
+ * The returned sql.js Database instance intercepts write operations
+ * (run, exec with mutating SQL) and throws ReadOnlyDatabaseError.
+ */
+export async function createReadOnlyDatabase(dbPath: string): Promise<ReadOnlyDatabaseClient> {
+  const SqlJs = await getSqlJs();
+  if (!SqlJs) throw new InitializationError('Failed to initialize sql.js');
+
+  let db!: SqlJsDatabase;
+
+  if (existsSync(dbPath)) {
+    for (let attempt = 1; attempt <= MAX_LOAD_RETRIES; attempt++) {
+      try {
+        const buffer = readFileSync(dbPath);
+        const fileSize = statSync(dbPath).size;
+
+        try {
+          db = new SqlJs.Database(buffer);
+          db.run('PRAGMA foreign_keys = ON');
+          db.exec('SELECT 1');
+        } catch (error) {
+          throw new DatabaseCorruptionError(
+            `Failed to load database file at ${dbPath}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+
+        validateLoadedDatabase(db, fileSize);
+
+        try {
+          runMigrations(db);
+        } catch (error) {
+          throw new DatabaseCorruptionError(
+            `Database file at ${dbPath} appears corrupted (migrations failed): ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+
+        break;
+      } catch (error) {
+        if (error instanceof DatabaseCorruptionError && attempt < MAX_LOAD_RETRIES) {
+          await sleep(RETRY_DELAY_MS);
+          continue;
+        }
+        throw error;
+      }
+    }
+  } else {
+    db = new SqlJs.Database();
+    db.run('PRAGMA foreign_keys = ON');
+    runMigrations(db);
+  }
+
+  // Wrap the db with a Proxy that intercepts write operations
+  const readOnlyDb = createReadOnlyProxy(db);
+
+  return {
+    db: readOnlyDb,
+    close: () => db.close(),
+  };
+}
+
+/**
+ * SQL statement patterns that indicate a write operation.
+ * Matches INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, REPLACE, BEGIN, COMMIT, ROLLBACK.
+ * Excludes PRAGMA and SELECT which are read-only.
+ */
+const WRITE_SQL_PATTERN =
+  /^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|REPLACE|BEGIN|COMMIT|ROLLBACK)\b/i;
+
+function isWriteSQL(sql: string): boolean {
+  return WRITE_SQL_PATTERN.test(sql);
+}
+
+function createReadOnlyProxy(db: SqlJsDatabase): SqlJsDatabase {
+  return new Proxy(db, {
+    get(target, prop, receiver) {
+      if (prop === 'run') {
+        return (sql: string, ...args: unknown[]) => {
+          if (isWriteSQL(sql)) {
+            throw new ReadOnlyDatabaseError();
+          }
+          return target.run(sql, ...(args as Parameters<SqlJsDatabase['run']> extends [string, ...infer R] ? R : never));
+        };
+      }
+      if (prop === 'exec') {
+        return (sql: string, ...args: unknown[]) => {
+          if (isWriteSQL(sql)) {
+            throw new ReadOnlyDatabaseError();
+          }
+          return target.exec(sql, ...(args as Parameters<SqlJsDatabase['exec']> extends [string, ...infer R] ? R : never));
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
+export async function getReadOnlyDatabase(hiveDir: string): Promise<ReadOnlyDatabaseClient> {
+  const dbPath = join(hiveDir, 'hive.db');
+  return createReadOnlyDatabase(dbPath);
 }
 
 // Helper function to run a query and get results as objects

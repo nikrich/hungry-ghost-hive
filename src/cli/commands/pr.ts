@@ -23,7 +23,7 @@ import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
 import { getExistingPRIdentifiers, syncOpenGitHubPRs } from '../../utils/pr-sync.js';
 import { extractStoryIdFromBranch, normalizeStoryId } from '../../utils/story-id.js';
-import { withHiveContext } from '../../utils/with-hive-context.js';
+import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const prCommand = new Command('pr').description('Manage pull requests and merge queue');
 
@@ -170,7 +170,7 @@ prCommand
   .option('-t, --team <team-id>', 'Filter by team')
   .option('--json', 'Output as JSON')
   .action(async (options: { team?: string; json?: boolean }) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       const queue = getMergeQueue(db.db, options.team);
 
       if (options.json) {
@@ -256,7 +256,7 @@ prCommand
   .command('show <pr-id>')
   .description('View details of a PR')
   .action(async (prId: string) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       const pr = getPullRequestById(db.db, prId);
       if (!pr) {
         console.error(chalk.red(`PR not found: ${prId}`));

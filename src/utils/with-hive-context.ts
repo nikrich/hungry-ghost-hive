@@ -2,7 +2,7 @@
 
 import chalk from 'chalk';
 import { join } from 'path';
-import { getDatabase, type DatabaseClient } from '../db/client.js';
+import { getDatabase, getReadOnlyDatabase, type DatabaseClient, type ReadOnlyDatabaseClient } from '../db/client.js';
 import { acquireLock } from '../db/lock.js';
 import { findHiveRoot, getHivePaths, type HivePaths } from './paths.js';
 
@@ -10,6 +10,12 @@ export interface HiveContext {
   root: string;
   paths: HivePaths;
   db: DatabaseClient;
+}
+
+export interface ReadOnlyHiveContext {
+  root: string;
+  paths: HivePaths;
+  db: ReadOnlyDatabaseClient;
 }
 
 export interface HiveRootContext {
@@ -58,6 +64,18 @@ export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | 
     if (releaseLock) {
       await releaseLock();
     }
+  }
+}
+
+export async function withReadOnlyHiveContext<T>(
+  fn: (ctx: ReadOnlyHiveContext) => Promise<T> | T
+): Promise<T> {
+  const { root, paths } = resolveRoot();
+  const db = await getReadOnlyDatabase(paths.hiveDir);
+  try {
+    return await fn({ root, paths, db });
+  } finally {
+    db.close();
   }
 }
 

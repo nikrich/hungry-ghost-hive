@@ -115,6 +115,16 @@ export class DatabaseCorruptionError extends HiveError {
 }
 
 /**
+ * Read-only database violation errors (write attempted on read-only context)
+ */
+export class ReadOnlyDatabaseError extends HiveError {
+  constructor(message: string = 'Cannot perform write operations on a read-only database context') {
+    super(message, 'READ_ONLY_DATABASE_ERROR');
+    Object.setPrototypeOf(this, ReadOnlyDatabaseError.prototype);
+  }
+}
+
+/**
  * Helper function to convert generic errors to Hive errors
  */
 export function toHiveError(error: unknown, fallbackType: typeof HiveError = HiveError): HiveError {
