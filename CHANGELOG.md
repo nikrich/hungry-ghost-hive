@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.2...hungry-ghost-hive-v0.22.3) (2026-02-09)
+
+
+### Bug Fixes
+
+* use atomic writes and read-side retry to prevent DB corruption race ([#274](https://github.com/nikrich/hungry-ghost-hive/issues/274)) ([0783b5b](https://github.com/nikrich/hungry-ghost-hive/commit/0783b5b30439dffbe697fd87c8e12f1bcedaaae2))
+
 ## [0.22.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.1...hungry-ghost-hive-v0.22.2) (2026-02-08)
 
 
