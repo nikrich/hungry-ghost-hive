@@ -127,8 +127,8 @@ describe('context-files module', () => {
         junior: {
           provider: 'anthropic',
           model: 'claude-sonnet-4-5-20250929',
-          max_tokens: 4000,
-          temperature: 0.2,
+          max_tokens: 8000,
+          temperature: 0.3,
           cli_tool: 'claude',
         },
         qa: {
