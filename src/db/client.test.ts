@@ -11,8 +11,9 @@ import { createDatabase } from './client.js';
  * that is compatible with runMigrations().
  */
 async function createValidDbBuffer(
-  opts: { withData?: boolean; withPadding?: boolean } = {}
+  opts: { withData?: boolean; withPadding?: boolean; withMigrations?: boolean } = {}
 ): Promise<Uint8Array> {
+  const withMigrations = opts.withMigrations !== false; // default true
   const SQL = await initSqlJs();
   const db = new SQL.Database();
 
@@ -83,16 +84,21 @@ async function createValidDbBuffer(
       id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
       applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-    INSERT INTO migrations (name) VALUES ('001-initial.sql');
-    INSERT INTO migrations (name) VALUES ('002-add-agent-model.sql');
-    INSERT INTO migrations (name) VALUES ('003-fix-pull-requests.sql');
-    INSERT INTO migrations (name) VALUES ('004-add-messages.sql');
-    INSERT INTO migrations (name) VALUES ('005-add-agent-last-seen.sql');
-    INSERT INTO migrations (name) VALUES ('006-add-agent-worktree.sql');
-    INSERT INTO migrations (name) VALUES ('007-add-indexes.sql');
-    INSERT INTO migrations (name) VALUES ('008-add-godmode.sql');
-    INSERT INTO migrations (name) VALUES ('009-add-pr-sync-indexes.sql');
   `);
+
+  if (withMigrations) {
+    db.run(`
+      INSERT INTO migrations (name) VALUES ('001-initial.sql');
+      INSERT INTO migrations (name) VALUES ('002-add-agent-model.sql');
+      INSERT INTO migrations (name) VALUES ('003-fix-pull-requests.sql');
+      INSERT INTO migrations (name) VALUES ('004-add-messages.sql');
+      INSERT INTO migrations (name) VALUES ('005-add-agent-last-seen.sql');
+      INSERT INTO migrations (name) VALUES ('006-add-agent-worktree.sql');
+      INSERT INTO migrations (name) VALUES ('007-add-indexes.sql');
+      INSERT INTO migrations (name) VALUES ('008-add-godmode.sql');
+      INSERT INTO migrations (name) VALUES ('009-add-pr-sync-indexes.sql');
+    `);
+  }
 
   if (opts.withData) {
     db.run(
@@ -162,8 +168,9 @@ describe('createDatabase', () => {
   it('should detect corruption when large file loads with empty core tables', async () => {
     const dbPath = join(tempDir, 'wiped.db');
 
-    // Create a large database with padding but NO data in core tables
-    const data = await createValidDbBuffer({ withData: false, withPadding: true });
+    // Create a large database with padding but NO data in core tables and NO migrations
+    // This simulates true corruption where sql.js loaded a partial file
+    const data = await createValidDbBuffer({ withData: false, withPadding: true, withMigrations: false });
     writeFileSync(dbPath, Buffer.from(data));
 
     // Verify the file is >50KB
@@ -187,6 +194,21 @@ describe('createDatabase', () => {
     expect(Buffer.from(data).length).toBeLessThan(50 * 1024);
 
     // Should pass — small file skips corruption check, migrations create schema
+    const client = await createDatabase(dbPath);
+    expect(client.db).toBeDefined();
+    client.close();
+  });
+
+  it('should NOT flag corruption when large file has migrations but no user data (fresh init)', async () => {
+    const dbPath = join(tempDir, 'large-fresh.db');
+
+    // Simulates hive init → add-repo: DB has schema + migrations but no teams/stories yet
+    const data = await createValidDbBuffer({ withData: false, withPadding: true, withMigrations: true });
+    writeFileSync(dbPath, Buffer.from(data));
+
+    expect(Buffer.from(data).length).toBeGreaterThan(50 * 1024);
+
+    // Should pass — migrations exist, so DB is properly initialized (just empty)
     const client = await createDatabase(dbPath);
     expect(client.db).toBeDefined();
     client.close();
@@ -264,8 +286,8 @@ describe('createDatabase', () => {
     it('should retry loading when file appears corrupted mid-write', async () => {
       const dbPath = join(tempDir, 'retry-test.db');
 
-      // Write a large file with no core table data — triggers corruption error
-      const corruptData = await createValidDbBuffer({ withData: false, withPadding: true });
+      // Write a large file with no core table data and no migrations — triggers corruption error
+      const corruptData = await createValidDbBuffer({ withData: false, withPadding: true, withMigrations: false });
       writeFileSync(dbPath, Buffer.from(corruptData));
 
       // Schedule replacement with valid data before the retry fires (~100ms delay)
@@ -287,8 +309,8 @@ describe('createDatabase', () => {
     it('should throw after exhausting all retries', async () => {
       const dbPath = join(tempDir, 'retry-exhaust.db');
 
-      // Write a persistently corrupt file (large but empty core tables)
-      const corruptData = await createValidDbBuffer({ withData: false, withPadding: true });
+      // Write a persistently corrupt file (large but empty core tables and no migrations)
+      const corruptData = await createValidDbBuffer({ withData: false, withPadding: true, withMigrations: false });
       writeFileSync(dbPath, Buffer.from(corruptData));
 
       // File stays corrupt — all 3 retries should fail

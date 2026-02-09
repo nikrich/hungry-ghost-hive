@@ -179,6 +179,18 @@ function validateLoadedDatabase(db: SqlJsDatabase, fileSize: number): void {
     return; // Small file — likely a new or schema-only DB, skip validation
   }
 
+  // Check if migrations table exists and has rows — if so, the DB was properly
+  // initialized via hive init and the schema is intact. Core tables being empty
+  // is expected for a fresh workspace (no teams added yet).
+  try {
+    const migrationResult = db.exec('SELECT COUNT(*) FROM migrations');
+    if (migrationResult.length > 0 && (migrationResult[0].values[0][0] as number) > 0) {
+      return; // Migrations ran — DB is properly initialized, just empty of user data
+    }
+  } catch {
+    // migrations table doesn't exist — fall through to core table check
+  }
+
   // Check if any core table has data
   for (const table of CORE_TABLES) {
     try {
