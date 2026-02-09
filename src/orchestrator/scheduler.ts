@@ -913,10 +913,12 @@ export class Scheduler {
         max_tokens: GODMODE_MAX_TOKENS,
         temperature: GODMODE_TEMPERATURE,
         cli_tool: 'claude',
+        safety_mode: modelConfig.safety_mode,
       };
     }
 
     const cliTool = modelConfig.cli_tool || 'claude';
+    const safetyMode = modelConfig.safety_mode;
     const runtimeModel = this.getRuntimeModel(modelConfig.model, cliTool);
 
     // Validate that the model is compatible with the CLI tool
@@ -979,7 +981,7 @@ export class Scheduler {
       }
 
       // Build CLI command using the configured runtime
-      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(runtimeModel);
+      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(runtimeModel, safetyMode);
 
       // Pass the prompt as initialPrompt so it's included as a CLI positional
       // argument via $(cat ...). This delivers the full multi-line prompt

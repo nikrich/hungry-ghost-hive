@@ -1,17 +1,27 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { CliRuntimeBuilder } from './types.js';
+import { CliRuntimeBuilder, RuntimeSafetyMode } from './types.js';
 
 export class CodexRuntimeBuilder implements CliRuntimeBuilder {
-  buildSpawnCommand(model: string): string[] {
-    return ['codex', '--ask-for-approval', 'never', '--sandbox', 'workspace-write', '--model', model];
-  }
-
-  buildResumeCommand(model: string, sessionId: string): string[] {
+  buildSpawnCommand(model: string, safetyMode: RuntimeSafetyMode): string[] {
+    const approvalPolicy = safetyMode === 'safe' ? 'on-request' : 'never';
     return [
       'codex',
       '--ask-for-approval',
-      'never',
+      approvalPolicy,
+      '--sandbox',
+      'workspace-write',
+      '--model',
+      model,
+    ];
+  }
+
+  buildResumeCommand(model: string, sessionId: string, safetyMode: RuntimeSafetyMode): string[] {
+    const approvalPolicy = safetyMode === 'safe' ? 'on-request' : 'never';
+    return [
+      'codex',
+      '--ask-for-approval',
+      approvalPolicy,
       '--sandbox',
       'workspace-write',
       '--model',
@@ -21,8 +31,8 @@ export class CodexRuntimeBuilder implements CliRuntimeBuilder {
     ];
   }
 
-  getAutoApprovalFlag(): string {
-    return '--ask-for-approval never';
+  getAutoApprovalFlag(safetyMode: RuntimeSafetyMode): string {
+    return safetyMode === 'safe' ? '--ask-for-approval on-request' : '--ask-for-approval never';
   }
 
   getModelFlag(): string {

@@ -109,6 +109,7 @@ describe('context-files module', () => {
           max_tokens: 16000,
           temperature: 0.7,
           cli_tool: 'claude',
+          safety_mode: 'unsafe',
         },
         senior: {
           provider: 'anthropic',
@@ -116,6 +117,7 @@ describe('context-files module', () => {
           max_tokens: 8000,
           temperature: 0.5,
           cli_tool: 'claude',
+          safety_mode: 'unsafe',
         },
         intermediate: {
           provider: 'anthropic',
@@ -123,6 +125,7 @@ describe('context-files module', () => {
           max_tokens: 4000,
           temperature: 0.3,
           cli_tool: 'claude',
+          safety_mode: 'unsafe',
         },
         junior: {
           provider: 'anthropic',
@@ -130,6 +133,7 @@ describe('context-files module', () => {
           max_tokens: 8000,
           temperature: 0.3,
           cli_tool: 'claude',
+          safety_mode: 'unsafe',
         },
         qa: {
           provider: 'anthropic',
@@ -137,6 +141,7 @@ describe('context-files module', () => {
           max_tokens: 8000,
           temperature: 0.2,
           cli_tool: 'claude',
+          safety_mode: 'unsafe',
         },
       },
       scaling: {

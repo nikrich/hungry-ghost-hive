@@ -36,6 +36,8 @@ import {
   updateStoryAssignment,
 } from '../../db/queries/stories.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
+import { getStateDetector, type StateDetectionResult } from '../../state-detectors/index.js';
+import { AgentState } from '../../state-detectors/types.js';
 import {
   autoApprovePermission,
   captureTmuxPane,
@@ -51,11 +53,6 @@ import {
   type TmuxSession,
 } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
-import {
-  getStateDetector,
-  type StateDetectionResult,
-} from '../../state-detectors/index.js';
-import { AgentState } from '../../state-detectors/types.js';
 import {
   buildAutoRecoveryReminder,
   getAvailableCommands,
@@ -825,6 +822,14 @@ function describeAgentState(state: AgentState, cliTool: CLITool): string {
   return stateDetectors[cliTool].getStateDescription(state);
 }
 
+function getAgentSafetyMode(
+  config: HiveConfig,
+  agent: ReturnType<typeof getAllAgents>[number] | undefined
+): 'safe' | 'unsafe' {
+  if (!agent) return 'unsafe';
+  return config.models[agent.type].safety_mode;
+}
+
 async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
   // Batch fetch pending messages and group by recipient
   const allPendingMessages = getAllPendingMessages(ctx.db.db);
@@ -842,6 +847,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 
     const agent = ctx.agentsBySessionName.get(session.name);
     const agentCliTool = (agent?.cli_tool || 'claude') as CLITool;
+    const safetyMode = getAgentSafetyMode(ctx.config, agent);
 
     // Forward unread messages
     const unread = messagesBySessionName.get(session.name) || [];
@@ -853,17 +859,17 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 
     const output = await captureTmuxPane(session.name, TMUX_CAPTURE_LINES);
 
-    await enforceBypassMode(session.name, output, agentCliTool);
+    await enforceBypassMode(session.name, output, agentCliTool, safetyMode);
 
     const stateResult = detectAgentState(output, agentCliTool);
     const now = Date.now();
 
     updateAgentStateTracking(session.name, stateResult, now);
 
-    const handled = await handlePermissionPrompt(ctx, session.name, stateResult);
+    const handled = await handlePermissionPrompt(ctx, session.name, stateResult, safetyMode);
     if (handled) continue;
 
-    await handlePlanApproval(session.name, stateResult, now, agentCliTool);
+    await handlePlanApproval(session.name, stateResult, now, agentCliTool, safetyMode);
 
     await handleEscalationAndNudge(ctx, session.name, agent, stateResult, agentCliTool, now);
   }
@@ -872,8 +878,13 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 async function enforceBypassMode(
   sessionName: string,
   output: string,
-  agentCliTool: CLITool
+  agentCliTool: CLITool,
+  safetyMode: 'safe' | 'unsafe'
 ): Promise<void> {
+  if (safetyMode === 'safe') {
+    return;
+  }
+
   const needsBypassEnforcement =
     output.toLowerCase().includes('plan mode on') ||
     output.toLowerCase().includes('safe mode on') ||
@@ -912,9 +923,10 @@ function updateAgentStateTracking(
 async function handlePermissionPrompt(
   ctx: ManagerCheckContext,
   sessionName: string,
-  stateResult: StateDetectionResult
+  stateResult: StateDetectionResult,
+  safetyMode: 'safe' | 'unsafe'
 ): Promise<boolean> {
-  if (stateResult.state === AgentState.PERMISSION_REQUIRED) {
+  if (stateResult.state === AgentState.PERMISSION_REQUIRED && safetyMode === 'unsafe') {
     const approved = await autoApprovePermission(sessionName);
     if (approved) {
       createLog(ctx.db.db, {
@@ -938,9 +950,10 @@ async function handlePlanApproval(
   sessionName: string,
   stateResult: StateDetectionResult,
   now: number,
-  agentCliTool: CLITool
+  agentCliTool: CLITool,
+  safetyMode: 'safe' | 'unsafe'
 ): Promise<void> {
-  if (stateResult.state === AgentState.PLAN_APPROVAL) {
+  if (stateResult.state === AgentState.PLAN_APPROVAL && safetyMode === 'unsafe') {
     const restored = await forceBypassMode(sessionName, agentCliTool);
     if (restored) {
       console.log(chalk.green(`  BYPASS MODE RESTORED: ${sessionName} cycled out of plan mode`));
@@ -964,7 +977,9 @@ async function handleEscalationAndNudge(
   const waitingInfo = {
     isWaiting: stateResult.isWaiting,
     needsHuman: stateResult.needsHuman,
-    reason: stateResult.needsHuman ? describeAgentState(stateResult.state, agentCliTool) : undefined,
+    reason: stateResult.needsHuman
+      ? describeAgentState(stateResult.state, agentCliTool)
+      : undefined,
   };
 
   const hasRecentEscalation =
@@ -980,14 +995,14 @@ async function handleEscalationAndNudge(
       storyId,
       fromAgentId: sessionName,
       toAgentId: null,
-      reason: `Agent waiting for input: ${waitingInfo.reason || 'Unknown question'}`,
+      reason: `Approval required: ${waitingInfo.reason || 'Unknown question'}`,
     });
     createLog(ctx.db.db, {
       agentId: 'manager',
       storyId,
       eventType: 'ESCALATION_CREATED',
       status: 'error',
-      message: `${sessionName} requires human input: ${waitingInfo.reason || 'Unknown question'}`,
+      message: `${sessionName} requires human approval: ${waitingInfo.reason || 'Unknown question'}`,
       metadata: {
         escalation_id: escalation.id,
         session_name: sessionName,

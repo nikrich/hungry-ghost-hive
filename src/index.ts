@@ -8,6 +8,7 @@ import { Command } from 'commander';
 import {
   addRepoCommand,
   agentsCommand,
+  approvalsCommand,
   assignCommand,
   cleanupCommand,
   clusterCommand,
@@ -55,6 +56,7 @@ program.addCommand(assignCommand);
 program.addCommand(agentsCommand);
 program.addCommand(storiesCommand);
 program.addCommand(escalationsCommand);
+program.addCommand(approvalsCommand);
 
 // Destructive operations
 program.addCommand(nukeCommand);

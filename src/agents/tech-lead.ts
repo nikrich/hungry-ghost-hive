@@ -271,11 +271,12 @@ Respond in JSON format:
           const config = loadConfig(paths.hiveDir);
           const agentConfig = config.models.senior;
           const cliTool = agentConfig.cli_tool;
+          const safetyMode = agentConfig.safety_mode;
           const model = resolveRuntimeModelForCli(agentConfig.model, cliTool);
 
           // Build spawn command using CLI runtime builder (spawn fresh session, will be resumed later)
           const runtimeBuilder = getCliRuntimeBuilder(cliTool);
-          const commandArgs = runtimeBuilder.buildSpawnCommand(model);
+          const commandArgs = runtimeBuilder.buildSpawnCommand(model, safetyMode);
 
           await spawnTmuxSession({
             sessionName,

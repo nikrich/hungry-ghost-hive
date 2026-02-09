@@ -17,9 +17,9 @@ vi.mock('execa');
 
 describe('CLI Runtime Builders', () => {
   describe('ClaudeRuntimeBuilder', () => {
-    it('should build spawn command with correct flags', () => {
+    it('should build unsafe spawn command with bypass flag', () => {
       const builder = new ClaudeRuntimeBuilder();
-      const command = builder.buildSpawnCommand('claude-sonnet-4-20250514');
+      const command = builder.buildSpawnCommand('claude-sonnet-4-20250514', 'unsafe');
 
       expect(command).toEqual([
         'claude',
@@ -29,9 +29,20 @@ describe('CLI Runtime Builders', () => {
       ]);
     });
 
-    it('should build resume command with session ID', () => {
+    it('should build safe spawn command without bypass flag', () => {
       const builder = new ClaudeRuntimeBuilder();
-      const command = builder.buildResumeCommand('claude-sonnet-4-20250514', 'session-123');
+      const command = builder.buildSpawnCommand('claude-sonnet-4-20250514', 'safe');
+
+      expect(command).toEqual(['claude', '--model', 'claude-sonnet-4-20250514']);
+    });
+
+    it('should build unsafe resume command with session ID', () => {
+      const builder = new ClaudeRuntimeBuilder();
+      const command = builder.buildResumeCommand(
+        'claude-sonnet-4-20250514',
+        'session-123',
+        'unsafe'
+      );
 
       expect(command).toEqual([
         'claude',
@@ -43,9 +54,27 @@ describe('CLI Runtime Builders', () => {
       ]);
     });
 
-    it('should return correct auto-approval flag', () => {
+    it('should build safe resume command without bypass flag', () => {
       const builder = new ClaudeRuntimeBuilder();
-      expect(builder.getAutoApprovalFlag()).toBe('--dangerously-skip-permissions');
+      const command = builder.buildResumeCommand('claude-sonnet-4-20250514', 'session-123', 'safe');
+
+      expect(command).toEqual([
+        'claude',
+        '--model',
+        'claude-sonnet-4-20250514',
+        '--resume',
+        'session-123',
+      ]);
+    });
+
+    it('should return correct auto-approval flag for unsafe mode', () => {
+      const builder = new ClaudeRuntimeBuilder();
+      expect(builder.getAutoApprovalFlag('unsafe')).toBe('--dangerously-skip-permissions');
+    });
+
+    it('should return empty auto-approval flag for safe mode', () => {
+      const builder = new ClaudeRuntimeBuilder();
+      expect(builder.getAutoApprovalFlag('safe')).toBe('');
     });
 
     it('should return correct model flag', () => {
@@ -55,9 +84,9 @@ describe('CLI Runtime Builders', () => {
   });
 
   describe('CodexRuntimeBuilder', () => {
-    it('should build spawn command with correct flags', () => {
+    it('should build unsafe spawn command with never-approve policy', () => {
       const builder = new CodexRuntimeBuilder();
-      const command = builder.buildSpawnCommand('gpt-4o-mini');
+      const command = builder.buildSpawnCommand('gpt-4o-mini', 'unsafe');
 
       expect(command).toEqual([
         'codex',
@@ -70,9 +99,24 @@ describe('CLI Runtime Builders', () => {
       ]);
     });
 
-    it('should build resume command with session ID', () => {
+    it('should build safe spawn command with on-request policy', () => {
       const builder = new CodexRuntimeBuilder();
-      const command = builder.buildResumeCommand('gpt-4o-mini', 'session-456');
+      const command = builder.buildSpawnCommand('gpt-4o-mini', 'safe');
+
+      expect(command).toEqual([
+        'codex',
+        '--ask-for-approval',
+        'on-request',
+        '--sandbox',
+        'workspace-write',
+        '--model',
+        'gpt-4o-mini',
+      ]);
+    });
+
+    it('should build unsafe resume command with session ID', () => {
+      const builder = new CodexRuntimeBuilder();
+      const command = builder.buildResumeCommand('gpt-4o-mini', 'session-456', 'unsafe');
 
       expect(command).toEqual([
         'codex',
@@ -87,9 +131,31 @@ describe('CLI Runtime Builders', () => {
       ]);
     });
 
-    it('should return correct auto-approval flag', () => {
+    it('should build safe resume command with session ID', () => {
       const builder = new CodexRuntimeBuilder();
-      expect(builder.getAutoApprovalFlag()).toBe('--ask-for-approval never');
+      const command = builder.buildResumeCommand('gpt-4o-mini', 'session-456', 'safe');
+
+      expect(command).toEqual([
+        'codex',
+        '--ask-for-approval',
+        'on-request',
+        '--sandbox',
+        'workspace-write',
+        '--model',
+        'gpt-4o-mini',
+        '--resume',
+        'session-456',
+      ]);
+    });
+
+    it('should return correct auto-approval flag for unsafe mode', () => {
+      const builder = new CodexRuntimeBuilder();
+      expect(builder.getAutoApprovalFlag('unsafe')).toBe('--ask-for-approval never');
+    });
+
+    it('should return correct auto-approval flag for safe mode', () => {
+      const builder = new CodexRuntimeBuilder();
+      expect(builder.getAutoApprovalFlag('safe')).toBe('--ask-for-approval on-request');
     });
 
     it('should return correct model flag', () => {
@@ -99,16 +165,29 @@ describe('CLI Runtime Builders', () => {
   });
 
   describe('GeminiRuntimeBuilder', () => {
-    it('should build spawn command with correct flags', () => {
+    it('should build unsafe spawn command with unrestricted sandbox', () => {
       const builder = new GeminiRuntimeBuilder();
-      const command = builder.buildSpawnCommand('gemini-2.0-flash-exp');
+      const command = builder.buildSpawnCommand('gemini-2.0-flash-exp', 'unsafe');
 
       expect(command).toEqual(['gemini', '--model', 'gemini-2.0-flash-exp', '--sandbox', 'none']);
     });
 
-    it('should build resume command with session ID', () => {
+    it('should build safe spawn command with workspace sandbox', () => {
       const builder = new GeminiRuntimeBuilder();
-      const command = builder.buildResumeCommand('gemini-2.0-flash-exp', 'session-789');
+      const command = builder.buildSpawnCommand('gemini-2.0-flash-exp', 'safe');
+
+      expect(command).toEqual([
+        'gemini',
+        '--model',
+        'gemini-2.0-flash-exp',
+        '--sandbox',
+        'workspace-write',
+      ]);
+    });
+
+    it('should build unsafe resume command with session ID', () => {
+      const builder = new GeminiRuntimeBuilder();
+      const command = builder.buildResumeCommand('gemini-2.0-flash-exp', 'session-789', 'unsafe');
 
       expect(command).toEqual([
         'gemini',
@@ -121,9 +200,29 @@ describe('CLI Runtime Builders', () => {
       ]);
     });
 
-    it('should return correct auto-approval flag', () => {
+    it('should build safe resume command with session ID', () => {
       const builder = new GeminiRuntimeBuilder();
-      expect(builder.getAutoApprovalFlag()).toBe('--sandbox');
+      const command = builder.buildResumeCommand('gemini-2.0-flash-exp', 'session-789', 'safe');
+
+      expect(command).toEqual([
+        'gemini',
+        '--model',
+        'gemini-2.0-flash-exp',
+        '--sandbox',
+        'workspace-write',
+        '--resume',
+        'session-789',
+      ]);
+    });
+
+    it('should return correct sandbox flag for unsafe mode', () => {
+      const builder = new GeminiRuntimeBuilder();
+      expect(builder.getAutoApprovalFlag('unsafe')).toBe('--sandbox none');
+    });
+
+    it('should return correct sandbox flag for safe mode', () => {
+      const builder = new GeminiRuntimeBuilder();
+      expect(builder.getAutoApprovalFlag('safe')).toBe('--sandbox workspace-write');
     });
 
     it('should return correct model flag', () => {
