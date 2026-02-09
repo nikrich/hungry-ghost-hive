@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { nanoid } from 'nanoid';
 import { queryAll, queryOne, run } from '../../db/client.js';
-import { withHiveContext } from '../../utils/with-hive-context.js';
+import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 interface MessageRow {
   id: string;
@@ -53,7 +53,7 @@ msgCommand
   .description('Check inbox for messages')
   .option('--all', 'Show all messages including read')
   .action(async (session: string | undefined, options: { all?: boolean }) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       const targetSession = session || 'hive-tech-lead';
 
       let query = `
@@ -165,7 +165,7 @@ msgCommand
   .command('outbox [session]')
   .description('Check sent messages and their replies')
   .action(async (session: string | undefined) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       const fromSession = session || 'hive-tech-lead';
 
       const messages = queryAll<MessageRow>(

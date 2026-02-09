@@ -5,7 +5,7 @@ import { Command } from 'commander';
 import { getAgentsByTeam } from '../../db/queries/agents.js';
 import { getStoriesByTeam, getStoryPointsByTeam } from '../../db/queries/stories.js';
 import { deleteTeam, getAllTeams, getTeamByName } from '../../db/queries/teams.js';
-import { withHiveContext } from '../../utils/with-hive-context.js';
+import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const teamsCommand = new Command('teams').description('Manage teams');
 
@@ -14,7 +14,7 @@ teamsCommand
   .description('List all teams')
   .option('--json', 'Output as JSON')
   .action(async (options: { json?: boolean }) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       const teams = getAllTeams(db.db);
 
       if (options.json) {
@@ -51,7 +51,7 @@ teamsCommand
   .command('show <name>')
   .description('Show team details')
   .action(async (name: string) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       const team = getTeamByName(db.db, name);
 
       if (!team) {
