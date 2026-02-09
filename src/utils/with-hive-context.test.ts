@@ -6,10 +6,10 @@ vi.mock('../db/client.js');
 vi.mock('../db/lock.js');
 vi.mock('./paths.js');
 
-import { getDatabase } from '../db/client.js';
+import { getDatabase, getReadOnlyDatabase } from '../db/client.js';
 import { acquireLock } from '../db/lock.js';
 import { findHiveRoot, getHivePaths } from './paths.js';
-import { withHiveContext, withHiveRoot } from './with-hive-context.js';
+import { withHiveContext, withHiveRoot, withReadOnlyHiveContext } from './with-hive-context.js';
 
 describe('withHiveContext', () => {
   const mockDb = {
@@ -92,6 +92,79 @@ describe('withHiveContext', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(withHiveContext(() => {})).rejects.toThrow('process.exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    exitSpy.mockRestore();
+    consoleSpy.mockRestore();
+  });
+});
+
+describe('withReadOnlyHiveContext', () => {
+  const mockReadOnlyDb = {
+    db: {},
+    close: vi.fn(),
+  } as unknown as Awaited<ReturnType<typeof getReadOnlyDatabase>>;
+  const mockPaths = { hiveDir: '/mock/.hive', reposDir: '/mock/repos' } as ReturnType<
+    typeof getHivePaths
+  >;
+
+  beforeEach(() => {
+    vi.mocked(findHiveRoot).mockReturnValue('/mock');
+    vi.mocked(getHivePaths).mockReturnValue(mockPaths);
+    vi.mocked(getReadOnlyDatabase).mockResolvedValue(mockReadOnlyDb);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('provides root, paths, and db to callback', async () => {
+    await withReadOnlyHiveContext(ctx => {
+      expect(ctx.root).toBe('/mock');
+      expect(ctx.paths).toBe(mockPaths);
+      expect(ctx.db).toBe(mockReadOnlyDb);
+    });
+  });
+
+  it('returns the callback result', async () => {
+    const result = await withReadOnlyHiveContext(() => 42);
+    expect(result).toBe(42);
+  });
+
+  it('closes db after callback completes', async () => {
+    await withReadOnlyHiveContext(() => {});
+    expect(mockReadOnlyDb.close).toHaveBeenCalledOnce();
+  });
+
+  it('closes db even if callback throws', async () => {
+    await expect(
+      withReadOnlyHiveContext(() => {
+        throw new Error('test');
+      })
+    ).rejects.toThrow('test');
+    expect(mockReadOnlyDb.close).toHaveBeenCalledOnce();
+  });
+
+  it('does not acquire a file lock', async () => {
+    await withReadOnlyHiveContext(() => {});
+    expect(acquireLock).not.toHaveBeenCalled();
+  });
+
+  it('works with async callbacks', async () => {
+    const result = await withReadOnlyHiveContext(async () => {
+      return Promise.resolve('async-result');
+    });
+    expect(result).toBe('async-result');
+  });
+
+  it('exits when not in a Hive workspace', async () => {
+    vi.mocked(findHiveRoot).mockReturnValue(null);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(withReadOnlyHiveContext(() => {})).rejects.toThrow('process.exit');
     expect(exitSpy).toHaveBeenCalledWith(1);
 
     exitSpy.mockRestore();

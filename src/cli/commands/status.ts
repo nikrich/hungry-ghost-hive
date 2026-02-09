@@ -14,7 +14,7 @@ import {
 } from '../../db/queries/stories.js';
 import { getAllTeams, getTeamByName } from '../../db/queries/teams.js';
 import { statusColor } from '../../utils/logger.js';
-import { withHiveContext } from '../../utils/with-hive-context.js';
+import { withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const statusCommand = new Command('status')
   .description('Show Hive status')
@@ -22,7 +22,7 @@ export const statusCommand = new Command('status')
   .option('--story <id>', 'Show status for a specific story')
   .option('--json', 'Output as JSON')
   .action(async (options: { team?: string; story?: string; json?: boolean }) => {
-    await withHiveContext(({ db }) => {
+    await withReadOnlyHiveContext(({ db }) => {
       if (options.story) {
         showStoryStatus(db.db, options.story, options.json);
       } else if (options.team) {

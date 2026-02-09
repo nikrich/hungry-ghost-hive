@@ -12,7 +12,7 @@ import {
 import { getLogsByAgent } from '../../db/queries/logs.js';
 import { removeWorktree } from '../../git/worktree.js';
 import { statusColor } from '../../utils/logger.js';
-import { withHiveContext } from '../../utils/with-hive-context.js';
+import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const agentsCommand = new Command('agents').description('Manage agents');
 
@@ -22,7 +22,7 @@ agentsCommand
   .option('--active', 'Show only active agents')
   .option('--json', 'Output as JSON')
   .action(async (options: { active?: boolean; json?: boolean }) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       const agents = options.active ? getActiveAgents(db.db) : getAllAgents(db.db);
 
       if (options.json) {
@@ -63,7 +63,7 @@ agentsCommand
   .option('-n, --limit <number>', 'Number of logs to show', '50')
   .option('--json', 'Output as JSON')
   .action(async (agentId: string, options: { limit: string; json?: boolean }) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       const agent = getAgentById(db.db, agentId);
       if (!agent) {
         console.error(chalk.red(`Agent not found: ${agentId}`));
@@ -108,7 +108,7 @@ agentsCommand
   .command('inspect <agent-id>')
   .description('View detailed agent state')
   .action(async (agentId: string) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       const agent = getAgentById(db.db, agentId);
       if (!agent) {
         console.error(chalk.red(`Agent not found: ${agentId}`));

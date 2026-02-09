@@ -10,7 +10,7 @@ import {
   type StoryStatus,
 } from '../../db/queries/stories.js';
 import { statusColor } from '../../utils/logger.js';
-import { withHiveContext } from '../../utils/with-hive-context.js';
+import { withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const storiesCommand = new Command('stories').description('Manage stories');
 
@@ -20,7 +20,7 @@ storiesCommand
   .option('--status <status>', 'Filter by status')
   .option('--json', 'Output as JSON')
   .action(async (options: { status?: string; json?: boolean }) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       let stories;
       if (options.status) {
         stories = getStoriesByStatus(db.db, options.status as StoryStatus);
@@ -65,7 +65,7 @@ storiesCommand
   .command('show <story-id>')
   .description('Show story details')
   .action(async (storyId: string) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       const story = getStoryById(db.db, storyId);
       if (!story) {
         console.error(chalk.red(`Story not found: ${storyId}`));
