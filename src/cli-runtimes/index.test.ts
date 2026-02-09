@@ -59,7 +59,15 @@ describe('CLI Runtime Builders', () => {
       const builder = new CodexRuntimeBuilder();
       const command = builder.buildSpawnCommand('gpt-4o-mini');
 
-      expect(command).toEqual(['codex', '--full-auto', '--model', 'gpt-4o-mini']);
+      expect(command).toEqual([
+        'codex',
+        '--ask-for-approval',
+        'never',
+        '--sandbox',
+        'workspace-write',
+        '--model',
+        'gpt-4o-mini',
+      ]);
     });
 
     it('should build resume command with session ID', () => {
@@ -68,7 +76,10 @@ describe('CLI Runtime Builders', () => {
 
       expect(command).toEqual([
         'codex',
-        '--full-auto',
+        '--ask-for-approval',
+        'never',
+        '--sandbox',
+        'workspace-write',
         '--model',
         'gpt-4o-mini',
         '--resume',
@@ -78,7 +89,7 @@ describe('CLI Runtime Builders', () => {
 
     it('should return correct auto-approval flag', () => {
       const builder = new CodexRuntimeBuilder();
-      expect(builder.getAutoApprovalFlag()).toBe('--full-auto');
+      expect(builder.getAutoApprovalFlag()).toBe('--ask-for-approval never');
     });
 
     it('should return correct model flag', () => {

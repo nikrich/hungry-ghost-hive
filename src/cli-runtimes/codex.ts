@@ -4,15 +4,25 @@ import { CliRuntimeBuilder } from './types.js';
 
 export class CodexRuntimeBuilder implements CliRuntimeBuilder {
   buildSpawnCommand(model: string): string[] {
-    return ['codex', '--full-auto', '--model', model];
+    return ['codex', '--ask-for-approval', 'never', '--sandbox', 'workspace-write', '--model', model];
   }
 
   buildResumeCommand(model: string, sessionId: string): string[] {
-    return ['codex', '--full-auto', '--model', model, '--resume', sessionId];
+    return [
+      'codex',
+      '--ask-for-approval',
+      'never',
+      '--sandbox',
+      'workspace-write',
+      '--model',
+      model,
+      '--resume',
+      sessionId,
+    ];
   }
 
   getAutoApprovalFlag(): string {
-    return '--full-auto';
+    return '--ask-for-approval never';
   }
 
   getModelFlag(): string {
