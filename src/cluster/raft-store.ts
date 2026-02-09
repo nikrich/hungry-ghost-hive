@@ -110,7 +110,16 @@ export class RaftMetadataStore {
       created_at: new Date().toISOString(),
     };
 
-    appendFileSync(this.logPath, `${JSON.stringify(entry)}\n`, 'utf-8');
+    try {
+      appendFileSync(this.logPath, `${JSON.stringify(entry)}\n`, 'utf-8');
+    } catch (error) {
+      // During shutdown/teardown the cluster directory can disappear between
+      // timer ticks; treat ENOENT as a no-op so background loops do not crash.
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return entry;
+      }
+      throw error;
+    }
 
     if (entry.event_id) {
       this.knownEventIds.add(entry.event_id);
