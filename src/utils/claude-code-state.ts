@@ -107,6 +107,9 @@ const STATE_INDICATORS: StateIndicator[] = [
       /(?:^|\n)authorize\b/i,
       /Allow.*\[y\/n\]/i,
       /Approve.*\[y\/n\]/i,
+      /Would you like to run the following command\?/i,
+      /Yes,\s*proceed\s*\(y\)/i,
+      /Press enter to confirm/i,
     ],
     priority: 90,
     confidence: 0.92, // High confidence - explicit permission prompts

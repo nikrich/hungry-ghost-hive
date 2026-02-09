@@ -847,7 +847,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 
     updateAgentStateTracking(session.name, stateResult, now);
 
-    const handled = await handlePermissionPrompt(session.name, stateResult);
+    const handled = await handlePermissionPrompt(ctx, session.name, stateResult);
     if (handled) continue;
 
     await handlePlanApproval(session.name, stateResult, now);
@@ -897,12 +897,23 @@ function updateAgentStateTracking(
 }
 
 async function handlePermissionPrompt(
+  ctx: ManagerCheckContext,
   sessionName: string,
   stateResult: ReturnType<typeof detectClaudeCodeState>
 ): Promise<boolean> {
   if (stateResult.state === ClaudeCodeState.PERMISSION_REQUIRED) {
     const approved = await autoApprovePermission(sessionName);
     if (approved) {
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Auto-approved permission prompt for ${sessionName}`,
+        metadata: {
+          session_name: sessionName,
+          detected_state: stateResult.state,
+        },
+      });
+      ctx.db.save();
       console.log(chalk.green(`  AUTO-APPROVED: ${sessionName} permission prompt`));
       return true;
     }
@@ -951,11 +962,23 @@ async function handleEscalationAndNudge(
     // Create escalation for human attention
     const storyId = agent?.current_story_id || null;
 
-    createEscalation(ctx.db.db, {
+    const escalation = createEscalation(ctx.db.db, {
       storyId,
       fromAgentId: sessionName,
       toAgentId: null,
       reason: `Agent waiting for input: ${waitingInfo.reason || 'Unknown question'}`,
+    });
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId,
+      eventType: 'ESCALATION_CREATED',
+      status: 'error',
+      message: `${sessionName} requires human input: ${waitingInfo.reason || 'Unknown question'}`,
+      metadata: {
+        escalation_id: escalation.id,
+        session_name: sessionName,
+        detected_state: stateResult.state,
+      },
     });
     ctx.db.save();
     ctx.counters.escalationsCreated++;
@@ -976,6 +999,15 @@ async function handleEscalationAndNudge(
       ctx.counters.escalationsResolved++;
     }
     if (activeEscalations.length > 0) {
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        eventType: 'ESCALATION_RESOLVED',
+        message: `${sessionName} recovered and manager auto-resolved ${activeEscalations.length} escalation(s)`,
+        metadata: {
+          session_name: sessionName,
+          resolved_count: activeEscalations.length,
+        },
+      });
       ctx.db.save();
       console.log(
         chalk.green(
