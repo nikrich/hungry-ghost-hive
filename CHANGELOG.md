@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.23.0...hungry-ghost-hive-v0.23.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* update junior agent model from gpt-4o-mini to claude-sonnet-4-5 ([#278](https://github.com/nikrich/hungry-ghost-hive/issues/278)) ([5412747](https://github.com/nikrich/hungry-ghost-hive/commit/541274782777ff385821f9bbf5a4340dc0bb431f))
+
 ## [0.23.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.5...hungry-ghost-hive-v0.23.0) (2026-02-09)
 
 
