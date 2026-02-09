@@ -3,8 +3,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import initSqlJs from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DatabaseCorruptionError } from '../errors/index.js';
-import { createDatabase } from './client.js';
+import { DatabaseCorruptionError, ReadOnlyAccessError } from '../errors/index.js';
+import { createDatabase, createReadOnlyDatabase } from './client.js';
 
 /**
  * Helper to create a valid SQLite database buffer with the core schema
@@ -361,5 +361,121 @@ describe('createDatabase', () => {
 
       client.close();
     });
+  });
+});
+
+describe('createReadOnlyDatabase', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'hive-ro-db-test-'));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('should load an existing database for reading', async () => {
+    const dbPath = join(tempDir, 'readonly.db');
+    const data = await createValidDbBuffer({ withData: true });
+    writeFileSync(dbPath, Buffer.from(data));
+
+    const client = await createReadOnlyDatabase(dbPath);
+    const result = client.db.exec('SELECT COUNT(*) FROM teams');
+    expect(result[0].values[0][0]).toBe(1);
+
+    client.close();
+  });
+
+  it('should allow read queries via prepare/exec', async () => {
+    const dbPath = join(tempDir, 'readonly-query.db');
+    const data = await createValidDbBuffer({ withData: true });
+    writeFileSync(dbPath, Buffer.from(data));
+
+    const client = await createReadOnlyDatabase(dbPath);
+
+    // exec should work for reads
+    const result = client.db.exec('SELECT name FROM teams');
+    expect(result[0].values[0][0]).toBe('Test Team');
+
+    // prepare should work for reads
+    const stmt = client.db.prepare('SELECT COUNT(*) as cnt FROM teams');
+    stmt.step();
+    const row = stmt.getAsObject();
+    expect(row.cnt).toBe(1);
+    stmt.free();
+
+    client.close();
+  });
+
+  it('should throw ReadOnlyAccessError on db.run()', async () => {
+    const dbPath = join(tempDir, 'readonly-run.db');
+    const data = await createValidDbBuffer({ withData: true });
+    writeFileSync(dbPath, Buffer.from(data));
+
+    const client = await createReadOnlyDatabase(dbPath);
+
+    expect(() => {
+      client.db.run("INSERT INTO teams VALUES ('t2', 'url', '/path', 'Team2', datetime('now'))");
+    }).toThrow(ReadOnlyAccessError);
+
+    client.close();
+  });
+
+  it('should throw ReadOnlyAccessError on save()', async () => {
+    const dbPath = join(tempDir, 'readonly-save.db');
+    const data = await createValidDbBuffer({ withData: true });
+    writeFileSync(dbPath, Buffer.from(data));
+
+    const client = await createReadOnlyDatabase(dbPath);
+
+    expect(() => client.save()).toThrow(ReadOnlyAccessError);
+
+    client.close();
+  });
+
+  it('should throw ReadOnlyAccessError on runMigrations()', async () => {
+    const dbPath = join(tempDir, 'readonly-migrations.db');
+    const data = await createValidDbBuffer({ withData: true });
+    writeFileSync(dbPath, Buffer.from(data));
+
+    const client = await createReadOnlyDatabase(dbPath);
+
+    expect(() => client.runMigrations()).toThrow(ReadOnlyAccessError);
+
+    client.close();
+  });
+
+  it('should not modify the file on disk', async () => {
+    const dbPath = join(tempDir, 'readonly-nowrite.db');
+    const data = await createValidDbBuffer({ withData: true });
+    writeFileSync(dbPath, Buffer.from(data));
+
+    const originalContent = readFileSync(dbPath);
+
+    const client = await createReadOnlyDatabase(dbPath);
+    client.db.exec('SELECT * FROM teams');
+    client.close();
+
+    const afterContent = readFileSync(dbPath);
+    expect(afterContent).toEqual(originalContent);
+  });
+
+  it('should create empty database when file does not exist', async () => {
+    const dbPath = join(tempDir, 'nonexistent.db');
+    const client = await createReadOnlyDatabase(dbPath);
+
+    expect(client.db).toBeDefined();
+
+    client.close();
+  });
+
+  it('should detect corruption same as createDatabase', async () => {
+    const dbPath = join(tempDir, 'readonly-corrupt.db');
+    const garbageBuffer = Buffer.alloc(100);
+    garbageBuffer.write('NOT_A_SQLITE_DATABASE', 0);
+    writeFileSync(dbPath, garbageBuffer);
+
+    await expect(createReadOnlyDatabase(dbPath)).rejects.toThrow(DatabaseCorruptionError);
   });
 });

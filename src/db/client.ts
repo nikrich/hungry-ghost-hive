@@ -3,7 +3,11 @@
 import { copyFileSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
-import { DatabaseCorruptionError, InitializationError } from '../errors/index.js';
+import {
+  DatabaseCorruptionError,
+  InitializationError,
+  ReadOnlyAccessError,
+} from '../errors/index.js';
 
 export interface DatabaseClient {
   db: SqlJsDatabase;
@@ -525,6 +529,75 @@ function runMigrations(db: SqlJsDatabase): void {
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
   const dbPath = join(hiveDir, 'hive.db');
   return createDatabase(dbPath);
+}
+
+/**
+ * Create a read-only database client that loads a snapshot from disk.
+ * The returned client throws ReadOnlyAccessError on any write operation
+ * (db.run(), save(), runMigrations()).
+ */
+export async function createReadOnlyDatabase(dbPath: string): Promise<DatabaseClient> {
+  const SqlJs = await getSqlJs();
+  if (!SqlJs) throw new InitializationError('Failed to initialize sql.js');
+
+  let db!: SqlJsDatabase;
+
+  if (existsSync(dbPath)) {
+    for (let attempt = 1; attempt <= MAX_LOAD_RETRIES; attempt++) {
+      try {
+        const buffer = readFileSync(dbPath);
+        const fileSize = statSync(dbPath).size;
+
+        try {
+          db = new SqlJs.Database(buffer);
+          db.exec('SELECT 1');
+        } catch (error) {
+          throw new DatabaseCorruptionError(
+            `Failed to load database file at ${dbPath}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+
+        validateLoadedDatabase(db, fileSize);
+        break;
+      } catch (error) {
+        if (error instanceof DatabaseCorruptionError && attempt < MAX_LOAD_RETRIES) {
+          await sleep(RETRY_DELAY_MS);
+          continue;
+        }
+        throw error;
+      }
+    }
+  } else {
+    db = new SqlJs.Database();
+  }
+
+  // Wrap db.run() to throw on write attempts
+  const originalRun = db.run.bind(db);
+  db.run = ((_sql: string, ..._params: unknown[]): SqlJsDatabase => {
+    throw new ReadOnlyAccessError();
+  }) as typeof db.run;
+
+  const client: DatabaseClient = {
+    db,
+    close: () => {
+      // Restore original run before closing to avoid issues with sql.js internals
+      db.run = originalRun;
+      db.close();
+    },
+    save: () => {
+      throw new ReadOnlyAccessError();
+    },
+    runMigrations: () => {
+      throw new ReadOnlyAccessError();
+    },
+  };
+
+  return client;
+}
+
+export async function getReadOnlyDatabase(hiveDir: string): Promise<DatabaseClient> {
+  const dbPath = join(hiveDir, 'hive.db');
+  return createReadOnlyDatabase(dbPath);
 }
 
 // Helper function to run a query and get results as objects
