@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.23.1...hungry-ghost-hive-v0.23.2) (2026-02-09)
+
+
+### Bug Fixes
+
+* use multi-cli state detectors for manager blocker handling ([#279](https://github.com/nikrich/hungry-ghost-hive/issues/279)) ([4821592](https://github.com/nikrich/hungry-ghost-hive/commit/48215926fb03d3c320533ccaaaea3f8670e58306))
+
 ## [0.23.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.23.0...hungry-ghost-hive-v0.23.1) (2026-02-09)
 
 
