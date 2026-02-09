@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.5](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.4...hungry-ghost-hive-v0.22.5) (2026-02-09)
+
+
+### Bug Fixes
+
+* format client.test.ts to pass prettier check ([b2f8a03](https://github.com/nikrich/hungry-ghost-hive/commit/b2f8a033eb660a87e3f77130137cf41e0d58c30a))
+
 ## [0.22.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.3...hungry-ghost-hive-v0.22.4) (2026-02-09)
 
 
