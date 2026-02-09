@@ -244,6 +244,57 @@ describe('createDatabase', () => {
 
       client.close();
     });
+
+    it('should use atomic write (no leftover .tmp file after save)', async () => {
+      const dbPath = join(tempDir, 'atomic-test.db');
+      const tmpPath = dbPath + '.tmp';
+
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // The temp file should not remain after save — it gets renamed to the target
+      expect(existsSync(dbPath)).toBe(true);
+      expect(existsSync(tmpPath)).toBe(false);
+
+      client.close();
+    });
+  });
+
+  describe('read-side retry on corruption', () => {
+    it('should retry loading when file appears corrupted mid-write', async () => {
+      const dbPath = join(tempDir, 'retry-test.db');
+
+      // Write a large file with no core table data — triggers corruption error
+      const corruptData = await createValidDbBuffer({ withData: false, withPadding: true });
+      writeFileSync(dbPath, Buffer.from(corruptData));
+
+      // Schedule replacement with valid data before the retry fires (~100ms delay)
+      const validData = await createValidDbBuffer({ withData: true, withPadding: true });
+      setTimeout(() => {
+        writeFileSync(dbPath, Buffer.from(validData));
+      }, 50);
+
+      // createDatabase should fail on first attempt, then succeed on retry
+      const client = await createDatabase(dbPath);
+      expect(client.db).toBeDefined();
+
+      const result = client.db.exec('SELECT COUNT(*) FROM teams');
+      expect(result[0].values[0][0]).toBe(1);
+
+      client.close();
+    });
+
+    it('should throw after exhausting all retries', async () => {
+      const dbPath = join(tempDir, 'retry-exhaust.db');
+
+      // Write a persistently corrupt file (large but empty core tables)
+      const corruptData = await createValidDbBuffer({ withData: false, withPadding: true });
+      writeFileSync(dbPath, Buffer.from(corruptData));
+
+      // File stays corrupt — all 3 retries should fail
+      await expect(createDatabase(dbPath)).rejects.toThrow(DatabaseCorruptionError);
+      await expect(createDatabase(dbPath)).rejects.toThrow('zero rows in core tables');
+    });
   });
 
   describe('auto-save removal', () => {

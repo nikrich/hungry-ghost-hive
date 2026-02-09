@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { copyFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { DatabaseCorruptionError, InitializationError } from '../errors/index.js';
@@ -200,39 +200,63 @@ function validateLoadedDatabase(db: SqlJsDatabase, fileSize: number): void {
   );
 }
 
+// Maximum number of attempts when loading a database file that appears corrupted.
+// The file may be mid-write by another process (atomic rename not yet completed).
+const MAX_LOAD_RETRIES = 3;
+// Delay in milliseconds between load retries.
+const RETRY_DELAY_MS = 100;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export async function createDatabase(dbPath: string): Promise<DatabaseClient> {
   const SqlJs = await getSqlJs();
   if (!SqlJs) throw new InitializationError('Failed to initialize sql.js');
 
-  let db: SqlJsDatabase;
+  let db!: SqlJsDatabase;
   const backupPath = dbPath + '.bak';
 
   // Load existing database or create new one
   if (existsSync(dbPath)) {
-    const buffer = readFileSync(dbPath);
-    const fileSize = statSync(dbPath).size;
+    // Retry loop: the file may be mid-write by another process
+    for (let attempt = 1; attempt <= MAX_LOAD_RETRIES; attempt++) {
+      try {
+        const buffer = readFileSync(dbPath);
+        const fileSize = statSync(dbPath).size;
 
-    try {
-      db = new SqlJs.Database(buffer);
-      // Verify the database is usable by running a basic command
-      db.run('PRAGMA foreign_keys = ON');
-      db.exec('SELECT 1');
-    } catch (error) {
-      throw new DatabaseCorruptionError(
-        `Failed to load database file at ${dbPath}: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
+        try {
+          db = new SqlJs.Database(buffer);
+          // Verify the database is usable by running a basic command
+          db.run('PRAGMA foreign_keys = ON');
+          db.exec('SELECT 1');
+        } catch (error) {
+          throw new DatabaseCorruptionError(
+            `Failed to load database file at ${dbPath}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
 
-    // Validate the loaded DB is not silently empty from a corrupt file
-    validateLoadedDatabase(db, fileSize);
+        // Validate the loaded DB is not silently empty from a corrupt file
+        validateLoadedDatabase(db, fileSize);
 
-    // Run migrations on loaded DB — wrap in try-catch to detect subtle corruption
-    try {
-      runMigrations(db);
-    } catch (error) {
-      throw new DatabaseCorruptionError(
-        `Database file at ${dbPath} appears corrupted (migrations failed): ${error instanceof Error ? error.message : String(error)}`
-      );
+        // Run migrations on loaded DB — wrap in try-catch to detect subtle corruption
+        try {
+          runMigrations(db);
+        } catch (error) {
+          throw new DatabaseCorruptionError(
+            `Database file at ${dbPath} appears corrupted (migrations failed): ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+
+        break; // Load succeeded — exit retry loop
+      } catch (error) {
+        if (error instanceof DatabaseCorruptionError && attempt < MAX_LOAD_RETRIES) {
+          // File may be mid-write by another process; retry after a short delay
+          await sleep(RETRY_DELAY_MS);
+          continue;
+        }
+        throw error;
+      }
     }
   } else {
     db = new SqlJs.Database();
@@ -249,7 +273,12 @@ export async function createDatabase(dbPath: string): Promise<DatabaseClient> {
     }
     const data = db.export();
     const buffer = Buffer.from(data);
-    writeFileSync(dbPath, buffer);
+    // Atomic write: write to temp file then rename.
+    // rename() is atomic on POSIX filesystems, preventing readers
+    // from seeing a truncated/partial file.
+    const tmpPath = dbPath + '.tmp';
+    writeFileSync(tmpPath, buffer);
+    renameSync(tmpPath, dbPath);
   };
 
   const client: DatabaseClient = {
