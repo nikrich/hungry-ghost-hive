@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.3...hungry-ghost-hive-v0.22.4) (2026-02-09)
+
+
+### Bug Fixes
+
+* prevent false positive corruption error on fresh databases ([4911df6](https://github.com/nikrich/hungry-ghost-hive/commit/4911df6f7c61804747fb13b35d5702962d4787ec))
+
 ## [0.22.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.2...hungry-ghost-hive-v0.22.3) (2026-02-09)
 
 
