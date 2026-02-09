@@ -60,7 +60,15 @@ const CODEX_STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: AgentState.PERMISSION_REQUIRED,
-    patterns: [/permission required/i, /authorization needed/i, /\[y\/n\]/i, /approve/i],
+    patterns: [
+      /permission required/i,
+      /authorization needed/i,
+      /\[y\/n\]/i,
+      /approve/i,
+      /Would you like to run the following command\?/i,
+      /Yes,\s*proceed\s*\(y\)/i,
+      /Press enter to confirm/i,
+    ],
     priority: 90,
   },
   {

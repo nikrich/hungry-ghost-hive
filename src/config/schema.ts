@@ -9,6 +9,7 @@ const ModelConfigSchema = z.object({
   max_tokens: z.number().int().positive().default(8000),
   temperature: z.number().min(0).max(2).default(0.5),
   cli_tool: z.enum(['claude', 'codex', 'gemini']).optional().default('claude'),
+  safety_mode: z.enum(['safe', 'unsafe']).optional().default('unsafe'),
 });
 
 // Models configuration for all agent types
@@ -19,6 +20,7 @@ const ModelsConfigSchema = z.object({
     max_tokens: 16000,
     temperature: 0.7,
     cli_tool: 'claude',
+    safety_mode: 'unsafe',
   }),
   senior: ModelConfigSchema.default({
     provider: 'anthropic',
@@ -26,6 +28,7 @@ const ModelsConfigSchema = z.object({
     max_tokens: 8000,
     temperature: 0.5,
     cli_tool: 'claude',
+    safety_mode: 'unsafe',
   }),
   intermediate: ModelConfigSchema.default({
     provider: 'anthropic',
@@ -33,6 +36,7 @@ const ModelsConfigSchema = z.object({
     max_tokens: 4000,
     temperature: 0.3,
     cli_tool: 'claude',
+    safety_mode: 'unsafe',
   }),
   junior: ModelConfigSchema.default({
     provider: 'anthropic',
@@ -40,6 +44,7 @@ const ModelsConfigSchema = z.object({
     max_tokens: 8000,
     temperature: 0.3,
     cli_tool: 'claude',
+    safety_mode: 'unsafe',
   }),
   qa: ModelConfigSchema.default({
     provider: 'anthropic',
@@ -47,6 +52,7 @@ const ModelsConfigSchema = z.object({
     max_tokens: 8000,
     temperature: 0.2,
     cli_tool: 'claude',
+    safety_mode: 'unsafe',
   }),
 });
 
@@ -242,6 +248,8 @@ models:
     temperature: 0.7
     # CLI tool used to spawn agents (claude, codex, or gemini)
     cli_tool: claude
+    # Runtime safety policy (safe = approval prompts, unsafe = full automation)
+    safety_mode: unsafe
 
   senior:
     provider: anthropic
@@ -249,6 +257,7 @@ models:
     max_tokens: 8000
     temperature: 0.5
     cli_tool: claude
+    safety_mode: unsafe
 
   intermediate:
     provider: anthropic
@@ -256,6 +265,7 @@ models:
     max_tokens: 4000
     temperature: 0.3
     cli_tool: claude
+    safety_mode: unsafe
 
   junior:
     provider: anthropic
@@ -263,6 +273,7 @@ models:
     max_tokens: 4000
     temperature: 0.2
     cli_tool: claude
+    safety_mode: unsafe
 
   qa:
     provider: anthropic
@@ -270,6 +281,7 @@ models:
     max_tokens: 8000
     temperature: 0.2
     cli_tool: claude
+    safety_mode: unsafe
 
 # Team scaling rules
 scaling:

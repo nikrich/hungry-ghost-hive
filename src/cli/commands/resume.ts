@@ -85,6 +85,7 @@ export const resumeCommand = new Command('resume')
           // Get CLI runtime configuration for this agent type
           const agentConfig = config.models[agent.type];
           const cliTool = agentConfig.cli_tool;
+          const safetyMode = agentConfig.safety_mode;
           const selectedModel = selectCompatibleModelForCli(
             cliTool,
             agent.model,
@@ -94,7 +95,7 @@ export const resumeCommand = new Command('resume')
 
           // Build resume command using CLI runtime builder
           const runtimeBuilder = getCliRuntimeBuilder(cliTool);
-          const commandArgs = runtimeBuilder.buildResumeCommand(model, sessionName);
+          const commandArgs = runtimeBuilder.buildResumeCommand(model, sessionName, safetyMode);
 
           // Spawn new session
           await spawnTmuxSession({

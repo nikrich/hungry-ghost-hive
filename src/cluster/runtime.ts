@@ -87,6 +87,7 @@ export class ClusterRuntime {
   private electionTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private started = false;
+  private stopping = false;
 
   private role: NodeRole = 'follower';
   private currentTerm = 0;
@@ -107,6 +108,7 @@ export class ClusterRuntime {
   async start(): Promise<void> {
     if (!this.config.enabled || this.started) return;
 
+    this.stopping = false;
     this.validateNetworkSecurity();
     this.initializeRaftStore();
     this.resetElectionDeadline();
@@ -122,10 +124,7 @@ export class ClusterRuntime {
   }
 
   async stop(): Promise<void> {
-    this.appendDurableEntry('runtime', {
-      event: 'runtime_stop',
-      node_id: this.config.node_id,
-    });
+    this.stopping = true;
 
     if (this.electionTimer) {
       clearInterval(this.electionTimer);
@@ -137,6 +136,11 @@ export class ClusterRuntime {
       this.heartbeatTimer = null;
     }
 
+    this.appendDurableEntry('runtime', {
+      event: 'runtime_stop',
+      node_id: this.config.node_id,
+    });
+
     if (this.server) {
       await new Promise<void>(resolve => {
         this.server?.close(() => resolve());
@@ -145,6 +149,8 @@ export class ClusterRuntime {
     }
 
     this.started = false;
+    this.raftStore = null;
+    this.electionInFlight = false;
   }
 
   isEnabled(): boolean {
@@ -275,7 +281,7 @@ export class ClusterRuntime {
       if (this.role === 'leader') return;
 
       if (Date.now() >= this.electionDeadline) {
-        void this.startElection();
+        void this.startElection().catch(error => this.handleBackgroundError(error));
       }
     }, 250);
   }
@@ -284,12 +290,12 @@ export class ClusterRuntime {
     this.heartbeatTimer = setInterval(() => {
       if (!this.config.enabled) return;
       if (this.role !== 'leader') return;
-      void this.sendHeartbeats();
+      void this.sendHeartbeats().catch(error => this.handleBackgroundError(error));
     }, this.config.heartbeat_interval_ms);
   }
 
   private async startElection(): Promise<void> {
-    if (!this.config.enabled || this.electionInFlight) return;
+    if (!this.config.enabled || this.electionInFlight || !this.started || this.stopping) return;
 
     this.electionInFlight = true;
     const electionTerm = this.currentTerm + 1;
@@ -360,6 +366,8 @@ export class ClusterRuntime {
   }
 
   private async sendHeartbeats(): Promise<void> {
+    if (!this.started || this.stopping) return;
+
     const heartbeat: HeartbeatRequest = {
       term: this.currentTerm,
       leader_id: this.config.node_id,
@@ -498,8 +506,23 @@ export class ClusterRuntime {
     type: Parameters<RaftMetadataStore['appendEntry']>[0]['type'],
     metadata: Record<string, unknown>
   ): void {
-    if (!this.raftStore) return;
-    this.raftStore.appendEntry({ type, term: this.currentTerm, metadata });
+    if (!this.raftStore || this.stopping) return;
+
+    try {
+      this.raftStore.appendEntry({ type, term: this.currentTerm, metadata });
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'ENOENT') return;
+      throw error;
+    }
+  }
+
+  private handleBackgroundError(error: unknown): void {
+    if (!this.started || this.stopping) return;
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'ENOENT') return;
+    // Keep runtime alive; surface diagnostic without crashing the process.
+    console.error('Cluster runtime background task failed:', error);
   }
 
   private validateNetworkSecurity(): void {
