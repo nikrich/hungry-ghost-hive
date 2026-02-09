@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Command } from 'commander';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EscalationRow } from '../../db/queries/escalations.js';
 import {
   getAllEscalations,
