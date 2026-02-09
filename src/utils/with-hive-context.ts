@@ -2,7 +2,12 @@
 
 import chalk from 'chalk';
 import { join } from 'path';
-import { getDatabase, getReadOnlyDatabase, type DatabaseClient, type ReadOnlyDatabaseClient } from '../db/client.js';
+import {
+  getDatabase,
+  getReadOnlyDatabase,
+  type DatabaseClient,
+  type ReadOnlyDatabaseClient,
+} from '../db/client.js';
 import { acquireLock } from '../db/lock.js';
 import { findHiveRoot, getHivePaths, type HivePaths } from './paths.js';
 

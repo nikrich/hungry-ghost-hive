@@ -170,7 +170,11 @@ describe('createDatabase', () => {
 
     // Create a large database with padding but NO data in core tables and NO migrations
     // This simulates true corruption where sql.js loaded a partial file
-    const data = await createValidDbBuffer({ withData: false, withPadding: true, withMigrations: false });
+    const data = await createValidDbBuffer({
+      withData: false,
+      withPadding: true,
+      withMigrations: false,
+    });
     writeFileSync(dbPath, Buffer.from(data));
 
     // Verify the file is >50KB
@@ -203,7 +207,11 @@ describe('createDatabase', () => {
     const dbPath = join(tempDir, 'large-fresh.db');
 
     // Simulates hive init → add-repo: DB has schema + migrations but no teams/stories yet
-    const data = await createValidDbBuffer({ withData: false, withPadding: true, withMigrations: true });
+    const data = await createValidDbBuffer({
+      withData: false,
+      withPadding: true,
+      withMigrations: true,
+    });
     writeFileSync(dbPath, Buffer.from(data));
 
     expect(Buffer.from(data).length).toBeGreaterThan(50 * 1024);
@@ -287,7 +295,11 @@ describe('createDatabase', () => {
       const dbPath = join(tempDir, 'retry-test.db');
 
       // Write a large file with no core table data and no migrations — triggers corruption error
-      const corruptData = await createValidDbBuffer({ withData: false, withPadding: true, withMigrations: false });
+      const corruptData = await createValidDbBuffer({
+        withData: false,
+        withPadding: true,
+        withMigrations: false,
+      });
       writeFileSync(dbPath, Buffer.from(corruptData));
 
       // Schedule replacement with valid data before the retry fires (~100ms delay)
@@ -310,7 +322,11 @@ describe('createDatabase', () => {
       const dbPath = join(tempDir, 'retry-exhaust.db');
 
       // Write a persistently corrupt file (large but empty core tables and no migrations)
-      const corruptData = await createValidDbBuffer({ withData: false, withPadding: true, withMigrations: false });
+      const corruptData = await createValidDbBuffer({
+        withData: false,
+        withPadding: true,
+        withMigrations: false,
+      });
       writeFileSync(dbPath, Buffer.from(corruptData));
 
       // File stays corrupt — all 3 retries should fail
@@ -378,9 +394,9 @@ describe('createDatabase', () => {
       writeFileSync(dbPath, Buffer.from(data));
 
       const client = await createReadOnlyDatabase(dbPath);
-      expect(() =>
-        client.db.run("UPDATE teams SET name = 'Updated' WHERE id = 't1'")
-      ).toThrow(ReadOnlyDatabaseError);
+      expect(() => client.db.run("UPDATE teams SET name = 'Updated' WHERE id = 't1'")).toThrow(
+        ReadOnlyDatabaseError
+      );
 
       client.close();
     });
@@ -391,9 +407,9 @@ describe('createDatabase', () => {
       writeFileSync(dbPath, Buffer.from(data));
 
       const client = await createReadOnlyDatabase(dbPath);
-      expect(() =>
-        client.db.run("DELETE FROM teams WHERE id = 't1'")
-      ).toThrow(ReadOnlyDatabaseError);
+      expect(() => client.db.run("DELETE FROM teams WHERE id = 't1'")).toThrow(
+        ReadOnlyDatabaseError
+      );
 
       client.close();
     });
@@ -404,9 +420,9 @@ describe('createDatabase', () => {
       writeFileSync(dbPath, Buffer.from(data));
 
       const client = await createReadOnlyDatabase(dbPath);
-      expect(() =>
-        client.db.exec('CREATE TABLE test_table (id TEXT PRIMARY KEY)')
-      ).toThrow(ReadOnlyDatabaseError);
+      expect(() => client.db.exec('CREATE TABLE test_table (id TEXT PRIMARY KEY)')).toThrow(
+        ReadOnlyDatabaseError
+      );
 
       client.close();
     });
@@ -417,9 +433,7 @@ describe('createDatabase', () => {
       writeFileSync(dbPath, Buffer.from(data));
 
       const client = await createReadOnlyDatabase(dbPath);
-      expect(() =>
-        client.db.exec('DROP TABLE teams')
-      ).toThrow(ReadOnlyDatabaseError);
+      expect(() => client.db.exec('DROP TABLE teams')).toThrow(ReadOnlyDatabaseError);
 
       client.close();
     });

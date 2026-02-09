@@ -617,7 +617,10 @@ function createReadOnlyProxy(db: SqlJsDatabase): SqlJsDatabase {
           if (isWriteSQL(sql)) {
             throw new ReadOnlyDatabaseError();
           }
-          return target.run(sql, ...(args as Parameters<SqlJsDatabase['run']> extends [string, ...infer R] ? R : never));
+          return target.run(
+            sql,
+            ...(args as Parameters<SqlJsDatabase['run']> extends [string, ...infer R] ? R : never)
+          );
         };
       }
       if (prop === 'exec') {
@@ -625,7 +628,10 @@ function createReadOnlyProxy(db: SqlJsDatabase): SqlJsDatabase {
           if (isWriteSQL(sql)) {
             throw new ReadOnlyDatabaseError();
           }
-          return target.exec(sql, ...(args as Parameters<SqlJsDatabase['exec']> extends [string, ...infer R] ? R : never));
+          return target.exec(
+            sql,
+            ...(args as Parameters<SqlJsDatabase['exec']> extends [string, ...infer R] ? R : never)
+          );
         };
       }
       return Reflect.get(target, prop, receiver);
