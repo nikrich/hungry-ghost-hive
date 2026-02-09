@@ -62,12 +62,12 @@ describe('agents queries', () => {
       const agent = createAgent(db, {
         type: 'junior',
         tmuxSession: 'tmux-session-1',
-        model: 'claude-haiku-4-5',
+        model: 'claude-sonnet-4-5-20250929',
         worktreePath: '/path/to/worktree',
       });
 
       expect(agent.tmux_session).toBe('tmux-session-1');
-      expect(agent.model).toBe('claude-haiku-4-5');
+      expect(agent.model).toBe('claude-sonnet-4-5-20250929');
       expect(agent.worktree_path).toBe('/path/to/worktree');
     });
 
