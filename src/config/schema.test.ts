@@ -35,11 +35,11 @@ describe('HiveConfigSchema', () => {
           cli_tool: 'claude',
         },
         junior: {
-          provider: 'openai',
-          model: 'gpt-4o-mini',
+          provider: 'anthropic',
+          model: 'claude-sonnet-4-5-20250929',
           max_tokens: 4000,
           temperature: 0.2,
-          cli_tool: 'codex',
+          cli_tool: 'claude',
         },
         qa: {
           provider: 'anthropic',
@@ -147,14 +147,14 @@ describe('HiveConfigSchema', () => {
     expect(config.models.tech_lead.cli_tool).toBe('claude');
     expect(config.models.senior.cli_tool).toBe('claude');
     expect(config.models.intermediate.cli_tool).toBe('claude');
-    expect(config.models.junior.cli_tool).toBe('codex');
+    expect(config.models.junior.cli_tool).toBe('claude');
     expect(config.models.qa.cli_tool).toBe('claude');
   });
 
   it('should export ModelConfig type with cli_tool', () => {
     const config = DEFAULT_CONFIG;
     expect(config.models).toBeDefined();
-    expect(config.models.junior.cli_tool).toBe('codex');
+    expect(config.models.junior.cli_tool).toBe('claude');
     expect(typeof config.models.junior.cli_tool).toBe('string');
   });
 

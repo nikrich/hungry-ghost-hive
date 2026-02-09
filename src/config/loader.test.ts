@@ -25,8 +25,8 @@ describe('config loader model/CLI compatibility', () => {
     const hiveDir = createTempHiveDir();
     const config = createDefaultConfig(hiveDir);
 
-    expect(config.models.junior.model).toBe('gpt-4o-mini');
-    expect(config.models.junior.cli_tool).toBe('codex');
+    expect(config.models.junior.model).toBe('claude-sonnet-4-5-20250929');
+    expect(config.models.junior.cli_tool).toBe('claude');
   });
 
   it('rejects incompatible model/cli_tool combinations on load', () => {
@@ -54,6 +54,6 @@ models:
     const hiveDir = createTempHiveDir();
     const config = createDefaultConfig(hiveDir);
 
-    expect(() => setConfigValue(config, 'models.junior.cli_tool', 'claude')).toThrow(ConfigError);
+    expect(() => setConfigValue(config, 'models.junior.cli_tool', 'codex')).toThrow(ConfigError);
   });
 });

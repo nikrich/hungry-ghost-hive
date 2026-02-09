@@ -47,8 +47,8 @@ describe('Assign Command', () => {
         cli_tool: 'claude',
       },
       junior: {
-        provider: 'openai',
-        model: 'gpt-4o-mini',
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 4000,
         temperature: 0.2,
         cli_tool: 'claude',
