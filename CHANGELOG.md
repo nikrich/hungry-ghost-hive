@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.23.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.23.1...hungry-ghost-hive-v0.23.2) (2026-02-09)
+
+
+### Bug Fixes
+
+* use multi-cli state detectors for manager blocker handling ([#279](https://github.com/nikrich/hungry-ghost-hive/issues/279)) ([4821592](https://github.com/nikrich/hungry-ghost-hive/commit/48215926fb03d3c320533ccaaaea3f8670e58306))
+
+## [0.23.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.23.0...hungry-ghost-hive-v0.23.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* update junior agent model from gpt-4o-mini to claude-sonnet-4-5 ([#278](https://github.com/nikrich/hungry-ghost-hive/issues/278)) ([5412747](https://github.com/nikrich/hungry-ghost-hive/commit/541274782777ff385821f9bbf5a4340dc0bb431f))
+
+## [0.23.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.5...hungry-ghost-hive-v0.23.0) (2026-02-09)
+
+
+### Features
+
+* add read-only database context without file locking ([#284](https://github.com/nikrich/hungry-ghost-hive/issues/284)) ([1786078](https://github.com/nikrich/hungry-ghost-hive/commit/178607876b1978e451809b13460a3f9b1f37d777))
+* add read-only database context without file locking ([#286](https://github.com/nikrich/hungry-ghost-hive/issues/286)) ([a6550fc](https://github.com/nikrich/hungry-ghost-hive/commit/a6550fcd17ea5bc30c99ff100c20c5306800d116))
+
+## [0.22.5](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.4...hungry-ghost-hive-v0.22.5) (2026-02-09)
+
+
+### Bug Fixes
+
+* format client.test.ts to pass prettier check ([b2f8a03](https://github.com/nikrich/hungry-ghost-hive/commit/b2f8a033eb660a87e3f77130137cf41e0d58c30a))
+
 ## [0.22.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.22.3...hungry-ghost-hive-v0.22.4) (2026-02-09)
 
 

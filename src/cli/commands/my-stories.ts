@@ -5,14 +5,14 @@ import { Command } from 'commander';
 import { queryAll, queryOne, run, type StoryRow } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import { createStory, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
-import { withHiveContext } from '../../utils/with-hive-context.js';
+import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const myStoriesCommand = new Command('my-stories')
   .description('View and manage stories assigned to an agent')
   .argument('[session]', 'Tmux session name (e.g., hive-senior-myteam)')
   .option('--all', 'Show all stories for the team, not just assigned')
   .action(async (session: string | undefined, options: { all?: boolean }) => {
-    await withHiveContext(async ({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       if (!session) {
         // Show all in-progress stories
         const stories = queryAll<StoryRow & { tmux_session?: string }>(

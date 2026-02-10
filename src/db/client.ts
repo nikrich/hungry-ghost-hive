@@ -12,6 +12,11 @@ export interface DatabaseClient {
   runMigrations: () => void;
 }
 
+export interface ReadOnlyDatabaseClient {
+  db: SqlJsDatabase;
+  close: () => void;
+}
+
 // Embedded initial migration SQL
 const INITIAL_MIGRATION = `
 -- Hive Orchestrator Initial Schema
@@ -541,6 +546,58 @@ function runMigrations(db: SqlJsDatabase): void {
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
   const dbPath = join(hiveDir, 'hive.db');
   return createDatabase(dbPath);
+}
+
+export async function getReadOnlyDatabase(hiveDir: string): Promise<ReadOnlyDatabaseClient> {
+  const dbPath = join(hiveDir, 'hive.db');
+  const SqlJs = await getSqlJs();
+  if (!SqlJs) throw new InitializationError('Failed to initialize sql.js');
+
+  if (!existsSync(dbPath)) {
+    throw new InitializationError(`Database file not found: ${dbPath}`);
+  }
+
+  let db!: SqlJsDatabase;
+
+  for (let attempt = 1; attempt <= MAX_LOAD_RETRIES; attempt++) {
+    try {
+      const buffer = readFileSync(dbPath);
+      const fileSize = statSync(dbPath).size;
+
+      try {
+        db = new SqlJs.Database(buffer);
+        db.run('PRAGMA foreign_keys = ON');
+        db.exec('SELECT 1');
+      } catch (error) {
+        throw new DatabaseCorruptionError(
+          `Failed to load database file at ${dbPath}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+
+      validateLoadedDatabase(db, fileSize);
+
+      try {
+        runMigrations(db);
+      } catch (error) {
+        throw new DatabaseCorruptionError(
+          `Database file at ${dbPath} appears corrupted (migrations failed): ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+
+      break;
+    } catch (error) {
+      if (error instanceof DatabaseCorruptionError && attempt < MAX_LOAD_RETRIES) {
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return {
+    db,
+    close: () => db.close(),
+  };
 }
 
 // Helper function to run a query and get results as objects

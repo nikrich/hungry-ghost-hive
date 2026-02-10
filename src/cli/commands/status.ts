@@ -3,7 +3,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { getActiveAgents, getAllAgents } from '../../db/queries/agents.js';
-import { getPendingEscalations } from '../../db/queries/escalations.js';
+import { getPendingEscalations, getPendingHumanEscalations } from '../../db/queries/escalations.js';
 import { getLogsByStory, getRecentLogs } from '../../db/queries/logs.js';
 import { getPendingRequirements, getRequirementById } from '../../db/queries/requirements.js';
 import {
@@ -14,7 +14,7 @@ import {
 } from '../../db/queries/stories.js';
 import { getAllTeams, getTeamByName } from '../../db/queries/teams.js';
 import { statusColor } from '../../utils/logger.js';
-import { withHiveContext } from '../../utils/with-hive-context.js';
+import { withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const statusCommand = new Command('status')
   .description('Show Hive status')
@@ -22,7 +22,7 @@ export const statusCommand = new Command('status')
   .option('--story <id>', 'Show status for a specific story')
   .option('--json', 'Output as JSON')
   .action(async (options: { team?: string; story?: string; json?: boolean }) => {
-    await withHiveContext(({ db }) => {
+    await withReadOnlyHiveContext(({ db }) => {
       if (options.story) {
         showStoryStatus(db.db, options.story, options.json);
       } else if (options.team) {
@@ -40,6 +40,7 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
   const storyCounts = getStoryCounts(db);
   const requirements = getPendingRequirements(db);
   const escalations = getPendingEscalations(db);
+  const approvals = getPendingHumanEscalations(db);
   const recentLogs = getRecentLogs(db, 5);
 
   const terminatedAgents = allAgents.filter(a => a.status === 'terminated').length;
@@ -65,6 +66,9 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
     },
     escalations: {
       pending: escalations.length,
+    },
+    approvals: {
+      pending: approvals.length,
     },
     recentActivity: recentLogs.map(l => ({
       timestamp: l.timestamp,
@@ -128,6 +132,12 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
     for (const esc of escalations) {
       console.log(chalk.yellow(`  • ${esc.id}: ${esc.reason.substring(0, 50)}...`));
     }
+    console.log();
+  }
+
+  if (approvals.length > 0) {
+    console.log(chalk.bold.yellow('⏳ Pending Human Approvals:'), approvals.length);
+    console.log(chalk.gray('  • Run: hive approvals list'));
     console.log();
   }
 

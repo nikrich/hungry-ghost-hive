@@ -19,6 +19,7 @@ describe('HiveConfigSchema', () => {
           max_tokens: 16000,
           temperature: 0.7,
           cli_tool: 'claude',
+          safety_mode: 'unsafe',
         },
         senior: {
           provider: 'anthropic',
@@ -26,6 +27,7 @@ describe('HiveConfigSchema', () => {
           max_tokens: 8000,
           temperature: 0.5,
           cli_tool: 'claude',
+          safety_mode: 'safe',
         },
         intermediate: {
           provider: 'anthropic',
@@ -33,13 +35,15 @@ describe('HiveConfigSchema', () => {
           max_tokens: 4000,
           temperature: 0.3,
           cli_tool: 'claude',
+          safety_mode: 'unsafe',
         },
         junior: {
-          provider: 'openai',
-          model: 'gpt-4o-mini',
-          max_tokens: 4000,
-          temperature: 0.2,
-          cli_tool: 'codex',
+          provider: 'anthropic',
+          model: 'claude-sonnet-4-5-20250929',
+          max_tokens: 8000,
+          temperature: 0.3,
+          cli_tool: 'claude',
+          safety_mode: 'unsafe',
         },
         qa: {
           provider: 'anthropic',
@@ -47,6 +51,7 @@ describe('HiveConfigSchema', () => {
           max_tokens: 8000,
           temperature: 0.2,
           cli_tool: 'claude',
+          safety_mode: 'safe',
         },
       },
       scaling: {
@@ -147,14 +152,65 @@ describe('HiveConfigSchema', () => {
     expect(config.models.tech_lead.cli_tool).toBe('claude');
     expect(config.models.senior.cli_tool).toBe('claude');
     expect(config.models.intermediate.cli_tool).toBe('claude');
-    expect(config.models.junior.cli_tool).toBe('codex');
+    expect(config.models.junior.cli_tool).toBe('claude');
     expect(config.models.qa.cli_tool).toBe('claude');
+  });
+
+  it('should apply safety_mode default to all tiers', () => {
+    const config = HiveConfigSchema.parse({});
+    expect(config.models.tech_lead.safety_mode).toBe('unsafe');
+    expect(config.models.senior.safety_mode).toBe('unsafe');
+    expect(config.models.intermediate.safety_mode).toBe('unsafe');
+    expect(config.models.junior.safety_mode).toBe('unsafe');
+    expect(config.models.qa.safety_mode).toBe('unsafe');
+  });
+
+  it('should accept valid safety_mode values', () => {
+    const safeConfig = {
+      models: {
+        junior: {
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          cli_tool: 'codex',
+          safety_mode: 'safe',
+        },
+      },
+    };
+    const unsafeConfig = {
+      models: {
+        junior: {
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          cli_tool: 'codex',
+          safety_mode: 'unsafe',
+        },
+      },
+    };
+
+    expect(HiveConfigSchema.safeParse(safeConfig).success).toBe(true);
+    expect(HiveConfigSchema.safeParse(unsafeConfig).success).toBe(true);
+  });
+
+  it('should reject invalid safety_mode values', () => {
+    const config = {
+      models: {
+        junior: {
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          cli_tool: 'codex',
+          safety_mode: 'dangerous',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
   });
 
   it('should export ModelConfig type with cli_tool', () => {
     const config = DEFAULT_CONFIG;
     expect(config.models).toBeDefined();
-    expect(config.models.junior.cli_tool).toBe('codex');
+    expect(config.models.junior.cli_tool).toBe('claude');
     expect(typeof config.models.junior.cli_tool).toBe('string');
   });
 

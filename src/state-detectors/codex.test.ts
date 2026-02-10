@@ -47,6 +47,22 @@ describe('CodexStateDetector', () => {
       expect(result.state).toBe(AgentState.PERMISSION_REQUIRED);
     });
 
+    it('should detect command approval prompt as PERMISSION_REQUIRED', () => {
+      const result = detector.detectState(`
+Would you like to run the following command?
+
+$ hive assign
+
+1. Yes, proceed (y)
+2. Yes, and don't ask again
+3. No, and tell Codex what to do differently (esc)
+
+Press enter to confirm or esc to cancel
+`);
+      expect(result.state).toBe(AgentState.PERMISSION_REQUIRED);
+      expect(result.needsHuman).toBe(true);
+    });
+
     it('should detect USER_DECLINED state', () => {
       const result = detector.detectState('Operation cancelled by user');
       expect(result.state).toBe(AgentState.USER_DECLINED);

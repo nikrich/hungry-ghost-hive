@@ -5,7 +5,7 @@ import { UnsupportedFeatureError, ValidationError } from '../errors/index.js';
 import { ClaudeRuntimeBuilder } from './claude.js';
 import { CodexRuntimeBuilder } from './codex.js';
 import { GeminiRuntimeBuilder } from './gemini.js';
-import { CliRuntimeBuilder, CliRuntimeType } from './types.js';
+import { CliRuntimeBuilder, CliRuntimeType, RuntimeSafetyMode } from './types.js';
 
 /**
  * Factory function to get the appropriate CLI runtime builder
@@ -142,4 +142,4 @@ export function resolveRuntimeModelForCli(model: string, cliTool: CliRuntimeType
 export { ClaudeRuntimeBuilder } from './claude.js';
 export { CodexRuntimeBuilder } from './codex.js';
 export { GeminiRuntimeBuilder } from './gemini.js';
-export type { CliRuntimeBuilder, CliRuntimeType };
+export type { CliRuntimeBuilder, CliRuntimeType, RuntimeSafetyMode };

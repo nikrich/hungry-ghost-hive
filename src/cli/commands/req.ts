@@ -139,6 +139,7 @@ export const reqCommand = new Command('req')
           spinner.text = 'Spawning Tech Lead...';
           let techLead = getTechLead(db.db);
           const techLeadCliTool = config.models.tech_lead.cli_tool;
+          const techLeadSafetyMode = config.models.tech_lead.safety_mode;
           const techLeadModel = resolveRuntimeModelForCli(
             config.models.tech_lead.model,
             techLeadCliTool
@@ -175,8 +176,10 @@ export const reqCommand = new Command('req')
 
           try {
             // Build CLI command using the configured runtime for Tech Lead
-            const commandArgs =
-              getCliRuntimeBuilder(techLeadCliTool).buildSpawnCommand(techLeadModel);
+            const commandArgs = getCliRuntimeBuilder(techLeadCliTool).buildSpawnCommand(
+              techLeadModel,
+              techLeadSafetyMode
+            );
 
             // Pass the prompt as initialPrompt so it's included as a CLI positional
             // argument via $(cat ...). This delivers the full multi-line prompt
