@@ -523,16 +523,13 @@ function runMigrations(db: SqlJsDatabase): void {
   }
 
   // Migration 010: Add target_branch column to requirements table
-  const result010 = db.exec(
-    "SELECT name FROM migrations WHERE name = '010-add-target-branch.sql'"
-  );
+  const result010 = db.exec("SELECT name FROM migrations WHERE name = '010-add-target-branch.sql'");
   const migration010Applied = result010.length > 0 && result010[0].values.length > 0;
 
   if (!migration010Applied) {
     const columns = db.exec('PRAGMA table_info(requirements)');
     const hasTargetBranchColumn =
-      columns.length > 0 &&
-      columns[0].values.some((col: unknown[]) => col[1] === 'target_branch');
+      columns.length > 0 && columns[0].values.some((col: unknown[]) => col[1] === 'target_branch');
 
     if (!hasTargetBranchColumn) {
       db.run("ALTER TABLE requirements ADD COLUMN target_branch TEXT DEFAULT 'main'");

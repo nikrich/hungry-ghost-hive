@@ -2,9 +2,9 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { createInterface } from 'readline';
 import { existsSync, readFileSync } from 'fs';
 import ora from 'ora';
+import { createInterface } from 'readline';
 import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../../cli-runtimes/index.js';
 import { fetchLocalClusterStatus } from '../../cluster/runtime.js';
 import { loadConfig } from '../../config/loader.js';
