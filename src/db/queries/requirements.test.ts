@@ -65,6 +65,26 @@ describe('requirements queries', () => {
       expect(req.godmode).toBe(0);
     });
 
+    it('should create a requirement with a custom target branch', () => {
+      const req = createRequirement(db, {
+        title: 'Feature with target branch',
+        description: 'Add feature targeting develop',
+        targetBranch: 'develop',
+      });
+
+      expect(req.id).toMatch(/^REQ-/);
+      expect(req.target_branch).toBe('develop');
+    });
+
+    it('should default target_branch to "main" when not specified', () => {
+      const req = createRequirement(db, {
+        title: 'Normal Feature',
+        description: 'Add feature without target branch',
+      });
+
+      expect(req.target_branch).toBe('main');
+    });
+
     it('should generate unique IDs', () => {
       const req1 = createRequirement(db, {
         title: 'Feature 1',
@@ -244,6 +264,21 @@ describe('requirements queries', () => {
       });
 
       expect(updated?.godmode).toBe(1);
+    });
+
+    it('should update requirement target_branch', () => {
+      const req = createRequirement(db, {
+        title: 'Title',
+        description: 'Description',
+      });
+
+      expect(req.target_branch).toBe('main');
+
+      const updated = updateRequirement(db, req.id, {
+        targetBranch: 'develop',
+      });
+
+      expect(updated?.target_branch).toBe('develop');
     });
 
     it('should update multiple fields at once', () => {

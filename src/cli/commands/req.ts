@@ -2,6 +2,7 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
+import { createInterface } from 'readline';
 import { existsSync, readFileSync } from 'fs';
 import ora from 'ora';
 import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../../cli-runtimes/index.js';
@@ -23,10 +24,17 @@ export const reqCommand = new Command('req')
   .option('--title <title>', 'Requirement title (defaults to first line)')
   .option('--dry-run', 'Create requirement without spawning agents')
   .option('--godmode', 'Enable godmode - use most powerful models for all agents')
+  .option('--target-branch <branch>', 'Target branch for PRs (skip interactive prompt)')
   .action(
     async (
       requirement: string | undefined,
-      options: { file?: string; title?: string; dryRun?: boolean; godmode?: boolean }
+      options: {
+        file?: string;
+        title?: string;
+        dryRun?: boolean;
+        godmode?: boolean;
+        targetBranch?: string;
+      }
     ) => {
       await withHiveContext(async ({ root, paths, db }) => {
         // Get requirement text
@@ -48,6 +56,16 @@ export const reqCommand = new Command('req')
         const lines = reqText.split('\n');
         const title = options.title || lines[0].replace(/^#\s*/, '').substring(0, 100);
         const description = reqText;
+
+        // Resolve target branch
+        let targetBranch: string;
+        if (options.targetBranch) {
+          targetBranch = options.targetBranch;
+        } else if (process.stdin.isTTY) {
+          targetBranch = await promptTargetBranch();
+        } else {
+          targetBranch = 'main';
+        }
 
         const config = loadConfig(paths.hiveDir);
         if (config.cluster.enabled) {
@@ -90,10 +108,18 @@ export const reqCommand = new Command('req')
 
           // Create requirement
           spinner.text = 'Creating requirement...';
-          const req = createRequirement(db.db, { title, description, godmode: options.godmode });
+          const req = createRequirement(db.db, {
+            title,
+            description,
+            godmode: options.godmode,
+            targetBranch,
+          });
           console.log(chalk.green(`\n✓ Requirement created: ${req.id}`));
           if (options.godmode) {
             console.log(chalk.yellow('⚡ GODMODE enabled - using Opus 4.6 for all agents'));
+          }
+          if (targetBranch !== 'main') {
+            console.log(chalk.cyan(`🎯 Target branch: ${targetBranch}`));
           }
 
           if (options.dryRun) {
@@ -143,7 +169,8 @@ export const reqCommand = new Command('req')
             title,
             description,
             teams,
-            options.godmode
+            options.godmode,
+            targetBranch
           );
 
           try {
@@ -211,12 +238,39 @@ export const reqCommand = new Command('req')
     }
   );
 
+function askQuestion(query: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise(resolve => {
+    rl.question(query, answer => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+async function promptTargetBranch(): Promise<string> {
+  console.log(chalk.bold('\n? Target branch for PRs:'));
+  console.log('  1) main (default)');
+  console.log('  2) Custom branch...');
+  const choice = await askQuestion('  Enter choice [1]: ');
+
+  if (choice === '2') {
+    const branchName = await askQuestion('  Enter target branch name: ');
+    if (branchName) {
+      return branchName;
+    }
+  }
+
+  return 'main';
+}
+
 function generateTechLeadPrompt(
   reqId: string,
   title: string,
   description: string,
   teams: { id: string; name: string; repo_path: string; repo_url: string }[],
-  godmode?: boolean
+  godmode?: boolean,
+  targetBranch?: string
 ): string {
   const teamList = teams.map(t => `- ${t.name}: ${t.repo_path} (${t.repo_url})`).join('\n');
   const godmodeNotice = godmode
@@ -227,6 +281,15 @@ This requirement is running in GODMODE. All agents will use claude-opus-4-6 (the
 `
     : '';
 
+  const resolvedBranch = targetBranch || 'main';
+  const targetBranchNotice =
+    resolvedBranch !== 'main'
+      ? `
+**Target Branch:** \`${resolvedBranch}\`
+All PRs for this requirement should target \`${resolvedBranch}\` instead of \`main\`. Feature branches should be based on \`origin/${resolvedBranch}\`, and merge conflict checks should reference \`origin/${resolvedBranch}\`.
+`
+      : '';
+
   return `You are the Tech Lead of Hive, an AI development team orchestrator.
 
 ## New Requirement: ${reqId}
@@ -235,7 +298,7 @@ ${godmodeNotice}
 
 **Description:**
 ${description}
-
+${targetBranchNotice}
 ## Available Teams
 ${teamList}
 
