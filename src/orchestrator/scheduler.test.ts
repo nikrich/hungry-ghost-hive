@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS requirements (
     submitted_by TEXT DEFAULT 'human',
     status TEXT DEFAULT 'pending',
     godmode INTEGER DEFAULT 0,
+    target_branch TEXT DEFAULT 'main',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 `;
