@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.23.2...hungry-ghost-hive-v0.24.0) (2026-02-10)
+
+
+### Features
+
+* add --target-branch CLI option and interactive prompt to hive req command ([#291](https://github.com/nikrich/hungry-ghost-hive/issues/291)) ([c1ccb70](https://github.com/nikrich/hungry-ghost-hive/commit/c1ccb70ea2b1757e45088c36525a4daa461b4e99))
+* add tmux session log consolidator script ([#277](https://github.com/nikrich/hungry-ghost-hive/issues/277)) ([326eecb](https://github.com/nikrich/hungry-ghost-hive/commit/326eecbaa15f9f8b677c1cb7c98d473ed961cacd))
+
 ## [0.23.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.23.1...hungry-ghost-hive-v0.23.2) (2026-02-09)
 
 
