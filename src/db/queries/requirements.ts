@@ -13,6 +13,7 @@ export interface CreateRequirementInput {
   description: string;
   submittedBy?: string;
   godmode?: boolean;
+  targetBranch?: string;
 }
 
 export interface UpdateRequirementInput {
@@ -20,6 +21,7 @@ export interface UpdateRequirementInput {
   description?: string;
   status?: RequirementStatus;
   godmode?: boolean;
+  targetBranch?: string;
 }
 
 export function createRequirement(db: Database, input: CreateRequirementInput): RequirementRow {
@@ -29,10 +31,18 @@ export function createRequirement(db: Database, input: CreateRequirementInput): 
   run(
     db,
     `
-    INSERT INTO requirements (id, title, description, submitted_by, godmode, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO requirements (id, title, description, submitted_by, godmode, target_branch, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
-    [id, input.title, input.description, input.submittedBy || 'human', input.godmode ? 1 : 0, now]
+    [
+      id,
+      input.title,
+      input.description,
+      input.submittedBy || 'human',
+      input.godmode ? 1 : 0,
+      input.targetBranch || 'main',
+      now,
+    ]
   );
 
   return getRequirementById(db, id)!;
@@ -91,6 +101,10 @@ export function updateRequirement(
   if (input.godmode !== undefined) {
     updates.push('godmode = ?');
     values.push(input.godmode ? 1 : 0);
+  }
+  if (input.targetBranch !== undefined) {
+    updates.push('target_branch = ?');
+    values.push(input.targetBranch);
   }
 
   if (updates.length === 0) {

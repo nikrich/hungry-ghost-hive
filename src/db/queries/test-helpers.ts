@@ -45,6 +45,7 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       submitted_by TEXT DEFAULT 'human',
       status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'planning', 'planned', 'in_progress', 'completed')),
       godmode BOOLEAN DEFAULT 0,
+      target_branch TEXT DEFAULT 'main',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
