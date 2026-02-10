@@ -84,6 +84,9 @@ hive dashboard
 
 # Check for escalations (agents asking for help)
 hive escalations list
+
+# Single queue for human approval requests
+hive approvals list
 ```
 
 ## How It Works
@@ -155,6 +158,11 @@ hive dashboard
 # View escalations (agents asking for help)
 hive escalations list
 hive escalations resolve <id> --message "Here's what to do..."
+
+# View/handle human approval requests
+hive approvals list
+hive approvals approve <id> -m "Proceed"
+hive approvals deny <id> -m "Do not run that"
 ```
 
 ### Workflow Management
@@ -283,18 +291,28 @@ models:
   tech_lead:
     provider: anthropic
     model: claude-opus-4-20250514
+    cli_tool: claude
+    safety_mode: unsafe # safe = human approvals, unsafe = full automation
   senior:
     provider: anthropic
     model: claude-sonnet-4-20250514
+    cli_tool: claude
+    safety_mode: unsafe
   intermediate:
     provider: anthropic
     model: claude-haiku-3-5-20241022
+    cli_tool: claude
+    safety_mode: unsafe
   junior:
     provider: openai
     model: gpt-4o-mini
+    cli_tool: codex
+    safety_mode: unsafe
   qa:
     provider: anthropic
     model: claude-sonnet-4-20250514
+    cli_tool: claude
+    safety_mode: unsafe
 
 # Complexity thresholds for delegation
 scaling:

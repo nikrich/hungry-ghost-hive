@@ -425,6 +425,22 @@ describe('durable raft metadata edge cases', () => {
 
     expect(store.hasEvent('event-known')).toBe(true);
   });
+
+  it('treats ENOENT as no-op when appending after directory removal', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hive-raft-edge-'));
+    tempDirs.push(dir);
+
+    const store = new RaftMetadataStore({ clusterDir: dir, nodeId: 'node-missing-dir' });
+
+    rmSync(dir, { recursive: true, force: true });
+
+    expect(() =>
+      store.appendEntry({
+        type: 'runtime',
+        metadata: { event: 'append-after-delete' },
+      })
+    ).not.toThrow();
+  });
 });
 
 describe('distributed runtime endpoint and election edge cases', () => {

@@ -36,6 +36,8 @@ import {
   updateStoryAssignment,
 } from '../../db/queries/stories.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
+import { getStateDetector, type StateDetectionResult } from '../../state-detectors/index.js';
+import { AgentState } from '../../state-detectors/types.js';
 import {
   autoApprovePermission,
   captureTmuxPane,
@@ -51,11 +53,6 @@ import {
   type TmuxSession,
 } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
-import {
-  ClaudeCodeState,
-  detectClaudeCodeState,
-  getStateDescription,
-} from '../../utils/claude-code-state.js';
 import {
   buildAutoRecoveryReminder,
   getAvailableCommands,
@@ -92,7 +89,7 @@ const PROACTIVE_HANDOFF_RETRY_DELAY_MS = 60000;
 
 // Agent state tracking for nudge logic
 interface AgentStateTracking {
-  lastState: ClaudeCodeState;
+  lastState: AgentState;
   lastStateChangeTime: number;
   lastNudgeTime: number;
 }
@@ -105,6 +102,11 @@ interface PlanningHandoffTracking {
 // In-memory state tracking per agent session
 const agentStates = new Map<string, AgentStateTracking>();
 const planningHandoffState = new Map<string, PlanningHandoffTracking>();
+const stateDetectors: Record<CLITool, ReturnType<typeof getStateDetector>> = {
+  claude: getStateDetector('claude'),
+  codex: getStateDetector('codex'),
+  gemini: getStateDetector('gemini'),
+};
 
 export const managerCommand = new Command('manager').description(
   'Micromanager daemon that keeps agents productive'
@@ -812,6 +814,22 @@ function prepareSessionData(ctx: ManagerCheckContext): void {
   ctx.agentsBySessionName = new Map(allAgents.map(a => [`hive-${a.id}`, a]));
 }
 
+function detectAgentState(output: string, cliTool: CLITool): StateDetectionResult {
+  return stateDetectors[cliTool].detectState(output);
+}
+
+function describeAgentState(state: AgentState, cliTool: CLITool): string {
+  return stateDetectors[cliTool].getStateDescription(state);
+}
+
+function getAgentSafetyMode(
+  config: HiveConfig,
+  agent: ReturnType<typeof getAllAgents>[number] | undefined
+): 'safe' | 'unsafe' {
+  if (!agent) return 'unsafe';
+  return config.models[agent.type].safety_mode;
+}
+
 async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
   // Batch fetch pending messages and group by recipient
   const allPendingMessages = getAllPendingMessages(ctx.db.db);
@@ -829,6 +847,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 
     const agent = ctx.agentsBySessionName.get(session.name);
     const agentCliTool = (agent?.cli_tool || 'claude') as CLITool;
+    const safetyMode = getAgentSafetyMode(ctx.config, agent);
 
     // Forward unread messages
     const unread = messagesBySessionName.get(session.name) || [];
@@ -840,17 +859,17 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 
     const output = await captureTmuxPane(session.name, TMUX_CAPTURE_LINES);
 
-    await enforceBypassMode(session.name, output, agentCliTool);
+    await enforceBypassMode(session.name, output, agentCliTool, safetyMode);
 
-    const stateResult = detectClaudeCodeState(output);
+    const stateResult = detectAgentState(output, agentCliTool);
     const now = Date.now();
 
     updateAgentStateTracking(session.name, stateResult, now);
 
-    const handled = await handlePermissionPrompt(session.name, stateResult);
+    const handled = await handlePermissionPrompt(ctx, session.name, stateResult, safetyMode);
     if (handled) continue;
 
-    await handlePlanApproval(session.name, stateResult, now);
+    await handlePlanApproval(session.name, stateResult, now, agentCliTool, safetyMode);
 
     await handleEscalationAndNudge(ctx, session.name, agent, stateResult, agentCliTool, now);
   }
@@ -859,8 +878,13 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 async function enforceBypassMode(
   sessionName: string,
   output: string,
-  agentCliTool: CLITool
+  agentCliTool: CLITool,
+  safetyMode: 'safe' | 'unsafe'
 ): Promise<void> {
+  if (safetyMode === 'safe') {
+    return;
+  }
+
   const needsBypassEnforcement =
     output.toLowerCase().includes('plan mode on') ||
     output.toLowerCase().includes('safe mode on') ||
@@ -879,7 +903,7 @@ async function enforceBypassMode(
 
 function updateAgentStateTracking(
   sessionName: string,
-  stateResult: ReturnType<typeof detectClaudeCodeState>,
+  stateResult: StateDetectionResult,
   now: number
 ): void {
   const trackedState = agentStates.get(sessionName);
@@ -897,12 +921,24 @@ function updateAgentStateTracking(
 }
 
 async function handlePermissionPrompt(
+  ctx: ManagerCheckContext,
   sessionName: string,
-  stateResult: ReturnType<typeof detectClaudeCodeState>
+  stateResult: StateDetectionResult,
+  safetyMode: 'safe' | 'unsafe'
 ): Promise<boolean> {
-  if (stateResult.state === ClaudeCodeState.PERMISSION_REQUIRED) {
+  if (stateResult.state === AgentState.PERMISSION_REQUIRED && safetyMode === 'unsafe') {
     const approved = await autoApprovePermission(sessionName);
     if (approved) {
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Auto-approved permission prompt for ${sessionName}`,
+        metadata: {
+          session_name: sessionName,
+          detected_state: stateResult.state,
+        },
+      });
+      ctx.db.save();
       console.log(chalk.green(`  AUTO-APPROVED: ${sessionName} permission prompt`));
       return true;
     }
@@ -912,16 +948,18 @@ async function handlePermissionPrompt(
 
 async function handlePlanApproval(
   sessionName: string,
-  stateResult: ReturnType<typeof detectClaudeCodeState>,
-  now: number
+  stateResult: StateDetectionResult,
+  now: number,
+  agentCliTool: CLITool,
+  safetyMode: 'safe' | 'unsafe'
 ): Promise<void> {
-  if (stateResult.state === ClaudeCodeState.PLAN_APPROVAL) {
-    const restored = await forceBypassMode(sessionName);
+  if (stateResult.state === AgentState.PLAN_APPROVAL && safetyMode === 'unsafe') {
+    const restored = await forceBypassMode(sessionName, agentCliTool);
     if (restored) {
       console.log(chalk.green(`  BYPASS MODE RESTORED: ${sessionName} cycled out of plan mode`));
       const tracked = agentStates.get(sessionName);
       if (tracked) {
-        tracked.lastState = ClaudeCodeState.IDLE_AT_PROMPT;
+        tracked.lastState = AgentState.IDLE_AT_PROMPT;
         tracked.lastStateChangeTime = now;
       }
     }
@@ -932,14 +970,16 @@ async function handleEscalationAndNudge(
   ctx: ManagerCheckContext,
   sessionName: string,
   agent: ReturnType<typeof getAllAgents>[number] | undefined,
-  stateResult: ReturnType<typeof detectClaudeCodeState>,
+  stateResult: StateDetectionResult,
   agentCliTool: CLITool,
   now: number
 ): Promise<void> {
   const waitingInfo = {
     isWaiting: stateResult.isWaiting,
     needsHuman: stateResult.needsHuman,
-    reason: stateResult.needsHuman ? getStateDescription(stateResult.state) : undefined,
+    reason: stateResult.needsHuman
+      ? describeAgentState(stateResult.state, agentCliTool)
+      : undefined,
   };
 
   const hasRecentEscalation =
@@ -951,11 +991,23 @@ async function handleEscalationAndNudge(
     // Create escalation for human attention
     const storyId = agent?.current_story_id || null;
 
-    createEscalation(ctx.db.db, {
+    const escalation = createEscalation(ctx.db.db, {
       storyId,
       fromAgentId: sessionName,
       toAgentId: null,
-      reason: `Agent waiting for input: ${waitingInfo.reason || 'Unknown question'}`,
+      reason: `Approval required: ${waitingInfo.reason || 'Unknown question'}`,
+    });
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId,
+      eventType: 'ESCALATION_CREATED',
+      status: 'error',
+      message: `${sessionName} requires human approval: ${waitingInfo.reason || 'Unknown question'}`,
+      metadata: {
+        escalation_id: escalation.id,
+        session_name: sessionName,
+        detected_state: stateResult.state,
+      },
     });
     ctx.db.save();
     ctx.counters.escalationsCreated++;
@@ -976,6 +1028,15 @@ async function handleEscalationAndNudge(
       ctx.counters.escalationsResolved++;
     }
     if (activeEscalations.length > 0) {
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        eventType: 'ESCALATION_RESOLVED',
+        message: `${sessionName} recovered and manager auto-resolved ${activeEscalations.length} escalation(s)`,
+        metadata: {
+          session_name: sessionName,
+          resolved_count: activeEscalations.length,
+        },
+      });
       ctx.db.save();
       console.log(
         chalk.green(
@@ -983,7 +1044,7 @@ async function handleEscalationAndNudge(
         )
       );
     }
-  } else if (waitingInfo.isWaiting && stateResult.state !== ClaudeCodeState.THINKING) {
+  } else if (waitingInfo.isWaiting && stateResult.state !== AgentState.THINKING) {
     // Agent idle/waiting - check if we should nudge
     const currentTrackedState = agentStates.get(sessionName);
     if (currentTrackedState) {
@@ -995,12 +1056,12 @@ async function handleEscalationAndNudge(
         timeSinceLastNudge > ctx.config.manager.nudge_cooldown_ms
       ) {
         const recheckOutput = await captureTmuxPane(sessionName, TMUX_CAPTURE_LINES);
-        const recheckState = detectClaudeCodeState(recheckOutput);
+        const recheckState = detectAgentState(recheckOutput, agentCliTool);
 
         if (
           recheckState.isWaiting &&
           !recheckState.needsHuman &&
-          recheckState.state !== ClaudeCodeState.THINKING
+          recheckState.state !== AgentState.THINKING
         ) {
           const agentType = getAgentType(sessionName);
           await nudgeAgent(
@@ -1108,14 +1169,15 @@ async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
       s => s.name === agent.tmux_session || s.name.includes(agent.id)
     );
     if (!agentSession) continue;
+    const agentCliTool = (agent.cli_tool || 'claude') as CLITool;
 
     const output = await captureTmuxPane(agentSession.name, TMUX_CAPTURE_LINES_SHORT);
-    const stateResult = detectClaudeCodeState(output);
+    const stateResult = detectAgentState(output, agentCliTool);
 
     if (
       stateResult.isWaiting &&
       !stateResult.needsHuman &&
-      stateResult.state !== ClaudeCodeState.THINKING
+      stateResult.state !== AgentState.THINKING
     ) {
       await sendToTmuxSession(
         agentSession.name,
@@ -1282,13 +1344,15 @@ async function notifyUnassignedStories(ctx: ManagerCheckContext): Promise<void> 
 
   const seniorSessions = ctx.hiveSessions.filter(s => s.name.includes('-senior-'));
   for (const senior of seniorSessions) {
+    const seniorAgent = ctx.agentsBySessionName.get(senior.name);
+    const seniorCliTool = (seniorAgent?.cli_tool || 'claude') as CLITool;
     const output = await captureTmuxPane(senior.name, TMUX_CAPTURE_LINES_SHORT);
-    const stateResult = detectClaudeCodeState(output);
+    const stateResult = detectAgentState(output, seniorCliTool);
 
     if (
       stateResult.isWaiting &&
       !stateResult.needsHuman &&
-      stateResult.state !== ClaudeCodeState.THINKING
+      stateResult.state !== AgentState.THINKING
     ) {
       await sendToTmuxSession(
         senior.name,

@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 export type CliRuntimeType = 'claude' | 'codex' | 'gemini';
+export type RuntimeSafetyMode = 'safe' | 'unsafe';
 
 export interface CliRuntimeBuilder {
   /**
@@ -8,7 +9,7 @@ export interface CliRuntimeBuilder {
    * @param model - The model identifier to use
    * @returns Array of command and arguments suitable for spawn
    */
-  buildSpawnCommand(model: string): string[];
+  buildSpawnCommand(model: string, safetyMode: RuntimeSafetyMode): string[];
 
   /**
    * Build command array for resuming an existing agent session
@@ -16,13 +17,13 @@ export interface CliRuntimeBuilder {
    * @param sessionId - The session ID to resume
    * @returns Array of command and arguments suitable for spawn
    */
-  buildResumeCommand(model: string, sessionId: string): string[];
+  buildResumeCommand(model: string, sessionId: string, safetyMode: RuntimeSafetyMode): string[];
 
   /**
    * Get the auto-approval flag for this CLI runtime
    * @returns The flag string that enables auto-approval mode
    */
-  getAutoApprovalFlag(): string;
+  getAutoApprovalFlag(safetyMode: RuntimeSafetyMode): string;
 
   /**
    * Get the model flag for this CLI runtime
