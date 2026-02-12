@@ -244,10 +244,11 @@ export async function startJiraOAuthFlow(options: JiraOAuthOptions): Promise<Jir
       const authUrl = buildAuthorizationUrl(clientId, redirectUri, state);
 
       // Open browser for authorization
+      console.log(`\nOpening browser for Jira authorization...\n\n  ${authUrl}\n`);
       if (openBrowser) {
-        openBrowser(authUrl).catch(err => settle(err));
-      } else {
-        console.log(`\nOpen this URL in your browser to authorize Jira:\n\n  ${authUrl}\n`);
+        openBrowser(authUrl).catch(() => {
+          console.log('Could not open browser automatically. Please open the URL above manually.');
+        });
       }
     });
 
