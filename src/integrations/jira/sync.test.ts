@@ -45,6 +45,17 @@ describe('jiraStatusToHiveStatus', () => {
 describe('syncJiraStatusesToHive', () => {
   let db: Database;
 
+  const baseConfig: JiraConfig = {
+    project_key: 'TEST',
+    site_url: 'https://test.atlassian.net',
+    board_id: '1',
+    story_type: 'Story',
+    subtask_type: 'Subtask',
+    status_mapping: {},
+    watch_board: false,
+    board_poll_interval_ms: 60000,
+  };
+
   beforeEach(async () => {
     db = await createTestDatabase();
     // Create a manager agent for logging purposes
@@ -53,14 +64,7 @@ describe('syncJiraStatusesToHive', () => {
 
   it('skips sync when no status mapping configured', async () => {
     const tokenStore = new TokenStore(':memory:');
-    const config: JiraConfig = {
-      project_key: 'TEST',
-      site_url: 'https://test.atlassian.net',
-      board_id: '1',
-      story_type: 'Story',
-      subtask_type: 'Subtask',
-      status_mapping: {},
-    };
+    const config: JiraConfig = { ...baseConfig, status_mapping: {} };
 
     const updated = await syncJiraStatusesToHive(db, tokenStore, config);
     expect(updated).toBe(0);
@@ -74,14 +78,7 @@ describe('syncJiraStatusesToHive', () => {
     });
 
     const tokenStore = new TokenStore(':memory:');
-    const config: JiraConfig = {
-      project_key: 'TEST',
-      site_url: 'https://test.atlassian.net',
-      board_id: '1',
-      story_type: 'Story',
-      subtask_type: 'Subtask',
-      status_mapping: { 'To Do': 'planned' },
-    };
+    const config: JiraConfig = { ...baseConfig, status_mapping: { 'To Do': 'planned' } };
 
     const updated = await syncJiraStatusesToHive(db, tokenStore, config);
     expect(updated).toBe(0);
@@ -106,11 +103,7 @@ describe('syncJiraStatusesToHive', () => {
     tokenStore.setToken('jira_cloud_id', 'fake-cloud-id');
 
     const config: JiraConfig = {
-      project_key: 'TEST',
-      site_url: 'https://test.atlassian.net',
-      board_id: '1',
-      story_type: 'Story',
-      subtask_type: 'Subtask',
+      ...baseConfig,
       status_mapping: {
         'To Do': 'planned',
         'In Progress': 'in_progress',
@@ -173,14 +166,8 @@ describe('syncJiraStatusesToHive', () => {
     tokenStore.setToken('jira_cloud_id', 'fake-cloud-id');
 
     const config: JiraConfig = {
-      project_key: 'TEST',
-      site_url: 'https://test.atlassian.net',
-      board_id: '1',
-      story_type: 'Story',
-      subtask_type: 'Subtask',
-      status_mapping: {
-        'In Progress': 'in_progress',
-      },
+      ...baseConfig,
+      status_mapping: { 'In Progress': 'in_progress' },
     };
 
     const mockJiraIssue: JiraIssue = {
@@ -234,14 +221,8 @@ describe('syncJiraStatusesToHive', () => {
     tokenStore.setToken('jira_cloud_id', 'fake-cloud-id');
 
     const config: JiraConfig = {
-      project_key: 'TEST',
-      site_url: 'https://test.atlassian.net',
-      board_id: '1',
-      story_type: 'Story',
-      subtask_type: 'Subtask',
-      status_mapping: {
-        'To Do': 'planned',
-      },
+      ...baseConfig,
+      status_mapping: { 'To Do': 'planned' },
     };
 
     const { getIssue } = await import('./issues.js');
@@ -265,14 +246,7 @@ describe('syncJiraStatusesToHive', () => {
     ]);
 
     const tokenStore = new TokenStore(':memory:');
-    const config: JiraConfig = {
-      project_key: 'TEST',
-      site_url: 'https://test.atlassian.net',
-      board_id: '1',
-      story_type: 'Story',
-      subtask_type: 'Subtask',
-      status_mapping: { 'To Do': 'planned' },
-    };
+    const config: JiraConfig = { ...baseConfig, status_mapping: { 'To Do': 'planned' } };
 
     const updated = await syncJiraStatusesToHive(db, tokenStore, config);
     expect(updated).toBe(0);
