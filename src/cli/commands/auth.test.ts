@@ -21,7 +21,7 @@ vi.mock('../../auth/token-store.js', () => ({
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withHiveRoot: vi.fn(async (callback) => {
+  withHiveRoot: vi.fn(async callback => {
     const tempDir = mkdtempSync(join(tmpdir(), 'hive-auth-test-'));
     mkdirSync(join(tempDir, '.hive'), { recursive: true });
     try {
