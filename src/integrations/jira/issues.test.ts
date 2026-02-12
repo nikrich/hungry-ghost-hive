@@ -201,7 +201,11 @@ describe('getIssue', () => {
           self: 'https://...',
           fields: {
             summary: 'Test',
-            status: { id: '1', name: 'To Do', statusCategory: { id: 2, key: 'new', name: 'To Do' } },
+            status: {
+              id: '1',
+              name: 'To Do',
+              statusCategory: { id: 2, key: 'new', name: 'To Do' },
+            },
             issuetype: { id: '1', name: 'Story', subtask: false },
             labels: [],
             created: '2024-01-01T00:00:00.000Z',
@@ -296,7 +300,11 @@ describe('searchJql', () => {
           self: 'https://...',
           fields: {
             summary: 'Found issue',
-            status: { id: '1', name: 'To Do', statusCategory: { id: 2, key: 'new', name: 'To Do' } },
+            status: {
+              id: '1',
+              name: 'To Do',
+              statusCategory: { id: 2, key: 'new', name: 'To Do' },
+            },
             issuetype: { id: '1', name: 'Story', subtask: false },
             labels: ['hive-managed'],
             created: '2024-01-01T00:00:00.000Z',

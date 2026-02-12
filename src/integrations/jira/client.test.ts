@@ -60,9 +60,7 @@ describe('JiraClient', () => {
         clientSecret: 'csecret',
       });
 
-      expect(client.getBaseUrl()).toBe(
-        'https://api.atlassian.com/ex/jira/cloud-123/rest/api/3'
-      );
+      expect(client.getBaseUrl()).toBe('https://api.atlassian.com/ex/jira/cloud-123/rest/api/3');
     });
 
     it('should throw when cloud ID is missing', () => {

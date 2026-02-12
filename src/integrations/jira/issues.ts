@@ -97,7 +97,16 @@ export async function searchJql(
       jql,
       startAt: options?.startAt ?? 0,
       maxResults: options?.maxResults ?? 50,
-      fields: options?.fields ?? ['summary', 'status', 'issuetype', 'assignee', 'labels', 'priority', 'parent', 'project'],
+      fields: options?.fields ?? [
+        'summary',
+        'status',
+        'issuetype',
+        'assignee',
+        'labels',
+        'priority',
+        'parent',
+        'project',
+      ],
     }),
   });
 }

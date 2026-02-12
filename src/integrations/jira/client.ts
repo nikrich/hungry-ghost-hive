@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { TokenStore } from '../../auth/token-store.js';
 import { autoRefreshToken } from '../../auth/jira-oauth.js';
+import { TokenStore } from '../../auth/token-store.js';
 import { OperationalError } from '../../errors/index.js';
 import * as logger from '../../utils/logger.js';
 
@@ -124,7 +124,9 @@ export class JiraClient {
       const delayMs = retryAfter
         ? parseInt(retryAfter, 10) * 1000
         : this.baseDelayMs * Math.pow(2, attempt);
-      logger.warn(`Jira API rate limited (429). Retrying in ${delayMs}ms (attempt ${attempt + 1}/${this.maxRetries})`);
+      logger.warn(
+        `Jira API rate limited (429). Retrying in ${delayMs}ms (attempt ${attempt + 1}/${this.maxRetries})`
+      );
       await sleep(delayMs);
       return this.executeWithRetry<T>(path, options, attempt + 1, tokenRefreshed);
     }
