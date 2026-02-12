@@ -6,6 +6,7 @@ import { getEnvFilePath } from '../../auth/env-store.js';
 import { runGitHubDeviceFlow } from '../../auth/github-oauth.js';
 import { startJiraOAuthFlow, storeJiraTokens } from '../../auth/jira-oauth.js';
 import { TokenStore } from '../../auth/token-store.js';
+import { openBrowser } from '../../utils/browser.js';
 import { withHiveRoot } from '../../utils/with-hive-context.js';
 
 export const authCommand = new Command('auth').description('Manage OAuth authentication');
@@ -75,6 +76,7 @@ authCommand
       const result = await startJiraOAuthFlow({
         clientId,
         clientSecret,
+        openBrowser,
       });
 
       // Store tokens using TokenStore

@@ -6,6 +6,7 @@ import { join } from 'path';
 import { startJiraOAuthFlow, storeJiraTokens } from '../../auth/jira-oauth.js';
 import { TokenStore } from '../../auth/token-store.js';
 import type { IntegrationsConfig } from '../../config/schema.js';
+import { openBrowser } from '../../utils/browser.js';
 import { getHivePaths } from '../../utils/paths.js';
 import { runJiraSetup } from './jira-setup.js';
 
@@ -162,6 +163,7 @@ async function buildResult(
       const oauthResult = await startJiraOAuthFlow({
         clientId,
         clientSecret,
+        openBrowser,
       });
 
       // Store tokens in .env
