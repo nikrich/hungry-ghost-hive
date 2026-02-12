@@ -88,11 +88,31 @@ describe('JiraOperationQueue', () => {
 
     // Enqueue operations concurrently
     const enqueuePromises = [
-      Promise.resolve(queue.enqueue('op1', async () => { results.push(1); })),
-      Promise.resolve(queue.enqueue('op2', async () => { results.push(2); })),
-      Promise.resolve(queue.enqueue('op3', async () => { results.push(3); })),
-      Promise.resolve(queue.enqueue('op4', async () => { results.push(4); })),
-      Promise.resolve(queue.enqueue('op5', async () => { results.push(5); })),
+      Promise.resolve(
+        queue.enqueue('op1', async () => {
+          results.push(1);
+        })
+      ),
+      Promise.resolve(
+        queue.enqueue('op2', async () => {
+          results.push(2);
+        })
+      ),
+      Promise.resolve(
+        queue.enqueue('op3', async () => {
+          results.push(3);
+        })
+      ),
+      Promise.resolve(
+        queue.enqueue('op4', async () => {
+          results.push(4);
+        })
+      ),
+      Promise.resolve(
+        queue.enqueue('op5', async () => {
+          results.push(5);
+        })
+      ),
     ];
 
     await Promise.all(enqueuePromises);
@@ -107,10 +127,18 @@ describe('JiraOperationQueue', () => {
     const queue = new JiraOperationQueue();
     const results: string[] = [];
 
-    queue.enqueue('first', async () => { results.push('first'); });
-    queue.enqueue('second', async () => { results.push('second'); });
-    queue.enqueue('third', async () => { results.push('third'); });
-    queue.enqueue('fourth', async () => { results.push('fourth'); });
+    queue.enqueue('first', async () => {
+      results.push('first');
+    });
+    queue.enqueue('second', async () => {
+      results.push('second');
+    });
+    queue.enqueue('third', async () => {
+      results.push('third');
+    });
+    queue.enqueue('fourth', async () => {
+      results.push('fourth');
+    });
 
     await queue.waitForCompletion();
 
