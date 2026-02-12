@@ -96,6 +96,11 @@ describe('context-files module', () => {
       assigned_agent_id: 'agent-001',
       branch_name: 'feature/STORY-001-auth',
       pr_url: 'https://github.com/test/repo/pull/1',
+      jira_issue_key: null,
+      jira_issue_id: null,
+      jira_project_key: null,
+      jira_subtask_key: null,
+      jira_subtask_id: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };

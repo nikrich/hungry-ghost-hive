@@ -3,6 +3,50 @@
 import type { StoryRow } from '../db/client.js';
 
 /**
+ * Generate Jira-specific instructions for the Tech Lead prompt.
+ * Returns empty string if Jira is not enabled.
+ */
+export function generateTechLeadJiraInstructions(
+  projectKey: string,
+  siteUrl: string
+): string {
+  return `
+## Jira Integration (Enabled)
+Your project management provider is Jira. When you create stories, they are automatically synced to Jira.
+
+### Jira Project
+- Project Key: ${projectKey}
+- Site: ${siteUrl}
+
+### Story Creation Workflow
+When breaking down requirements into stories:
+1. Stories are created locally first via \`hive stories create\`
+2. A Jira Epic is automatically created for each requirement
+3. Each story is created as a Jira Story under the epic
+4. Story dependencies are mirrored as "is blocked by" issue links in Jira
+5. Stories are labeled with \`hive-managed\` and the team name
+
+### Using \`hive stories create\`
+\`\`\`bash
+hive stories create -t "Story title" -d "Description" -r <requirement-id> --team <team-id> -p <points> -c <complexity> --criteria "criterion 1" "criterion 2"
+\`\`\`
+
+The command will:
+- Create the story in the local database
+- Automatically create a corresponding Jira Story
+- Link it to the parent Epic (from the requirement)
+- Set story points, labels, and description in ADF format
+- Record the jira_issue_key on the local story for tracking
+
+### Important Notes
+- Jira sync failures do NOT block the pipeline — stories are created locally regardless
+- Each story will have a \`jira_issue_key\` (e.g., ${projectKey}-123) after sync
+- Acceptance criteria are rendered as a bulleted list in Jira's ADF format
+- All synced issues are tagged with the \`hive-managed\` label
+`;
+}
+
+/**
  * Generate prompt for Senior Developer agent
  */
 export function generateSeniorPrompt(

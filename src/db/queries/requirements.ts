@@ -22,6 +22,8 @@ export interface UpdateRequirementInput {
   status?: RequirementStatus;
   godmode?: boolean;
   targetBranch?: string;
+  jiraEpicKey?: string | null;
+  jiraEpicId?: string | null;
 }
 
 export function createRequirement(db: Database, input: CreateRequirementInput): RequirementRow {
@@ -105,6 +107,14 @@ export function updateRequirement(
   if (input.targetBranch !== undefined) {
     updates.push('target_branch = ?');
     values.push(input.targetBranch);
+  }
+  if (input.jiraEpicKey !== undefined) {
+    updates.push('jira_epic_key = ?');
+    values.push(input.jiraEpicKey);
+  }
+  if (input.jiraEpicId !== undefined) {
+    updates.push('jira_epic_id = ?');
+    values.push(input.jiraEpicId);
   }
 
   if (updates.length === 0) {

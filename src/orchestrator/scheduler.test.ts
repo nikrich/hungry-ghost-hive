@@ -721,6 +721,11 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
       assigned_agent_id: null,
       branch_name: null,
       pr_url: null,
+      jira_issue_key: null,
+      jira_issue_id: null,
+      jira_project_key: null,
+      jira_subtask_key: null,
+      jira_subtask_id: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
