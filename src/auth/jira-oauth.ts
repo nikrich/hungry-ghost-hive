@@ -201,7 +201,7 @@ function generateState(): string {
  * Returns the OAuth result with tokens and cloud metadata.
  */
 export async function startJiraOAuthFlow(options: JiraOAuthOptions): Promise<JiraOAuthResult> {
-  const { clientId, clientSecret, port = 0, openBrowser, timeoutMs = 300_000 } = options;
+  const { clientId, clientSecret, port = 9876, openBrowser, timeoutMs = 300_000 } = options;
   const state = generateState();
 
   return new Promise<JiraOAuthResult>((resolve, reject) => {
