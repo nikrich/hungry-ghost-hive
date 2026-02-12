@@ -108,20 +108,25 @@ const AutonomyConfigSchema = z.object({
 });
 
 // Integrations configuration
-const IntegrationsConfigSchema = z.object({
-  source_control: SourceControlConfigSchema.default({}),
-  project_management: ProjectManagementConfigSchema.default({}),
-  autonomy: AutonomyConfigSchema.default({}),
-}).superRefine((integrations, ctx) => {
-  // Validate that jira config is provided when provider is 'jira'
-  if (integrations.project_management.provider === 'jira' && !integrations.project_management.jira) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['project_management', 'jira'],
-      message: 'jira configuration is required when provider is "jira"',
-    });
-  }
-});
+const IntegrationsConfigSchema = z
+  .object({
+    source_control: SourceControlConfigSchema.default({}),
+    project_management: ProjectManagementConfigSchema.default({}),
+    autonomy: AutonomyConfigSchema.default({}),
+  })
+  .superRefine((integrations, ctx) => {
+    // Validate that jira config is provided when provider is 'jira'
+    if (
+      integrations.project_management.provider === 'jira' &&
+      !integrations.project_management.jira
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['project_management', 'jira'],
+        message: 'jira configuration is required when provider is "jira"',
+      });
+    }
+  });
 
 // GitHub integration
 const GitHubConfigSchema = z.object({
