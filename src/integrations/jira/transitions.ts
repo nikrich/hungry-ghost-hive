@@ -3,8 +3,8 @@
 import { join } from 'path';
 import type { Database } from 'sql.js';
 import { TokenStore } from '../../auth/token-store.js';
-import type { JiraConfig } from '../../config/schema.js';
 import { loadConfig } from '../../config/loader.js';
+import type { JiraConfig } from '../../config/schema.js';
 import { createLog } from '../../db/queries/logs.js';
 import { getStoryById } from '../../db/queries/stories.js';
 import * as logger from '../../utils/logger.js';
@@ -20,7 +20,9 @@ import type { JiraTransition } from './types.js';
  * We invert it so given a Hive status we know which Jira status names to target.
  * Multiple Jira statuses may map to the same Hive status (e.g., "To Do" and "Backlog" both → "draft").
  */
-export function reverseStatusMapping(statusMapping: Record<string, string>): Record<string, string[]> {
+export function reverseStatusMapping(
+  statusMapping: Record<string, string>
+): Record<string, string[]> {
   const reverse: Record<string, string[]> = {};
 
   for (const [jiraStatus, hiveStatus] of Object.entries(statusMapping)) {

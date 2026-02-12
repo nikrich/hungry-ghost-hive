@@ -36,6 +36,7 @@ import { FileSystemError, OperationalError } from '../errors/index.js';
 import { removeWorktree } from '../git/worktree.js';
 import { JiraClient } from '../integrations/jira/client.js';
 import { createSubtask, postComment } from '../integrations/jira/comments.js';
+import { syncStatusToJira } from '../integrations/jira/transitions.js';
 import {
   generateSessionName,
   getHiveSessions,
@@ -45,7 +46,6 @@ import {
   spawnTmuxSession,
   startManager,
 } from '../tmux/manager.js';
-import { syncStatusToJira } from '../integrations/jira/transitions.js';
 import * as logger from '../utils/logger.js';
 import {
   generateIntermediatePrompt,

@@ -35,6 +35,7 @@ import {
   updateStory,
   updateStoryAssignment,
 } from '../../db/queries/stories.js';
+import { syncStatusToJira } from '../../integrations/jira/transitions.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getStateDetector, type StateDetectionResult } from '../../state-detectors/index.js';
 import { AgentState } from '../../state-detectors/types.js';
@@ -52,7 +53,6 @@ import {
   stopManager as stopManagerSession,
   type TmuxSession,
 } from '../../tmux/manager.js';
-import { syncStatusToJira } from '../../integrations/jira/transitions.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
 import {
   buildAutoRecoveryReminder,

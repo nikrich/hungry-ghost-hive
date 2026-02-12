@@ -17,9 +17,9 @@ import {
   updatePullRequest,
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
-import { syncStatusToJira } from '../../integrations/jira/transitions.js';
 import { getTeamById } from '../../db/queries/teams.js';
 import { postJiraLifecycleComment } from '../../integrations/jira/comments.js';
+import { syncStatusToJira } from '../../integrations/jira/transitions.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';

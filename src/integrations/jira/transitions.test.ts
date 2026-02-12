@@ -330,9 +330,7 @@ describe('transitionJiraIssue', () => {
     mockServer = server;
     routeFetch(port);
 
-    await expect(
-      transitionJiraIssue(client, 'PROJ-1', 'merged', statusMapping)
-    ).rejects.toThrow();
+    await expect(transitionJiraIssue(client, 'PROJ-1', 'merged', statusMapping)).rejects.toThrow();
   });
 
   it('should return false for empty status mapping', async () => {

@@ -178,10 +178,7 @@ export function autoDetectStatusMapping(jiraStatuses: JiraStatus[]): Record<stri
       statusName.includes('awaiting review')
     ) {
       mapping[status.name] = 'pr_submitted';
-    } else if (
-      statusName.includes('testing') ||
-      statusName.includes('test')
-    ) {
+    } else if (statusName.includes('testing') || statusName.includes('test')) {
       mapping[status.name] = 'qa';
     } else if (categoryKey === 'new' || categoryKey === 'undefined') {
       // Map based on status category
