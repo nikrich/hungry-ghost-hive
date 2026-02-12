@@ -71,6 +71,24 @@ const ScalingConfigSchema = z.object({
     .default({}),
 });
 
+// Source control integration
+const SourceControlConfigSchema = z.object({
+  // Source control provider
+  provider: z.enum(['github', 'gitea', 'gitlab']).default('github'),
+});
+
+// Project management integration
+const ProjectManagementConfigSchema = z.object({
+  // Project management provider
+  provider: z.enum(['jira', 'linear', 'github']).optional(),
+});
+
+// Integrations configuration
+const IntegrationsConfigSchema = z.object({
+  source_control: SourceControlConfigSchema.default({}),
+  project_management: ProjectManagementConfigSchema.optional(),
+});
+
 // GitHub integration
 const GitHubConfigSchema = z.object({
   // Base branch for PRs
@@ -204,6 +222,7 @@ export const HiveConfigSchema = z.object({
   version: z.string().default('1.0'),
   models: ModelsConfigSchema.default({}),
   scaling: ScalingConfigSchema.default({}),
+  integrations: IntegrationsConfigSchema.default({}),
   github: GitHubConfigSchema.default({}),
   qa: QAConfigSchema.default({}),
   agents: AgentsConfigSchema.default({}),
@@ -216,6 +235,9 @@ export const HiveConfigSchema = z.object({
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 export type ModelsConfig = z.infer<typeof ModelsConfigSchema>;
 export type ScalingConfig = z.infer<typeof ScalingConfigSchema>;
+export type SourceControlConfig = z.infer<typeof SourceControlConfigSchema>;
+export type ProjectManagementConfig = z.infer<typeof ProjectManagementConfigSchema>;
+export type IntegrationsConfig = z.infer<typeof IntegrationsConfigSchema>;
 export type GitHubConfig = z.infer<typeof GitHubConfigSchema>;
 export type QAConfig = z.infer<typeof QAConfigSchema>;
 export type AgentsConfig = z.infer<typeof AgentsConfigSchema>;
@@ -232,6 +254,15 @@ export const DEFAULT_CONFIG: HiveConfig = HiveConfigSchema.parse({});
 export function generateDefaultConfigYaml(): string {
   return `# Hive Orchestrator Configuration
 version: "1.0"
+
+# Integrations configuration
+integrations:
+  # Source control provider (github, gitea, gitlab)
+  source_control:
+    provider: github
+  # Project management provider (jira, linear, github)
+  # project_management:
+  #   provider: jira
 
 # Model assignments per agent tier
 models:

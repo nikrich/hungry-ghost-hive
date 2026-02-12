@@ -217,4 +217,130 @@ describe('HiveConfigSchema', () => {
     const result = HiveConfigSchema.safeParse(config);
     expect(result.success).toBe(true);
   });
+
+  it('should accept valid integrations config with source_control', () => {
+    const config = {
+      integrations: {
+        source_control: {
+          provider: 'github',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.integrations.source_control.provider).toBe('github');
+    }
+  });
+
+  it('should accept valid source_control providers (github, gitea, gitlab)', () => {
+    const providers = ['github', 'gitea', 'gitlab'];
+
+    for (const provider of providers) {
+      const config = {
+        integrations: {
+          source_control: {
+            provider: provider as any,
+          },
+        },
+      };
+
+      const result = HiveConfigSchema.safeParse(config);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('should reject invalid source_control provider', () => {
+    const config = {
+      integrations: {
+        source_control: {
+          provider: 'invalid_provider',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it('should apply default source_control provider (github)', () => {
+    const config = HiveConfigSchema.parse({
+      integrations: {
+        source_control: {},
+      },
+    });
+    expect(config.integrations.source_control.provider).toBe('github');
+  });
+
+  it('should accept valid project_management providers (jira, linear, github)', () => {
+    const providers = ['jira', 'linear', 'github'];
+
+    for (const provider of providers) {
+      const config = {
+        integrations: {
+          project_management: {
+            provider: provider as any,
+          },
+        },
+      };
+
+      const result = HiveConfigSchema.safeParse(config);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('should reject invalid project_management provider', () => {
+    const config = {
+      integrations: {
+        project_management: {
+          provider: 'invalid_pm_provider',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it('should allow project_management to be optional', () => {
+    const config = {
+      integrations: {
+        source_control: {
+          provider: 'github',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.integrations.project_management).toBeUndefined();
+    }
+  });
+
+  it('should apply defaults for integrations when not specified', () => {
+    const config = HiveConfigSchema.parse({});
+    expect(config.integrations.source_control.provider).toBe('github');
+  });
+
+  it('should accept config with both source_control and project_management', () => {
+    const config = {
+      integrations: {
+        source_control: {
+          provider: 'github',
+        },
+        project_management: {
+          provider: 'jira',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.integrations.source_control.provider).toBe('github');
+      expect(result.data.integrations.project_management?.provider).toBe('jira');
+    }
+  });
 });
