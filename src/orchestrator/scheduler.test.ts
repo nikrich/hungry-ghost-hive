@@ -1470,6 +1470,60 @@ describe('Scheduler Story Assignment Prevention', () => {
   });
 });
 
+describe('Scheduler Agent Reassignment for Working Agents with NULL currentStoryId', () => {
+  it('should consider working agents with null current_story_id as available for assignment', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a working agent with no current story (effectively idle)
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+      ['senior-orphan-1', 'senior', team.id, 'working']
+    );
+
+    // Query agents using the same filter logic from assignStories
+    const result = db.exec(
+      `SELECT id, type, status, current_story_id FROM agents
+       WHERE team_id = '${team.id}' AND type != 'qa'
+       AND (status = 'idle' OR (status = 'working' AND current_story_id IS NULL))`
+    );
+
+    expect(result[0].values).toHaveLength(1);
+    expect(result[0].values[0][0]).toBe('senior-orphan-1');
+  });
+
+  it('should not consider working agents with a current story as available', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const story = createStory(db, { teamId: team.id, title: 'Active', description: 'Test' });
+
+    // Create a working agent with a current story
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      ['senior-busy-1', 'senior', team.id, 'working', story.id]
+    );
+
+    // Query agents using the same filter logic from assignStories
+    const result = db.exec(
+      `SELECT id, type, status, current_story_id FROM agents
+       WHERE team_id = '${team.id}' AND type != 'qa'
+       AND (status = 'idle' OR (status = 'working' AND current_story_id IS NULL))`
+    );
+
+    // Should not include the busy agent
+    expect(result).toHaveLength(0);
+  });
+});
+
 describe('Scheduler checkScaling', () => {
   it('should only spawn agents for assignable stories (unblocked dependencies)', async () => {
     const team = createTeam(db, {

@@ -382,8 +382,11 @@ export class Scheduler {
       if (!team) continue;
 
       // Get available agents for this team
+      // Include agents that are working but have no current story (effectively idle)
       const agents = getAgentsByTeam(this.db, teamId).filter(
-        a => a.status === 'idle' && a.type !== 'qa'
+        a =>
+          a.type !== 'qa' &&
+          (a.status === 'idle' || (a.status === 'working' && a.current_story_id === null))
       );
 
       // Find or create a Senior for delegation
@@ -997,7 +1000,7 @@ export class Scheduler {
 
     updateAgent(this.db, agent.id, {
       tmuxSession: sessionName,
-      status: 'working',
+      status: 'idle',
       worktreePath,
     });
 

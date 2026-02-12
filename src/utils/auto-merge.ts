@@ -3,9 +3,10 @@
 import { join } from 'path';
 import type { DatabaseClient } from '../db/client.js';
 import { queryOne, withTransaction } from '../db/client.js';
+import { getAgentById, updateAgent } from '../db/queries/agents.js';
 import { createLog } from '../db/queries/logs.js';
 import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-requests.js';
-import { updateStory } from '../db/queries/stories.js';
+import { getStoryById, updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
 import { ghRepoSlug } from './pr-sync.js';
 
@@ -129,6 +130,15 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
             updatePullRequest(db.db, pr.id, { status: newStatus });
             // Also update story status to stay in sync with GitHub
             if (pr.story_id && prState.state === 'MERGED') {
+              // Clear the assigned agent's currentStoryId so it can be reassigned or spun down
+              const story = getStoryById(db.db, pr.story_id);
+              if (story?.assigned_agent_id) {
+                const agent = getAgentById(db.db, story.assigned_agent_id);
+                if (agent && agent.current_story_id === pr.story_id) {
+                  updateAgent(db.db, agent.id, { currentStoryId: null, status: 'idle' });
+                }
+              }
+
               updateStory(db.db, pr.story_id, { status: 'merged', assignedAgentId: null });
               createLog(db.db, {
                 agentId: 'manager',
@@ -179,6 +189,16 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
 
           if (storyId) {
             updateStory(db.db, storyId, { status: 'merged' });
+
+            // Clear the assigned agent's currentStoryId so it can be reassigned or spun down
+            const story = getStoryById(db.db, storyId);
+            if (story?.assigned_agent_id) {
+              const agent = getAgentById(db.db, story.assigned_agent_id);
+              if (agent && agent.current_story_id === storyId) {
+                updateAgent(db.db, agent.id, { currentStoryId: null, status: 'idle' });
+              }
+            }
+
             createLog(db.db, {
               agentId: 'manager',
               storyId: storyId,
