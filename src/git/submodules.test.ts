@@ -40,7 +40,7 @@ describe('submodules module', () => {
 
       expect(mockedExeca).toHaveBeenCalledWith(
         'git',
-        ['submodule', 'add', '-b', 'main', url, path],
+        ['submodule', 'add', '-f', '-b', 'main', url, path],
         { cwd: rootDir }
       );
     });

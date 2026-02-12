@@ -27,7 +27,7 @@ export async function addSubmodule(
     throw new FileSystemError(`Path already exists: ${fullPath}`);
   }
 
-  await execa('git', ['submodule', 'add', '-b', branch, url, path], {
+  await execa('git', ['submodule', 'add', '-f', '-b', branch, url, path], {
     cwd: rootDir,
   });
 }
