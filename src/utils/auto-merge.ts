@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { join } from 'path';
+import { loadConfig } from '../config/loader.js';
 import type { DatabaseClient } from '../db/client.js';
 import { queryOne, withTransaction } from '../db/client.js';
 import { getAgentById, updateAgent } from '../db/queries/agents.js';
@@ -8,6 +9,7 @@ import { createLog } from '../db/queries/logs.js';
 import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
+import { getHivePaths } from './paths.js';
 import { ghRepoSlug } from './pr-sync.js';
 
 /** Timeout in ms for checking PR state via GitHub API */
@@ -29,6 +31,15 @@ interface GitHubPRState {
  * @returns Number of PRs successfully merged
  */
 export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Promise<number> {
+  // Load config to check autonomy level
+  const paths = getHivePaths(root);
+  const config = loadConfig(paths.hiveDir);
+
+  // Skip auto-merge in partial autonomy mode
+  if (config.integrations.autonomy.level === 'partial') {
+    return 0;
+  }
+
   const approvedPRs = getApprovedPullRequests(db.db);
   if (approvedPRs.length === 0) return 0;
 
