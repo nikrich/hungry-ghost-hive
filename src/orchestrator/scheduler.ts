@@ -2,6 +2,7 @@
 
 import { join } from 'path';
 import type { Database } from 'sql.js';
+import { loadEnvIntoProcess } from '../auth/env-store.js';
 import { TokenStore } from '../auth/token-store.js';
 import {
   getCliRuntimeBuilder,
@@ -577,6 +578,9 @@ export class Scheduler {
       // Load token store
       const tokenStore = new TokenStore(join(this.config.rootDir, '.hive', '.env'));
       await tokenStore.loadFromEnv();
+
+      // Ensure Jira credentials from .hive/.env are in process.env
+      loadEnvIntoProcess(this.config.rootDir);
 
       // Create Jira client
       const jiraClient = new JiraClient({

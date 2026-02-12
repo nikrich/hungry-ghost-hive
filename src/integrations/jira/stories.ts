@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import type { Database } from 'sql.js';
+import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import type { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
 import type { StoryRow } from '../../db/client.js';
@@ -130,6 +131,9 @@ export async function syncRequirementToJira(
   storyIds: string[],
   teamName?: string
 ): Promise<JiraSyncResult> {
+  // Ensure Jira client credentials from .hive/.env are in process.env
+  loadEnvIntoProcess();
+
   const result: JiraSyncResult = {
     epicKey: null,
     epicId: null,
@@ -301,6 +305,8 @@ export async function syncStoryToJira(
   story: StoryRow,
   teamName?: string
 ): Promise<{ jiraKey: string; jiraId: string } | null> {
+  loadEnvIntoProcess();
+
   const client = new JiraClient({
     tokenStore,
     clientId: process.env.JIRA_CLIENT_ID || '',

@@ -2,6 +2,7 @@
 
 import { join } from 'path';
 import type { Database } from 'sql.js';
+import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { queryOne } from '../../db/client.js';
@@ -372,6 +373,8 @@ export async function postJiraLifecycleComment(
     const tokenStore = new TokenStore(join(hiveDir, '.env'));
     await tokenStore.loadFromEnv();
 
+    loadEnvIntoProcess();
+
     // Create Jira client
     const jiraClient = new JiraClient({
       tokenStore,
@@ -420,6 +423,7 @@ export async function postProgressToSubtask(
 
     const tokenStore = new TokenStore(join(hiveDir, '.env'));
     await tokenStore.loadFromEnv();
+    loadEnvIntoProcess();
 
     const jiraClient = new JiraClient({
       tokenStore,
