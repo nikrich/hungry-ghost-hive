@@ -4,10 +4,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@inquirer/prompts', () => ({
   select: vi.fn(),
+  input: vi.fn(),
 }));
 
-import { select } from '@inquirer/prompts';
+vi.mock('../../auth/jira-oauth.js', () => ({
+  startJiraOAuthFlow: vi.fn(),
+  storeJiraTokens: vi.fn(),
+}));
+
+vi.mock('../../auth/token-store.js', () => ({
+  TokenStore: vi.fn(),
+}));
+
+vi.mock('./jira-setup.js', () => ({
+  runJiraSetup: vi.fn(),
+}));
+
+vi.mock('../../utils/paths.js', () => ({
+  getHivePaths: vi.fn().mockReturnValue({ hiveDir: '/tmp/test-hive' }),
+}));
+
+import { input, select } from '@inquirer/prompts';
+import { startJiraOAuthFlow } from '../../auth/jira-oauth.js';
 import { runInitWizard } from './init-wizard.js';
+import { runJiraSetup } from './jira-setup.js';
 
 describe('Init Wizard', () => {
   beforeEach(() => {
@@ -28,6 +48,24 @@ describe('Init Wizard', () => {
     });
 
     it('should use provided CLI flags', async () => {
+      const mockInput = vi.mocked(input);
+      mockInput.mockResolvedValueOnce('test-client-id');
+      mockInput.mockResolvedValueOnce('test-client-secret');
+      vi.mocked(startJiraOAuthFlow).mockResolvedValueOnce({
+        accessToken: 'test-token',
+        refreshToken: 'test-refresh',
+        cloudId: 'test-cloud',
+        siteUrl: 'https://test.atlassian.net',
+        expiresAt: Date.now() + 3600000,
+      });
+      vi.mocked(runJiraSetup).mockResolvedValueOnce({
+        jiraConfig: {
+          projectKey: 'TEST',
+          cloudId: 'test-cloud',
+          siteUrl: 'https://test.atlassian.net',
+        },
+      });
+
       const result = await runInitWizard({
         nonInteractive: true,
         sourceControl: 'github',
@@ -35,13 +73,9 @@ describe('Init Wizard', () => {
         autonomy: 'partial',
       });
 
-      expect(result).toEqual({
-        integrations: {
-          source_control: { provider: 'github' },
-          project_management: { provider: 'jira' },
-          autonomy: { level: 'partial' },
-        },
-      });
+      expect(result.integrations.source_control).toEqual({ provider: 'github' });
+      expect(result.integrations.project_management.provider).toBe('jira');
+      expect(result.integrations.autonomy).toEqual({ level: 'partial' });
     });
 
     it('should throw on invalid source control provider', async () => {
@@ -88,15 +122,29 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('jira');
       mockSelect.mockResolvedValueOnce('partial');
 
-      const result = await runInitWizard();
-
-      expect(result).toEqual({
-        integrations: {
-          source_control: { provider: 'github' },
-          project_management: { provider: 'jira' },
-          autonomy: { level: 'partial' },
+      const mockInput = vi.mocked(input);
+      mockInput.mockResolvedValueOnce('test-client-id');
+      mockInput.mockResolvedValueOnce('test-client-secret');
+      vi.mocked(startJiraOAuthFlow).mockResolvedValueOnce({
+        accessToken: 'test-token',
+        refreshToken: 'test-refresh',
+        cloudId: 'test-cloud',
+        siteUrl: 'https://test.atlassian.net',
+        expiresAt: Date.now() + 3600000,
+      });
+      vi.mocked(runJiraSetup).mockResolvedValueOnce({
+        jiraConfig: {
+          projectKey: 'TEST',
+          cloudId: 'test-cloud',
+          siteUrl: 'https://test.atlassian.net',
         },
       });
+
+      const result = await runInitWizard();
+
+      expect(result.integrations.source_control).toEqual({ provider: 'github' });
+      expect(result.integrations.project_management.provider).toBe('jira');
+      expect(result.integrations.autonomy).toEqual({ level: 'partial' });
     });
 
     it('should configure source control prompt with correct choices', async () => {
