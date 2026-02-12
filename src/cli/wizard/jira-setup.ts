@@ -475,7 +475,9 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
       message: 'Jira board URL',
       validate: (value: string) => {
         const parsed = parseBoardIdFromUrl(value);
-        return parsed !== null ? true : 'Could not extract board ID from URL. Please provide a valid Jira board URL.';
+        return parsed !== null
+          ? true
+          : 'Could not extract board ID from URL. Please provide a valid Jira board URL.';
       },
     });
     boardId = parseBoardIdFromUrl(boardUrl)!;
@@ -485,7 +487,9 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
     if (board) {
       console.log(chalk.green(`Validated board: ${board.name} (${board.type})`));
     } else {
-      console.log(chalk.yellow(`Could not validate board ${boardId} via API, using ID as provided.`));
+      console.log(
+        chalk.yellow(`Could not validate board ${boardId} via API, using ID as provided.`)
+      );
     }
   } else {
     // existing board selection

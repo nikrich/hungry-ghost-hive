@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import http from 'http';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   autoDetectStatusMapping,
   createJiraBoard,
@@ -133,9 +133,7 @@ describe('parseBoardIdFromUrl', () => {
 
   it('should extract board ID from RapidBoard URL', () => {
     expect(
-      parseBoardIdFromUrl(
-        'https://mycompany.atlassian.net/secure/RapidBoard.jspa?rapidView=99'
-      )
+      parseBoardIdFromUrl('https://mycompany.atlassian.net/secure/RapidBoard.jspa?rapidView=99')
     ).toBe('99');
   });
 
@@ -159,9 +157,7 @@ describe('parseBoardIdFromUrl', () => {
 
   it('should return null for RapidBoard URL with non-numeric rapidView', () => {
     expect(
-      parseBoardIdFromUrl(
-        'https://mycompany.atlassian.net/secure/RapidBoard.jspa?rapidView=abc'
-      )
+      parseBoardIdFromUrl('https://mycompany.atlassian.net/secure/RapidBoard.jspa?rapidView=abc')
     ).toBeNull();
   });
 });
@@ -172,7 +168,7 @@ describe('validateBoardId', () => {
   const originalFetch = globalThis.fetch;
 
   beforeAll(async () => {
-    await new Promise<void>((resolve) => {
+    await new Promise<void>(resolve => {
       mockServer = http.createServer((req, res) => {
         if (req.url?.includes('/board/42')) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -193,7 +189,10 @@ describe('validateBoardId', () => {
 
     globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) => {
       const urlStr = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
-      const rewritten = urlStr.replace(/https:\/\/api\.atlassian\.com\/ex\/jira\/[^/]+\/rest\/agile\/1\.0/, `http://127.0.0.1:${port}/rest/agile/1.0`);
+      const rewritten = urlStr.replace(
+        /https:\/\/api\.atlassian\.com\/ex\/jira\/[^/]+\/rest\/agile\/1\.0/,
+        `http://127.0.0.1:${port}/rest/agile/1.0`
+      );
       return originalFetch(rewritten, init);
     }) as typeof fetch;
   });
@@ -222,10 +221,12 @@ describe('createJiraBoard', () => {
   const originalFetch = globalThis.fetch;
 
   beforeAll(async () => {
-    await new Promise<void>((resolve) => {
+    await new Promise<void>(resolve => {
       mockServer = http.createServer((req, res) => {
         let body = '';
-        req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+        });
         req.on('end', () => {
           if (req.method === 'POST' && req.url?.includes('/rest/api/3/filter')) {
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -256,8 +257,14 @@ describe('createJiraBoard', () => {
     globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) => {
       const urlStr = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
       const rewritten = urlStr
-        .replace(/https:\/\/api\.atlassian\.com\/ex\/jira\/[^/]+\/rest\/agile\/1\.0/, `http://127.0.0.1:${port}/rest/agile/1.0`)
-        .replace(/https:\/\/api\.atlassian\.com\/ex\/jira\/[^/]+\/rest\/api\/3/, `http://127.0.0.1:${port}/rest/api/3`);
+        .replace(
+          /https:\/\/api\.atlassian\.com\/ex\/jira\/[^/]+\/rest\/agile\/1\.0/,
+          `http://127.0.0.1:${port}/rest/agile/1.0`
+        )
+        .replace(
+          /https:\/\/api\.atlassian\.com\/ex\/jira\/[^/]+\/rest\/api\/3/,
+          `http://127.0.0.1:${port}/rest/api/3`
+        );
       return originalFetch(rewritten, init);
     }) as typeof fetch;
   });
