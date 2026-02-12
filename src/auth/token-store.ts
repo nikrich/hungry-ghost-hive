@@ -4,7 +4,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import lock from 'proper-lockfile';
 
-export type ProviderType = 'anthropic' | 'openai' | 'github';
+export type ProviderType =
+  | 'anthropic'
+  | 'openai'
+  | 'github'
+  | 'jira_access'
+  | 'jira_refresh'
+  | 'jira_cloud_id'
+  | 'jira_site_url';
 
 interface TokenData {
   [key: string]: string;
@@ -77,7 +84,15 @@ export class TokenStore {
    * Load tokens from environment variables (process.env)
    */
   loadFromEnvVars(): void {
-    const providers: ProviderType[] = ['anthropic', 'openai', 'github'];
+    const providers: ProviderType[] = [
+      'anthropic',
+      'openai',
+      'github',
+      'jira_access',
+      'jira_refresh',
+      'jira_cloud_id',
+      'jira_site_url',
+    ];
 
     for (const provider of providers) {
       const key = this.getEnvKey(provider);
@@ -238,6 +253,10 @@ export class TokenStore {
       anthropic: 'ANTHROPIC_API_KEY',
       openai: 'OPENAI_API_KEY',
       github: 'GITHUB_TOKEN',
+      jira_access: 'JIRA_ACCESS_TOKEN',
+      jira_refresh: 'JIRA_REFRESH_TOKEN',
+      jira_cloud_id: 'JIRA_CLOUD_ID',
+      jira_site_url: 'JIRA_SITE_URL',
     };
 
     return keyMap[provider];
@@ -247,7 +266,15 @@ export class TokenStore {
    * Check if a key is a valid token key we manage
    */
   private isValidTokenKey(key: string): boolean {
-    const validKeys = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GITHUB_TOKEN'];
+    const validKeys = [
+      'ANTHROPIC_API_KEY',
+      'OPENAI_API_KEY',
+      'GITHUB_TOKEN',
+      'JIRA_ACCESS_TOKEN',
+      'JIRA_REFRESH_TOKEN',
+      'JIRA_CLOUD_ID',
+      'JIRA_SITE_URL',
+    ];
     return validKeys.includes(key);
   }
 }
