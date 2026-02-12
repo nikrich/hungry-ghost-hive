@@ -57,7 +57,8 @@ describe('approach_posted comment', () => {
 
     const result = await postComment(client, 'PROJ-123', 'approach_posted', {
       agentName: 'hive-senior-team',
-      approachText: 'Will modify src/auth/login.ts to add OAuth flow.\n\nRisks: token refresh edge case.',
+      approachText:
+        'Will modify src/auth/login.ts to add OAuth flow.\n\nRisks: token refresh edge case.',
     });
 
     expect(result).toBe(true);
