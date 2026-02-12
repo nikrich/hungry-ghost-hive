@@ -1,14 +1,20 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { select } from '@inquirer/prompts';
+import { input, select } from '@inquirer/prompts';
 import chalk from 'chalk';
+import { join } from 'path';
+import { startJiraOAuthFlow, storeJiraTokens } from '../../auth/jira-oauth.js';
+import { TokenStore } from '../../auth/token-store.js';
 import type { IntegrationsConfig } from '../../config/schema.js';
+import { getHivePaths } from '../../utils/paths.js';
+import { runJiraSetup } from './jira-setup.js';
 
 export interface InitWizardOptions {
   nonInteractive?: boolean;
   sourceControl?: string;
   projectManagement?: string;
   autonomy?: string;
+  jiraProject?: string;
 }
 
 export interface InitWizardResult {
@@ -66,16 +72,17 @@ export async function runInitWizard(options: InitWizardOptions = {}): Promise<In
   return buildResult(
     sourceControl as 'github' | 'bitbucket' | 'gitlab',
     projectManagement as 'none' | 'jira',
-    autonomy as 'full' | 'partial'
+    autonomy as 'full' | 'partial',
+    options
   );
 }
 
-function runNonInteractive(options: InitWizardOptions): InitWizardResult {
+async function runNonInteractive(options: InitWizardOptions): Promise<InitWizardResult> {
   const sourceControl = validateSourceControl(options.sourceControl ?? 'github');
   const projectManagement = validateProjectManagement(options.projectManagement ?? 'none');
   const autonomy = validateAutonomy(options.autonomy ?? 'full');
 
-  return buildResult(sourceControl, projectManagement, autonomy);
+  return buildResult(sourceControl, projectManagement, autonomy, options);
 }
 
 function validateSourceControl(value: string): 'github' | 'bitbucket' | 'gitlab' {
@@ -106,16 +113,84 @@ function validateAutonomy(value: string): 'full' | 'partial' {
   return value as 'full' | 'partial';
 }
 
-function buildResult(
+async function buildResult(
   sourceControl: 'github' | 'bitbucket' | 'gitlab',
   projectManagement: 'none' | 'jira',
-  autonomy: 'full' | 'partial'
-): InitWizardResult {
-  return {
-    integrations: {
-      source_control: { provider: sourceControl },
-      project_management: { provider: projectManagement },
-      autonomy: { level: autonomy },
-    },
+  autonomy: 'full' | 'partial',
+  options: InitWizardOptions = {}
+): Promise<InitWizardResult> {
+  const integrations: IntegrationsConfig = {
+    source_control: { provider: sourceControl },
+    project_management: { provider: projectManagement },
+    autonomy: { level: autonomy },
   };
+
+  // If Jira is selected, run OAuth and setup wizard
+  if (projectManagement === 'jira') {
+    console.log();
+    console.log(chalk.bold('Jira OAuth Setup'));
+    console.log();
+    console.log(
+      chalk.gray('To connect to Jira, you need to create an OAuth 2.0 (3LO) app in Atlassian:')
+    );
+    console.log(chalk.gray('  1. Go to https://developer.atlassian.com/console/myapps/'));
+    console.log(chalk.gray('  2. Create a new app with OAuth 2.0 (3LO)'));
+    console.log(chalk.gray('  3. Add callback URL: http://127.0.0.1:PORT/callback'));
+    console.log(
+      chalk.gray('  4. Enable scopes: read:jira-work, write:jira-work, offline_access')
+    );
+    console.log();
+
+    // Get OAuth credentials from environment or prompt user
+    const clientId =
+      process.env.JIRA_OAUTH_CLIENT_ID ||
+      (await input({
+        message: 'Jira OAuth Client ID',
+        validate: (value: string) => (value.length > 0 ? true : 'Client ID is required'),
+      }));
+
+    const clientSecret =
+      process.env.JIRA_OAUTH_CLIENT_SECRET ||
+      (await input({
+        message: 'Jira OAuth Client Secret',
+        validate: (value: string) => (value.length > 0 ? true : 'Client Secret is required'),
+      }));
+
+    console.log();
+    console.log(chalk.gray('Starting OAuth flow...'));
+
+    // Run OAuth flow
+    try {
+      const oauthResult = await startJiraOAuthFlow({
+        clientId,
+        clientSecret,
+      });
+
+      // Store tokens in .env
+      const paths = getHivePaths(process.cwd());
+      const envPath = join(paths.hiveDir, '.env');
+      const tokenStore = new TokenStore(envPath);
+      await storeJiraTokens(tokenStore, oauthResult);
+
+      console.log(chalk.green('OAuth successful!'));
+
+      // Run Jira setup wizard
+      const setupResult = await runJiraSetup({
+        cloudId: oauthResult.cloudId,
+        siteUrl: oauthResult.siteUrl,
+        accessToken: oauthResult.accessToken,
+        nonInteractive: options.nonInteractive,
+        jiraProject: options.jiraProject,
+      });
+
+      // Add Jira config to integrations
+      integrations.project_management.jira = setupResult.jiraConfig;
+    } catch (err) {
+      console.error(chalk.red('Jira setup failed:'), err);
+      console.log(chalk.yellow('Skipping Jira integration. You can set it up later.'));
+      integrations.project_management.provider = 'none';
+    }
+  }
+
+  return { integrations };
 }
