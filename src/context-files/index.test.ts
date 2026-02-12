@@ -151,6 +151,8 @@ describe('context-files module', () => {
       },
       integrations: {
         source_control: { provider: 'github' },
+        project_management: { provider: 'none' },
+        autonomy: { level: 'full' },
       },
       github: { base_branch: 'main', pr_template: '' },
       qa: {

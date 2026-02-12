@@ -74,19 +74,53 @@ const ScalingConfigSchema = z.object({
 // Source control integration
 const SourceControlConfigSchema = z.object({
   // Source control provider
-  provider: z.enum(['github', 'gitea', 'gitlab']).default('github'),
+  provider: z.enum(['github', 'bitbucket', 'gitlab']).default('github'),
+});
+
+// Jira configuration for project management
+const JiraConfigSchema = z.object({
+  // Jira project key (e.g., "HIVE")
+  project_key: z.string().min(1),
+  // Jira site URL (e.g., "https://mycompany.atlassian.net")
+  site_url: z.string().url(),
+  // Jira board ID for the team
+  board_id: z.string().min(1),
+  // Story type in Jira (e.g., "Story")
+  story_type: z.string().min(1).default('Story'),
+  // Subtask type in Jira (e.g., "Subtask")
+  subtask_type: z.string().min(1).default('Subtask'),
+  // Status mapping from Jira status to internal status
+  status_mapping: z.record(z.string()).default({}),
 });
 
 // Project management integration
 const ProjectManagementConfigSchema = z.object({
-  // Project management provider
-  provider: z.enum(['jira', 'linear', 'github']).optional(),
+  // Project management provider (none = no PM integration)
+  provider: z.enum(['none', 'jira']).default('none'),
+  // Jira-specific configuration (required when provider is 'jira')
+  jira: JiraConfigSchema.optional(),
+});
+
+// Autonomy configuration
+const AutonomyConfigSchema = z.object({
+  // Agent autonomy level
+  level: z.enum(['full', 'partial']).default('full'),
 });
 
 // Integrations configuration
 const IntegrationsConfigSchema = z.object({
   source_control: SourceControlConfigSchema.default({}),
-  project_management: ProjectManagementConfigSchema.optional(),
+  project_management: ProjectManagementConfigSchema.default({}),
+  autonomy: AutonomyConfigSchema.default({}),
+}).superRefine((integrations, ctx) => {
+  // Validate that jira config is provided when provider is 'jira'
+  if (integrations.project_management.provider === 'jira' && !integrations.project_management.jira) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['project_management', 'jira'],
+      message: 'jira configuration is required when provider is "jira"',
+    });
+  }
 });
 
 // GitHub integration
@@ -236,7 +270,9 @@ export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 export type ModelsConfig = z.infer<typeof ModelsConfigSchema>;
 export type ScalingConfig = z.infer<typeof ScalingConfigSchema>;
 export type SourceControlConfig = z.infer<typeof SourceControlConfigSchema>;
+export type JiraConfig = z.infer<typeof JiraConfigSchema>;
 export type ProjectManagementConfig = z.infer<typeof ProjectManagementConfigSchema>;
+export type AutonomyConfig = z.infer<typeof AutonomyConfigSchema>;
 export type IntegrationsConfig = z.infer<typeof IntegrationsConfigSchema>;
 export type GitHubConfig = z.infer<typeof GitHubConfigSchema>;
 export type QAConfig = z.infer<typeof QAConfigSchema>;
@@ -257,12 +293,27 @@ version: "1.0"
 
 # Integrations configuration
 integrations:
-  # Source control provider (github, gitea, gitlab)
+  # Source control provider (github, bitbucket, gitlab)
   source_control:
     provider: github
-  # Project management provider (jira, linear, github)
-  # project_management:
-  #   provider: jira
+  # Project management provider (none, jira)
+  project_management:
+    provider: none
+    # Jira configuration (required when provider is 'jira')
+    # jira:
+    #   project_key: HIVE
+    #   site_url: https://mycompany.atlassian.net
+    #   board_id: "1"
+    #   story_type: Story
+    #   subtask_type: Subtask
+    #   status_mapping:
+    #     "To Do": draft
+    #     "In Progress": in_progress
+    #     "In Review": review
+    #     "Done": merged
+  # Agent autonomy level (full, partial)
+  autonomy:
+    level: full
 
 # Model assignments per agent tier
 models:
