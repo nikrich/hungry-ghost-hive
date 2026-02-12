@@ -9,7 +9,8 @@ export function generateSeniorPrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  stories: StoryRow[]
+  stories: StoryRow[],
+  targetBranch: string = 'main'
 ): string {
   const storyList = stories
     .map(
@@ -59,13 +60,13 @@ hive pr submit -b feature/<story-id>-<description> -s <story-id> --from ${sessio
 
 ## Submitting PRs
 Before submitting your PR to the merge queue, always verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/${targetBranch}\`
 2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
 3. **All tests pass locally** - Run \`npm test\` before submitting
 
 After verifying these checks, create and submit your PR:
 \`\`\`bash
-gh pr create --title "<type>: <description>" --body "..."
+gh pr create --base ${targetBranch} --title "<type>: <description>" --body "..."
 # IMPORTANT: PR titles MUST follow conventional commit format!
 # Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
 # Examples: "feat: add dependency checking to scheduler"
@@ -136,7 +137,8 @@ export function generateIntermediatePrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  sessionName: string
+  sessionName: string,
+  targetBranch: string = 'main'
 ): string {
   const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 
@@ -177,13 +179,13 @@ hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 
 ## Submitting PRs
 Before submitting your PR to the merge queue, always verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/${targetBranch}\`
 2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
 3. **All tests pass locally** - Run \`npm test\` before submitting
 
 After verifying these checks, create and submit your PR:
 \`\`\`bash
-gh pr create --title "<type>: <description>" --body "..."
+gh pr create --base ${targetBranch} --title "<type>: <description>" --body "..."
 # IMPORTANT: PR titles MUST follow conventional commit format!
 # Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
 # Examples: "feat: add dependency checking to scheduler"
@@ -250,7 +252,8 @@ export function generateJuniorPrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  sessionName: string
+  sessionName: string,
+  targetBranch: string = 'main'
 ): string {
   const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 
@@ -291,13 +294,13 @@ hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 
 ## Submitting PRs
 Before submitting your PR to the merge queue, always verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/${targetBranch}\`
 2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
 3. **All tests pass locally** - Run \`npm test\` before submitting
 
 After verifying these checks, create and submit your PR:
 \`\`\`bash
-gh pr create --title "<type>: <description>" --body "..."
+gh pr create --base ${targetBranch} --title "<type>: <description>" --body "..."
 # IMPORTANT: PR titles MUST follow conventional commit format!
 # Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
 # Examples: "feat: add dependency checking to scheduler"
@@ -364,7 +367,8 @@ export function generateQAPrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  sessionName: string
+  sessionName: string,
+  targetBranch: string = 'main'
 ): string {
   return `You are a QA Engineer on Team ${teamName}.
 Your tmux session: ${sessionName}
@@ -419,7 +423,7 @@ hive msg send <developer-session> "Your PR was rejected: <reason>" --from ${sess
 
 ## Review Checklist
 For each PR, verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/${targetBranch}\`
 2. **Tests pass** - Run the project's test suite
 3. **Code quality** - Check for code standards, no obvious bugs
 4. **Functionality** - Test that the changes work as expected
@@ -440,7 +444,7 @@ hive msg outbox ${sessionName}
 - Review PRs in queue order (first in, first out)
 - Be thorough but efficient
 - Provide clear feedback when rejecting
-- Ensure main branch stays stable
+- Ensure the ${targetBranch} branch stays stable
 
 Start by running \`hive pr queue\` to see PRs waiting for review.`;
 }

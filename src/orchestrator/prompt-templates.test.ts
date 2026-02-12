@@ -167,6 +167,23 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('First Story');
       expect(prompt).toContain('Second Story');
     });
+
+    it('should default to main when no targetBranch is provided', () => {
+      const stories: StoryRow[] = [];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories);
+
+      expect(prompt).toContain('origin/main');
+      expect(prompt).toContain('--base main');
+    });
+
+    it('should use custom targetBranch in merge conflict and PR instructions', () => {
+      const stories: StoryRow[] = [];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories, 'develop');
+
+      expect(prompt).toContain('origin/develop');
+      expect(prompt).toContain('--base develop');
+      expect(prompt).not.toContain('origin/main');
+    });
   });
 
   describe('generateIntermediatePrompt', () => {
@@ -222,6 +239,20 @@ describe('Prompt Templates', () => {
       const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName);
 
       expect(prompt).toContain('CI');
+    });
+
+    it('should use custom targetBranch in merge conflict and PR instructions', () => {
+      const prompt = generateIntermediatePrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        'release/v2'
+      );
+
+      expect(prompt).toContain('origin/release/v2');
+      expect(prompt).toContain('--base release/v2');
+      expect(prompt).not.toContain('origin/main');
     });
   });
 
@@ -279,6 +310,14 @@ describe('Prompt Templates', () => {
 
       expect(prompt).toContain('CI');
     });
+
+    it('should use custom targetBranch in merge conflict and PR instructions', () => {
+      const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName, 'staging');
+
+      expect(prompt).toContain('origin/staging');
+      expect(prompt).toContain('--base staging');
+      expect(prompt).not.toContain('origin/main');
+    });
   });
 
   describe('generateQAPrompt', () => {
@@ -329,6 +368,14 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('Code quality');
       expect(prompt).toContain('Functionality');
       expect(prompt).toContain('Story requirements');
+    });
+
+    it('should use custom targetBranch in review checklist', () => {
+      const prompt = generateQAPrompt(teamName, repoUrl, repoPath, sessionName, 'develop');
+
+      expect(prompt).toContain('origin/develop');
+      expect(prompt).toContain('Ensure the develop branch stays stable');
+      expect(prompt).not.toContain('origin/main');
     });
   });
 });

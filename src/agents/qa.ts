@@ -5,6 +5,7 @@ import { getAgentsByType } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
 import { countQaFailuresByStory } from '../db/queries/logs.js';
 import { createPullRequest, getPullRequestByStory } from '../db/queries/pull-requests.js';
+import { getRequirementById } from '../db/queries/requirements.js';
 import { getStoriesByStatus, updateStory, type StoryRow } from '../db/queries/stories.js';
 import { getTeamById, type TeamRow } from '../db/queries/teams.js';
 import { BaseAgent, type AgentContext } from './base-agent.js';
@@ -15,16 +16,19 @@ export interface QAContext extends AgentContext {
     buildCommand: string;
     testCommand?: string;
   };
+  targetBranch?: string;
 }
 
 export class QAAgent extends BaseAgent {
   private team: TeamRow | null = null;
   private qaConfig: QAContext['qaConfig'];
+  private targetBranch: string;
   private pendingStories: StoryRow[] = [];
 
   constructor(context: QAContext) {
     super(context);
     this.qaConfig = context.qaConfig;
+    this.targetBranch = context.targetBranch || 'main';
 
     if (context.agentRow.team_id) {
       this.team = getTeamById(this.db, context.agentRow.team_id) || null;
@@ -218,6 +222,9 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       const title = `${story.id}: ${story.title}`;
       const body = this.generatePRBody(story);
 
+      // Resolve target branch: requirement-level override > QA context default > 'main'
+      const baseBranch = this.resolveTargetBranch(story);
+
       const { stdout } = await execa(
         'gh',
         [
@@ -228,7 +235,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
           '--body',
           body,
           '--base',
-          'main',
+          baseBranch,
           '--head',
           story.branch_name,
         ],
@@ -269,6 +276,18 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       // Still mark as pr_submitted since QA passed
       updateStory(this.db, story.id, { status: 'pr_submitted' });
     }
+  }
+
+  private resolveTargetBranch(story: StoryRow): string {
+    // Look up requirement-level target_branch override
+    if (story.requirement_id) {
+      const requirement = getRequirementById(this.db, story.requirement_id);
+      if (requirement?.target_branch) {
+        return requirement.target_branch;
+      }
+    }
+    // Fall back to QA context default (which comes from config.github.base_branch)
+    return this.targetBranch;
   }
 
   private checkAndEscalate(story: StoryRow): void {

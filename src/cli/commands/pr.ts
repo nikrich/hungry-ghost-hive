@@ -150,6 +150,7 @@ prCommand
               models: config.models,
               qa: config.qa,
               rootDir: root,
+              baseBranch: config.github.base_branch,
               saveFn: () => db.save(),
             });
             await scheduler.checkMergeQueue();
@@ -524,6 +525,7 @@ prCommand
               scaling: config.scaling,
               models: config.models,
               rootDir: root,
+              baseBranch: config.github.base_branch,
               saveFn: () => db.save(),
             });
             await scheduler.checkMergeQueue();

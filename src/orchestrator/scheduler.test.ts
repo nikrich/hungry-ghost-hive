@@ -1576,3 +1576,97 @@ describe('Scheduler checkScaling', () => {
     spawnSeniorSpy.mockRestore();
   });
 });
+
+describe('Scheduler resolveTeamTargetBranch', () => {
+  it('should return target_branch from active requirement for team', () => {
+    const team = createTeam(db, {
+      name: 'Target Branch Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a requirement with custom target_branch
+    const req = createRequirement(db, {
+      title: 'Feature Req',
+      description: 'Test',
+      targetBranch: 'develop',
+    });
+    db.run(`UPDATE requirements SET status = 'in_progress' WHERE id = ?`, [req.id]);
+
+    // Create a story linking the requirement to the team
+    const story = createStory(db, {
+      teamId: team.id,
+      requirementId: req.id,
+      title: 'Story',
+      description: 'Test',
+    });
+    updateStory(db, story.id, { status: 'planned' });
+
+    const resolveMethod = (scheduler as any).resolveTeamTargetBranch;
+    const branch = resolveMethod.call(scheduler, team.id);
+
+    expect(branch).toBe('develop');
+  });
+
+  it('should fall back to config baseBranch when no requirement has target_branch', () => {
+    const team = createTeam(db, {
+      name: 'Default Branch Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const resolveMethod = (scheduler as any).resolveTeamTargetBranch;
+    const branch = resolveMethod.call(scheduler, team.id);
+
+    // mockConfig has no baseBranch, so should default to 'main'
+    expect(branch).toBe('main');
+  });
+
+  it('should fall back to config baseBranch when set', () => {
+    const team = createTeam(db, {
+      name: 'Custom Default Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const customScheduler = new Scheduler(db, {
+      ...mockConfig,
+      baseBranch: 'master',
+    } as any);
+
+    const resolveMethod = (customScheduler as any).resolveTeamTargetBranch;
+    const branch = resolveMethod.call(customScheduler, team.id);
+
+    expect(branch).toBe('master');
+  });
+
+  it('should ignore completed requirements', () => {
+    const team = createTeam(db, {
+      name: 'Completed Req Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a completed requirement with custom target_branch
+    const req = createRequirement(db, {
+      title: 'Done Req',
+      description: 'Test',
+      targetBranch: 'release/v1',
+    });
+    db.run(`UPDATE requirements SET status = 'completed' WHERE id = ?`, [req.id]);
+
+    const story = createStory(db, {
+      teamId: team.id,
+      requirementId: req.id,
+      title: 'Story',
+      description: 'Test',
+    });
+    updateStory(db, story.id, { status: 'planned' });
+
+    const resolveMethod = (scheduler as any).resolveTeamTargetBranch;
+    const branch = resolveMethod.call(scheduler, team.id);
+
+    // Should fall back to default since requirement is completed
+    expect(branch).toBe('main');
+  });
+});

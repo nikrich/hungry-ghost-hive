@@ -290,6 +290,7 @@ managerCommand
         models: config.models,
         qa: config.qa,
         rootDir: root,
+        baseBranch: config.github.base_branch,
         saveFn: () => db.save(),
       });
 
@@ -440,6 +441,7 @@ async function managerCheck(
         models: config.models,
         qa: config.qa,
         rootDir: root,
+        baseBranch: config.github.base_branch,
         saveFn: () => db.save(),
       }),
       hiveSessions: [],

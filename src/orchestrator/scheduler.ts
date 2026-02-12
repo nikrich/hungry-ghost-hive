@@ -70,6 +70,7 @@ export interface SchedulerConfig {
   models: ModelsConfig;
   qa?: QAConfig;
   rootDir: string;
+  baseBranch?: string;
   saveFn?: () => void;
 }
 
@@ -962,22 +963,42 @@ export class Scheduler {
     if (!(await isTmuxSessionRunning(sessionName))) {
       // Build the initial prompt for this agent type
       const team = getTeamById(this.db, teamId);
+      const targetBranch = this.resolveTeamTargetBranch(teamId);
       let prompt: string;
 
       if (type === 'senior') {
         const stories = this.getTeamStories(teamId);
-        prompt = generateSeniorPrompt(teamName, team?.repo_url || '', worktreePath, stories);
+        prompt = generateSeniorPrompt(
+          teamName,
+          team?.repo_url || '',
+          worktreePath,
+          stories,
+          targetBranch
+        );
       } else if (type === 'intermediate') {
         prompt = generateIntermediatePrompt(
           teamName,
           team?.repo_url || '',
           worktreePath,
-          sessionName
+          sessionName,
+          targetBranch
         );
       } else if (type === 'junior') {
-        prompt = generateJuniorPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
+        prompt = generateJuniorPrompt(
+          teamName,
+          team?.repo_url || '',
+          worktreePath,
+          sessionName,
+          targetBranch
+        );
       } else {
-        prompt = generateQAPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
+        prompt = generateQAPrompt(
+          teamName,
+          team?.repo_url || '',
+          worktreePath,
+          sessionName,
+          targetBranch
+        );
       }
 
       // Build CLI command using the configured runtime
@@ -1063,6 +1084,34 @@ export class Scheduler {
     const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'junior');
     const index = existing.length + 1;
     return this.spawnAgent('junior', teamId, teamName, repoPath, index);
+  }
+
+  /**
+   * Resolve the target branch for a team's agents.
+   * Checks active requirements for a team-level target_branch override,
+   * falling back to config.baseBranch (which defaults to 'main').
+   */
+  private resolveTeamTargetBranch(teamId: string): string {
+    // Look for the most recent active requirement with a target_branch for this team
+    const requirement = queryOne<RequirementRow>(
+      this.db,
+      `
+      SELECT DISTINCT r.* FROM requirements r
+      JOIN stories s ON s.requirement_id = r.id
+      WHERE s.team_id = ?
+        AND r.status IN ('pending', 'planning', 'planned', 'in_progress')
+        AND r.target_branch IS NOT NULL
+      ORDER BY r.created_at DESC
+      LIMIT 1
+      `,
+      [teamId]
+    );
+
+    if (requirement?.target_branch) {
+      return requirement.target_branch;
+    }
+
+    return this.config.baseBranch || 'main';
   }
 
   private getTeamStories(teamId: string): StoryRow[] {
