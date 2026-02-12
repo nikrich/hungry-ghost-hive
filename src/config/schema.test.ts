@@ -394,7 +394,6 @@ describe('HiveConfigSchema', () => {
           jira: {
             project_key: 'HIVE',
             site_url: 'https://mycompany.atlassian.net',
-            board_id: '1',
           },
         },
       },
@@ -407,7 +406,7 @@ describe('HiveConfigSchema', () => {
       expect(result.data.integrations.project_management.jira?.site_url).toBe(
         'https://mycompany.atlassian.net'
       );
-      expect(result.data.integrations.project_management.jira?.board_id).toBe('1');
+      expect(result.data.integrations.project_management.jira?.board_id).toBeUndefined();
     }
   });
 
@@ -419,7 +418,6 @@ describe('HiveConfigSchema', () => {
           jira: {
             project_key: 'HIVE',
             site_url: 'https://mycompany.atlassian.net',
-            board_id: '1',
           },
         },
       },
@@ -485,7 +483,6 @@ describe('HiveConfigSchema', () => {
           jira: {
             project_key: 'HIVE',
             site_url: 'https://mycompany.atlassian.net',
-            board_id: '1',
             story_type: 'Feature',
             subtask_type: 'Sub-task',
             status_mapping: {

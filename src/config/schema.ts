@@ -89,18 +89,18 @@ const JiraConfigSchema = z.object({
   project_key: z.string().min(1),
   // Jira site URL (e.g., "https://mycompany.atlassian.net")
   site_url: z.string().url(),
-  // Jira board ID for the team
-  board_id: z.string().min(1),
+  // Jira board ID for the team (optional — only needed for sprint operations)
+  board_id: z.string().min(1).optional(),
   // Story type in Jira (e.g., "Story")
   story_type: z.string().min(1).default('Story'),
   // Subtask type in Jira (e.g., "Subtask")
   subtask_type: z.string().min(1).default('Subtask'),
   // Status mapping from Jira status to internal status
   status_mapping: z.record(z.string()).default({}),
-  // Whether to watch the board for changes (polling)
-  watch_board: z.boolean().default(true),
-  // Board polling interval in milliseconds
-  board_poll_interval_ms: z.number().int().positive().default(60000),
+  // Whether to watch the board for changes (polling) — deprecated, ignored
+  watch_board: z.boolean().default(false).optional(),
+  // Board polling interval in milliseconds — deprecated, ignored
+  board_poll_interval_ms: z.number().int().positive().default(60000).optional(),
 });
 
 // Project management integration
@@ -318,7 +318,6 @@ integrations:
     # jira:
     #   project_key: HIVE
     #   site_url: https://mycompany.atlassian.net
-    #   board_id: "1"
     #   story_type: Story
     #   subtask_type: Subtask
     #   status_mapping:
@@ -326,8 +325,6 @@ integrations:
     #     "In Progress": in_progress
     #     "In Review": review
     #     "Done": merged
-    #   watch_board: true
-    #   board_poll_interval_ms: 60000
   # Agent autonomy level (full, partial)
   autonomy:
     level: full

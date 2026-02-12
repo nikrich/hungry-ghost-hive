@@ -62,12 +62,9 @@ describe('Init Wizard', () => {
         jiraConfig: {
           project_key: 'TEST',
           site_url: 'https://test.atlassian.net',
-          board_id: '1',
           story_type: 'Story',
           subtask_type: 'Subtask',
           status_mapping: {},
-          watch_board: true,
-          board_poll_interval_ms: 60000,
         },
       });
 
@@ -141,12 +138,9 @@ describe('Init Wizard', () => {
         jiraConfig: {
           project_key: 'TEST',
           site_url: 'https://test.atlassian.net',
-          board_id: '1',
           story_type: 'Story',
           subtask_type: 'Subtask',
           status_mapping: {},
-          watch_board: true,
-          board_poll_interval_ms: 60000,
         },
       });
 

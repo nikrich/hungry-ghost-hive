@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { confirm, input, select } from '@inquirer/prompts';
+import { confirm, select } from '@inquirer/prompts';
 import chalk from 'chalk';
 import type { JiraConfig } from '../../config/schema.js';
 
@@ -436,87 +436,6 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
     }
   }
 
-  // Step 4: Board setup - ask user how they want to configure the board
-  console.log();
-  const boardSetupMethod = await select({
-    message: 'Which board should I work from?',
-    choices: [
-      { name: 'Select an existing board', value: 'existing' },
-      { name: 'Create a new board', value: 'create' },
-      { name: 'Provide a board URL/link', value: 'link' },
-    ],
-  });
-
-  let boardId: string;
-
-  if (boardSetupMethod === 'create') {
-    const boardName = await input({
-      message: 'Board name',
-      default: `${selectedProject.key} Board`,
-    });
-    const boardType = await select({
-      message: 'Board type',
-      choices: [
-        { name: 'Scrum', value: 'scrum' as const },
-        { name: 'Kanban', value: 'kanban' as const },
-      ],
-    });
-
-    console.log(chalk.gray('Creating board...'));
-    const newBoard = await createJiraBoard(cloudId, accessToken, {
-      name: boardName,
-      type: boardType,
-      projectKey: selectedProject.key,
-    });
-    console.log(chalk.green(`Created board: ${newBoard.name} (ID: ${newBoard.id})`));
-    boardId = String(newBoard.id);
-  } else if (boardSetupMethod === 'link') {
-    const boardUrl = await input({
-      message: 'Jira board URL',
-      validate: (value: string) => {
-        const parsed = parseBoardIdFromUrl(value);
-        return parsed !== null
-          ? true
-          : 'Could not extract board ID from URL. Please provide a valid Jira board URL.';
-      },
-    });
-    boardId = parseBoardIdFromUrl(boardUrl)!;
-
-    console.log(chalk.gray(`Validating board ID ${boardId}...`));
-    const board = await validateBoardId(cloudId, accessToken, boardId);
-    if (board) {
-      console.log(chalk.green(`Validated board: ${board.name} (${board.type})`));
-    } else {
-      console.log(
-        chalk.yellow(`Could not validate board ${boardId} via API, using ID as provided.`)
-      );
-    }
-  } else {
-    // existing board selection
-    console.log(chalk.gray(`Fetching boards for ${selectedProject.key}...`));
-    const boards = await fetchProjectBoards(cloudId, accessToken, selectedProject.key);
-
-    if (boards.length === 0) {
-      console.log(chalk.yellow('No boards found for this project.'));
-      boardId = await input({
-        message: 'Enter board ID manually',
-        default: '1',
-      });
-    } else if (boards.length === 1) {
-      console.log(chalk.green(`Using board: ${boards[0].name} (ID: ${boards[0].id})`));
-      boardId = String(boards[0].id);
-    } else {
-      const selectedBoard = await select({
-        message: 'Select a board',
-        choices: boards.map(b => ({
-          name: `${b.name} (${b.type})`,
-          value: b,
-        })),
-      });
-      boardId = String(selectedBoard.id);
-    }
-  }
-
   console.log();
   console.log(chalk.green('Jira setup complete!'));
 
@@ -524,12 +443,9 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
     jiraConfig: {
       project_key: selectedProject.key,
       site_url: siteUrl,
-      board_id: boardId,
       story_type: 'Story',
       subtask_type: 'Subtask',
       status_mapping: finalMapping,
-      watch_board: true,
-      board_poll_interval_ms: 60000,
     },
   };
 }
@@ -558,20 +474,13 @@ async function runNonInteractiveSetup(options: JiraSetupOptions): Promise<JiraSe
   const statuses = await fetchProjectStatuses(cloudId, accessToken, project.key);
   const statusMapping = autoDetectStatusMapping(statuses);
 
-  // Fetch boards and use the first one
-  const boards = await fetchProjectBoards(cloudId, accessToken, project.key);
-  const boardId = boards.length > 0 ? String(boards[0].id) : '1';
-
   return {
     jiraConfig: {
       project_key: project.key,
       site_url: siteUrl,
-      board_id: boardId,
       story_type: 'Story',
       subtask_type: 'Subtask',
       status_mapping: statusMapping,
-      watch_board: true,
-      board_poll_interval_ms: 60000,
     },
   };
 }
