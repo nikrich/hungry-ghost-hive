@@ -8,6 +8,7 @@ import { Command } from 'commander';
 import {
   addRepoCommand,
   agentsCommand,
+  approachCommand,
   approvalsCommand,
   assignCommand,
   authCommand,
@@ -71,6 +72,7 @@ program.addCommand(msgCommand);
 // Agent workflow
 program.addCommand(myStoriesCommand);
 program.addCommand(progressCommand);
+program.addCommand(approachCommand);
 
 // PR and merge queue
 program.addCommand(prCommand);
