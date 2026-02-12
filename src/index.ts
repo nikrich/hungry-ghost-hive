@@ -10,6 +10,7 @@ import {
   agentsCommand,
   approvalsCommand,
   assignCommand,
+  authCommand,
   cleanupCommand,
   clusterCommand,
   configCommand,
@@ -39,6 +40,7 @@ program
 // Core commands
 program.addCommand(versionCommand);
 program.addCommand(initCommand);
+program.addCommand(authCommand);
 program.addCommand(configCommand);
 program.addCommand(clusterCommand);
 
