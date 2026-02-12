@@ -35,6 +35,7 @@ import {
   updateStory,
   updateStoryAssignment,
 } from '../../db/queries/stories.js';
+import { syncFromJira } from '../../integrations/jira/sync.js';
 import { syncStatusToJira } from '../../integrations/jira/transitions.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getStateDetector, type StateDetectionResult } from '../../state-detectors/index.js';
@@ -376,6 +377,7 @@ interface ManagerCheckContext {
     queuedPRCount: number;
     handoffPromoted: number;
     handoffAutoAssigned: number;
+    jiraSynced: number;
   };
   // Shared state for dedup
   escalatedSessions: Set<string | null>;
@@ -454,6 +456,7 @@ async function managerCheck(
         queuedPRCount: 0,
         handoffPromoted: 0,
         handoffAutoAssigned: 0,
+        jiraSynced: 0,
       },
       escalatedSessions: new Set(),
       agentsBySessionName: new Map(),
@@ -467,6 +470,7 @@ async function managerCheck(
     await syncMergedPRs(ctx);
     await syncOpenPRs(ctx);
     await closeStalePRs(ctx);
+    await syncJiraStatuses(ctx);
     await handleStalledPlanningHandoff(ctx);
 
     // Discover active tmux sessions
@@ -555,6 +559,15 @@ async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
   const closedPRs = await closeStaleGitHubPRs(ctx.root, ctx.db.db);
   if (closedPRs > 0) {
     console.log(chalk.yellow(`  Closed ${closedPRs} stale GitHub PR(s)`));
+    ctx.db.save();
+  }
+}
+
+async function syncJiraStatuses(ctx: ManagerCheckContext): Promise<void> {
+  const syncedStories = await syncFromJira(ctx.root, ctx.db.db);
+  if (syncedStories > 0) {
+    ctx.counters.jiraSynced = syncedStories;
+    console.log(chalk.cyan(`  Synced ${syncedStories} story status(es) from Jira`));
     ctx.db.save();
   }
 }
@@ -1425,6 +1438,7 @@ function printSummary(ctx: ManagerCheckContext): void {
     queuedPRCount,
     handoffPromoted,
     handoffAutoAssigned,
+    jiraSynced,
   } = ctx.counters;
   const summary = [];
 
@@ -1435,6 +1449,7 @@ function printSummary(ctx: ManagerCheckContext): void {
   if (queuedPRCount > 0) summary.push(`${queuedPRCount} PRs queued`);
   if (handoffPromoted > 0) summary.push(`${handoffPromoted} auto-promoted from estimated`);
   if (handoffAutoAssigned > 0) summary.push(`${handoffAutoAssigned} auto-assigned after recovery`);
+  if (jiraSynced > 0) summary.push(`${jiraSynced} synced from Jira`);
 
   if (summary.length > 0) {
     console.log(chalk.yellow(`  ${summary.join(', ')}`));

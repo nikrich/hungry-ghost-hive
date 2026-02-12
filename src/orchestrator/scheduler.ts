@@ -36,6 +36,7 @@ import { FileSystemError, OperationalError } from '../errors/index.js';
 import { removeWorktree } from '../git/worktree.js';
 import { JiraClient } from '../integrations/jira/client.js';
 import { createSubtask, postComment } from '../integrations/jira/comments.js';
+import { JiraOperationQueue } from '../integrations/jira/operation-queue.js';
 import { syncStatusToJira } from '../integrations/jira/transitions.js';
 import {
   generateSessionName,
@@ -84,11 +85,13 @@ export class Scheduler {
   private db: Database;
   private config: SchedulerConfig;
   private saveFn?: () => void;
+  private jiraQueue: JiraOperationQueue;
 
   constructor(db: Database, config: SchedulerConfig) {
     this.db = db;
     this.config = config;
     this.saveFn = config.saveFn;
+    this.jiraQueue = new JiraOperationQueue();
   }
 
   /**
@@ -525,15 +528,18 @@ export class Scheduler {
           });
           assigned++;
 
-          // Handle Jira integration (async, non-blocking)
-          this.handleJiraAfterAssignment(story, targetAgent, team).catch(err => {
-            logger.warn(
-              `Jira integration async error for story ${story.id}: ${err instanceof Error ? err.message : String(err)}`
-            );
+          // Enqueue Jira operations to prevent race conditions
+          // Operations are processed sequentially to avoid:
+          // - TokenStore file lock contention
+          // - Jira API rate limiting
+          // - Concurrent token refresh issues
+          this.jiraQueue.enqueue(`story-${story.id}-assignment`, async () => {
+            await this.handleJiraAfterAssignment(story, targetAgent, team);
           });
 
-          // Sync status change to Jira (fire and forget, after DB commit)
-          syncStatusToJira(this.config.rootDir, this.db, story.id, 'in_progress');
+          this.jiraQueue.enqueue(`story-${story.id}-status-transition`, async () => {
+            await syncStatusToJira(this.config.rootDir, this.db, story.id, 'in_progress');
+          });
         } catch (err) {
           errors.push(
             `Failed to assign story ${story.id}: ${err instanceof Error ? err.message : 'Unknown error'}`

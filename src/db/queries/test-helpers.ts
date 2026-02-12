@@ -72,6 +72,7 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       assigned_agent_id TEXT REFERENCES agents(id),
       branch_name TEXT,
       pr_url TEXT,
+      jira_issue_key TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -105,6 +106,7 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       reviewed_by TEXT,
       status TEXT DEFAULT 'queued' CHECK (status IN ('queued', 'reviewing', 'approved', 'merged', 'rejected', 'closed')),
       review_notes TEXT,
+      jira_issue_key TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       reviewed_at TIMESTAMP

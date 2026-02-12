@@ -56,7 +56,10 @@ export type EventType =
   | 'JIRA_EPIC_CREATED'
   | 'JIRA_STORY_CREATED'
   | 'JIRA_TRANSITION_SUCCESS'
-  | 'JIRA_TRANSITION_FAILED';
+  | 'JIRA_TRANSITION_FAILED'
+  | 'JIRA_BOARD_POLL_STARTED'
+  | 'JIRA_BOARD_POLL_COMPLETED'
+  | 'JIRA_EPIC_INGESTED';
 
 export interface CreateLogInput {
   agentId: string;

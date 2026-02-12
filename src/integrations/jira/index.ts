@@ -1,8 +1,10 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+export * from './board-watcher.js';
 export * from './client.js';
 export * from './comments.js';
 export * from './issues.js';
 export * from './stories.js';
+export * from './sync.js';
 export * from './transitions.js';
 export * from './types.js';
