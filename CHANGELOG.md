@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.26.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.25.0...hungry-ghost-hive-v0.26.0) (2026-02-12)
+
+
+### Features
+
+* add autonomy level enforcement to auto-merge (INIT-005) ([#302](https://github.com/nikrich/hungry-ghost-hive/issues/302)) ([1ccfe35](https://github.com/nikrich/hungry-ghost-hive/commit/1ccfe35000e6a14a3fe1e9ea172de0162047646f))
+* add Confluence read integration client ([#307](https://github.com/nikrich/hungry-ghost-hive/issues/307)) ([e76c6e9](https://github.com/nikrich/hungry-ghost-hive/commit/e76c6e91e42c55d74017d87c32c0b1937466cc83))
+* add hive auth command for OAuth reauthentication ([#308](https://github.com/nikrich/hungry-ghost-hive/issues/308)) ([91fcbc8](https://github.com/nikrich/hungry-ghost-hive/commit/91fcbc8fe5289185bce9b48e231cea45b315f743))
+* add interactive init wizard ([#305](https://github.com/nikrich/hungry-ghost-hive/issues/305)) ([55448d8](https://github.com/nikrich/hungry-ghost-hive/commit/55448d8b43d75bcde11a7aac3e45a51054563565))
+* add Jira API client, types, and issue operations ([#310](https://github.com/nikrich/hungry-ghost-hive/issues/310)) ([74d206e](https://github.com/nikrich/hungry-ghost-hive/commit/74d206e3e3a4b7f968f49d9b75cec54dbc0abfcb))
+* add Jira OAuth 2.0 (3LO) authorization flow ([#306](https://github.com/nikrich/hungry-ghost-hive/issues/306)) ([f339d4a](https://github.com/nikrich/hungry-ghost-hive/commit/f339d4abb6b0af9d8f15319e1e536dbd21944c47))
+* add Jira setup wizard for project configuration ([#309](https://github.com/nikrich/hungry-ghost-hive/issues/309)) ([b67d891](https://github.com/nikrich/hungry-ghost-hive/commit/b67d891b2e2fda4d8387e09a0a2f907852d4d258))
+* add Jira status transitions for story lifecycle sync ([#313](https://github.com/nikrich/hungry-ghost-hive/issues/313)) ([c95d041](https://github.com/nikrich/hungry-ghost-hive/commit/c95d041f2dfd4833d98902cbf2d506cb5cdc6047))
+* add Jira story creation for Tech Lead flow ([#311](https://github.com/nikrich/hungry-ghost-hive/issues/311)) ([692b6be](https://github.com/nikrich/hungry-ghost-hive/commit/692b6beff7d56856e2fb3c858e4f92ba2bea59f7))
+* add Jira subtasks and lifecycle comments integration ([#312](https://github.com/nikrich/hungry-ghost-hive/issues/312)) ([8ba9d3b](https://github.com/nikrich/hungry-ghost-hive/commit/8ba9d3be744a93e9720c6cdd04f3a7d7dac9ad3c))
+* enhance Jira board setup with create/link options ([#316](https://github.com/nikrich/hungry-ghost-hive/issues/316)) ([537187d](https://github.com/nikrich/hungry-ghost-hive/commit/537187dbc5c29390f1cd08e1c72fc1266b6aaba9))
+* implement GitHub OAuth Device Flow for token-based authentication ([#303](https://github.com/nikrich/hungry-ghost-hive/issues/303)) ([533d155](https://github.com/nikrich/hungry-ghost-hive/commit/533d1555baa664e3ade67d47200f71f602a08149))
+
+
+### Bug Fixes
+
+* add correct Jira Software board OAuth scopes ([#322](https://github.com/nikrich/hungry-ghost-hive/issues/322)) ([872218f](https://github.com/nikrich/hungry-ghost-hive/commit/872218f3effb381049e7e7bc63949ce436bd830c))
+* add Jira board scopes and force-add submodules past gitignore ([#323](https://github.com/nikrich/hungry-ghost-hive/issues/323)) ([37f77a1](https://github.com/nikrich/hungry-ghost-hive/commit/37f77a16dfca808b5d774830d7fe78706aabfe5d))
+* auto-open browser for Jira and GitHub OAuth flows ([#315](https://github.com/nikrich/hungry-ghost-hive/issues/315)) ([049c7e9](https://github.com/nikrich/hungry-ghost-hive/commit/049c7e986ce2b3d162f6dc2693478a0c78829530))
+* remove invalid Jira board-scope OAuth scopes ([#321](https://github.com/nikrich/hungry-ghost-hive/issues/321)) ([7ba3345](https://github.com/nikrich/hungry-ghost-hive/commit/7ba33453c4f4003cf917ce8867d69479c02578cf))
+* revert callback URL to 127.0.0.1, keep board scopes ([#320](https://github.com/nikrich/hungry-ghost-hive/issues/320)) ([bd1fc08](https://github.com/nikrich/hungry-ghost-hive/commit/bd1fc089d43c02641139781b24adf8d637058439))
+* use fixed port 9876 for Jira OAuth callback URL ([#318](https://github.com/nikrich/hungry-ghost-hive/issues/318)) ([a571471](https://github.com/nikrich/hungry-ghost-hive/commit/a5714717775f0ef58185996afe1361e734fd5459))
+* use localhost for OAuth callback and add Jira board scopes ([#319](https://github.com/nikrich/hungry-ghost-hive/issues/319)) ([40e3c9c](https://github.com/nikrich/hungry-ghost-hive/commit/40e3c9c434b8d8b32f0284f2dee8ff81855a6fa8))
+
 ## [0.25.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.24.0...hungry-ghost-hive-v0.25.0) (2026-02-12)
 
 
