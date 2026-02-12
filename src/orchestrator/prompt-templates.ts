@@ -53,9 +53,10 @@ export function generateSeniorPrompt(
   stories: StoryRow[]
 ): string {
   const storyList = stories
-    .map(
-      s => `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'})\n  ${s.description}`
-    )
+    .map(s => {
+      const jiraInfo = s.jira_subtask_key ? ` | Jira Subtask: ${s.jira_subtask_key}` : '';
+      return `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'}${jiraInfo})\n  ${s.description}`;
+    })
     .join('\n\n');
 
   const sessionName = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;

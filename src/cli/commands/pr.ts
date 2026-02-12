@@ -18,6 +18,7 @@ import {
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
+import { postJiraLifecycleComment } from '../../integrations/jira/comments.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
@@ -137,6 +138,17 @@ prCommand
           db.save();
         }
 
+        // Post Jira comment for PR created event
+        try {
+          const config = loadConfig(paths.hiveDir);
+          await postJiraLifecycleComment(db.db, paths.hiveDir, config, storyId, 'pr_created', {
+            agentName: options.from,
+            prUrl: pr.github_pr_url || undefined,
+          });
+        } catch {
+          // Non-fatal - just log
+        }
+
         // Check if QA agents need to be spawned for the merge queue
         try {
           const config = loadConfig(paths.hiveDir);
@@ -151,6 +163,7 @@ prCommand
               qa: config.qa,
               rootDir: root,
               saveFn: () => db.save(),
+              hiveConfig: config,
             });
             await scheduler.checkMergeQueue();
             db.save();
@@ -525,6 +538,7 @@ prCommand
               models: config.models,
               rootDir: root,
               saveFn: () => db.save(),
+              hiveConfig: config,
             });
             await scheduler.checkMergeQueue();
             db.save();

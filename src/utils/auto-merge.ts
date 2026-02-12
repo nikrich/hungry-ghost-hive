@@ -9,6 +9,7 @@ import { createLog } from '../db/queries/logs.js';
 import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
+import { postJiraLifecycleComment } from '../integrations/jira/comments.js';
 import { getHivePaths } from './paths.js';
 import { ghRepoSlug } from './pr-sync.js';
 
@@ -158,6 +159,13 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
                 message: `Story merged (PR #${pr.github_pr_number} was already merged on GitHub)`,
                 metadata: { pr_id: pr.id },
               });
+
+              // Post Jira comment for merged event
+              postJiraLifecycleComment(db.db, paths.hiveDir, config, pr.story_id, 'merged').catch(
+                () => {
+                  /* non-fatal */
+                }
+              );
             }
             createLog(db.db, {
               agentId: 'manager',
@@ -228,6 +236,13 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
 
         mergedCount++;
         db.save();
+
+        // Post Jira comment for merged event
+        if (storyId) {
+          postJiraLifecycleComment(db.db, paths.hiveDir, config, storyId, 'merged').catch(() => {
+            /* non-fatal */
+          });
+        }
       } catch (mergeErr) {
         // Merge failed - revert PR status back to approved for retry (atomic transaction)
         await withTransaction(db.db, () => {

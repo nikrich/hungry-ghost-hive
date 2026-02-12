@@ -1,12 +1,14 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import { join } from 'path';
 import type { Database } from 'sql.js';
+import { TokenStore } from '../auth/token-store.js';
 import {
   getCliRuntimeBuilder,
   resolveRuntimeModelForCli,
   validateModelCliCompatibility,
 } from '../cli-runtimes/index.js';
-import type { ModelsConfig, QAConfig, ScalingConfig } from '../config/schema.js';
+import type { HiveConfig, ModelsConfig, QAConfig, ScalingConfig } from '../config/schema.js';
 import { queryAll, queryOne, withTransaction } from '../db/client.js';
 import {
   createAgent,
@@ -32,6 +34,9 @@ import {
 import { getAllTeams, getTeamById } from '../db/queries/teams.js';
 import { FileSystemError, OperationalError } from '../errors/index.js';
 import { removeWorktree } from '../git/worktree.js';
+import { JiraClient } from '../integrations/jira/client.js';
+import { createSubtask, postComment } from '../integrations/jira/comments.js';
+import * as logger from '../utils/logger.js';
 import {
   generateSessionName,
   getHiveSessions,
@@ -71,6 +76,7 @@ export interface SchedulerConfig {
   qa?: QAConfig;
   rootDir: string;
   saveFn?: () => void;
+  hiveConfig?: HiveConfig;
 }
 
 export class Scheduler {
@@ -517,6 +523,13 @@ export class Scheduler {
             });
           });
           assigned++;
+
+          // Handle Jira integration (async, non-blocking)
+          this.handleJiraAfterAssignment(story, targetAgent, team).catch(err => {
+            logger.warn(
+              `Jira integration async error for story ${story.id}: ${err instanceof Error ? err.message : String(err)}`
+            );
+          });
         } catch (err) {
           errors.push(
             `Failed to assign story ${story.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -526,6 +539,71 @@ export class Scheduler {
     }
 
     return { assigned, errors, preventedDuplicates };
+  }
+
+  /**
+   * Handle Jira integration after story assignment:
+   * - Create a subtask for the agent
+   * - Post an "assigned" comment
+   * Failures are logged but do not block the assignment pipeline.
+   */
+  private async handleJiraAfterAssignment(
+    story: StoryRow,
+    agent: AgentRow,
+    team: { id: string; name: string }
+  ): Promise<void> {
+    // Check if Jira is configured
+    if (!this.config.hiveConfig) return;
+    const pmConfig = this.config.hiveConfig.integrations?.project_management;
+    if (!pmConfig || pmConfig.provider !== 'jira' || !pmConfig.jira) return;
+
+    // Check if story has a Jira issue key
+    if (!story.jira_issue_key) {
+      logger.debug(`Story ${story.id} has no Jira issue key, skipping subtask creation`);
+      return;
+    }
+
+    try {
+      // Load token store
+      const tokenStore = new TokenStore(join(this.config.rootDir, '.hive', '.env'));
+      await tokenStore.loadFromEnv();
+
+      // Create Jira client
+      const jiraClient = new JiraClient({
+        tokenStore,
+        clientId: process.env.JIRA_CLIENT_ID || '',
+        clientSecret: process.env.JIRA_CLIENT_SECRET || '',
+      });
+
+      // Create subtask
+      const agentName = agent.tmux_session || agent.id;
+      const subtask = await createSubtask(jiraClient, {
+        parentIssueKey: story.jira_issue_key,
+        projectKey: pmConfig.jira.project_key,
+        agentName,
+        storyTitle: story.title,
+      });
+
+      if (subtask) {
+        // Update story with subtask info
+        updateStory(this.db, story.id, {
+          jiraSubtaskKey: subtask.key,
+          jiraSubtaskId: subtask.id,
+        });
+
+        // Post "assigned" comment
+        await postComment(jiraClient, story.jira_issue_key, 'assigned', {
+          agentName,
+          subtaskKey: subtask.key,
+        });
+
+        logger.info(`Created Jira subtask ${subtask.key} for story ${story.id}`);
+      }
+    } catch (err) {
+      logger.warn(
+        `Jira integration failed for story ${story.id}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
   }
 
   /**
