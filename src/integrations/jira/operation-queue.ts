@@ -34,7 +34,9 @@ export class JiraOperationQueue {
     // Start processing if not already running
     if (!this.processing) {
       this.processQueue().catch(err => {
-        logger.error(`Jira operation queue processing failed: ${err instanceof Error ? err.message : String(err)}`);
+        logger.error(
+          `Jira operation queue processing failed: ${err instanceof Error ? err.message : String(err)}`
+        );
       });
     }
   }
