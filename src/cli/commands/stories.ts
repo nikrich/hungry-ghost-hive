@@ -2,15 +2,21 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
+import { join } from 'path';
+import { TokenStore } from '../../auth/token-store.js';
+import { loadConfig } from '../../config/index.js';
 import {
+  createStory,
   getAllStories,
   getStoriesByStatus,
   getStoryById,
   getStoryDependencies,
+  updateStory,
   type StoryStatus,
 } from '../../db/queries/stories.js';
+import { syncStoryToJira } from '../../integrations/jira/stories.js';
 import { statusColor } from '../../utils/logger.js';
-import { withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
+import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const storiesCommand = new Command('stories').description('Manage stories');
 
@@ -60,6 +66,89 @@ storiesCommand
       console.log();
     });
   });
+
+storiesCommand
+  .command('create')
+  .description('Create a new story (syncs to Jira when PM integration is enabled)')
+  .requiredOption('-t, --title <title>', 'Story title')
+  .requiredOption('-d, --description <description>', 'Story description')
+  .option('-r, --requirement <requirementId>', 'Parent requirement ID')
+  .option('--team <teamId>', 'Team ID')
+  .option('-p, --points <points>', 'Story points', parseInt)
+  .option('-c, --complexity <complexity>', 'Complexity score', parseInt)
+  .option('--criteria <criteria...>', 'Acceptance criteria (space-separated)')
+  .option('--json', 'Output as JSON')
+  .action(
+    async (options: {
+      title: string;
+      description: string;
+      requirement?: string;
+      team?: string;
+      points?: number;
+      complexity?: number;
+      criteria?: string[];
+      json?: boolean;
+    }) => {
+      await withHiveContext(async ({ paths, db }) => {
+        // Create local story
+        const story = createStory(db.db, {
+          requirementId: options.requirement || null,
+          teamId: options.team || null,
+          title: options.title,
+          description: options.description,
+          acceptanceCriteria: options.criteria || null,
+        });
+
+        // Update with optional fields
+        if (options.points !== undefined || options.complexity !== undefined) {
+          updateStory(db.db, story.id, {
+            storyPoints: options.points ?? null,
+            complexityScore: options.complexity ?? null,
+            status: 'estimated',
+          });
+        }
+
+        // Sync to Jira if PM provider is jira
+        let jiraKey: string | null = null;
+        try {
+          const config = loadConfig(paths.hiveDir);
+          const pmConfig = config.integrations.project_management;
+
+          if (pmConfig.provider === 'jira' && pmConfig.jira) {
+            const tokenStore = new TokenStore(join(paths.hiveDir, '.env'));
+            await tokenStore.loadFromEnv();
+
+            const updatedStory = getStoryById(db.db, story.id)!;
+            const result = await syncStoryToJira(db.db, tokenStore, pmConfig.jira, updatedStory);
+
+            if (result) {
+              jiraKey = result.jiraKey;
+            }
+          }
+        } catch (err) {
+          // Jira sync failure should not prevent local story creation
+          console.warn(
+            chalk.yellow(
+              `Warning: Jira sync failed: ${err instanceof Error ? err.message : String(err)}`
+            )
+          );
+        }
+
+        if (options.json) {
+          const finalStory = getStoryById(db.db, story.id);
+          console.log(JSON.stringify(finalStory, null, 2));
+          return;
+        }
+
+        console.log(chalk.green(`\nStory created: ${chalk.bold(story.id)}`));
+        console.log(chalk.gray(`  Title: ${options.title}`));
+        if (jiraKey) {
+          console.log(chalk.gray(`  Jira:  ${jiraKey}`));
+        }
+        console.log();
+      });
+    }
+  );
 
 storiesCommand
   .command('show <story-id>')

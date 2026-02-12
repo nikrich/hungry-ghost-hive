@@ -760,6 +760,8 @@ export interface RequirementRow {
   status: 'pending' | 'planning' | 'planned' | 'in_progress' | 'completed';
   godmode: number;
   target_branch: string;
+  jira_epic_key: string | null;
+  jira_epic_id: string | null;
   created_at: string;
 }
 
@@ -785,6 +787,11 @@ export interface StoryRow {
   assigned_agent_id: string | null;
   branch_name: string | null;
   pr_url: string | null;
+  jira_issue_key: string | null;
+  jira_issue_id: string | null;
+  jira_project_key: string | null;
+  jira_subtask_key: string | null;
+  jira_subtask_id: string | null;
   created_at: string;
   updated_at: string;
 }

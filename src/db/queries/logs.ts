@@ -49,7 +49,12 @@ export type EventType =
   | 'PR_REJECTED'
   | 'PR_CLOSED'
   | 'PR_MERGE_FAILED'
-  | 'PR_MERGE_SKIPPED';
+  | 'PR_MERGE_SKIPPED'
+  | 'JIRA_SYNC_STARTED'
+  | 'JIRA_SYNC_COMPLETED'
+  | 'JIRA_SYNC_WARNING'
+  | 'JIRA_EPIC_CREATED'
+  | 'JIRA_STORY_CREATED';
 
 export interface CreateLogInput {
   agentId: string;

@@ -1,7 +1,10 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import { join } from 'path';
+import { TokenStore } from '../auth/token-store.js';
 import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../cli-runtimes/index.js';
 import { loadConfig } from '../config/index.js';
+import type { HiveConfig } from '../config/schema.js';
 import { queryAll } from '../db/client.js';
 import { createAgent, getAgentsByType, updateAgent } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
@@ -18,6 +21,8 @@ import {
 } from '../db/queries/stories.js';
 import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
 import { NotFoundError } from '../errors/index.js';
+import { syncRequirementToJira } from '../integrations/jira/stories.js';
+import { generateTechLeadJiraInstructions } from '../orchestrator/prompt-templates.js';
 import { generateSessionName, spawnTmuxSession } from '../tmux/manager.js';
 import { findHiveRoot, getHivePaths } from '../utils/paths.js';
 import { BaseAgent, type AgentContext } from './base-agent.js';
@@ -79,7 +84,8 @@ Escalate to human (me) only for:
 - Ambiguous requirements that need clarification
 - Architectural decisions with significant trade-offs
 - Security concerns
-- External dependency blockers`;
+- External dependency blockers
+${this.getJiraInstructions()}`;
   }
 
   async execute(): Promise<void> {
@@ -101,6 +107,9 @@ Escalate to human (me) only for:
 
     // Create stories based on analysis
     const stories = await this.createStories(analysis);
+
+    // Sync to Jira if PM provider is jira
+    await this.syncToJiraIfEnabled(stories);
 
     // Spawn Seniors to estimate and potentially begin work
     await this.coordinateWithSeniors(stories);
@@ -324,6 +333,85 @@ Respond in JSON format:
           teamId,
         });
       }
+    }
+  }
+
+  private getJiraInstructions(): string {
+    const config = this.loadHiveConfig();
+    if (!config) return '';
+
+    const pmConfig = config.integrations.project_management;
+    if (pmConfig.provider !== 'jira' || !pmConfig.jira) return '';
+
+    return generateTechLeadJiraInstructions(pmConfig.jira.project_key, pmConfig.jira.site_url);
+  }
+
+  private loadHiveConfig(): HiveConfig | null {
+    try {
+      const hiveRoot = findHiveRoot(this.workDir);
+      if (!hiveRoot) return null;
+      const paths = getHivePaths(hiveRoot);
+      return loadConfig(paths.hiveDir);
+    } catch {
+      return null;
+    }
+  }
+
+  private async syncToJiraIfEnabled(storyIds: string[]): Promise<void> {
+    const config = this.loadHiveConfig();
+    if (!config) return;
+
+    const pmConfig = config.integrations.project_management;
+    if (pmConfig.provider !== 'jira' || !pmConfig.jira) return;
+
+    if (!this.requirement) return;
+
+    // Load token store
+    const hiveRoot = findHiveRoot(this.workDir);
+    if (!hiveRoot) return;
+    const paths = getHivePaths(hiveRoot);
+    const tokenStore = new TokenStore(join(paths.hiveDir, '.env'));
+    await tokenStore.loadFromEnv();
+
+    // Determine team name for labels
+    const teamName = this.teams.length > 0 ? this.teams[0].name : undefined;
+
+    this.log('JIRA_SYNC_STARTED', `Syncing requirement ${this.requirement.id} to Jira`);
+
+    try {
+      const result = await syncRequirementToJira(
+        this.db,
+        tokenStore,
+        pmConfig.jira,
+        this.requirement,
+        storyIds,
+        teamName
+      );
+
+      if (result.epicKey) {
+        this.log('JIRA_EPIC_CREATED', `Epic ${result.epicKey} created for ${this.requirement.id}`);
+      }
+
+      for (const story of result.stories) {
+        this.log('JIRA_STORY_CREATED', `Jira issue ${story.jiraKey} created for ${story.storyId}`);
+      }
+
+      if (result.errors.length > 0) {
+        for (const error of result.errors) {
+          this.log('JIRA_SYNC_WARNING', error);
+        }
+      }
+
+      this.log(
+        'JIRA_SYNC_COMPLETED',
+        `Synced ${result.stories.length}/${storyIds.length} stories to Jira`
+      );
+    } catch (err) {
+      // Jira sync failure should not block the pipeline
+      this.log(
+        'JIRA_SYNC_WARNING',
+        `Jira sync failed: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   }
 

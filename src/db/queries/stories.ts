@@ -36,6 +36,9 @@ export interface UpdateStoryInput {
   assignedAgentId?: string | null;
   branchName?: string | null;
   prUrl?: string | null;
+  jiraIssueKey?: string | null;
+  jiraIssueId?: string | null;
+  jiraProjectKey?: string | null;
 }
 
 export function createStory(db: Database, input: CreateStoryInput): StoryRow {
@@ -198,6 +201,18 @@ export function updateStory(
     updates.push('pr_url = ?');
     values.push(input.prUrl);
   }
+  if (input.jiraIssueKey !== undefined) {
+    updates.push('jira_issue_key = ?');
+    values.push(input.jiraIssueKey);
+  }
+  if (input.jiraIssueId !== undefined) {
+    updates.push('jira_issue_id = ?');
+    values.push(input.jiraIssueId);
+  }
+  if (input.jiraProjectKey !== undefined) {
+    updates.push('jira_project_key = ?');
+    values.push(input.jiraProjectKey);
+  }
 
   if (updates.length === 1) {
     return getStoryById(db, id);
@@ -338,6 +353,10 @@ export function getStoriesWithOrphanedAssignments(
     )
   `
   );
+}
+
+export function getStoryByJiraKey(db: Database, jiraIssueKey: string): StoryRow | undefined {
+  return queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE jira_issue_key = ?', [jiraIssueKey]);
 }
 
 export function updateStoryAssignment(db: Database, storyId: string, agentId: string | null): void {
