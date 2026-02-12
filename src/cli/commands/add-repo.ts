@@ -42,7 +42,7 @@ export const addRepoCommand = new Command('add-repo')
         try {
           await execa(
             'git',
-            ['submodule', 'add', '-b', options.branch, options.url, relativeRepoPath],
+            ['submodule', 'add', '-f', '-b', options.branch, options.url, relativeRepoPath],
             {
               cwd: root,
             }
