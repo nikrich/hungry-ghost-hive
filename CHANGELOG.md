@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.27.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.26.0...hungry-ghost-hive-v0.27.0) (2026-02-12)
+
+
+### Features
+
+* add Jira bidirectional sync for status changes ([#317](https://github.com/nikrich/hungry-ghost-hive/issues/317)) ([e4f3033](https://github.com/nikrich/hungry-ghost-hive/commit/e4f3033094e8d5d646ac9c49d554dc1dcae56f36))
+* add Jira board epic poller and requirement ingestion ([#326](https://github.com/nikrich/hungry-ghost-hive/issues/326)) ([e9e2e42](https://github.com/nikrich/hungry-ghost-hive/commit/e9e2e429e45fa81ddcb3b30d49a8a4d69c879703))
+* add Jira subtask progress tracking and approach comments ([#329](https://github.com/nikrich/hungry-ghost-hive/issues/329)) ([d517565](https://github.com/nikrich/hungry-ghost-hive/commit/d517565444527a9e0acf2c593fd7256abcac5f31))
+
+
+### Bug Fixes
+
+* add Jira operation queue to prevent race conditions during concurrent story assignment ([#325](https://github.com/nikrich/hungry-ghost-hive/issues/325)) ([f8c8dd2](https://github.com/nikrich/hungry-ghost-hive/commit/f8c8dd2f44307ff434b7357c7d89ccf5fbbbb505))
+
 ## [0.26.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.25.0...hungry-ghost-hive-v0.26.0) (2026-02-12)
 
 
