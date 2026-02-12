@@ -1257,6 +1257,48 @@ async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<void> {
     agentsSpunDown++;
   }
 
+  // Also find working agents with no current story that have no active stories assigned
+  const orphanedWorkingAgents = queryAll<{
+    id: string;
+    tmux_session: string | null;
+    type: string;
+  }>(
+    ctx.db.db,
+    `SELECT id, tmux_session, type FROM agents
+     WHERE status = 'working' AND current_story_id IS NULL AND type != 'tech_lead'`
+  );
+
+  for (const agent of orphanedWorkingAgents) {
+    // Check if this agent has any active (non-merged) stories assigned
+    const activeStories = queryAll<StoryRow>(
+      ctx.db.db,
+      `SELECT * FROM stories WHERE assigned_agent_id = ? AND status NOT IN ('merged', 'draft')`,
+      [agent.id]
+    );
+    if (activeStories.length > 0) continue;
+
+    const agentSession = ctx.hiveSessions.find(
+      s => s.name === agent.tmux_session || s.name.includes(agent.id)
+    );
+
+    if (agentSession) {
+      await sendToTmuxSession(agentSession.name, `# No active stories assigned. Spinning down...`);
+      await new Promise(resolve => setTimeout(resolve, AGENT_SPINDOWN_DELAY_MS));
+      await killTmuxSession(agentSession.name);
+    }
+
+    await withTransaction(ctx.db.db, () => {
+      updateAgent(ctx.db.db, agent.id, { status: 'terminated', currentStoryId: null });
+      createLog(ctx.db.db, {
+        agentId: agent.id,
+        eventType: 'AGENT_TERMINATED',
+        message: `Agent spun down: status was working with no current story and no active stories`,
+      });
+    });
+
+    agentsSpunDown++;
+  }
+
   if (agentsSpunDown > 0) {
     ctx.db.save();
     console.log(chalk.green(`  Spun down ${agentsSpunDown} agent(s) after successful merge`));

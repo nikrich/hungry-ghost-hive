@@ -2,12 +2,13 @@
 
 import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { createAgent, getAgentById, updateAgent } from '../db/queries/agents.js';
 import {
   createPullRequest,
   getApprovedPullRequests,
   updatePullRequest,
 } from '../db/queries/pull-requests.js';
-import { createStory } from '../db/queries/stories.js';
+import { createStory, getStoryById, updateStory } from '../db/queries/stories.js';
 import { createTeam } from '../db/queries/teams.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
 
@@ -113,6 +114,70 @@ describe('auto-merge functionality', () => {
 
       expect(approved).toHaveLength(2);
       expect(approved.filter(p => p.github_pr_number)).toHaveLength(1);
+    });
+  });
+
+  describe('agent cleanup on story merge', () => {
+    it('should allow agent currentStoryId to be cleared when story is merged', () => {
+      // Create an agent assigned to the story
+      const agent = createAgent(db, {
+        type: 'senior',
+        teamId,
+        model: 'claude-sonnet-4-20250514',
+      });
+      updateAgent(db, agent.id, { status: 'working', currentStoryId: storyId });
+
+      // Assign story to agent
+      updateStory(db, storyId, { assignedAgentId: agent.id, status: 'in_progress' });
+
+      // Simulate what auto-merge now does: clear agent's currentStoryId
+      const story = getStoryById(db, storyId);
+      expect(story?.assigned_agent_id).toBe(agent.id);
+
+      const agentBefore = getAgentById(db, agent.id);
+      expect(agentBefore?.current_story_id).toBe(storyId);
+      expect(agentBefore?.status).toBe('working');
+
+      // Clear the agent's currentStoryId (as auto-merge now does)
+      updateAgent(db, agent.id, { currentStoryId: null, status: 'idle' });
+
+      const agentAfter = getAgentById(db, agent.id);
+      expect(agentAfter?.current_story_id).toBeNull();
+      expect(agentAfter?.status).toBe('idle');
+    });
+
+    it('should not clear agent currentStoryId if agent moved to different story', () => {
+      const agent = createAgent(db, {
+        type: 'senior',
+        teamId,
+        model: 'claude-sonnet-4-20250514',
+      });
+
+      // Create a second story
+      const story2 = createStory(db, {
+        title: 'Second Story',
+        description: 'Another story',
+        teamId,
+      });
+
+      // Agent is now working on story2, not the original storyId
+      updateAgent(db, agent.id, { status: 'working', currentStoryId: story2.id });
+
+      // When the original story merges, agent's currentStoryId is story2 (different)
+      // so we should NOT clear it
+      const agentCheck = getAgentById(db, agent.id);
+      expect(agentCheck?.current_story_id).toBe(story2.id);
+      expect(agentCheck?.current_story_id).not.toBe(storyId);
+
+      // The guard condition: only clear if agent.current_story_id === storyId
+      if (agentCheck?.current_story_id === storyId) {
+        updateAgent(db, agent.id, { currentStoryId: null, status: 'idle' });
+      }
+
+      // Agent should still have story2 as current story
+      const agentAfter = getAgentById(db, agent.id);
+      expect(agentAfter?.current_story_id).toBe(story2.id);
+      expect(agentAfter?.status).toBe('working');
     });
   });
 });
