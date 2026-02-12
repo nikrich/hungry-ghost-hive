@@ -17,6 +17,7 @@ import {
   configCommand,
   escalationsCommand,
   initCommand,
+  jiraCommand,
   managerCommand,
   msgCommand,
   myStoriesCommand,
@@ -45,6 +46,9 @@ program.addCommand(initCommand);
 program.addCommand(authCommand);
 program.addCommand(configCommand);
 program.addCommand(clusterCommand);
+
+// Integrations
+program.addCommand(jiraCommand);
 
 // Repository and team management
 program.addCommand(addRepoCommand);

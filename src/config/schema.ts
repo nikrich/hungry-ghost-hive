@@ -95,6 +95,8 @@ const JiraConfigSchema = z.object({
   story_type: z.string().min(1).default('Story'),
   // Subtask type in Jira (e.g., "Subtask")
   subtask_type: z.string().min(1).default('Subtask'),
+  // Jira field ID for story points (e.g., "story_points" for next-gen, "customfield_10016" for classic)
+  story_points_field: z.string().min(1).default('story_points'),
   // Status mapping from Jira status to internal status
   status_mapping: z.record(z.string()).default({}),
   // Whether to watch the board for changes (polling) — deprecated, ignored

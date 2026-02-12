@@ -24,6 +24,10 @@ vi.mock('../../utils/paths.js', () => ({
   getHivePaths: vi.fn().mockReturnValue({ hiveDir: '/tmp/test-hive' }),
 }));
 
+vi.mock('../../auth/env-store.js', () => ({
+  writeEnvEntries: vi.fn(),
+}));
+
 import { input, select } from '@inquirer/prompts';
 import { startJiraOAuthFlow } from '../../auth/jira-oauth.js';
 import { runInitWizard } from './init-wizard.js';
@@ -64,6 +68,7 @@ describe('Init Wizard', () => {
           site_url: 'https://test.atlassian.net',
           story_type: 'Story',
           subtask_type: 'Subtask',
+          story_points_field: 'story_points',
           status_mapping: {},
         },
       });
@@ -140,6 +145,7 @@ describe('Init Wizard', () => {
           site_url: 'https://test.atlassian.net',
           story_type: 'Story',
           subtask_type: 'Subtask',
+          story_points_field: 'story_points',
           status_mapping: {},
         },
       });

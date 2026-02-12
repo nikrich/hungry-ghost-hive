@@ -259,6 +259,48 @@ export async function createJiraBoard(
   return (await boardResponse.json()) as JiraBoard;
 }
 
+/** Jira field definition */
+interface JiraField {
+  id: string;
+  name: string;
+  schema?: { type: string };
+}
+
+/**
+ * Detect the story points field ID for a Jira site.
+ * Returns the field ID (e.g., "story_points" or "customfield_10016").
+ */
+export async function detectStoryPointsField(
+  cloudId: string,
+  accessToken: string
+): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/field`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) return 'story_points';
+
+    const fields = (await response.json()) as JiraField[];
+
+    // Look for the story points field — common names/IDs
+    for (const f of fields) {
+      const name = (f.name || '').toLowerCase();
+      if (f.id === 'story_points') return 'story_points';
+      if (name === 'story points' || name === 'story point estimate') return f.id;
+    }
+  } catch {
+    // Fall through to default
+  }
+  return 'story_points';
+}
+
 /**
  * Auto-detect status mapping from Jira statuses to Hive statuses.
  * Uses status category and common naming patterns.
@@ -436,6 +478,38 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
     }
   }
 
+  // Step 4: Board selection for sprint operations
+  let boardId: string | undefined;
+  try {
+    console.log(chalk.gray(`Fetching boards for ${selectedProject.key}...`));
+    const boards = await fetchProjectBoards(cloudId, accessToken, selectedProject.key);
+
+    if (boards.length === 1) {
+      boardId = String(boards[0].id);
+      console.log(chalk.gray(`Auto-selected board: ${boards[0].name} (${boards[0].type})`));
+    } else if (boards.length > 1) {
+      const selectedBoard = await select({
+        message: 'Select a board (used for sprint operations)',
+        choices: boards.map(b => ({
+          name: `${b.name} (${b.type})`,
+          value: b,
+        })),
+      });
+      boardId = String(selectedBoard.id);
+    } else {
+      console.log(chalk.yellow('No boards found. Sprint operations will use best-effort discovery.'));
+    }
+  } catch {
+    console.log(chalk.yellow('Could not fetch boards. Sprint operations will use best-effort discovery.'));
+  }
+
+  // Step 5: Detect story points field
+  console.log(chalk.gray('Detecting story points field...'));
+  const storyPointsField = await detectStoryPointsField(cloudId, accessToken);
+  if (storyPointsField !== 'story_points') {
+    console.log(chalk.gray(`Using custom field for story points: ${storyPointsField}`));
+  }
+
   console.log();
   console.log(chalk.green('Jira setup complete!'));
 
@@ -443,8 +517,10 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
     jiraConfig: {
       project_key: selectedProject.key,
       site_url: siteUrl,
+      board_id: boardId,
       story_type: 'Story',
       subtask_type: 'Subtask',
+      story_points_field: storyPointsField,
       status_mapping: finalMapping,
     },
   };
@@ -474,12 +550,28 @@ async function runNonInteractiveSetup(options: JiraSetupOptions): Promise<JiraSe
   const statuses = await fetchProjectStatuses(cloudId, accessToken, project.key);
   const statusMapping = autoDetectStatusMapping(statuses);
 
+  // Try to auto-detect board
+  let boardId: string | undefined;
+  try {
+    const boards = await fetchProjectBoards(cloudId, accessToken, project.key);
+    if (boards.length === 1) {
+      boardId = String(boards[0].id);
+    }
+  } catch {
+    // Board detection is best-effort in non-interactive mode
+  }
+
+  // Auto-detect story points field
+  const storyPointsField = await detectStoryPointsField(cloudId, accessToken);
+
   return {
     jiraConfig: {
       project_key: project.key,
       site_url: siteUrl,
+      board_id: boardId,
       story_type: 'Story',
       subtask_type: 'Subtask',
+      story_points_field: storyPointsField,
       status_mapping: statusMapping,
     },
   };

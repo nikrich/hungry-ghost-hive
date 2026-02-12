@@ -166,11 +166,17 @@ async function buildResult(
         openBrowser,
       });
 
-      // Store tokens in .env
+      // Store tokens and client credentials in .env
       const paths = getHivePaths(process.cwd());
       const envPath = join(paths.hiveDir, '.env');
       const tokenStore = new TokenStore(envPath);
       await storeJiraTokens(tokenStore, oauthResult);
+
+      const { writeEnvEntries } = await import('../../auth/env-store.js');
+      writeEnvEntries({
+        JIRA_CLIENT_ID: clientId,
+        JIRA_CLIENT_SECRET: clientSecret,
+      }, process.cwd());
 
       console.log(chalk.green('OAuth successful!'));
 

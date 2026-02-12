@@ -94,7 +94,8 @@ async function tryMoveToActiveSprint(
   if (issueKeys.length === 0) return;
 
   try {
-    const sprintInfo = await getActiveSprintForProject(client, config.project_key);
+    const preferredBoardId = config.board_id ? Number(config.board_id) : undefined;
+    const sprintInfo = await getActiveSprintForProject(client, config.project_key, preferredBoardId);
     if (!sprintInfo) {
       logger.debug(
         `No active sprint found for project ${config.project_key}, skipping sprint assignment`
@@ -218,7 +219,7 @@ export async function syncRequirementToJira(
       };
 
       if (story.story_points !== null) {
-        fields.story_points = story.story_points;
+        fields[config.story_points_field || 'story_points'] = story.story_points;
       }
 
       if (epicKey) {
@@ -330,7 +331,7 @@ export async function syncStoryToJira(
   };
 
   if (story.story_points !== null) {
-    fields.story_points = story.story_points;
+    fields[config.story_points_field || 'story_points'] = story.story_points;
   }
 
   if (epicKey) {
