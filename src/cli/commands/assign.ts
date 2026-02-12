@@ -118,6 +118,7 @@ export const assignCommand = new Command('assign')
           qa: config.qa,
           rootDir: root,
           saveFn: () => db.save(),
+          hiveConfig: config,
         });
 
         // Check scaling first (spawns additional seniors if needed)
