@@ -17,6 +17,7 @@ export const initCommand = new Command('init')
   .option('--source-control <provider>', 'Source control provider (github, gitlab, bitbucket)')
   .option('--project-management <tool>', 'Project management tool (none, jira)')
   .option('--autonomy <level>', 'Agent autonomy level (full, partial)')
+  .option('--jira-project <key>', 'Jira project key (for non-interactive mode)')
   .action(
     async (options: {
       force?: boolean;
@@ -24,6 +25,7 @@ export const initCommand = new Command('init')
       sourceControl?: string;
       projectManagement?: string;
       autonomy?: string;
+      jiraProject?: string;
     }) => {
       const rootDir = process.cwd();
       const paths = getHivePaths(rootDir);
@@ -69,6 +71,7 @@ export const initCommand = new Command('init')
           sourceControl: options.sourceControl,
           projectManagement: options.projectManagement,
           autonomy: options.autonomy,
+          jiraProject: options.jiraProject,
         });
 
         // Update config with wizard selections
