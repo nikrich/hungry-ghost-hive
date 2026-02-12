@@ -542,30 +542,80 @@ function runMigrations(db: SqlJsDatabase): void {
     db.run("INSERT INTO migrations (name) VALUES ('010-add-target-branch.sql')");
   }
 
-  // Migration 006: Add Jira integration fields to stories table
+  // Migration 006: Add comprehensive Jira integration fields and sync table
   const result006Jira = db.exec("SELECT name FROM migrations WHERE name = '006-integrations.sql'");
   const migration006JiraApplied = result006Jira.length > 0 && result006Jira[0].values.length > 0;
 
   if (!migration006JiraApplied) {
+    // Add columns to stories table
     const storyColumns = db.exec('PRAGMA table_info(stories)');
-    const hasJiraIssueKey =
-      storyColumns.length > 0 &&
-      storyColumns[0].values.some((col: unknown[]) => col[1] === 'jira_issue_key');
-    const hasJiraIssueId =
-      storyColumns.length > 0 &&
-      storyColumns[0].values.some((col: unknown[]) => col[1] === 'jira_issue_id');
-    const hasJiraProjectKey =
-      storyColumns.length > 0 &&
-      storyColumns[0].values.some((col: unknown[]) => col[1] === 'jira_project_key');
+    const storyColumnNames =
+      storyColumns.length > 0 ? storyColumns[0].values.map((col: unknown[]) => String(col[1])) : [];
+    const storyColumnsToAdd = [
+      'jira_issue_key',
+      'jira_issue_id',
+      'jira_project_key',
+      'jira_subtask_key',
+      'jira_subtask_id',
+    ];
+    for (const col of storyColumnsToAdd) {
+      if (!storyColumnNames.includes(col)) {
+        db.run(`ALTER TABLE stories ADD COLUMN ${col} TEXT`);
+      }
+    }
 
-    if (!hasJiraIssueKey) {
-      db.run('ALTER TABLE stories ADD COLUMN jira_issue_key TEXT');
+    // Add columns to requirements table
+    const reqColumns = db.exec('PRAGMA table_info(requirements)');
+    const reqColumnNames =
+      reqColumns.length > 0 ? reqColumns[0].values.map((col: unknown[]) => String(col[1])) : [];
+    const reqColumnsToAdd = ['jira_epic_key', 'jira_epic_id'];
+    for (const col of reqColumnsToAdd) {
+      if (!reqColumnNames.includes(col)) {
+        db.run(`ALTER TABLE requirements ADD COLUMN ${col} TEXT`);
+      }
     }
-    if (!hasJiraIssueId) {
-      db.run('ALTER TABLE stories ADD COLUMN jira_issue_id TEXT');
+
+    // Add column to pull_requests table
+    const prColumns = db.exec('PRAGMA table_info(pull_requests)');
+    const prColumnNames =
+      prColumns.length > 0 ? prColumns[0].values.map((col: unknown[]) => String(col[1])) : [];
+    if (!prColumnNames.includes('jira_issue_key')) {
+      db.run('ALTER TABLE pull_requests ADD COLUMN jira_issue_key TEXT');
     }
-    if (!hasJiraProjectKey) {
-      db.run('ALTER TABLE stories ADD COLUMN jira_project_key TEXT');
+
+    // Create integration_sync table
+    const syncTables = db.exec(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='integration_sync'"
+    );
+    if (syncTables.length === 0 || syncTables[0].values.length === 0) {
+      db.run(`
+        CREATE TABLE integration_sync (
+          id TEXT PRIMARY KEY,
+          entity_type TEXT NOT NULL CHECK (entity_type IN ('story', 'requirement', 'pull_request')),
+          entity_id TEXT NOT NULL,
+          provider TEXT NOT NULL CHECK (provider IN ('jira', 'github', 'confluence')),
+          external_id TEXT NOT NULL,
+          last_synced_at TIMESTAMP,
+          sync_status TEXT DEFAULT 'pending' CHECK (sync_status IN ('pending', 'synced', 'failed')),
+          error_message TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Create indexes on integration_sync table
+      db.run(
+        'CREATE INDEX IF NOT EXISTS idx_integration_sync_entity ON integration_sync(entity_type, entity_id)'
+      );
+      db.run(
+        'CREATE INDEX IF NOT EXISTS idx_integration_sync_provider ON integration_sync(provider, external_id)'
+      );
+      db.run(
+        'CREATE INDEX IF NOT EXISTS idx_integration_sync_status ON integration_sync(sync_status)'
+      );
+      db.run(
+        'CREATE INDEX IF NOT EXISTS idx_integration_sync_last_synced ON integration_sync(last_synced_at)'
+      );
     }
 
     db.run("INSERT INTO migrations (name) VALUES ('006-integrations.sql')");
