@@ -8,6 +8,9 @@ const JIRA_OAUTH_SCOPES = [
   'read:jira-work',
   'write:jira-work',
   'read:jira-user',
+  'manage:jira-configuration',
+  'read:board-scope:jira-software',
+  'write:board-scope:jira-software',
   'offline_access',
   'read:confluence-content.all',
 ] as const;
@@ -238,9 +241,9 @@ export async function startJiraOAuthFlow(options: JiraOAuthOptions): Promise<Jir
       });
     });
 
-    server.listen(port, '127.0.0.1', () => {
+    server.listen(port, 'localhost', () => {
       const addr = server!.address() as { port: number };
-      const redirectUri = `http://127.0.0.1:${addr.port}/callback`;
+      const redirectUri = `http://localhost:${addr.port}/callback`;
       const authUrl = buildAuthorizationUrl(clientId, redirectUri, state);
 
       // Open browser for authorization
@@ -273,7 +276,7 @@ async function handleCallback(
     settle: (err: Error | null, result?: JiraOAuthResult) => void;
   }
 ): Promise<void> {
-  const url = new URL(req.url ?? '/', `http://127.0.0.1:${ctx.serverPort}`);
+  const url = new URL(req.url ?? '/', `http://localhost:${ctx.serverPort}`);
 
   if (url.pathname !== '/callback') {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -303,7 +306,7 @@ async function handleCallback(
   }
 
   try {
-    const redirectUri = `http://127.0.0.1:${ctx.serverPort}/callback`;
+    const redirectUri = `http://localhost:${ctx.serverPort}/callback`;
     const tokens = await exchangeCodeForTokens(code, ctx.clientId, ctx.clientSecret, redirectUri);
     const resources = await fetchAccessibleResources(tokens.access_token);
 
