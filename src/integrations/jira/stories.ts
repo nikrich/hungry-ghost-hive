@@ -1,5 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import type { Database } from 'sql.js';
 import type { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
 import type { StoryRow } from '../../db/client.js';
@@ -9,7 +10,6 @@ import { getStoryById, getStoryDependencies, updateStory } from '../../db/querie
 import { JiraClient } from './client.js';
 import { createIssue, createIssueLink } from './issues.js';
 import type { AdfDocument, AdfNode, CreateIssueResponse } from './types.js';
-import type { Database } from 'sql.js';
 
 /** Result of syncing a requirement and its stories to Jira */
 export interface JiraSyncResult {
@@ -56,17 +56,13 @@ function acceptanceCriteriaToAdf(description: string, criteria: string[]): AdfDo
   if (criteria.length > 0) {
     content.push({
       type: 'paragraph',
-      content: [
-        { type: 'text', text: 'Acceptance Criteria:', marks: [{ type: 'strong' }] },
-      ],
+      content: [{ type: 'text', text: 'Acceptance Criteria:', marks: [{ type: 'strong' }] }],
     });
     content.push({
       type: 'bulletList',
       content: criteria.map(c => ({
         type: 'listItem',
-        content: [
-          { type: 'paragraph', content: [{ type: 'text', text: c }] },
-        ],
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: c }] }],
       })),
     });
   }
@@ -77,10 +73,7 @@ function acceptanceCriteriaToAdf(description: string, criteria: string[]): AdfDo
 /**
  * Build the description ADF for a story, including acceptance criteria if present.
  */
-function buildStoryDescription(
-  description: string,
-  acceptanceCriteria: string[]
-): AdfDocument {
+function buildStoryDescription(description: string, acceptanceCriteria: string[]): AdfDocument {
   if (acceptanceCriteria.length > 0) {
     return acceptanceCriteriaToAdf(description, acceptanceCriteria);
   }

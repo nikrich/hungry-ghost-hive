@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import chalk from 'chalk';
-import { join } from 'path';
 import { Command } from 'commander';
+import { join } from 'path';
 import { TokenStore } from '../../auth/token-store.js';
 import { loadConfig } from '../../config/index.js';
 import {
@@ -119,12 +119,7 @@ storiesCommand
             await tokenStore.loadFromEnv();
 
             const updatedStory = getStoryById(db.db, story.id)!;
-            const result = await syncStoryToJira(
-              db.db,
-              tokenStore,
-              pmConfig.jira,
-              updatedStory
-            );
+            const result = await syncStoryToJira(db.db, tokenStore, pmConfig.jira, updatedStory);
 
             if (result) {
               jiraKey = result.jiraKey;

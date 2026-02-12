@@ -343,10 +343,7 @@ Respond in JSON format:
     const pmConfig = config.integrations.project_management;
     if (pmConfig.provider !== 'jira' || !pmConfig.jira) return '';
 
-    return generateTechLeadJiraInstructions(
-      pmConfig.jira.project_key,
-      pmConfig.jira.site_url
-    );
+    return generateTechLeadJiraInstructions(pmConfig.jira.project_key, pmConfig.jira.site_url);
   }
 
   private loadHiveConfig(): HiveConfig | null {

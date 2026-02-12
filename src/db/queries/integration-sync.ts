@@ -28,10 +28,7 @@ export interface CreateSyncRecordInput {
   externalId: string;
 }
 
-export function createSyncRecord(
-  db: Database,
-  input: CreateSyncRecordInput
-): IntegrationSyncRow {
+export function createSyncRecord(db: Database, input: CreateSyncRecordInput): IntegrationSyncRow {
   const id = `SYNC-${nanoid(8).toUpperCase()}`;
   const now = new Date().toISOString();
 
@@ -47,15 +44,8 @@ export function createSyncRecord(
   return getSyncRecordById(db, id)!;
 }
 
-export function getSyncRecordById(
-  db: Database,
-  id: string
-): IntegrationSyncRow | undefined {
-  return queryOne<IntegrationSyncRow>(
-    db,
-    'SELECT * FROM integration_sync WHERE id = ?',
-    [id]
-  );
+export function getSyncRecordById(db: Database, id: string): IntegrationSyncRow | undefined {
+  return queryOne<IntegrationSyncRow>(db, 'SELECT * FROM integration_sync WHERE id = ?', [id]);
 }
 
 export function getSyncRecordByEntity(

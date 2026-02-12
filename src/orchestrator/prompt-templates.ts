@@ -6,10 +6,7 @@ import type { StoryRow } from '../db/client.js';
  * Generate Jira-specific instructions for the Tech Lead prompt.
  * Returns empty string if Jira is not enabled.
  */
-export function generateTechLeadJiraInstructions(
-  projectKey: string,
-  siteUrl: string
-): string {
+export function generateTechLeadJiraInstructions(projectKey: string, siteUrl: string): string {
   return `
 ## Jira Integration (Enabled)
 Your project management provider is Jira. When you create stories, they are automatically synced to Jira.
