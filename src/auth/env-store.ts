@@ -79,9 +79,16 @@ export function getEnvValue(key: string, rootDir?: string): string | undefined {
 
 /**
  * Load .env entries into process.env (without overwriting existing values).
+ * Silently returns if no Hive workspace is found (e.g., in CI or tests).
  */
 export function loadEnvIntoProcess(rootDir?: string): void {
-  const entries = readEnvFile(rootDir);
+  let entries: Record<string, string>;
+  try {
+    entries = readEnvFile(rootDir);
+  } catch {
+    // Not inside a Hive workspace — nothing to load
+    return;
+  }
   for (const [key, value] of Object.entries(entries)) {
     if (process.env[key] === undefined) {
       process.env[key] = value;
