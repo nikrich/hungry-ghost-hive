@@ -2,6 +2,41 @@
 
 import { execa } from 'execa';
 
+/**
+ * Get the GitHub token from environment, if available.
+ */
+export function getGitHubToken(): string | undefined {
+  return process.env.GITHUB_TOKEN;
+}
+
+/**
+ * Get the GitHub username from environment, if available.
+ */
+export function getGitHubUsername(): string | undefined {
+  return process.env.GITHUB_USERNAME;
+}
+
+/**
+ * Check if GitHub authentication is available via token or gh CLI.
+ * Prefers GITHUB_TOKEN from environment over gh CLI auth.
+ */
+export async function isGitHubAuthenticated(): Promise<{
+  authenticated: boolean;
+  method: 'token' | 'gh-cli' | 'none';
+}> {
+  // Prefer env-based token
+  if (getGitHubToken()) {
+    return { authenticated: true, method: 'token' };
+  }
+
+  // Fallback: check gh CLI auth
+  if (await isGitHubCLIAvailable()) {
+    return { authenticated: true, method: 'gh-cli' };
+  }
+
+  return { authenticated: false, method: 'none' };
+}
+
 export interface PRCreateOptions {
   title: string;
   body: string;

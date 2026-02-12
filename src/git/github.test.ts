@@ -13,12 +13,61 @@ import { execa as mockExeca } from 'execa';
 const mockedExeca = vi.mocked(mockExeca);
 
 describe('github module', () => {
+  const originalEnv = { ...process.env };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.GITHUB_USERNAME;
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    process.env = { ...originalEnv };
+  });
+
+  describe('getGitHubToken', () => {
+    it('should return GITHUB_TOKEN from environment', () => {
+      process.env.GITHUB_TOKEN = 'ghp_testtoken123';
+      expect(github.getGitHubToken()).toBe('ghp_testtoken123');
+    });
+
+    it('should return undefined when GITHUB_TOKEN is not set', () => {
+      expect(github.getGitHubToken()).toBeUndefined();
+    });
+  });
+
+  describe('getGitHubUsername', () => {
+    it('should return GITHUB_USERNAME from environment', () => {
+      process.env.GITHUB_USERNAME = 'testuser';
+      expect(github.getGitHubUsername()).toBe('testuser');
+    });
+
+    it('should return undefined when GITHUB_USERNAME is not set', () => {
+      expect(github.getGitHubUsername()).toBeUndefined();
+    });
+  });
+
+  describe('isGitHubAuthenticated', () => {
+    it('should prefer token-based auth when GITHUB_TOKEN is set', async () => {
+      process.env.GITHUB_TOKEN = 'ghp_token';
+      const result = await github.isGitHubAuthenticated();
+      expect(result).toEqual({ authenticated: true, method: 'token' });
+      // Should not even check gh CLI
+      expect(mockedExeca).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to gh CLI when no token is set', async () => {
+      mockedExeca.mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
+      const result = await github.isGitHubAuthenticated();
+      expect(result).toEqual({ authenticated: true, method: 'gh-cli' });
+    });
+
+    it('should return none when neither token nor gh CLI is available', async () => {
+      mockedExeca.mockRejectedValueOnce(new Error('gh not found'));
+      const result = await github.isGitHubAuthenticated();
+      expect(result).toEqual({ authenticated: false, method: 'none' });
+    });
   });
 
   describe('isGitHubCLIAvailable', () => {
