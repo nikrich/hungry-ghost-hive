@@ -154,6 +154,11 @@ describe('context-files module', () => {
           allow_without_feature_work: true,
         },
       },
+      integrations: {
+        source_control: { provider: 'github' },
+        project_management: { provider: 'none' },
+        autonomy: { level: 'full' },
+      },
       github: { base_branch: 'main', pr_template: '' },
       qa: {
         quality_checks: ['npm run lint', 'npm run type-check'],

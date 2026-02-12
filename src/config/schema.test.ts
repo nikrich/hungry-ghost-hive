@@ -273,4 +273,241 @@ describe('HiveConfigSchema', () => {
     const result = HiveConfigSchema.safeParse(config);
     expect(result.success).toBe(true);
   });
+
+  it('should accept valid integrations config with source_control', () => {
+    const config = {
+      integrations: {
+        source_control: {
+          provider: 'github',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.integrations.source_control.provider).toBe('github');
+    }
+  });
+
+  it('should accept valid source_control providers (github, bitbucket, gitlab)', () => {
+    const providers = ['github', 'bitbucket', 'gitlab'];
+
+    for (const provider of providers) {
+      const config = {
+        integrations: {
+          source_control: {
+            provider: provider as any,
+          },
+        },
+      };
+
+      const result = HiveConfigSchema.safeParse(config);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('should reject invalid source_control provider', () => {
+    const config = {
+      integrations: {
+        source_control: {
+          provider: 'invalid_provider',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it('should apply default source_control provider (github)', () => {
+    const config = HiveConfigSchema.parse({
+      integrations: {
+        source_control: {},
+      },
+    });
+    expect(config.integrations.source_control.provider).toBe('github');
+  });
+
+  it('should accept valid project_management providers (none, jira)', () => {
+    const providers = ['none', 'jira'];
+
+    for (const provider of providers) {
+      const config = {
+        integrations: {
+          project_management: {
+            provider: provider as any,
+          },
+        },
+      };
+
+      const result = HiveConfigSchema.safeParse(config);
+      // jira requires jira config, so skip that one
+      if (provider === 'jira') {
+        expect(result.success).toBe(false);
+      } else {
+        expect(result.success).toBe(true);
+      }
+    }
+  });
+
+  it('should reject invalid project_management provider', () => {
+    const config = {
+      integrations: {
+        project_management: {
+          provider: 'invalid_pm_provider',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it('should apply default project_management provider (none)', () => {
+    const config = HiveConfigSchema.parse({
+      integrations: {
+        project_management: {},
+      },
+    });
+    expect(config.integrations.project_management.provider).toBe('none');
+  });
+
+  it('should require jira config when project_management provider is jira', () => {
+    const config = {
+      integrations: {
+        project_management: {
+          provider: 'jira',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it('should accept jira configuration with all required fields', () => {
+    const config = {
+      integrations: {
+        project_management: {
+          provider: 'jira',
+          jira: {
+            project_key: 'HIVE',
+            site_url: 'https://mycompany.atlassian.net',
+            board_id: '1',
+          },
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.integrations.project_management.jira?.project_key).toBe('HIVE');
+      expect(result.data.integrations.project_management.jira?.site_url).toBe(
+        'https://mycompany.atlassian.net'
+      );
+      expect(result.data.integrations.project_management.jira?.board_id).toBe('1');
+    }
+  });
+
+  it('should apply jira config defaults for story_type and subtask_type', () => {
+    const config = HiveConfigSchema.parse({
+      integrations: {
+        project_management: {
+          provider: 'jira',
+          jira: {
+            project_key: 'HIVE',
+            site_url: 'https://mycompany.atlassian.net',
+            board_id: '1',
+          },
+        },
+      },
+    });
+    expect(config.integrations.project_management.jira?.story_type).toBe('Story');
+    expect(config.integrations.project_management.jira?.subtask_type).toBe('Subtask');
+  });
+
+  it('should apply defaults for integrations when not specified', () => {
+    const config = HiveConfigSchema.parse({});
+    expect(config.integrations.source_control.provider).toBe('github');
+    expect(config.integrations.project_management.provider).toBe('none');
+    expect(config.integrations.autonomy.level).toBe('full');
+  });
+
+  it('should accept valid autonomy levels (full, partial)', () => {
+    const levels = ['full', 'partial'];
+
+    for (const level of levels) {
+      const config = {
+        integrations: {
+          autonomy: {
+            level: level as any,
+          },
+        },
+      };
+
+      const result = HiveConfigSchema.safeParse(config);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('should reject invalid autonomy level', () => {
+    const config = {
+      integrations: {
+        autonomy: {
+          level: 'unlimited',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it('should apply default autonomy level (full)', () => {
+    const config = HiveConfigSchema.parse({
+      integrations: {
+        autonomy: {},
+      },
+    });
+    expect(config.integrations.autonomy.level).toBe('full');
+  });
+
+  it('should accept complete integrations config with all sections', () => {
+    const config = {
+      integrations: {
+        source_control: {
+          provider: 'bitbucket',
+        },
+        project_management: {
+          provider: 'jira',
+          jira: {
+            project_key: 'HIVE',
+            site_url: 'https://mycompany.atlassian.net',
+            board_id: '1',
+            story_type: 'Feature',
+            subtask_type: 'Sub-task',
+            status_mapping: {
+              'To Do': 'draft',
+              'In Progress': 'in_progress',
+              Done: 'merged',
+            },
+          },
+        },
+        autonomy: {
+          level: 'partial',
+        },
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.integrations.source_control.provider).toBe('bitbucket');
+      expect(result.data.integrations.project_management.provider).toBe('jira');
+      expect(result.data.integrations.project_management.jira?.project_key).toBe('HIVE');
+      expect(result.data.integrations.autonomy.level).toBe('partial');
+    }
+  });
 });
