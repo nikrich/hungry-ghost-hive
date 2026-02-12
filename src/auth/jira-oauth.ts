@@ -9,8 +9,6 @@ const JIRA_OAUTH_SCOPES = [
   'write:jira-work',
   'read:jira-user',
   'manage:jira-configuration',
-  'read:board-scope:jira-software',
-  'write:board-scope:jira-software',
   'offline_access',
   'read:confluence-content.all',
 ] as const;
