@@ -56,13 +56,16 @@ describe('Init Wizard', () => {
         refreshToken: 'test-refresh',
         cloudId: 'test-cloud',
         siteUrl: 'https://test.atlassian.net',
-        expiresAt: Date.now() + 3600000,
+        expiresIn: 3600,
       });
       vi.mocked(runJiraSetup).mockResolvedValueOnce({
         jiraConfig: {
-          projectKey: 'TEST',
-          cloudId: 'test-cloud',
-          siteUrl: 'https://test.atlassian.net',
+          project_key: 'TEST',
+          site_url: 'https://test.atlassian.net',
+          board_id: '1',
+          story_type: 'Story',
+          subtask_type: 'Subtask',
+          status_mapping: {},
         },
       });
 
@@ -130,13 +133,16 @@ describe('Init Wizard', () => {
         refreshToken: 'test-refresh',
         cloudId: 'test-cloud',
         siteUrl: 'https://test.atlassian.net',
-        expiresAt: Date.now() + 3600000,
+        expiresIn: 3600,
       });
       vi.mocked(runJiraSetup).mockResolvedValueOnce({
         jiraConfig: {
-          projectKey: 'TEST',
-          cloudId: 'test-cloud',
-          siteUrl: 'https://test.atlassian.net',
+          project_key: 'TEST',
+          site_url: 'https://test.atlassian.net',
+          board_id: '1',
+          story_type: 'Story',
+          subtask_type: 'Subtask',
+          status_mapping: {},
         },
       });
 
