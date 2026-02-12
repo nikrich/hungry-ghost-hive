@@ -81,7 +81,9 @@ export function buildConfluenceApiUrl(siteUrl: string, endpoint: string): string
  * Fetch pages from a Confluence space.
  * Returns a paginated list of pages in the space.
  */
-export async function fetchPagesFromSpace(options: FetchPagesOptions): Promise<ConfluencePageSummary[]> {
+export async function fetchPagesFromSpace(
+  options: FetchPagesOptions
+): Promise<ConfluencePageSummary[]> {
   const { siteUrl, accessToken, spaceKey, limit = 50, start = 0 } = options;
 
   const url = buildConfluenceApiUrl(siteUrl, '/content');
@@ -213,7 +215,9 @@ export async function searchPages(options: SearchPagesOptions): Promise<SearchRe
  * Get all pages from a space recursively.
  * Handles pagination automatically.
  */
-export async function getAllPagesFromSpace(options: FetchPagesOptions): Promise<ConfluencePageSummary[]> {
+export async function getAllPagesFromSpace(
+  options: FetchPagesOptions
+): Promise<ConfluencePageSummary[]> {
   const { siteUrl, accessToken, spaceKey, limit = 50 } = options;
   const allPages: ConfluencePageSummary[] = [];
   let start = 0;

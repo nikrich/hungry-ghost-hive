@@ -1,12 +1,12 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildConfluenceApiUrl,
   fetchPagesFromSpace,
+  getAllPagesFromSpace,
   getPage,
   searchPages,
-  getAllPagesFromSpace,
   type ConfluencePage,
 } from './client.js';
 
