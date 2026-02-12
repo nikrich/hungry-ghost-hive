@@ -585,7 +585,11 @@ export class Scheduler {
       });
 
       if (subtask) {
-        logger.info(`Created Jira subtask ${subtask.key} for story ${story.id}`);
+        // Update story with subtask info
+        updateStory(this.db, story.id, {
+          jiraSubtaskKey: subtask.key,
+          jiraSubtaskId: subtask.id,
+        });
 
         // Post "assigned" comment
         await postComment(jiraClient, story.jira_issue_key, 'assigned', {
