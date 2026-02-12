@@ -1,5 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import { mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
@@ -44,6 +47,7 @@ describe('jiraStatusToHiveStatus', () => {
 
 describe('syncJiraStatusesToHive', () => {
   let db: Database;
+  let envDir: string;
 
   const baseConfig: JiraConfig = {
     project_key: 'TEST',
@@ -56,14 +60,35 @@ describe('syncJiraStatusesToHive', () => {
     board_poll_interval_ms: 60000,
   };
 
+  function createTestTokenStore(tokens?: Record<string, string>): TokenStore {
+    const envPath = join(envDir, `.env-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    // Pre-write tokens to env file to avoid async setToken lock contention
+    const content = tokens
+      ? Object.entries(tokens)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('\n')
+      : '';
+    writeFileSync(envPath, content);
+    const store = new TokenStore(envPath);
+    // Sync-load the tokens we just wrote
+    if (tokens) {
+      for (const [key, value] of Object.entries(tokens)) {
+        // Set in memory only (tokens are already on disk)
+        (store as any).tokens[key] = value;
+      }
+    }
+    return store;
+  }
+
   beforeEach(async () => {
     db = await createTestDatabase();
+    envDir = mkdtempSync(join(tmpdir(), 'hive-sync-test-'));
     // Create a manager agent for logging purposes
     db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
 
   it('skips sync when no status mapping configured', async () => {
-    const tokenStore = new TokenStore(':memory:');
+    const tokenStore = createTestTokenStore();
     const config: JiraConfig = { ...baseConfig, status_mapping: {} };
 
     const updated = await syncJiraStatusesToHive(db, tokenStore, config);
@@ -77,7 +102,7 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    const tokenStore = new TokenStore(':memory:');
+    const tokenStore = createTestTokenStore();
     const config: JiraConfig = { ...baseConfig, status_mapping: { 'To Do': 'planned' } };
 
     const updated = await syncJiraStatusesToHive(db, tokenStore, config);
@@ -98,9 +123,10 @@ describe('syncJiraStatusesToHive', () => {
       story.id,
     ]);
 
-    const tokenStore = new TokenStore(':memory:');
-    tokenStore.setToken('jira_access', 'fake-token');
-    tokenStore.setToken('jira_cloud_id', 'fake-cloud-id');
+    const tokenStore = createTestTokenStore({
+      JIRA_ACCESS_TOKEN: 'fake-token',
+      JIRA_CLOUD_ID: 'fake-cloud-id',
+    });
 
     const config: JiraConfig = {
       ...baseConfig,
@@ -161,9 +187,10 @@ describe('syncJiraStatusesToHive', () => {
       story.id,
     ]);
 
-    const tokenStore = new TokenStore(':memory:');
-    tokenStore.setToken('jira_access', 'fake-token');
-    tokenStore.setToken('jira_cloud_id', 'fake-cloud-id');
+    const tokenStore = createTestTokenStore({
+      JIRA_ACCESS_TOKEN: 'fake-token',
+      JIRA_CLOUD_ID: 'fake-cloud-id',
+    });
 
     const config: JiraConfig = {
       ...baseConfig,
@@ -216,9 +243,10 @@ describe('syncJiraStatusesToHive', () => {
       story.id,
     ]);
 
-    const tokenStore = new TokenStore(':memory:');
-    tokenStore.setToken('jira_access', 'fake-token');
-    tokenStore.setToken('jira_cloud_id', 'fake-cloud-id');
+    const tokenStore = createTestTokenStore({
+      JIRA_ACCESS_TOKEN: 'fake-token',
+      JIRA_CLOUD_ID: 'fake-cloud-id',
+    });
 
     const config: JiraConfig = {
       ...baseConfig,
@@ -245,7 +273,7 @@ describe('syncJiraStatusesToHive', () => {
       story.id,
     ]);
 
-    const tokenStore = new TokenStore(':memory:');
+    const tokenStore = createTestTokenStore();
     const config: JiraConfig = { ...baseConfig, status_mapping: { 'To Do': 'planned' } };
 
     const updated = await syncJiraStatusesToHive(db, tokenStore, config);
