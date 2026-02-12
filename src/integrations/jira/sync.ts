@@ -5,7 +5,7 @@ import type { Database } from 'sql.js';
 import { TokenStore } from '../../auth/token-store.js';
 import { loadConfig } from '../../config/loader.js';
 import type { JiraConfig } from '../../config/schema.js';
-import { queryAll, type StoryRow, withTransaction } from '../../db/client.js';
+import { queryAll, withTransaction, type StoryRow } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import { updateStory, type StoryStatus } from '../../db/queries/stories.js';
 import * as logger from '../../utils/logger.js';
@@ -168,9 +168,7 @@ export async function syncFromJira(root: string, db: Database): Promise<number> 
     return await syncJiraStatusesToHive(db, tokenStore, jiraConfig);
   } catch (err) {
     // Never block the pipeline — log and continue
-    logger.debug(
-      `Failed to sync from Jira: ${err instanceof Error ? err.message : String(err)}`
-    );
+    logger.debug(`Failed to sync from Jira: ${err instanceof Error ? err.message : String(err)}`);
     return 0;
   }
 }

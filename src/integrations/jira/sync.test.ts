@@ -7,8 +7,8 @@ import type { JiraConfig } from '../../config/schema.js';
 import { run } from '../../db/client.js';
 import { createStory, getStoryById } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
-import type { JiraIssue } from './types.js';
 import { jiraStatusToHiveStatus, syncJiraStatusesToHive } from './sync.js';
+import type { JiraIssue } from './types.js';
 
 // Mock Jira client and issues module
 vi.mock('./client.js');
@@ -19,7 +19,7 @@ describe('jiraStatusToHiveStatus', () => {
     const mapping = {
       'To Do': 'planned',
       'In Progress': 'in_progress',
-      'Done': 'merged',
+      Done: 'merged',
     };
 
     expect(jiraStatusToHiveStatus('To Do', mapping)).toBe('planned');
@@ -95,11 +95,11 @@ describe('syncJiraStatusesToHive', () => {
     });
 
     // Update story to add Jira key and set initial status
-    run(
-      db,
-      'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?',
-      ['TEST-123', 'planned', story.id]
-    );
+    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-123',
+      'planned',
+      story.id,
+    ]);
 
     const tokenStore = new TokenStore(':memory:');
     tokenStore.setToken('jira_access', 'fake-token');
@@ -162,11 +162,11 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(
-      db,
-      'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?',
-      ['TEST-123', 'in_progress', story.id]
-    );
+    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-123',
+      'in_progress',
+      story.id,
+    ]);
 
     const tokenStore = new TokenStore(':memory:');
     tokenStore.setToken('jira_access', 'fake-token');
@@ -223,11 +223,11 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(
-      db,
-      'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?',
-      ['TEST-123', 'planned', story.id]
-    );
+    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-123',
+      'planned',
+      story.id,
+    ]);
 
     const tokenStore = new TokenStore(':memory:');
     tokenStore.setToken('jira_access', 'fake-token');
@@ -258,11 +258,11 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(
-      db,
-      'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?',
-      ['TEST-123', 'merged', story.id]
-    );
+    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-123',
+      'merged',
+      story.id,
+    ]);
 
     const tokenStore = new TokenStore(':memory:');
     const config: JiraConfig = {
