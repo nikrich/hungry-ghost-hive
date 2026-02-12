@@ -72,7 +72,7 @@ export async function moveIssuesToSprint(
       method: 'POST',
       body: JSON.stringify({ issues: issueKeys }),
     });
-  } catch (agileErr) {
+  } catch {
     // Fallback: set sprint via the custom field on each issue (REST API v3)
     logger.info(
       'Agile API sprint assignment failed, falling back to REST API v3 custom field update'
