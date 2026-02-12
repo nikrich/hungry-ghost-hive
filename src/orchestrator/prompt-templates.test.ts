@@ -331,4 +331,69 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('Story requirements');
     });
   });
+
+  describe('targetBranch parameter', () => {
+    it('should default to origin/main in merge conflict checks when no targetBranch specified', () => {
+      const stories: StoryRow[] = [];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories);
+
+      expect(prompt).toContain('origin/main');
+      expect(prompt).toContain('--base main');
+    });
+
+    it('should use custom targetBranch in senior prompt merge conflict checks', () => {
+      const stories: StoryRow[] = [];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories, 'develop');
+
+      expect(prompt).toContain('origin/develop');
+      expect(prompt).toContain('--base develop');
+      expect(prompt).not.toContain('origin/main');
+    });
+
+    it('should use custom targetBranch in intermediate prompt', () => {
+      const sessionName = 'hive-intermediate-testteam-1';
+      const prompt = generateIntermediatePrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        'release/v2'
+      );
+
+      expect(prompt).toContain('origin/release/v2');
+      expect(prompt).toContain('--base release/v2');
+      expect(prompt).not.toContain('origin/main');
+    });
+
+    it('should use custom targetBranch in junior prompt', () => {
+      const sessionName = 'hive-junior-testteam-1';
+      const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName, 'staging');
+
+      expect(prompt).toContain('origin/staging');
+      expect(prompt).toContain('--base staging');
+      expect(prompt).not.toContain('origin/main');
+    });
+
+    it('should use custom targetBranch in QA prompt merge conflict checks', () => {
+      const sessionName = 'hive-qa-testteam';
+      const prompt = generateQAPrompt(teamName, repoUrl, repoPath, sessionName, 'develop');
+
+      expect(prompt).toContain('origin/develop');
+      expect(prompt).not.toContain('origin/main');
+    });
+
+    it('should reference targetBranch in QA guidelines for branch stability', () => {
+      const sessionName = 'hive-qa-testteam';
+      const prompt = generateQAPrompt(teamName, repoUrl, repoPath, sessionName, 'develop');
+
+      expect(prompt).toContain('develop branch stays stable');
+    });
+
+    it('should default QA prompt to main when no targetBranch specified', () => {
+      const sessionName = 'hive-qa-testteam';
+      const prompt = generateQAPrompt(teamName, repoUrl, repoPath, sessionName);
+
+      expect(prompt).toContain('main branch stays stable');
+    });
+  });
 });

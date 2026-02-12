@@ -15,16 +15,19 @@ export interface QAContext extends AgentContext {
     buildCommand: string;
     testCommand?: string;
   };
+  targetBranch?: string;
 }
 
 export class QAAgent extends BaseAgent {
   private team: TeamRow | null = null;
   private qaConfig: QAContext['qaConfig'];
+  private targetBranch: string;
   private pendingStories: StoryRow[] = [];
 
   constructor(context: QAContext) {
     super(context);
     this.qaConfig = context.qaConfig;
+    this.targetBranch = context.targetBranch || 'main';
 
     if (context.agentRow.team_id) {
       this.team = getTeamById(this.db, context.agentRow.team_id) || null;
@@ -228,7 +231,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
           '--body',
           body,
           '--base',
-          'main',
+          this.targetBranch,
           '--head',
           story.branch_name,
         ],

@@ -1576,3 +1576,120 @@ describe('Scheduler checkScaling', () => {
     spawnSeniorSpy.mockRestore();
   });
 });
+
+describe('Scheduler resolveTargetBranch', () => {
+  it('should return target_branch from active requirement linked to team stories', () => {
+    const team = createTeam(db, {
+      name: 'Target Branch Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a requirement with a custom target branch
+    const req = createRequirement(db, {
+      title: 'Release Requirement',
+      description: 'Targeting release branch',
+      targetBranch: 'release/v2',
+    });
+    db.run(`UPDATE requirements SET status = 'in_progress' WHERE id = ?`, [req.id]);
+
+    // Create a story linked to this requirement and team
+    createStory(db, {
+      requirementId: req.id,
+      teamId: team.id,
+      title: 'Release Story',
+      description: 'Test',
+    });
+
+    const resolveMethod = (scheduler as any).resolveTargetBranch;
+    const branch = resolveMethod.call(scheduler, team.id);
+
+    expect(branch).toBe('release/v2');
+  });
+
+  it('should fall back to main when no active requirements exist', () => {
+    const team = createTeam(db, {
+      name: 'No Req Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const resolveMethod = (scheduler as any).resolveTargetBranch;
+    const branch = resolveMethod.call(scheduler, team.id);
+
+    expect(branch).toBe('main');
+  });
+
+  it('should fall back to main when requirement has no target_branch override', () => {
+    const team = createTeam(db, {
+      name: 'Default Branch Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a requirement with default target branch (main)
+    const req = createRequirement(db, {
+      title: 'Normal Requirement',
+      description: 'Default target',
+    });
+    db.run(`UPDATE requirements SET status = 'in_progress' WHERE id = ?`, [req.id]);
+
+    createStory(db, {
+      requirementId: req.id,
+      teamId: team.id,
+      title: 'Normal Story',
+      description: 'Test',
+    });
+
+    const resolveMethod = (scheduler as any).resolveTargetBranch;
+    const branch = resolveMethod.call(scheduler, team.id);
+
+    expect(branch).toBe('main');
+  });
+
+  it('should ignore completed requirements', () => {
+    const team = createTeam(db, {
+      name: 'Completed Req Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const req = createRequirement(db, {
+      title: 'Completed Requirement',
+      description: 'Was on develop',
+      targetBranch: 'develop',
+    });
+    db.run(`UPDATE requirements SET status = 'completed' WHERE id = ?`, [req.id]);
+
+    createStory(db, {
+      requirementId: req.id,
+      teamId: team.id,
+      title: 'Old Story',
+      description: 'Test',
+    });
+
+    const resolveMethod = (scheduler as any).resolveTargetBranch;
+    const branch = resolveMethod.call(scheduler, team.id);
+
+    expect(branch).toBe('main');
+  });
+
+  it('should use config github.base_branch as fallback', () => {
+    const team = createTeam(db, {
+      name: 'Config Fallback Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a scheduler with github config
+    const configScheduler = new Scheduler(db, {
+      ...mockConfig,
+      github: { base_branch: 'develop', pr_template: '' },
+    } as any);
+
+    const resolveMethod = (configScheduler as any).resolveTargetBranch;
+    const branch = resolveMethod.call(configScheduler, team.id);
+
+    expect(branch).toBe('develop');
+  });
+});
