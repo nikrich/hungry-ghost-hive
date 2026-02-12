@@ -2,6 +2,7 @@
 
 import { join } from 'path';
 import type { Database } from 'sql.js';
+import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
 import { loadConfig } from '../../config/loader.js';
 import type { JiraConfig } from '../../config/schema.js';
@@ -65,6 +66,8 @@ export async function syncJiraStatusesToHive(
   if (storiesWithJira.length === 0) {
     return 0;
   }
+
+  loadEnvIntoProcess();
 
   const client = new JiraClient({
     tokenStore,

@@ -3,6 +3,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { join } from 'path';
+import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
 import { loadConfig } from '../../config/loader.js';
 import { queryOne } from '../../db/client.js';
@@ -63,6 +64,7 @@ export const progressCommand = new Command('progress')
         if (pmConfig?.provider === 'jira' && pmConfig.jira) {
           const tokenStore = new TokenStore(join(paths.hiveDir, '.env'));
           await tokenStore.loadFromEnv();
+          loadEnvIntoProcess();
           const jiraClient = new JiraClient({
             tokenStore,
             clientId: process.env.JIRA_CLIENT_ID || '',

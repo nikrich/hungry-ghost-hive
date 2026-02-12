@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from 'fs';
 import ora from 'ora';
 import { join } from 'path';
 import readline from 'readline';
+import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
 import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../../cli-runtimes/index.js';
 import { fetchLocalClusterStatus } from '../../cluster/runtime.js';
@@ -85,6 +86,7 @@ export const reqCommand = new Command('req')
           try {
             const tokenStore = new TokenStore(join(paths.hiveDir, '.env'));
             await tokenStore.loadFromEnv();
+            loadEnvIntoProcess();
 
             const client = new JiraClient({
               tokenStore,
