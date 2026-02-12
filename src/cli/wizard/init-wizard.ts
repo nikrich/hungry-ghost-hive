@@ -173,10 +173,13 @@ async function buildResult(
       await storeJiraTokens(tokenStore, oauthResult);
 
       const { writeEnvEntries } = await import('../../auth/env-store.js');
-      writeEnvEntries({
-        JIRA_CLIENT_ID: clientId,
-        JIRA_CLIENT_SECRET: clientSecret,
-      }, process.cwd());
+      writeEnvEntries(
+        {
+          JIRA_CLIENT_ID: clientId,
+          JIRA_CLIENT_SECRET: clientSecret,
+        },
+        process.cwd()
+      );
 
       console.log(chalk.green('OAuth successful!'));
 

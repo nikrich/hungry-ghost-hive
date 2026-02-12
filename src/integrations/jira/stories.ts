@@ -95,7 +95,11 @@ async function tryMoveToActiveSprint(
 
   try {
     const preferredBoardId = config.board_id ? Number(config.board_id) : undefined;
-    const sprintInfo = await getActiveSprintForProject(client, config.project_key, preferredBoardId);
+    const sprintInfo = await getActiveSprintForProject(
+      client,
+      config.project_key,
+      preferredBoardId
+    );
     if (!sprintInfo) {
       logger.debug(
         `No active sprint found for project ${config.project_key}, skipping sprint assignment`

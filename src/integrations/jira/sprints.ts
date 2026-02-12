@@ -110,7 +110,9 @@ export async function getActiveSprintForProject(
 
     // Try the preferred board first if specified
     const sortedBoards = preferredBoardId
-      ? [...boards].sort((a, b) => (a.id === preferredBoardId ? -1 : b.id === preferredBoardId ? 1 : 0))
+      ? [...boards].sort((a, b) =>
+          a.id === preferredBoardId ? -1 : b.id === preferredBoardId ? 1 : 0
+        )
       : boards;
 
     for (const board of sortedBoards) {

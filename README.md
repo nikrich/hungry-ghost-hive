@@ -387,10 +387,10 @@ integrations:
     jira:
       project_key: HIVE
       site_url: https://mycompany.atlassian.net
-      board_id: "3"
+      board_id: '3'
       story_type: Story
       subtask_type: Subtask
-      story_points_field: customfield_10016  # auto-detected
+      story_points_field: customfield_10016 # auto-detected
       status_mapping:
         To Do: draft
         In Progress: in_progress
@@ -409,6 +409,7 @@ JIRA_CLIENT_SECRET=...
 ```
 
 When a requirement is synced to Jira, Hive will:
+
 - Create or reuse a Jira Epic for the requirement
 - Create Stories under the epic with descriptions and acceptance criteria
 - Set story points using the detected field

@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import { input } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { input } from '@inquirer/prompts';
 import { getEnvFilePath, loadEnvIntoProcess, readEnvFile } from '../../auth/env-store.js';
 import { runGitHubDeviceFlow } from '../../auth/github-oauth.js';
 import { startJiraOAuthFlow, storeJiraTokens } from '../../auth/jira-oauth.js';
@@ -94,10 +94,13 @@ authCommand
 
       // Also persist client credentials so token refresh works in future sessions
       const { writeEnvEntries } = await import('../../auth/env-store.js');
-      writeEnvEntries({
-        JIRA_CLIENT_ID: clientId,
-        JIRA_CLIENT_SECRET: clientSecret,
-      }, root);
+      writeEnvEntries(
+        {
+          JIRA_CLIENT_ID: clientId,
+          JIRA_CLIENT_SECRET: clientSecret,
+        },
+        root
+      );
 
       console.log();
       console.log(chalk.green('✓ Jira authentication successful!'));

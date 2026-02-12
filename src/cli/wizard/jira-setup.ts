@@ -275,15 +275,12 @@ export async function detectStoryPointsField(
   accessToken: string
 ): Promise<string> {
   try {
-    const response = await fetch(
-      `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/field`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: 'application/json',
-        },
-      }
-    );
+    const response = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/field`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    });
 
     if (!response.ok) return 'story_points';
 
@@ -497,10 +494,14 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
       });
       boardId = String(selectedBoard.id);
     } else {
-      console.log(chalk.yellow('No boards found. Sprint operations will use best-effort discovery.'));
+      console.log(
+        chalk.yellow('No boards found. Sprint operations will use best-effort discovery.')
+      );
     }
   } catch {
-    console.log(chalk.yellow('Could not fetch boards. Sprint operations will use best-effort discovery.'));
+    console.log(
+      chalk.yellow('Could not fetch boards. Sprint operations will use best-effort discovery.')
+    );
   }
 
   // Step 5: Detect story points field

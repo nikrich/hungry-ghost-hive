@@ -5,8 +5,8 @@ import { Command } from 'commander';
 import { join } from 'path';
 import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
-import { JiraClient } from '../../integrations/jira/client.js';
 import { adfToPlainText } from '../../integrations/jira/adf-utils.js';
+import { JiraClient } from '../../integrations/jira/client.js';
 import { parseEpicUrl } from '../../integrations/jira/epic-import.js';
 import { getIssue, searchJql } from '../../integrations/jira/issues.js';
 import type { JiraIssue } from '../../integrations/jira/types.js';
@@ -29,7 +29,9 @@ async function createJiraClient(root: string, hiveDir: string): Promise<JiraClie
   if (!clientId || !clientSecret) {
     console.error(chalk.yellow('Warning: JIRA_CLIENT_ID / JIRA_CLIENT_SECRET not set.'));
     console.error(chalk.yellow('Token refresh will fail if the access token has expired.'));
-    console.error(chalk.gray('Set JIRA_OAUTH_CLIENT_ID and JIRA_OAUTH_CLIENT_SECRET in your shell environment.'));
+    console.error(
+      chalk.gray('Set JIRA_OAUTH_CLIENT_ID and JIRA_OAUTH_CLIENT_SECRET in your shell environment.')
+    );
   }
 
   return new JiraClient({ tokenStore, clientId, clientSecret });
@@ -49,10 +51,12 @@ function formatIssue(issue: JiraIssue, verbose: boolean): string {
 
   lines.push(chalk.bold.cyan(issue.key) + '  ' + chalk.bold(issue.fields.summary));
   lines.push(
-    chalk.gray('  Type: ') + type +
-    chalk.gray('  Status: ') + status +
-    (priority ? chalk.gray('  Priority: ') + priority : '') +
-    (assignee ? chalk.gray('  Assignee: ') + assignee : '')
+    chalk.gray('  Type: ') +
+      type +
+      chalk.gray('  Status: ') +
+      status +
+      (priority ? chalk.gray('  Priority: ') + priority : '') +
+      (assignee ? chalk.gray('  Assignee: ') + assignee : '')
   );
 
   if (parent) {
@@ -113,10 +117,9 @@ jiraCommand
 
         // If it's an epic, also fetch children
         try {
-          const children = await searchJql(client,
-            `parent = ${issueKey} ORDER BY created ASC`,
-            { maxResults: 50 }
-          );
+          const children = await searchJql(client, `parent = ${issueKey} ORDER BY created ASC`, {
+            maxResults: 50,
+          });
 
           if (children.issues.length > 0) {
             console.log('');
@@ -125,10 +128,14 @@ jiraCommand
               const st = child.fields.status?.name || '';
               const tp = child.fields.issuetype?.name || '';
               console.log(
-                '    ' + chalk.cyan(child.key) + '  ' +
-                chalk.gray(`[${tp}]`) + ' ' +
-                child.fields.summary + '  ' +
-                chalk.yellow(`(${st})`)
+                '    ' +
+                  chalk.cyan(child.key) +
+                  '  ' +
+                  chalk.gray(`[${tp}]`) +
+                  ' ' +
+                  child.fields.summary +
+                  '  ' +
+                  chalk.yellow(`(${st})`)
               );
             }
           }
@@ -163,7 +170,11 @@ jiraCommand
       if (options.json) {
         console.log(JSON.stringify(results, null, 2));
       } else {
-        console.log(chalk.gray(`Found ${results.issues.length} issues${results.isLast === false ? ' (more available)' : ''}:`));
+        console.log(
+          chalk.gray(
+            `Found ${results.issues.length} issues${results.isLast === false ? ' (more available)' : ''}:`
+          )
+        );
         console.log('');
         for (const issue of results.issues) {
           console.log(formatIssue(issue, false));
