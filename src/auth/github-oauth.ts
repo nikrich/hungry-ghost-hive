@@ -98,11 +98,7 @@ function defaultDisplayUserCode(userCode: string, verificationUri: string): void
   console.log();
 
   const command =
-    process.platform === 'darwin'
-      ? 'open'
-      : process.platform === 'win32'
-        ? 'start'
-        : 'xdg-open';
+    process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
   exec(`${command} "${verificationUri}"`, () => {
     // Ignore errors - URL is already printed above
   });
