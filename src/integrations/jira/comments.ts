@@ -152,10 +152,7 @@ function buildCommentBody(event: JiraLifecycleEvent, context: CommentContext): A
           ? [
               createParagraph([
                 createText('Subtask: '),
-                createLink(
-                  `https://your-domain.atlassian.net/browse/${subtaskKey}`,
-                  subtaskKey
-                ),
+                createLink(`https://your-domain.atlassian.net/browse/${subtaskKey}`, subtaskKey),
               ]),
             ]
           : []),
@@ -167,14 +164,7 @@ function buildCommentBody(event: JiraLifecycleEvent, context: CommentContext): A
           createEmoji('construction'),
           createText(` Work started by ${agentName || 'agent'}.`),
         ]),
-        ...(branchName
-          ? [
-              createParagraph([
-                createText('Branch: '),
-                createCode(branchName),
-              ]),
-            ]
-          : []),
+        ...(branchName ? [createParagraph([createText('Branch: '), createCode(branchName)])] : []),
       ]);
 
     case 'pr_created':
@@ -183,76 +173,42 @@ function buildCommentBody(event: JiraLifecycleEvent, context: CommentContext): A
           createEmoji('git_pull_request'),
           createText(` Pull request created by ${agentName || 'agent'}.`),
         ]),
-        ...(prUrl
-          ? [
-              createParagraph([
-                createText('PR: '),
-                createLink(prUrl, prUrl),
-              ]),
-            ]
-          : []),
+        ...(prUrl ? [createParagraph([createText('PR: '), createLink(prUrl, prUrl)])] : []),
       ]);
 
     case 'qa_started':
       return createAdfComment([
-        createParagraph([
-          createEmoji('test_tube'),
-          createText(' QA testing started.'),
-        ]),
+        createParagraph([createEmoji('test_tube'), createText(' QA testing started.')]),
       ]);
 
     case 'qa_passed':
       return createAdfComment([
-        createParagraph([
-          createEmoji('white_check_mark'),
-          createText(' QA testing passed.'),
-        ]),
+        createParagraph([createEmoji('white_check_mark'), createText(' QA testing passed.')]),
       ]);
 
     case 'qa_failed':
       return createAdfComment([
-        createParagraph([
-          createEmoji('x'),
-          createText(' QA testing failed.'),
-        ]),
+        createParagraph([createEmoji('x'), createText(' QA testing failed.')]),
         ...(reason
-          ? [
-              createParagraph([
-                createText('Reason: '),
-                createText(reason, [{ type: 'em' }]),
-              ]),
-            ]
+          ? [createParagraph([createText('Reason: '), createText(reason, [{ type: 'em' }])])]
           : []),
       ]);
 
     case 'merged':
       return createAdfComment([
-        createParagraph([
-          createEmoji('tada'),
-          createText(' Pull request merged successfully!'),
-        ]),
+        createParagraph([createEmoji('tada'), createText(' Pull request merged successfully!')]),
       ]);
 
     case 'blocked':
       return createAdfComment([
-        createParagraph([
-          createEmoji('no_entry'),
-          createText(' Work blocked.'),
-        ]),
+        createParagraph([createEmoji('no_entry'), createText(' Work blocked.')]),
         ...(reason
-          ? [
-              createParagraph([
-                createText('Reason: '),
-                createText(reason, [{ type: 'strong' }]),
-              ]),
-            ]
+          ? [createParagraph([createText('Reason: '), createText(reason, [{ type: 'strong' }])])]
           : []),
       ]);
 
     default:
-      return createAdfComment([
-        createParagraph([createText(`Event: ${event}`)]),
-      ]);
+      return createAdfComment([createParagraph([createText(`Event: ${event}`)])]);
   }
 }
 

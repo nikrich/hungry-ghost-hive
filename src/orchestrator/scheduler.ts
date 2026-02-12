@@ -36,7 +36,6 @@ import { FileSystemError, OperationalError } from '../errors/index.js';
 import { removeWorktree } from '../git/worktree.js';
 import { JiraClient } from '../integrations/jira/client.js';
 import { createSubtask, postComment } from '../integrations/jira/comments.js';
-import * as logger from '../utils/logger.js';
 import {
   generateSessionName,
   getHiveSessions,
@@ -46,6 +45,7 @@ import {
   spawnTmuxSession,
   startManager,
 } from '../tmux/manager.js';
+import * as logger from '../utils/logger.js';
 import {
   generateIntermediatePrompt,
   generateJuniorPrompt,
@@ -550,7 +550,7 @@ export class Scheduler {
   private async handleJiraAfterAssignment(
     story: StoryRow,
     agent: AgentRow,
-    team: { id: string; name: string }
+    _team: { id: string; name: string }
   ): Promise<void> {
     // Check if Jira is configured
     if (!this.config.hiveConfig) return;
@@ -585,11 +585,7 @@ export class Scheduler {
       });
 
       if (subtask) {
-        // Update story with subtask info
-        updateStory(this.db, story.id, {
-          jiraSubtaskKey: subtask.key,
-          jiraSubtaskId: subtask.id,
-        });
+        logger.info(`Created Jira subtask ${subtask.key} for story ${story.id}`);
 
         // Post "assigned" comment
         await postComment(jiraClient, story.jira_issue_key, 'assigned', {

@@ -198,10 +198,12 @@ describe('postJiraLifecycleComment', () => {
       )
     `);
 
-    db.run(
-      `INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`,
-      ['STORY-1', 'Test Story', 'Description', 'PROJ-123']
-    );
+    db.run(`INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`, [
+      'STORY-1',
+      'Test Story',
+      'Description',
+      'PROJ-123',
+    ]);
   });
 
   it('should skip posting comment if story has no Jira issue key', async () => {
