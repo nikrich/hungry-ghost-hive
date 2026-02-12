@@ -18,6 +18,7 @@ export type JiraLifecycleEvent =
   | 'assigned'
   | 'work_started'
   | 'progress'
+  | 'approach_posted'
   | 'pr_created'
   | 'qa_started'
   | 'qa_passed'
@@ -34,6 +35,7 @@ export interface CommentContext {
   prUrl?: string;
   reason?: string;
   subtaskKey?: string;
+  approachText?: string;
 }
 
 /**
@@ -168,9 +170,30 @@ export async function postComment(
  * Build ADF comment body for a lifecycle event
  */
 function buildCommentBody(event: JiraLifecycleEvent, context: CommentContext): AdfDocument {
-  const { agentName, branchName, prUrl, reason, subtaskKey } = context;
+  const { agentName, branchName, prUrl, reason, subtaskKey, approachText } = context;
 
   switch (event) {
+    case 'approach_posted': {
+      const content: Array<{ type: string; content?: any[] }> = [
+        createParagraph([
+          createEmoji('clipboard'),
+          createText(` Implementation approach posted by ${agentName || 'agent'}:`),
+        ]),
+      ];
+
+      // Split approach text into paragraphs for ADF formatting
+      if (approachText) {
+        const paragraphs = approachText.split(/\n\n+/);
+        for (const para of paragraphs) {
+          const trimmed = para.trim();
+          if (!trimmed) continue;
+          content.push(createParagraph([createText(trimmed)]));
+        }
+      }
+
+      return createAdfComment(content);
+    }
+
     case 'assigned':
       return createAdfComment([
         createParagraph([

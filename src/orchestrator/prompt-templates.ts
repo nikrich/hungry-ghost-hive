@@ -90,11 +90,15 @@ hive my-stories complete <story-id>
 ## Workflow
 1. Run \`hive my-stories ${sessionName}\` to see your assigned work
 2. Create a feature branch: \`git checkout -b feature/<story-id>-<short-description>\`
-3. Implement the changes
-4. Run tests and linting
-5. Commit with a clear message referencing the story ID
-6. Create a PR using \`gh pr create\`
-7. Submit to merge queue for QA review:
+3. **Post your approach** before starting implementation:
+\`\`\`bash
+hive approach <story-id> "Brief description of approach: files to change, strategy, risks" --from ${sessionName}
+\`\`\`
+4. Implement the changes
+5. Run tests and linting
+6. Commit with a clear message referencing the story ID
+7. Create a PR using \`gh pr create\`
+8. Submit to merge queue for QA review:
 \`\`\`bash
 hive pr submit -b feature/<story-id>-<description> -s <story-id> --from ${sessionName}
 \`\`\`
@@ -225,10 +229,14 @@ hive my-stories complete <story-id>
 ## Workflow
 1. Run \`hive my-stories ${sessionName}\` to see your assigned work
 2. Create a feature branch: \`git checkout -b feature/<story-id>-<description>\`
-3. Implement the changes
-4. Run tests and linting
-5. Commit and create a PR using \`gh pr create\`
-6. Submit to merge queue:
+3. **Post your approach** before starting implementation:
+\`\`\`bash
+hive approach <story-id> "Brief description of approach: files to change, strategy, risks" --from ${sessionName}
+\`\`\`
+4. Implement the changes
+5. Run tests and linting
+6. Commit and create a PR using \`gh pr create\`
+7. Submit to merge queue:
 \`\`\`bash
 hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 \`\`\`
@@ -355,10 +363,14 @@ hive my-stories complete <story-id>
 ## Workflow
 1. Run \`hive my-stories ${sessionName}\` to see your assigned work
 2. Create a feature branch: \`git checkout -b feature/<story-id>-<description>\`
-3. Implement the changes carefully
-4. Run tests before committing
-5. Commit and create a PR using \`gh pr create\`
-6. Submit to merge queue:
+3. **Post your approach** before starting implementation:
+\`\`\`bash
+hive approach <story-id> "Brief description of approach: files to change, strategy, risks" --from ${sessionName}
+\`\`\`
+4. Implement the changes carefully
+5. Run tests before committing
+6. Commit and create a PR using \`gh pr create\`
+7. Submit to merge queue:
 \`\`\`bash
 hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 \`\`\`

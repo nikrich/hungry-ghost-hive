@@ -59,7 +59,8 @@ export type EventType =
   | 'JIRA_TRANSITION_FAILED'
   | 'JIRA_BOARD_POLL_STARTED'
   | 'JIRA_BOARD_POLL_COMPLETED'
-  | 'JIRA_EPIC_INGESTED';
+  | 'JIRA_EPIC_INGESTED'
+  | 'APPROACH_POSTED';
 
 export interface CreateLogInput {
   agentId: string;

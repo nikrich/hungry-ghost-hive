@@ -2,6 +2,7 @@
 
 export { addRepoCommand } from './add-repo.js';
 export { agentsCommand } from './agents.js';
+export { approachCommand } from './approach.js';
 export { approvalsCommand } from './approvals.js';
 export { assignCommand } from './assign.js';
 export { authCommand } from './auth.js';
