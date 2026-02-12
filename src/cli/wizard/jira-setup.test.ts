@@ -1,10 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { describe, expect, it } from 'vitest';
-import {
-  autoDetectStatusMapping,
-  type JiraStatus,
-} from './jira-setup.js';
+import { autoDetectStatusMapping, type JiraStatus } from './jira-setup.js';
 
 describe('autoDetectStatusMapping', () => {
   it('should map statuses based on category key', () => {

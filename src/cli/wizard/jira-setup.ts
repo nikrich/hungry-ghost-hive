@@ -53,15 +53,12 @@ export async function fetchJiraProjects(
   cloudId: string,
   accessToken: string
 ): Promise<JiraProject[]> {
-  const response = await fetch(
-    `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'application/json',
-      },
-    }
-  );
+  const response = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/project`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/json',
+    },
+  });
 
   if (!response.ok) {
     const body = await response.text();
@@ -144,9 +141,7 @@ export async function fetchProjectBoards(
  * Auto-detect status mapping from Jira statuses to Hive statuses.
  * Uses status category and common naming patterns.
  */
-export function autoDetectStatusMapping(
-  jiraStatuses: JiraStatus[]
-): Record<string, HiveStatus> {
+export function autoDetectStatusMapping(jiraStatuses: JiraStatus[]): Record<string, HiveStatus> {
   const mapping: Record<string, HiveStatus> = {};
 
   for (const status of jiraStatuses) {
@@ -202,7 +197,7 @@ export function autoDetectStatusMapping(
  * and saves configuration.
  */
 export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetupResult> {
-  const { cloudId, siteUrl, accessToken, nonInteractive, jiraProject } = options;
+  const { cloudId, siteUrl, accessToken, nonInteractive } = options;
 
   if (nonInteractive) {
     return runNonInteractiveSetup(options);
@@ -238,9 +233,7 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
   console.log(chalk.bold('Detected Status Mapping:'));
   console.log();
   for (const [jiraStatus, hiveStatus] of Object.entries(autoMapping)) {
-    console.log(
-      chalk.gray(`  ${jiraStatus}`) + chalk.cyan(` → `) + chalk.green(hiveStatus)
-    );
+    console.log(chalk.gray(`  ${jiraStatus}`) + chalk.cyan(` → `) + chalk.green(hiveStatus));
   }
   console.log();
 
@@ -327,9 +320,7 @@ async function runNonInteractiveSetup(options: JiraSetupOptions): Promise<JiraSe
 
   // Fetch projects to validate the provided project key
   const projects = await fetchJiraProjects(cloudId, accessToken);
-  const project = projects.find(
-    p => p.key.toLowerCase() === jiraProject.toLowerCase()
-  );
+  const project = projects.find(p => p.key.toLowerCase() === jiraProject.toLowerCase());
 
   if (!project) {
     throw new Error(
