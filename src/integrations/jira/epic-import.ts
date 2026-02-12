@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import { adfToPlainText } from './adf-utils.js';
 import { JiraClient } from './client.js';
 import { getIssue } from './issues.js';
-import { adfToPlainText } from './adf-utils.js';
 import type { JiraIssue } from './types.js';
 
 /** Result from parsing a Jira URL */

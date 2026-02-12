@@ -135,11 +135,15 @@ describe('getActiveSprintForProject', () => {
       self: 'https://example.com/board/2',
     };
 
-    let callCount = 0;
     const client = createMockClient(async (url: string) => {
-      callCount++;
       if (url.includes('board?projectKeyOrId=')) {
-        return { values: [kanbanBoard, sampleBoard], startAt: 0, maxResults: 50, total: 2, isLast: true };
+        return {
+          values: [kanbanBoard, sampleBoard],
+          startAt: 0,
+          maxResults: 50,
+          total: 2,
+          isLast: true,
+        };
       }
       if (url.includes(`/board/2/sprint`)) {
         throw new Error('Kanban boards do not support sprints');

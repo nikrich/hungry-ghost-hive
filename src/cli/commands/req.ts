@@ -3,8 +3,8 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
 import ora from 'ora';
+import { join } from 'path';
 import readline from 'readline';
 import { TokenStore } from '../../auth/token-store.js';
 import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../../cli-runtimes/index.js';
@@ -75,7 +75,9 @@ export const reqCommand = new Command('req')
 
           const jiraConfig = config.integrations.project_management.jira;
           if (!jiraConfig) {
-            console.error(chalk.red('Jira is not configured. Run `hive init` with Jira integration first.'));
+            console.error(
+              chalk.red('Jira is not configured. Run `hive init` with Jira integration first.')
+            );
             process.exit(1);
           }
 

@@ -96,7 +96,9 @@ async function tryMoveToActiveSprint(
   try {
     const sprintInfo = await getActiveSprintForProject(client, config.project_key);
     if (!sprintInfo) {
-      logger.debug(`No active sprint found for project ${config.project_key}, skipping sprint assignment`);
+      logger.debug(
+        `No active sprint found for project ${config.project_key}, skipping sprint assignment`
+      );
       return;
     }
     await moveIssuesToSprint(client, sprintInfo.sprint.id, issueKeys);
