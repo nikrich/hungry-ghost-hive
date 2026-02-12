@@ -15,6 +15,7 @@ export { msgCommand } from './msg.js';
 export { myStoriesCommand } from './my-stories.js';
 export { nukeCommand } from './nuke.js';
 export { prCommand } from './pr.js';
+export { progressCommand } from './progress.js';
 export { reqCommand } from './req.js';
 export { resumeCommand } from './resume.js';
 export { statusCommand } from './status.js';

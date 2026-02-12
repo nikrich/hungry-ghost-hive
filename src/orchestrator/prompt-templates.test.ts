@@ -135,6 +135,15 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('CI');
     });
 
+    it('should include Jira progress update instructions', () => {
+      const stories: StoryRow[] = [];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories);
+
+      expect(prompt).toContain('hive progress');
+      expect(prompt).toContain('Jira Progress Updates');
+      expect(prompt).toContain('--done');
+    });
+
     it('should include multiple stories', () => {
       const stories: StoryRow[] = [
         {
@@ -243,6 +252,14 @@ describe('Prompt Templates', () => {
 
       expect(prompt).toContain('CI');
     });
+
+    it('should include Jira progress update instructions', () => {
+      const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName);
+
+      expect(prompt).toContain('hive progress');
+      expect(prompt).toContain('Jira Progress Updates');
+      expect(prompt).toContain('--done');
+    });
   });
 
   describe('generateJuniorPrompt', () => {
@@ -298,6 +315,14 @@ describe('Prompt Templates', () => {
       const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName);
 
       expect(prompt).toContain('CI');
+    });
+
+    it('should include Jira progress update instructions', () => {
+      const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName);
+
+      expect(prompt).toContain('hive progress');
+      expect(prompt).toContain('Jira Progress Updates');
+      expect(prompt).toContain('--done');
     });
   });
 
