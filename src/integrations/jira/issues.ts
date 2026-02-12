@@ -89,26 +89,26 @@ export async function getTransitions(
 export async function searchJql(
   client: JiraClient,
   jql: string,
-  options?: { startAt?: number; maxResults?: number; fields?: string[] }
+  options?: { startAt?: number; maxResults?: number; fields?: string[]; nextPageToken?: string }
 ): Promise<JiraSearchResponse> {
-  return client.request<JiraSearchResponse>('/search', {
-    method: 'POST',
-    body: JSON.stringify({
-      jql,
-      startAt: options?.startAt ?? 0,
-      maxResults: options?.maxResults ?? 50,
-      fields: options?.fields ?? [
-        'summary',
-        'status',
-        'issuetype',
-        'assignee',
-        'labels',
-        'priority',
-        'parent',
-        'project',
-      ],
-    }),
-  });
+  const fields = options?.fields ?? [
+    'summary',
+    'status',
+    'issuetype',
+    'assignee',
+    'labels',
+    'priority',
+    'parent',
+    'project',
+  ];
+  const params = new URLSearchParams();
+  params.set('jql', jql);
+  params.set('maxResults', String(options?.maxResults ?? 50));
+  params.set('fields', fields.join(','));
+  if (options?.nextPageToken) {
+    params.set('nextPageToken', options.nextPageToken);
+  }
+  return client.request<JiraSearchResponse>(`/search/jql?${params.toString()}`);
 }
 
 /**

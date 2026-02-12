@@ -285,14 +285,12 @@ describe('getTransitions', () => {
 });
 
 describe('searchJql', () => {
-  it('should search issues using JQL', async () => {
+  it('should search issues using JQL via GET /search/jql', async () => {
     const client = await createClient();
-    let capturedBody = '';
+    let capturedUrl = '';
 
     const mockResponse: JiraSearchResponse = {
-      startAt: 0,
-      maxResults: 50,
-      total: 1,
+      isLast: true,
       issues: [
         {
           id: '10001',
@@ -315,8 +313,8 @@ describe('searchJql', () => {
       ],
     };
 
-    const { server, port } = await startMockServer((_req, res, body) => {
-      capturedBody = body;
+    const { server, port } = await startMockServer((req, res) => {
+      capturedUrl = req.url ?? '';
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(mockResponse));
     });
@@ -328,30 +326,32 @@ describe('searchJql', () => {
       fields: ['summary', 'status'],
     });
 
-    expect(result.total).toBe(1);
     expect(result.issues[0].key).toBe('PROJ-1');
-    const parsed = JSON.parse(capturedBody);
-    expect(parsed.jql).toBe('project = PROJ AND labels = hive-managed');
-    expect(parsed.maxResults).toBe(25);
-    expect(parsed.fields).toEqual(['summary', 'status']);
+    expect(result.isLast).toBe(true);
+    // Verify query params on the GET request
+    const url = new URL(`http://localhost${capturedUrl}`);
+    expect(url.pathname).toContain('/search/jql');
+    expect(url.searchParams.get('jql')).toBe('project = PROJ AND labels = hive-managed');
+    expect(url.searchParams.get('maxResults')).toBe('25');
+    expect(url.searchParams.get('fields')).toBe('summary,status');
   });
 
   it('should use default options when none provided', async () => {
     const client = await createClient();
-    let capturedBody = '';
+    let capturedUrl = '';
 
-    const { server, port } = await startMockServer((_req, res, body) => {
-      capturedBody = body;
+    const { server, port } = await startMockServer((req, res) => {
+      capturedUrl = req.url ?? '';
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ startAt: 0, maxResults: 50, total: 0, issues: [] }));
+      res.end(JSON.stringify({ isLast: true, issues: [] }));
     });
     mockServer = server;
     routeFetch(port);
 
     await searchJql(client, 'project = PROJ');
-    const parsed = JSON.parse(capturedBody);
-    expect(parsed.startAt).toBe(0);
-    expect(parsed.maxResults).toBe(50);
+    const url = new URL(`http://localhost${capturedUrl}`);
+    expect(url.searchParams.get('maxResults')).toBe('50');
+    expect(url.searchParams.get('jql')).toBe('project = PROJ');
   });
 });
 

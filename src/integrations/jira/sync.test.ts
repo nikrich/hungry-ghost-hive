@@ -54,6 +54,7 @@ describe('syncJiraStatusesToHive', () => {
     site_url: 'https://test.atlassian.net',
     story_type: 'Story',
     subtask_type: 'Subtask',
+    story_points_field: 'story_points',
     status_mapping: {},
   };
 

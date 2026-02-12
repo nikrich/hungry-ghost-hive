@@ -21,6 +21,7 @@ Hive is a CLI tool that orchestrates AI agents modeled after agile software deve
 - **Multi-Repository Support**: Manage related services and libraries as coordinated git submodules
 - **Escalation Handling**: Built-in escalation protocol when agents need guidance or hit blockers
 - **PR Merge Queue**: Automated QA checks and merge queue management for production readiness
+- **Jira Integration**: Two-way sync with Jira — epics, stories, subtasks, story points, sprint assignment, and status transitions
 
 ## Installation
 
@@ -223,6 +224,19 @@ hive cluster status
 hive cluster status --json
 ```
 
+### Jira Integration
+
+```bash
+# Fetch an issue by key or URL
+hive jira fetch HIVE-42
+hive jira fetch https://mycompany.atlassian.net/browse/HIVE-42
+
+# Search issues with JQL
+hive jira search "project = HIVE AND status = 'In Progress'"
+hive jira search "assignee = currentUser()" --max 20
+hive jira search "sprint in openSprints()" --json
+```
+
 ### Communication
 
 ```bash
@@ -354,6 +368,56 @@ cluster:
   story_similarity_threshold: 0.92
 ```
 
+### Jira Integration
+
+When you select Jira during `hive init`, the setup wizard will:
+
+1. **Authenticate** via OAuth 2.0 (3LO) — you'll need a Jira OAuth app from the [Atlassian Developer Console](https://developer.atlassian.com/console/myapps/)
+2. **Select your project** from available Jira projects
+3. **Map statuses** — auto-detects Jira workflow statuses and maps them to Hive statuses (draft, planned, in_progress, etc.)
+4. **Select a board** — picks the board used for sprint operations
+5. **Detect story points field** — auto-detects the correct custom field for story points (varies between classic and next-gen projects)
+
+Configuration is saved to `.hive/hive.config.yaml`:
+
+```yaml
+integrations:
+  project_management:
+    provider: jira
+    jira:
+      project_key: HIVE
+      site_url: https://mycompany.atlassian.net
+      board_id: '3'
+      story_type: Story
+      subtask_type: Subtask
+      story_points_field: customfield_10016 # auto-detected
+      status_mapping:
+        To Do: draft
+        In Progress: in_progress
+        Done: merged
+```
+
+OAuth credentials are stored in `.hive/.env` (auto-refreshed):
+
+```bash
+JIRA_ACCESS_TOKEN=...
+JIRA_REFRESH_TOKEN=...
+JIRA_CLOUD_ID=...
+JIRA_SITE_URL=...
+JIRA_CLIENT_ID=...
+JIRA_CLIENT_SECRET=...
+```
+
+When a requirement is synced to Jira, Hive will:
+
+- Create or reuse a Jira Epic for the requirement
+- Create Stories under the epic with descriptions and acceptance criteria
+- Set story points using the detected field
+- Create subtasks under stories when applicable
+- Move stories into the active sprint on the configured board
+- Create issue links for story dependencies
+- Transition stories through statuses as agents complete work
+
 ### Distributed Mode
 
 - Run `hive manager start` on every host in the same cluster.
@@ -443,7 +507,7 @@ We appreciate contributions from everyone! This project is built and maintained 
 
 Hive is built with production-grade quality standards:
 
-- **Comprehensive Testing**: 431+ test cases with automated test execution
+- **Comprehensive Testing**: 1140+ test cases with automated test execution
 - **Strict TypeScript**: Full type safety with no implicit any
 - **Code Linting**: ESLint configuration enforces consistent code style
 - **Conventional Commits**: Commit messages follow the conventional commits specification for automatic changelog generation
@@ -492,6 +556,10 @@ We welcome contributions! Here's how to get started:
 ANTHROPIC_API_KEY=sk-ant-...  # Required for Claude agents
 OPENAI_API_KEY=sk-...         # Required for GPT agents (juniors)
 GITHUB_TOKEN=ghp_...          # Required for PR creation
+
+# Jira (auto-managed in .hive/.env after `hive init` or `hive auth jira`)
+JIRA_CLIENT_ID=...            # OAuth 2.0 client ID
+JIRA_CLIENT_SECRET=...        # OAuth 2.0 client secret
 ```
 
 ## Issue Tracking (Beads)

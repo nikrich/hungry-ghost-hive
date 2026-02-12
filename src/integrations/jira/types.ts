@@ -195,12 +195,19 @@ export interface JiraIssueLink {
 
 // ── Search ──────────────────────────────────────────────────────────────────
 
-/** Response from POST /rest/api/3/search */
+/** Response from GET /rest/api/3/search/jql */
 export interface JiraSearchResponse {
-  startAt: number;
-  maxResults: number;
-  total: number;
   issues: JiraIssue[];
+  /** Whether this is the last page of results */
+  isLast?: boolean;
+  /** Token for fetching the next page */
+  nextPageToken?: string;
+  /** @deprecated No longer returned by the new /search/jql endpoint */
+  startAt?: number;
+  /** @deprecated No longer returned by the new /search/jql endpoint */
+  maxResults?: number;
+  /** @deprecated No longer returned by the new /search/jql endpoint */
+  total?: number;
 }
 
 // ── Request payloads ────────────────────────────────────────────────────────

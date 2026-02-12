@@ -1,8 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import { input } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { getEnvFilePath } from '../../auth/env-store.js';
+import { getEnvFilePath, loadEnvIntoProcess, readEnvFile } from '../../auth/env-store.js';
 import { runGitHubDeviceFlow } from '../../auth/github-oauth.js';
 import { startJiraOAuthFlow, storeJiraTokens } from '../../auth/jira-oauth.js';
 import { TokenStore } from '../../auth/token-store.js';
@@ -54,21 +55,27 @@ authCommand
   .description('Re-run Jira OAuth 2.0 (3LO) to update authentication tokens')
   .action(async () => {
     try {
-      const { paths } = withHiveRoot(ctx => ctx);
-      const clientId = process.env.JIRA_OAUTH_CLIENT_ID;
-      const clientSecret = process.env.JIRA_OAUTH_CLIENT_SECRET;
+      const { root, paths } = withHiveRoot(ctx => ctx);
 
-      if (!clientId) {
-        console.error(chalk.red('Error: JIRA_OAUTH_CLIENT_ID environment variable is not set.'));
-        process.exit(1);
-      }
+      // Load stored credentials from .hive/.env, then check env vars, then prompt
+      loadEnvIntoProcess(root);
+      const storedEnv = readEnvFile(root);
 
-      if (!clientSecret) {
-        console.error(
-          chalk.red('Error: JIRA_OAUTH_CLIENT_SECRET environment variable is not set.')
-        );
-        process.exit(1);
-      }
+      const clientId =
+        process.env.JIRA_OAUTH_CLIENT_ID ||
+        storedEnv.JIRA_CLIENT_ID ||
+        (await input({
+          message: 'Jira OAuth Client ID',
+          validate: (v: string) => (v.length > 0 ? true : 'Client ID is required'),
+        }));
+
+      const clientSecret =
+        process.env.JIRA_OAUTH_CLIENT_SECRET ||
+        storedEnv.JIRA_CLIENT_SECRET ||
+        (await input({
+          message: 'Jira OAuth Client Secret',
+          validate: (v: string) => (v.length > 0 ? true : 'Client Secret is required'),
+        }));
 
       console.log(chalk.bold('Starting Jira OAuth 2.0 (3LO) Flow...'));
       console.log();
@@ -84,6 +91,16 @@ authCommand
       const tokenStore = new TokenStore(envPath);
       await tokenStore.loadFromEnv(envPath);
       await storeJiraTokens(tokenStore, result);
+
+      // Also persist client credentials so token refresh works in future sessions
+      const { writeEnvEntries } = await import('../../auth/env-store.js');
+      writeEnvEntries(
+        {
+          JIRA_CLIENT_ID: clientId,
+          JIRA_CLIENT_SECRET: clientSecret,
+        },
+        root
+      );
 
       console.log();
       console.log(chalk.green('✓ Jira authentication successful!'));
