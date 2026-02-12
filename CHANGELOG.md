@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.25.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.24.0...hungry-ghost-hive-v0.25.0) (2026-02-12)
+
+
+### Features
+
+* add .env file support and token store ([#294](https://github.com/nikrich/hungry-ghost-hive/issues/294)) ([1cea656](https://github.com/nikrich/hungry-ghost-hive/commit/1cea65615ce64a8487faf9945d846fe1c8f54e67))
+* add integrations config schema (INIT-004) ([#293](https://github.com/nikrich/hungry-ghost-hive/issues/293)) ([e7d815d](https://github.com/nikrich/hungry-ghost-hive/commit/e7d815d44ba1e0085aa805a4a344387ca6420d2a))
+* complete INIT-014 Jira integration migration ([#300](https://github.com/nikrich/hungry-ghost-hive/issues/300)) ([b73f386](https://github.com/nikrich/hungry-ghost-hive/commit/b73f3869a9c74ebefb50dda8e604d7f4e3508f09))
+
+
+### Bug Fixes
+
+* prevent rogue agents from persisting after story merge ([#301](https://github.com/nikrich/hungry-ghost-hive/issues/301)) ([bd12ac8](https://github.com/nikrich/hungry-ghost-hive/commit/bd12ac8b685e0999400c78e4d3e386f2a47b5d45))
+
 ## [0.24.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.23.2...hungry-ghost-hive-v0.24.0) (2026-02-10)
 
 
