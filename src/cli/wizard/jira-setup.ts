@@ -29,8 +29,17 @@ export interface JiraBoard {
   type: string;
 }
 
-/** Hive internal statuses */
-type HiveStatus = 'draft' | 'in_progress' | 'review' | 'merged';
+/** Hive internal statuses that can be mapped to Jira */
+type HiveStatus =
+  | 'draft'
+  | 'estimated'
+  | 'planned'
+  | 'in_progress'
+  | 'review'
+  | 'qa'
+  | 'qa_failed'
+  | 'pr_submitted'
+  | 'merged';
 
 /** Options for running the Jira setup wizard */
 export interface JiraSetupOptions {
@@ -148,11 +157,48 @@ export function autoDetectStatusMapping(jiraStatuses: JiraStatus[]): Record<stri
     const statusName = status.name.toLowerCase();
     const categoryKey = status.statusCategory.key.toLowerCase();
 
-    // Map based on status category first
-    if (categoryKey === 'new' || categoryKey === 'undefined') {
-      mapping[status.name] = 'draft';
+    // Try specific naming patterns first (more precise matching)
+    if (statusName.includes('qa fail') || statusName.includes('qa reject')) {
+      mapping[status.name] = 'qa_failed';
+    } else if (
+      statusName === 'qa' ||
+      statusName.includes('quality assurance') ||
+      statusName.includes('qa review')
+    ) {
+      mapping[status.name] = 'qa';
+    } else if (
+      statusName.includes('code review') ||
+      statusName.includes('peer review') ||
+      statusName.includes('in review')
+    ) {
+      mapping[status.name] = 'review';
+    } else if (
+      statusName.includes('pr submitted') ||
+      statusName.includes('pull request') ||
+      statusName.includes('awaiting review')
+    ) {
+      mapping[status.name] = 'pr_submitted';
+    } else if (statusName.includes('testing') || statusName.includes('test')) {
+      mapping[status.name] = 'qa';
+    } else if (categoryKey === 'new' || categoryKey === 'undefined') {
+      // Map based on status category
+      if (statusName.includes('backlog')) {
+        mapping[status.name] = 'draft';
+      } else if (statusName.includes('selected') || statusName.includes('ready')) {
+        mapping[status.name] = 'planned';
+      } else {
+        mapping[status.name] = 'draft';
+      }
     } else if (categoryKey === 'indeterminate') {
-      mapping[status.name] = 'in_progress';
+      if (
+        statusName.includes('review') ||
+        statusName.includes('testing') ||
+        statusName.includes('qa')
+      ) {
+        mapping[status.name] = 'review';
+      } else {
+        mapping[status.name] = 'in_progress';
+      }
     } else if (categoryKey === 'done') {
       mapping[status.name] = 'merged';
     } else {
@@ -163,6 +209,12 @@ export function autoDetectStatusMapping(jiraStatuses: JiraStatus[]): Record<stri
         statusName.includes('backlog')
       ) {
         mapping[status.name] = 'draft';
+      } else if (
+        statusName.includes('selected') ||
+        statusName.includes('ready') ||
+        statusName.includes('planned')
+      ) {
+        mapping[status.name] = 'planned';
       } else if (
         statusName.includes('progress') ||
         statusName.includes('development') ||
@@ -178,7 +230,8 @@ export function autoDetectStatusMapping(jiraStatuses: JiraStatus[]): Record<stri
       } else if (
         statusName.includes('done') ||
         statusName.includes('closed') ||
-        statusName.includes('complete')
+        statusName.includes('complete') ||
+        statusName.includes('resolved')
       ) {
         mapping[status.name] = 'merged';
       } else {
@@ -256,8 +309,12 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
         message: `Map "${status.name}" to`,
         choices: [
           { name: 'draft (backlog, todo)', value: 'draft' },
+          { name: 'planned (ready, selected for development)', value: 'planned' },
           { name: 'in_progress (doing, development)', value: 'in_progress' },
-          { name: 'review (testing, qa)', value: 'review' },
+          { name: 'review (code review, peer review)', value: 'review' },
+          { name: 'pr_submitted (pull request, awaiting review)', value: 'pr_submitted' },
+          { name: 'qa (testing, quality assurance)', value: 'qa' },
+          { name: 'qa_failed (QA rejected)', value: 'qa_failed' },
           { name: 'merged (done, closed)', value: 'merged' },
         ],
         default: autoMapping[status.name],

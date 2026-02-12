@@ -35,6 +35,7 @@ import {
   updateStory,
   updateStoryAssignment,
 } from '../../db/queries/stories.js';
+import { syncStatusToJira } from '../../integrations/jira/transitions.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { getStateDetector, type StateDetectionResult } from '../../state-detectors/index.js';
 import { AgentState } from '../../state-detectors/types.js';
@@ -669,6 +670,12 @@ async function promoteEstimatedStoriesToPlanned(
   });
 
   ctx.db.save();
+
+  // Sync status changes to Jira (fire and forget, after DB commit)
+  for (const story of stories) {
+    syncStatusToJira(ctx.root, ctx.db.db, story.id, 'planned');
+  }
+
   return promoted;
 }
 
@@ -1124,6 +1131,9 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
           storyId: storyId,
         });
       });
+
+      // Sync status change to Jira (fire and forget, after DB commit)
+      syncStatusToJira(ctx.root, ctx.db.db, storyId, 'qa_failed');
     }
 
     if (pr.submitted_by) {

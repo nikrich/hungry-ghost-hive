@@ -54,7 +54,9 @@ export type EventType =
   | 'JIRA_SYNC_COMPLETED'
   | 'JIRA_SYNC_WARNING'
   | 'JIRA_EPIC_CREATED'
-  | 'JIRA_STORY_CREATED';
+  | 'JIRA_STORY_CREATED'
+  | 'JIRA_TRANSITION_SUCCESS'
+  | 'JIRA_TRANSITION_FAILED';
 
 export interface CreateLogInput {
   agentId: string;

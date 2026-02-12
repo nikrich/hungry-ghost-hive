@@ -10,6 +10,7 @@ import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-r
 import { getStoryById, updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
 import { postJiraLifecycleComment } from '../integrations/jira/comments.js';
+import { syncStatusToJira } from '../integrations/jira/transitions.js';
 import { getHivePaths } from './paths.js';
 import { ghRepoSlug } from './pr-sync.js';
 
@@ -176,6 +177,11 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
             });
           });
           db.save();
+
+          // Sync status change to Jira (fire and forget, after DB commit)
+          if (pr.story_id && prState.state === 'MERGED') {
+            syncStatusToJira(root, db.db, pr.story_id, 'merged');
+          }
           continue;
         }
 
@@ -242,6 +248,8 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
           postJiraLifecycleComment(db.db, paths.hiveDir, config, storyId, 'merged').catch(() => {
             /* non-fatal */
           });
+          // Sync status change to Jira (fire and forget, after DB commit)
+          syncStatusToJira(root, db.db, storyId, 'merged');
         }
       } catch (mergeErr) {
         // Merge failed - revert PR status back to approved for retry (atomic transaction)

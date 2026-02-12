@@ -19,6 +19,7 @@ import {
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
 import { postJiraLifecycleComment } from '../../integrations/jira/comments.js';
+import { syncStatusToJira } from '../../integrations/jira/transitions.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
@@ -105,6 +106,9 @@ prCommand
 
         // Update story status
         updateStory(db.db, storyId, { status: 'pr_submitted' });
+
+        // Sync status change to Jira (fire and forget)
+        syncStatusToJira(root, db.db, storyId, 'pr_submitted');
 
         const pr = createPullRequest(db.db, {
           storyId,
@@ -386,6 +390,11 @@ prCommand
 
       db.save();
 
+      // Sync status change to Jira (fire and forget, after DB commit)
+      if (storyId && newStatus === 'merged') {
+        syncStatusToJira(root, db.db, storyId, 'merged');
+      }
+
       // Immediately attempt to auto-merge approved PRs instead of waiting for manager daemon cycle
       if (newStatus === 'approved') {
         console.log(chalk.gray('Attempting immediate auto-merge...'));
@@ -427,7 +436,7 @@ prCommand
   .requiredOption('-r, --reason <reason>', 'Reason for rejection')
   .option('--from <session>', 'QA agent session')
   .action(async (prId: string, options: { reason: string; from?: string }) => {
-    await withHiveContext(async ({ db }) => {
+    await withHiveContext(async ({ root, db }) => {
       const pr = getPullRequestById(db.db, prId);
       if (!pr) {
         console.error(chalk.red(`PR not found: ${prId}`));
@@ -450,6 +459,11 @@ prCommand
       }
 
       db.save();
+
+      // Sync status change to Jira (fire and forget, after DB commit)
+      if (storyId) {
+        syncStatusToJira(root, db.db, storyId, 'qa_failed');
+      }
 
       console.log(chalk.yellow(`PR ${prId} rejected.`));
       console.log(chalk.gray(`Reason: ${options.reason}`));
