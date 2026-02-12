@@ -356,7 +356,7 @@ describe('autoRefreshToken', () => {
     await store.loadFromEnv(envPath);
 
     // Mock fetch for the token endpoint
-    let mockServer: Server | null = null;
+    let mockServer: Server | undefined;
     const mockPort = await new Promise<number>(resolve => {
       mockServer = createServer((_req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -399,7 +399,7 @@ describe('autoRefreshToken', () => {
 describe('startJiraOAuthFlow', () => {
   it('should complete the full OAuth flow via ephemeral server', async () => {
     // Create mock Atlassian token endpoint
-    let tokenServer: Server | null = null;
+    let tokenServer: Server | undefined;
     const tokenPort = await new Promise<number>(resolve => {
       tokenServer = createServer((req, res) => {
         const url = new URL(req.url ?? '/', `http://127.0.0.1`);
