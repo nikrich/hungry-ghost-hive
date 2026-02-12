@@ -45,20 +45,20 @@ describe('Init Wizard', () => {
     });
 
     it('should throw on invalid source control provider', async () => {
-      await expect(
-        runInitWizard({ nonInteractive: true, sourceControl: 'svn' }),
-      ).rejects.toThrow('Invalid source control provider: "svn"');
+      await expect(runInitWizard({ nonInteractive: true, sourceControl: 'svn' })).rejects.toThrow(
+        'Invalid source control provider: "svn"'
+      );
     });
 
     it('should throw on invalid project management tool', async () => {
       await expect(
-        runInitWizard({ nonInteractive: true, projectManagement: 'trello' }),
+        runInitWizard({ nonInteractive: true, projectManagement: 'trello' })
       ).rejects.toThrow('Invalid project management tool: "trello"');
     });
 
     it('should throw on invalid autonomy level', async () => {
       await expect(runInitWizard({ nonInteractive: true, autonomy: 'auto' })).rejects.toThrow(
-        'Invalid autonomy level: "auto"',
+        'Invalid autonomy level: "auto"'
       );
     });
   });

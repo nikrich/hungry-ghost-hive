@@ -66,7 +66,7 @@ export async function runInitWizard(options: InitWizardOptions = {}): Promise<In
   return buildResult(
     sourceControl as 'github' | 'bitbucket' | 'gitlab',
     projectManagement as 'none' | 'jira',
-    autonomy as 'full' | 'partial',
+    autonomy as 'full' | 'partial'
   );
 }
 
@@ -82,7 +82,7 @@ function validateSourceControl(value: string): 'github' | 'bitbucket' | 'gitlab'
   const valid = ['github', 'bitbucket', 'gitlab'] as const;
   if (!valid.includes(value as (typeof valid)[number])) {
     throw new Error(
-      `Invalid source control provider: "${value}". Valid options: ${valid.join(', ')}`,
+      `Invalid source control provider: "${value}". Valid options: ${valid.join(', ')}`
     );
   }
   return value as 'github' | 'bitbucket' | 'gitlab';
@@ -92,7 +92,7 @@ function validateProjectManagement(value: string): 'none' | 'jira' {
   const valid = ['none', 'jira'] as const;
   if (!valid.includes(value as (typeof valid)[number])) {
     throw new Error(
-      `Invalid project management tool: "${value}". Valid options: ${valid.join(', ')}`,
+      `Invalid project management tool: "${value}". Valid options: ${valid.join(', ')}`
     );
   }
   return value as 'none' | 'jira';
@@ -109,7 +109,7 @@ function validateAutonomy(value: string): 'full' | 'partial' {
 function buildResult(
   sourceControl: 'github' | 'bitbucket' | 'gitlab',
   projectManagement: 'none' | 'jira',
-  autonomy: 'full' | 'partial',
+  autonomy: 'full' | 'partial'
 ): InitWizardResult {
   return {
     integrations: {

@@ -90,5 +90,5 @@ export const initCommand = new Command('init')
         console.error(err);
         process.exit(1);
       }
-    },
+    }
   );
