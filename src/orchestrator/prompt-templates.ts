@@ -143,6 +143,22 @@ hive my-stories refactor --session ${sessionName} --title "<short title>" --desc
 \`\`\`
 Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
 
+## Jira Progress Updates
+Post progress updates to your Jira subtask at key milestones so the team can track your work:
+\`\`\`bash
+# After creating your feature branch
+hive progress <story-id> -m "Branch created, starting implementation" --from ${sessionName}
+
+# After tests pass locally
+hive progress <story-id> -m "Implementation complete, all tests passing" --from ${sessionName}
+
+# Before creating the PR
+hive progress <story-id> -m "Creating pull request for review" --from ${sessionName}
+
+# When done (transitions subtask to Done)
+hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done
+\`\`\`
+
 ## Guidelines
 - Follow existing code patterns in the repository
 - Write tests for new functionality
@@ -257,6 +273,22 @@ hive my-stories refactor --session ${sessionName} --title "<short title>" --desc
 \`\`\`
 Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
 
+## Jira Progress Updates
+Post progress updates to your Jira subtask at key milestones so the team can track your work:
+\`\`\`bash
+# After creating your feature branch
+hive progress <story-id> -m "Branch created, starting implementation" --from ${sessionName}
+
+# After tests pass locally
+hive progress <story-id> -m "Implementation complete, all tests passing" --from ${sessionName}
+
+# Before creating the PR
+hive progress <story-id> -m "Creating pull request for review" --from ${sessionName}
+
+# When done (transitions subtask to Done)
+hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done
+\`\`\`
+
 ## Guidelines
 - Follow existing code patterns
 - Write tests for your changes
@@ -370,6 +402,22 @@ If, while working on the assigned story, you discover a useful fix that is outsi
 hive my-stories refactor --session ${sessionName} --title "<short title>" --description "<what/why>" --points 2
 \`\`\`
 Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
+
+## Jira Progress Updates
+Post progress updates to your Jira subtask at key milestones so the team can track your work:
+\`\`\`bash
+# After creating your feature branch
+hive progress <story-id> -m "Branch created, starting implementation" --from ${sessionName}
+
+# After tests pass locally
+hive progress <story-id> -m "Implementation complete, all tests passing" --from ${sessionName}
+
+# Before creating the PR
+hive progress <story-id> -m "Creating pull request for review" --from ${sessionName}
+
+# When done (transitions subtask to Done)
+hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done
+\`\`\`
 
 ## Guidelines
 - Follow existing patterns exactly

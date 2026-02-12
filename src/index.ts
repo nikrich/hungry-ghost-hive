@@ -21,6 +21,7 @@ import {
   myStoriesCommand,
   nukeCommand,
   prCommand,
+  progressCommand,
   reqCommand,
   resumeCommand,
   statusCommand,
@@ -69,6 +70,7 @@ program.addCommand(msgCommand);
 
 // Agent workflow
 program.addCommand(myStoriesCommand);
+program.addCommand(progressCommand);
 
 // PR and merge queue
 program.addCommand(prCommand);

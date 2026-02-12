@@ -8,7 +8,7 @@ import { queryOne } from '../../db/client.js';
 import type { StoryRow } from '../../db/queries/stories.js';
 import * as logger from '../../utils/logger.js';
 import { JiraClient } from './client.js';
-import { createIssue } from './issues.js';
+import { createIssue, getTransitions, transitionIssue } from './issues.js';
 import type { AdfDocument, CreateIssueResponse } from './types.js';
 
 /**
@@ -17,6 +17,7 @@ import type { AdfDocument, CreateIssueResponse } from './types.js';
 export type JiraLifecycleEvent =
   | 'assigned'
   | 'work_started'
+  | 'progress'
   | 'pr_created'
   | 'qa_started'
   | 'qa_passed'
@@ -43,6 +44,7 @@ export interface CreateSubtaskOptions {
   projectKey: string;
   agentName: string;
   storyTitle: string;
+  approachSteps?: string[];
 }
 
 /**
@@ -57,7 +59,51 @@ export async function createSubtask(
   options: CreateSubtaskOptions
 ): Promise<CreateIssueResponse | null> {
   try {
-    const { parentIssueKey, projectKey, agentName, storyTitle } = options;
+    const { parentIssueKey, projectKey, agentName, storyTitle, approachSteps } = options;
+
+    const descriptionContent: any[] = [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'Automated implementation subtask for: ' },
+          { type: 'text', text: storyTitle, marks: [{ type: 'strong' }] },
+        ],
+      },
+      {
+        type: 'paragraph',
+        content: [
+          {
+            type: 'text',
+            text: `This subtask tracks the implementation progress by ${agentName}.`,
+          },
+        ],
+      },
+    ];
+
+    // Add approach steps as a checklist if provided
+    if (approachSteps && approachSteps.length > 0) {
+      descriptionContent.push(
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Implementation Approach:', marks: [{ type: 'strong' }] },
+          ],
+        },
+        {
+          type: 'orderedList',
+          attrs: { order: 1 },
+          content: approachSteps.map(step => ({
+            type: 'listItem',
+            content: [
+              {
+                type: 'paragraph',
+                content: [{ type: 'text', text: step }],
+              },
+            ],
+          })),
+        }
+      );
+    }
 
     const subtask = await createIssue(client, {
       fields: {
@@ -68,24 +114,7 @@ export async function createSubtask(
         description: {
           version: 1,
           type: 'doc',
-          content: [
-            {
-              type: 'paragraph',
-              content: [
-                { type: 'text', text: 'Automated implementation subtask for: ' },
-                { type: 'text', text: storyTitle, marks: [{ type: 'strong' }] },
-              ],
-            },
-            {
-              type: 'paragraph',
-              content: [
-                {
-                  type: 'text',
-                  text: `This subtask tracks the implementation progress by ${agentName}.`,
-                },
-              ],
-            },
-          ],
+          content: descriptionContent,
         },
         labels: ['hive-managed', 'agent-subtask'],
       },
@@ -165,6 +194,15 @@ function buildCommentBody(event: JiraLifecycleEvent, context: CommentContext): A
           createText(` Work started by ${agentName || 'agent'}.`),
         ]),
         ...(branchName ? [createParagraph([createText('Branch: '), createCode(branchName)])] : []),
+      ]);
+
+    case 'progress':
+      return createAdfComment([
+        createParagraph([
+          createEmoji('blue_book'),
+          createText(` Progress update${agentName ? ` from ${agentName}` : ''}:`),
+        ]),
+        ...(reason ? [createParagraph([createText(reason)])] : []),
       ]);
 
     case 'pr_created':
@@ -324,5 +362,93 @@ export async function postJiraLifecycleComment(
     logger.warn(
       `Failed to post ${event} Jira comment for story ${storyId}: ${err instanceof Error ? err.message : String(err)}`
     );
+  }
+}
+
+/**
+ * Post a progress update comment to the agent's Jira subtask (not the parent story).
+ * Also transitions the subtask to "In Progress" if it hasn't been transitioned yet.
+ *
+ * @param db - Database instance
+ * @param hiveDir - Path to the .hive directory
+ * @param hiveConfig - Full hive configuration
+ * @param storyId - Story ID whose subtask should receive the comment
+ * @param progressMessage - The progress update text
+ * @param agentName - Name of the agent posting the update
+ */
+export async function postProgressToSubtask(
+  db: Database,
+  hiveDir: string,
+  hiveConfig: HiveConfig | undefined,
+  storyId: string,
+  progressMessage: string,
+  agentName?: string
+): Promise<void> {
+  try {
+    if (!hiveConfig) return;
+    const pmConfig = hiveConfig.integrations?.project_management;
+    if (!pmConfig || pmConfig.provider !== 'jira' || !pmConfig.jira) return;
+
+    const story = queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
+    if (!story?.jira_subtask_key) {
+      logger.debug(`Story ${storyId} has no Jira subtask, skipping progress update`);
+      return;
+    }
+
+    const tokenStore = new TokenStore(join(hiveDir, '.env'));
+    await tokenStore.loadFromEnv();
+
+    const jiraClient = new JiraClient({
+      tokenStore,
+      clientId: process.env.JIRA_CLIENT_ID || '',
+      clientSecret: process.env.JIRA_CLIENT_SECRET || '',
+    });
+
+    // Post the progress comment to the subtask
+    await postComment(jiraClient, story.jira_subtask_key, 'progress', {
+      agentName,
+      reason: progressMessage,
+    });
+
+    // Transition subtask to "In Progress" if possible
+    await transitionSubtask(jiraClient, story.jira_subtask_key, 'In Progress');
+  } catch (err) {
+    logger.warn(
+      `Failed to post progress to subtask for story ${storyId}: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
+/**
+ * Transition a Jira subtask to a target status (e.g., "In Progress", "Done").
+ * Looks up available transitions and applies the first match.
+ * Silently skips if no matching transition is found (e.g., already in target status).
+ */
+export async function transitionSubtask(
+  client: JiraClient,
+  subtaskKey: string,
+  targetStatus: string
+): Promise<boolean> {
+  try {
+    const { transitions } = await getTransitions(client, subtaskKey);
+    const targetLower = targetStatus.toLowerCase();
+    const match = transitions.find(t => t.to.name.toLowerCase() === targetLower);
+
+    if (!match) {
+      logger.debug(
+        `No transition to "${targetStatus}" for subtask ${subtaskKey}. ` +
+          `Available: [${transitions.map(t => `${t.name} → ${t.to.name}`).join(', ')}]`
+      );
+      return false;
+    }
+
+    await transitionIssue(client, subtaskKey, { transition: { id: match.id } });
+    logger.debug(`Transitioned subtask ${subtaskKey} to "${match.to.name}"`);
+    return true;
+  } catch (err) {
+    logger.warn(
+      `Failed to transition subtask ${subtaskKey}: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return false;
   }
 }

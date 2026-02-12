@@ -595,6 +595,13 @@ export class Scheduler {
       });
 
       if (subtask) {
+        // Persist subtask reference back to the story
+        updateStory(this.db, story.id, {
+          jiraSubtaskKey: subtask.key,
+          jiraSubtaskId: subtask.id,
+        });
+        if (this.saveFn) this.saveFn();
+
         logger.info(`Created Jira subtask ${subtask.key} for story ${story.id}`);
 
         // Post "assigned" comment
@@ -602,8 +609,6 @@ export class Scheduler {
           agentName,
           subtaskKey: subtask.key,
         });
-
-        logger.info(`Created Jira subtask ${subtask.key} for story ${story.id}`);
       }
     } catch (err) {
       logger.warn(

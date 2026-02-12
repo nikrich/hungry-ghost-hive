@@ -39,6 +39,8 @@ export interface UpdateStoryInput {
   jiraIssueKey?: string | null;
   jiraIssueId?: string | null;
   jiraProjectKey?: string | null;
+  jiraSubtaskKey?: string | null;
+  jiraSubtaskId?: string | null;
 }
 
 export function createStory(db: Database, input: CreateStoryInput): StoryRow {
@@ -212,6 +214,14 @@ export function updateStory(
   if (input.jiraProjectKey !== undefined) {
     updates.push('jira_project_key = ?');
     values.push(input.jiraProjectKey);
+  }
+  if (input.jiraSubtaskKey !== undefined) {
+    updates.push('jira_subtask_key = ?');
+    values.push(input.jiraSubtaskKey);
+  }
+  if (input.jiraSubtaskId !== undefined) {
+    updates.push('jira_subtask_id = ?');
+    values.push(input.jiraSubtaskId);
   }
 
   if (updates.length === 1) {
