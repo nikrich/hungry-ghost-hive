@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import chalk from 'chalk';
+import { exec } from 'child_process';
 import { writeEnvEntries } from './env-store.js';
 
 const GITHUB_DEVICE_CODE_URL = 'https://github.com/login/device/code';
@@ -92,9 +93,19 @@ function defaultDisplayUserCode(userCode: string, verificationUri: string): void
   console.log();
   console.log(chalk.bold('GitHub Device Authorization'));
   console.log();
-  console.log(`  Open this URL in your browser: ${chalk.cyan(verificationUri)}`);
+  console.log(`  Opening browser: ${chalk.cyan(verificationUri)}`);
   console.log(`  Enter this code: ${chalk.bold.yellow(userCode)}`);
   console.log();
+
+  const command =
+    process.platform === 'darwin'
+      ? 'open'
+      : process.platform === 'win32'
+        ? 'start'
+        : 'xdg-open';
+  exec(`${command} "${verificationUri}"`, () => {
+    // Ignore errors - URL is already printed above
+  });
 }
 
 /**
