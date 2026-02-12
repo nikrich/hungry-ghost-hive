@@ -45,6 +45,7 @@ import {
   spawnTmuxSession,
   startManager,
 } from '../tmux/manager.js';
+import { syncStatusToJira } from '../integrations/jira/transitions.js';
 import * as logger from '../utils/logger.js';
 import {
   generateIntermediatePrompt,
@@ -530,6 +531,9 @@ export class Scheduler {
               `Jira integration async error for story ${story.id}: ${err instanceof Error ? err.message : String(err)}`
             );
           });
+
+          // Sync status change to Jira (fire and forget, after DB commit)
+          syncStatusToJira(this.config.rootDir, this.db, story.id, 'in_progress');
         } catch (err) {
           errors.push(
             `Failed to assign story ${story.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -712,6 +716,9 @@ export class Scheduler {
           message: `Recovered from terminated agent ${assignment.agent_id}`,
         });
         recovered.push(assignment.id);
+
+        // Sync status change to Jira (fire and forget)
+        syncStatusToJira(this.config.rootDir, this.db, assignment.id, 'planned');
       } catch (err) {
         console.error(
           `Failed to recover orphaned story ${assignment.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -777,6 +784,9 @@ export class Scheduler {
             assignedAgentId: null,
           });
           revived.push(agent.current_story_id);
+
+          // Sync status change to Jira (fire and forget)
+          syncStatusToJira(this.config.rootDir, this.db, agent.current_story_id, 'planned');
         }
       }
     }

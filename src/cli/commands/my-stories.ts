@@ -5,6 +5,7 @@ import { Command } from 'commander';
 import { queryAll, queryOne, run, type StoryRow } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import { createStory, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
+import { syncStatusToJira } from '../../integrations/jira/transitions.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const myStoriesCommand = new Command('my-stories')
@@ -115,7 +116,7 @@ myStoriesCommand
   .description('Claim a story to work on')
   .requiredOption('-s, --session <session>', 'Your tmux session name')
   .action(async (storyId: string, options: { session: string }) => {
-    await withHiveContext(async ({ db }) => {
+    await withHiveContext(async ({ root, db }) => {
       // Find agent by session
       const agent = queryOne<{ id: string }>(
         db.db,
@@ -166,6 +167,9 @@ myStoriesCommand
       );
       db.save();
 
+      // Sync status change to Jira (fire and forget, after DB commit)
+      syncStatusToJira(root, db.db, storyId, 'in_progress');
+
       console.log(chalk.green(`Claimed story: ${storyId}`));
       console.log(chalk.gray(`Title: ${story.title}`));
     });
@@ -175,7 +179,7 @@ myStoriesCommand
   .command('complete <story-id>')
   .description('Mark a story as complete (ready for review)')
   .action(async (storyId: string) => {
-    await withHiveContext(async ({ db }) => {
+    await withHiveContext(async ({ root, db }) => {
       const story = queryOne<StoryRow>(db.db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
       if (!story) {
         console.error(chalk.red(`Story not found: ${storyId}`));
@@ -192,6 +196,9 @@ myStoriesCommand
         [storyId]
       );
       db.save();
+
+      // Sync status change to Jira (fire and forget, after DB commit)
+      syncStatusToJira(root, db.db, storyId, 'review');
 
       console.log(chalk.green(`Story ${storyId} marked as ready for review.`));
     });

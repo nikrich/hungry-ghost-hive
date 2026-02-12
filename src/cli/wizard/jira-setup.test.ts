@@ -104,7 +104,7 @@ describe('autoDetectStatusMapping', () => {
 
     expect(mapping['TODO']).toBe('draft');
     expect(mapping['DOING']).toBe('in_progress');
-    expect(mapping['TESTING']).toBe('review');
+    expect(mapping['TESTING']).toBe('qa');
     expect(mapping['COMPLETE']).toBe('merged');
   });
 });
