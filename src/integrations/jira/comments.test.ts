@@ -176,8 +176,7 @@ describe('createSubtask', () => {
     // Verify "Implementation Approach:" heading
     const approachHeading = description.content.find(
       (n: any) =>
-        n.type === 'paragraph' &&
-        n.content?.some((c: any) => c.text === 'Implementation Approach:')
+        n.type === 'paragraph' && n.content?.some((c: any) => c.text === 'Implementation Approach:')
     );
     expect(approachHeading).toBeDefined();
   });
