@@ -125,6 +125,23 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('CI');
     });
 
+    it('should default to main when no target branch specified', () => {
+      const stories: StoryRow[] = [];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories);
+
+      expect(prompt).toContain('origin/main');
+      expect(prompt).toContain('--base main');
+    });
+
+    it('should use custom target branch in merge conflict check and PR creation', () => {
+      const stories: StoryRow[] = [];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories, 'develop');
+
+      expect(prompt).toContain('origin/develop');
+      expect(prompt).toContain('--base develop');
+      expect(prompt).not.toContain('origin/main');
+    });
+
     it('should include multiple stories', () => {
       const stories: StoryRow[] = [
         {
@@ -223,6 +240,27 @@ describe('Prompt Templates', () => {
 
       expect(prompt).toContain('CI');
     });
+
+    it('should default to main when no target branch specified', () => {
+      const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName);
+
+      expect(prompt).toContain('origin/main');
+      expect(prompt).toContain('--base main');
+    });
+
+    it('should use custom target branch in merge conflict check and PR creation', () => {
+      const prompt = generateIntermediatePrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        'release/v2'
+      );
+
+      expect(prompt).toContain('origin/release/v2');
+      expect(prompt).toContain('--base release/v2');
+      expect(prompt).not.toContain('origin/main');
+    });
   });
 
   describe('generateJuniorPrompt', () => {
@@ -279,6 +317,27 @@ describe('Prompt Templates', () => {
 
       expect(prompt).toContain('CI');
     });
+
+    it('should default to main when no target branch specified', () => {
+      const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName);
+
+      expect(prompt).toContain('origin/main');
+      expect(prompt).toContain('--base main');
+    });
+
+    it('should use custom target branch in merge conflict check and PR creation', () => {
+      const prompt = generateJuniorPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        'feature/epic-1'
+      );
+
+      expect(prompt).toContain('origin/feature/epic-1');
+      expect(prompt).toContain('--base feature/epic-1');
+      expect(prompt).not.toContain('origin/main');
+    });
   });
 
   describe('generateQAPrompt', () => {
@@ -329,6 +388,22 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('Code quality');
       expect(prompt).toContain('Functionality');
       expect(prompt).toContain('Story requirements');
+    });
+
+    it('should default to main when no target branch specified', () => {
+      const prompt = generateQAPrompt(teamName, repoUrl, repoPath, sessionName);
+
+      expect(prompt).toContain('origin/main');
+      expect(prompt).toContain('Ensure main branch stays stable');
+    });
+
+    it('should use custom target branch in review checklist and guidelines', () => {
+      const prompt = generateQAPrompt(teamName, repoUrl, repoPath, sessionName, 'develop');
+
+      expect(prompt).toContain('origin/develop');
+      expect(prompt).toContain('Ensure develop branch stays stable');
+      expect(prompt).not.toContain('origin/main');
+      expect(prompt).not.toContain('Ensure main branch stays stable');
     });
   });
 });

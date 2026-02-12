@@ -149,6 +149,7 @@ prCommand
               scaling: config.scaling,
               models: config.models,
               qa: config.qa,
+              github: config.github,
               rootDir: root,
               saveFn: () => db.save(),
             });
@@ -523,6 +524,7 @@ prCommand
             const scheduler = new Scheduler(db.db, {
               scaling: config.scaling,
               models: config.models,
+              github: config.github,
               rootDir: root,
               saveFn: () => db.save(),
             });

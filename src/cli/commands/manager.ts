@@ -289,6 +289,7 @@ managerCommand
         scaling: config.scaling,
         models: config.models,
         qa: config.qa,
+        github: config.github,
         rootDir: root,
         saveFn: () => db.save(),
       });
@@ -439,6 +440,7 @@ async function managerCheck(
         scaling: config.scaling,
         models: config.models,
         qa: config.qa,
+        github: config.github,
         rootDir: root,
         saveFn: () => db.save(),
       }),

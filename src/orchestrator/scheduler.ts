@@ -6,7 +6,7 @@ import {
   resolveRuntimeModelForCli,
   validateModelCliCompatibility,
 } from '../cli-runtimes/index.js';
-import type { ModelsConfig, QAConfig, ScalingConfig } from '../config/schema.js';
+import type { GitHubConfig, ModelsConfig, QAConfig, ScalingConfig } from '../config/schema.js';
 import { queryAll, queryOne, withTransaction } from '../db/client.js';
 import {
   createAgent,
@@ -69,6 +69,7 @@ export interface SchedulerConfig {
   scaling: ScalingConfig;
   models: ModelsConfig;
   qa?: QAConfig;
+  github?: GitHubConfig;
   rootDir: string;
   saveFn?: () => void;
 }
@@ -962,22 +963,42 @@ export class Scheduler {
     if (!(await isTmuxSessionRunning(sessionName))) {
       // Build the initial prompt for this agent type
       const team = getTeamById(this.db, teamId);
+      const targetBranch = this.resolveTargetBranch(teamId);
       let prompt: string;
 
       if (type === 'senior') {
         const stories = this.getTeamStories(teamId);
-        prompt = generateSeniorPrompt(teamName, team?.repo_url || '', worktreePath, stories);
+        prompt = generateSeniorPrompt(
+          teamName,
+          team?.repo_url || '',
+          worktreePath,
+          stories,
+          targetBranch
+        );
       } else if (type === 'intermediate') {
         prompt = generateIntermediatePrompt(
           teamName,
           team?.repo_url || '',
           worktreePath,
-          sessionName
+          sessionName,
+          targetBranch
         );
       } else if (type === 'junior') {
-        prompt = generateJuniorPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
+        prompt = generateJuniorPrompt(
+          teamName,
+          team?.repo_url || '',
+          worktreePath,
+          sessionName,
+          targetBranch
+        );
       } else {
-        prompt = generateQAPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
+        prompt = generateQAPrompt(
+          teamName,
+          team?.repo_url || '',
+          worktreePath,
+          sessionName,
+          targetBranch
+        );
       }
 
       // Build CLI command using the configured runtime
@@ -1075,5 +1096,43 @@ export class Scheduler {
     `,
       [teamId]
     );
+  }
+
+  /**
+   * Resolve the target branch for a team's active work.
+   * Looks up active requirements associated with the team's stories
+   * and returns the first non-default target_branch found.
+   * Falls back to config.github.base_branch, then to 'main'.
+   */
+  resolveTargetBranch(teamId: string): string {
+    const fallback = this.config.github?.base_branch || 'main';
+
+    // Find active requirements for this team's stories
+    const requirements = queryAll<RequirementRow>(
+      this.db,
+      `
+      SELECT DISTINCT r.* FROM requirements r
+      INNER JOIN stories s ON s.requirement_id = r.id
+      WHERE s.team_id = ?
+        AND r.status IN ('pending', 'planning', 'planned', 'in_progress')
+      ORDER BY r.created_at DESC
+    `,
+      [teamId]
+    );
+
+    // Return the first requirement's target_branch that differs from default,
+    // or the first requirement's target_branch, or the config fallback
+    for (const req of requirements) {
+      if (req.target_branch && req.target_branch !== 'main') {
+        return req.target_branch;
+      }
+    }
+
+    // If all requirements use 'main' or no requirements found, use config fallback
+    if (requirements.length > 0 && requirements[0].target_branch) {
+      return requirements[0].target_branch;
+    }
+
+    return fallback;
   }
 }

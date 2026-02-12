@@ -1576,3 +1576,149 @@ describe('Scheduler checkScaling', () => {
     spawnSeniorSpy.mockRestore();
   });
 });
+
+describe('Scheduler resolveTargetBranch', () => {
+  it('should return main when no requirements exist for team', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const result = scheduler.resolveTargetBranch(team.id);
+    expect(result).toBe('main');
+  });
+
+  it('should return config github.base_branch as fallback when no requirements exist', () => {
+    const customScheduler = new Scheduler(db, {
+      ...mockConfig,
+      github: { base_branch: 'develop', pr_template: '' },
+    } as any);
+
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const result = customScheduler.resolveTargetBranch(team.id);
+    expect(result).toBe('develop');
+  });
+
+  it('should return requirement target_branch when it differs from main', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a requirement with custom target_branch
+    const req = createRequirement(db, {
+      title: 'Feature Req',
+      description: 'Test',
+      targetBranch: 'release/v2',
+    });
+    db.run(`UPDATE requirements SET status = 'in_progress' WHERE id = ?`, [req.id]);
+
+    // Create a story linking team to requirement
+    createStory(db, {
+      teamId: team.id,
+      requirementId: req.id,
+      title: 'Story 1',
+      description: 'Test',
+    });
+
+    const result = scheduler.resolveTargetBranch(team.id);
+    expect(result).toBe('release/v2');
+  });
+
+  it('should return main when requirement uses main target_branch', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const req = createRequirement(db, {
+      title: 'Feature Req',
+      description: 'Test',
+      targetBranch: 'main',
+    });
+    db.run(`UPDATE requirements SET status = 'planning' WHERE id = ?`, [req.id]);
+
+    createStory(db, {
+      teamId: team.id,
+      requirementId: req.id,
+      title: 'Story 1',
+      description: 'Test',
+    });
+
+    const result = scheduler.resolveTargetBranch(team.id);
+    expect(result).toBe('main');
+  });
+
+  it('should ignore completed requirements', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const req = createRequirement(db, {
+      title: 'Old Req',
+      description: 'Test',
+      targetBranch: 'release/v1',
+    });
+    db.run(`UPDATE requirements SET status = 'completed' WHERE id = ?`, [req.id]);
+
+    createStory(db, {
+      teamId: team.id,
+      requirementId: req.id,
+      title: 'Story 1',
+      description: 'Test',
+    });
+
+    const result = scheduler.resolveTargetBranch(team.id);
+    expect(result).toBe('main');
+  });
+
+  it('should prefer non-main target_branch over main', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a requirement with main (default)
+    const reqMain = createRequirement(db, {
+      title: 'Main Req',
+      description: 'Test',
+      targetBranch: 'main',
+    });
+    db.run(`UPDATE requirements SET status = 'in_progress' WHERE id = ?`, [reqMain.id]);
+
+    // Create a requirement with custom branch
+    const reqCustom = createRequirement(db, {
+      title: 'Custom Req',
+      description: 'Test',
+      targetBranch: 'develop',
+    });
+    db.run(`UPDATE requirements SET status = 'in_progress' WHERE id = ?`, [reqCustom.id]);
+
+    createStory(db, {
+      teamId: team.id,
+      requirementId: reqMain.id,
+      title: 'Story 1',
+      description: 'Test',
+    });
+    createStory(db, {
+      teamId: team.id,
+      requirementId: reqCustom.id,
+      title: 'Story 2',
+      description: 'Test',
+    });
+
+    const result = scheduler.resolveTargetBranch(team.id);
+    expect(result).toBe('develop');
+  });
+});

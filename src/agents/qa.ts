@@ -5,6 +5,7 @@ import { getAgentsByType } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
 import { countQaFailuresByStory } from '../db/queries/logs.js';
 import { createPullRequest, getPullRequestByStory } from '../db/queries/pull-requests.js';
+import { getRequirementById } from '../db/queries/requirements.js';
 import { getStoriesByStatus, updateStory, type StoryRow } from '../db/queries/stories.js';
 import { getTeamById, type TeamRow } from '../db/queries/teams.js';
 import { BaseAgent, type AgentContext } from './base-agent.js';
@@ -14,6 +15,7 @@ export interface QAContext extends AgentContext {
     qualityChecks: string[];
     buildCommand: string;
     testCommand?: string;
+    targetBranch?: string;
   };
 }
 
@@ -218,6 +220,15 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       const title = `${story.id}: ${story.title}`;
       const body = this.generatePRBody(story);
 
+      // Resolve target branch: requirement-level > config-level > 'main'
+      let baseBranch = this.qaConfig.targetBranch || 'main';
+      if (story.requirement_id) {
+        const requirement = getRequirementById(this.db, story.requirement_id);
+        if (requirement?.target_branch) {
+          baseBranch = requirement.target_branch;
+        }
+      }
+
       const { stdout } = await execa(
         'gh',
         [
@@ -228,7 +239,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
           '--body',
           body,
           '--base',
-          'main',
+          baseBranch,
           '--head',
           story.branch_name,
         ],

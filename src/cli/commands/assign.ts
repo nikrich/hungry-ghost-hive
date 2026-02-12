@@ -116,6 +116,7 @@ export const assignCommand = new Command('assign')
           scaling: config.scaling,
           models: config.models,
           qa: config.qa,
+          github: config.github,
           rootDir: root,
           saveFn: () => db.save(),
         });
