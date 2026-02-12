@@ -136,7 +136,7 @@ async function buildResult(
     );
     console.log(chalk.gray('  1. Go to https://developer.atlassian.com/console/myapps/'));
     console.log(chalk.gray('  2. Create a new app with OAuth 2.0 (3LO)'));
-    console.log(chalk.gray('  3. Add callback URL: http://localhost:9876/callback'));
+    console.log(chalk.gray('  3. Add callback URL: http://127.0.0.1:9876/callback'));
     console.log(chalk.gray('  4. Enable scopes: read:jira-work, write:jira-work, offline_access'));
     console.log();
 
