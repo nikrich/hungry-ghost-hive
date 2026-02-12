@@ -52,12 +52,9 @@ describe('syncJiraStatusesToHive', () => {
   const baseConfig: JiraConfig = {
     project_key: 'TEST',
     site_url: 'https://test.atlassian.net',
-    board_id: '1',
     story_type: 'Story',
     subtask_type: 'Subtask',
     status_mapping: {},
-    watch_board: false,
-    board_poll_interval_ms: 60000,
   };
 
   function createTestTokenStore(tokens?: Record<string, string>): TokenStore {

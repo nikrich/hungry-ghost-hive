@@ -298,7 +298,7 @@ describe('createJiraBoard', () => {
 });
 
 describe('JiraConfig schema validation', () => {
-  it('should accept config with new watch_board and board_poll_interval_ms fields', async () => {
+  it('should accept config without board_id (now optional)', async () => {
     const { HiveConfigSchema } = await import('../../config/schema.js');
     const config = HiveConfigSchema.parse({
       integrations: {
@@ -307,19 +307,16 @@ describe('JiraConfig schema validation', () => {
           jira: {
             project_key: 'TEST',
             site_url: 'https://test.atlassian.net',
-            board_id: '1',
-            watch_board: false,
-            board_poll_interval_ms: 30000,
           },
         },
       },
     });
 
-    expect(config.integrations.project_management.jira!.watch_board).toBe(false);
-    expect(config.integrations.project_management.jira!.board_poll_interval_ms).toBe(30000);
+    expect(config.integrations.project_management.jira!.project_key).toBe('TEST');
+    expect(config.integrations.project_management.jira!.board_id).toBeUndefined();
   });
 
-  it('should default watch_board to true and board_poll_interval_ms to 60000', async () => {
+  it('should accept config with optional board_id', async () => {
     const { HiveConfigSchema } = await import('../../config/schema.js');
     const config = HiveConfigSchema.parse({
       integrations: {
@@ -328,14 +325,13 @@ describe('JiraConfig schema validation', () => {
           jira: {
             project_key: 'TEST',
             site_url: 'https://test.atlassian.net',
-            board_id: '1',
+            board_id: '42',
           },
         },
       },
     });
 
-    expect(config.integrations.project_management.jira!.watch_board).toBe(true);
-    expect(config.integrations.project_management.jira!.board_poll_interval_ms).toBe(60000);
+    expect(config.integrations.project_management.jira!.board_id).toBe('42');
   });
 
   it('should reject negative board_poll_interval_ms', async () => {
@@ -348,7 +344,6 @@ describe('JiraConfig schema validation', () => {
             jira: {
               project_key: 'TEST',
               site_url: 'https://test.atlassian.net',
-              board_id: '1',
               board_poll_interval_ms: -1,
             },
           },
