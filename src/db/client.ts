@@ -541,6 +541,35 @@ function runMigrations(db: SqlJsDatabase): void {
     }
     db.run("INSERT INTO migrations (name) VALUES ('010-add-target-branch.sql')");
   }
+
+  // Migration 006: Add Jira integration fields to stories table
+  const result006Jira = db.exec("SELECT name FROM migrations WHERE name = '006-integrations.sql'");
+  const migration006JiraApplied = result006Jira.length > 0 && result006Jira[0].values.length > 0;
+
+  if (!migration006JiraApplied) {
+    const storyColumns = db.exec('PRAGMA table_info(stories)');
+    const hasJiraIssueKey =
+      storyColumns.length > 0 &&
+      storyColumns[0].values.some((col: unknown[]) => col[1] === 'jira_issue_key');
+    const hasJiraIssueId =
+      storyColumns.length > 0 &&
+      storyColumns[0].values.some((col: unknown[]) => col[1] === 'jira_issue_id');
+    const hasJiraProjectKey =
+      storyColumns.length > 0 &&
+      storyColumns[0].values.some((col: unknown[]) => col[1] === 'jira_project_key');
+
+    if (!hasJiraIssueKey) {
+      db.run('ALTER TABLE stories ADD COLUMN jira_issue_key TEXT');
+    }
+    if (!hasJiraIssueId) {
+      db.run('ALTER TABLE stories ADD COLUMN jira_issue_id TEXT');
+    }
+    if (!hasJiraProjectKey) {
+      db.run('ALTER TABLE stories ADD COLUMN jira_project_key TEXT');
+    }
+
+    db.run("INSERT INTO migrations (name) VALUES ('006-integrations.sql')");
+  }
 }
 
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
