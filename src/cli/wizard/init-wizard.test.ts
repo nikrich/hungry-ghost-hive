@@ -66,6 +66,8 @@ describe('Init Wizard', () => {
           story_type: 'Story',
           subtask_type: 'Subtask',
           status_mapping: {},
+          watch_board: true,
+          board_poll_interval_ms: 60000,
         },
       });
 
@@ -143,6 +145,8 @@ describe('Init Wizard', () => {
           story_type: 'Story',
           subtask_type: 'Subtask',
           status_mapping: {},
+          watch_board: true,
+          board_poll_interval_ms: 60000,
         },
       });
 

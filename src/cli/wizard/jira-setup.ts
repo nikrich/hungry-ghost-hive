@@ -147,6 +147,119 @@ export async function fetchProjectBoards(
 }
 
 /**
+ * Extract a board ID from a Jira board URL.
+ * Supports formats:
+ *   - https://mycompany.atlassian.net/jira/software/projects/PROJ/boards/42
+ *   - https://mycompany.atlassian.net/secure/RapidBoard.jspa?rapidView=42
+ *   - https://mycompany.atlassian.net/jira/software/c/projects/PROJ/boards/42
+ * Returns the board ID string, or null if parsing fails.
+ */
+export function parseBoardIdFromUrl(boardUrl: string): string | null {
+  try {
+    const url = new URL(boardUrl);
+
+    // Format: /jira/software/projects/PROJ/boards/42 or /jira/software/c/projects/PROJ/boards/42
+    const boardsMatch = url.pathname.match(/\/boards\/(\d+)/);
+    if (boardsMatch) {
+      return boardsMatch[1];
+    }
+
+    // Format: /secure/RapidBoard.jspa?rapidView=42
+    const rapidView = url.searchParams.get('rapidView');
+    if (rapidView && /^\d+$/.test(rapidView)) {
+      return rapidView;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Validate that a board ID exists via the Jira Agile API.
+ */
+export async function validateBoardId(
+  cloudId: string,
+  accessToken: string,
+  boardId: string
+): Promise<JiraBoard | null> {
+  const response = await fetch(
+    `https://api.atlassian.com/ex/jira/${cloudId}/rest/agile/1.0/board/${boardId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as JiraBoard;
+}
+
+/**
+ * Create a new Jira board for a project via the Agile API.
+ */
+export async function createJiraBoard(
+  cloudId: string,
+  accessToken: string,
+  options: { name: string; type: 'scrum' | 'kanban'; projectKey: string }
+): Promise<JiraBoard> {
+  // First, get the project to find its filter or create one
+  const filterResponse = await fetch(
+    `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/filter`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        name: `${options.name} filter`,
+        jql: `project = ${options.projectKey} ORDER BY Rank ASC`,
+      }),
+    }
+  );
+
+  if (!filterResponse.ok) {
+    const body = await filterResponse.text();
+    throw new Error(`Failed to create board filter (${filterResponse.status}): ${body}`);
+  }
+
+  const filter = (await filterResponse.json()) as { id: string };
+
+  // Create the board using the filter
+  const boardResponse = await fetch(
+    `https://api.atlassian.com/ex/jira/${cloudId}/rest/agile/1.0/board`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        name: options.name,
+        type: options.type,
+        filterId: Number(filter.id),
+      }),
+    }
+  );
+
+  if (!boardResponse.ok) {
+    const body = await boardResponse.text();
+    throw new Error(`Failed to create board (${boardResponse.status}): ${body}`);
+  }
+
+  return (await boardResponse.json()) as JiraBoard;
+}
+
+/**
  * Auto-detect status mapping from Jira statuses to Hive statuses.
  * Uses status category and common naming patterns.
  */
@@ -323,31 +436,81 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
     }
   }
 
-  // Step 4: Detect board for the project
+  // Step 4: Board setup - ask user how they want to configure the board
   console.log();
-  console.log(chalk.gray(`Fetching boards for ${selectedProject.key}...`));
-  const boards = await fetchProjectBoards(cloudId, accessToken, selectedProject.key);
+  const boardSetupMethod = await select({
+    message: 'Which board should I work from?',
+    choices: [
+      { name: 'Select an existing board', value: 'existing' },
+      { name: 'Create a new board', value: 'create' },
+      { name: 'Provide a board URL/link', value: 'link' },
+    ],
+  });
 
   let boardId: string;
 
-  if (boards.length === 0) {
-    console.log(chalk.yellow('No boards found for this project.'));
-    boardId = await input({
-      message: 'Enter board ID manually (or leave empty)',
-      default: '1',
+  if (boardSetupMethod === 'create') {
+    const boardName = await input({
+      message: 'Board name',
+      default: `${selectedProject.key} Board`,
     });
-  } else if (boards.length === 1) {
-    console.log(chalk.green(`Using board: ${boards[0].name} (ID: ${boards[0].id})`));
-    boardId = String(boards[0].id);
+    const boardType = await select({
+      message: 'Board type',
+      choices: [
+        { name: 'Scrum', value: 'scrum' as const },
+        { name: 'Kanban', value: 'kanban' as const },
+      ],
+    });
+
+    console.log(chalk.gray('Creating board...'));
+    const newBoard = await createJiraBoard(cloudId, accessToken, {
+      name: boardName,
+      type: boardType,
+      projectKey: selectedProject.key,
+    });
+    console.log(chalk.green(`Created board: ${newBoard.name} (ID: ${newBoard.id})`));
+    boardId = String(newBoard.id);
+  } else if (boardSetupMethod === 'link') {
+    const boardUrl = await input({
+      message: 'Jira board URL',
+      validate: (value: string) => {
+        const parsed = parseBoardIdFromUrl(value);
+        return parsed !== null ? true : 'Could not extract board ID from URL. Please provide a valid Jira board URL.';
+      },
+    });
+    boardId = parseBoardIdFromUrl(boardUrl)!;
+
+    console.log(chalk.gray(`Validating board ID ${boardId}...`));
+    const board = await validateBoardId(cloudId, accessToken, boardId);
+    if (board) {
+      console.log(chalk.green(`Validated board: ${board.name} (${board.type})`));
+    } else {
+      console.log(chalk.yellow(`Could not validate board ${boardId} via API, using ID as provided.`));
+    }
   } else {
-    const selectedBoard = await select({
-      message: 'Select a board',
-      choices: boards.map(b => ({
-        name: `${b.name} (${b.type})`,
-        value: b,
-      })),
-    });
-    boardId = String(selectedBoard.id);
+    // existing board selection
+    console.log(chalk.gray(`Fetching boards for ${selectedProject.key}...`));
+    const boards = await fetchProjectBoards(cloudId, accessToken, selectedProject.key);
+
+    if (boards.length === 0) {
+      console.log(chalk.yellow('No boards found for this project.'));
+      boardId = await input({
+        message: 'Enter board ID manually',
+        default: '1',
+      });
+    } else if (boards.length === 1) {
+      console.log(chalk.green(`Using board: ${boards[0].name} (ID: ${boards[0].id})`));
+      boardId = String(boards[0].id);
+    } else {
+      const selectedBoard = await select({
+        message: 'Select a board',
+        choices: boards.map(b => ({
+          name: `${b.name} (${b.type})`,
+          value: b,
+        })),
+      });
+      boardId = String(selectedBoard.id);
+    }
   }
 
   console.log();
@@ -361,6 +524,8 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
       story_type: 'Story',
       subtask_type: 'Subtask',
       status_mapping: finalMapping,
+      watch_board: true,
+      board_poll_interval_ms: 60000,
     },
   };
 }
@@ -401,6 +566,8 @@ async function runNonInteractiveSetup(options: JiraSetupOptions): Promise<JiraSe
       story_type: 'Story',
       subtask_type: 'Subtask',
       status_mapping: statusMapping,
+      watch_board: true,
+      board_poll_interval_ms: 60000,
     },
   };
 }

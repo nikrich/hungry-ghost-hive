@@ -97,6 +97,10 @@ const JiraConfigSchema = z.object({
   subtask_type: z.string().min(1).default('Subtask'),
   // Status mapping from Jira status to internal status
   status_mapping: z.record(z.string()).default({}),
+  // Whether to watch the board for changes (polling)
+  watch_board: z.boolean().default(true),
+  // Board polling interval in milliseconds
+  board_poll_interval_ms: z.number().int().positive().default(60000),
 });
 
 // Project management integration
@@ -322,6 +326,8 @@ integrations:
     #     "In Progress": in_progress
     #     "In Review": review
     #     "Done": merged
+    #   watch_board: true
+    #   board_poll_interval_ms: 60000
   # Agent autonomy level (full, partial)
   autonomy:
     level: full
