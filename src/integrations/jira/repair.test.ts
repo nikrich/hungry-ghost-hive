@@ -100,8 +100,8 @@ describe('repairMissedAssignmentHooks', () => {
     });
     run(
       db,
-      `UPDATE stories SET jira_issue_key = ?, assigned_agent_id = ?, jira_subtask_key = ?, status = ? WHERE id = ?`,
-      ['TEST-1', 'agent-senior-1', 'TEST-2', 'in_progress', story.id]
+      `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, jira_subtask_key = ?, external_subtask_key = ?, status = ? WHERE id = ?`,
+      ['TEST-1', 'TEST-1', 'agent-senior-1', 'TEST-2', 'TEST-2', 'in_progress', story.id]
     );
 
     const tokenStore = createTestTokenStore();
@@ -130,7 +130,8 @@ describe('repairMissedAssignmentHooks', () => {
       title: 'Not assigned',
       description: 'Test',
     });
-    run(db, `UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?`, [
+    run(db, `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?`, [
+      'TEST-1',
       'TEST-1',
       'planned',
       story.id,
@@ -148,8 +149,8 @@ describe('repairMissedAssignmentHooks', () => {
     });
     run(
       db,
-      `UPDATE stories SET jira_issue_key = ?, jira_project_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
-      ['TEST-10', 'TEST', 'agent-senior-1', 'in_progress', story.id]
+      `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, jira_project_key = ?, external_project_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
+      ['TEST-10', 'TEST-10', 'TEST', 'TEST', 'agent-senior-1', 'in_progress', story.id]
     );
 
     const tokenStore = createTestTokenStore({
@@ -198,10 +199,12 @@ describe('repairMissedAssignmentHooks', () => {
       })
     );
 
-    // Verify subtask key was persisted to DB
+    // Verify subtask key was persisted to DB (both legacy and external columns)
     const updatedStory = getStoryById(db, story.id);
     expect(updatedStory?.jira_subtask_key).toBe('TEST-11');
     expect(updatedStory?.jira_subtask_id).toBe('20001');
+    expect(updatedStory?.external_subtask_key).toBe('TEST-11');
+    expect(updatedStory?.external_subtask_id).toBe('20001');
 
     // Verify status sync was called for in_progress story
     expect(syncStoryStatusToJira).toHaveBeenCalledWith(
@@ -220,8 +223,8 @@ describe('repairMissedAssignmentHooks', () => {
     });
     run(
       db,
-      `UPDATE stories SET jira_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
-      ['TEST-20', 'agent-senior-1', 'in_progress', story.id]
+      `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
+      ['TEST-20', 'TEST-20', 'agent-senior-1', 'in_progress', story.id]
     );
 
     const tokenStore = createTestTokenStore({
@@ -262,8 +265,8 @@ describe('repairMissedAssignmentHooks', () => {
     });
     run(
       db,
-      `UPDATE stories SET jira_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
-      ['TEST-30', 'agent-senior-1', 'merged', story.id]
+      `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
+      ['TEST-30', 'TEST-30', 'agent-senior-1', 'merged', story.id]
     );
 
     const tokenStore = createTestTokenStore();
@@ -278,8 +281,8 @@ describe('repairMissedAssignmentHooks', () => {
     });
     run(
       db,
-      `UPDATE stories SET jira_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
-      ['TEST-40', 'agent-senior-1', 'in_progress', story.id]
+      `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
+      ['TEST-40', 'TEST-40', 'agent-senior-1', 'in_progress', story.id]
     );
 
     const tokenStore = createTestTokenStore({

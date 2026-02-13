@@ -101,6 +101,12 @@ describe('context-files module', () => {
       jira_project_key: null,
       jira_subtask_key: null,
       jira_subtask_id: null,
+      external_issue_key: null,
+      external_issue_id: null,
+      external_project_key: null,
+      external_subtask_key: null,
+      external_subtask_id: null,
+      external_provider: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };

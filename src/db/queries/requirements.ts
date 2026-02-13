@@ -22,8 +22,13 @@ export interface UpdateRequirementInput {
   status?: RequirementStatus;
   godmode?: boolean;
   targetBranch?: string;
+  /** @deprecated Use externalEpicKey instead */
   jiraEpicKey?: string | null;
+  /** @deprecated Use externalEpicId instead */
   jiraEpicId?: string | null;
+  externalEpicKey?: string | null;
+  externalEpicId?: string | null;
+  externalProvider?: string | null;
 }
 
 export function createRequirement(db: Database, input: CreateRequirementInput): RequirementRow {
@@ -108,13 +113,25 @@ export function updateRequirement(
     updates.push('target_branch = ?');
     values.push(input.targetBranch);
   }
-  if (input.jiraEpicKey !== undefined) {
+  // Dual-write: support both legacy jira_* and new external_* columns
+  const epicKey = input.externalEpicKey !== undefined ? input.externalEpicKey : input.jiraEpicKey;
+  const epicId = input.externalEpicId !== undefined ? input.externalEpicId : input.jiraEpicId;
+
+  if (epicKey !== undefined) {
     updates.push('jira_epic_key = ?');
-    values.push(input.jiraEpicKey);
+    values.push(epicKey);
+    updates.push('external_epic_key = ?');
+    values.push(epicKey);
   }
-  if (input.jiraEpicId !== undefined) {
+  if (epicId !== undefined) {
     updates.push('jira_epic_id = ?');
-    values.push(input.jiraEpicId);
+    values.push(epicId);
+    updates.push('external_epic_id = ?');
+    values.push(epicId);
+  }
+  if (input.externalProvider !== undefined) {
+    updates.push('external_provider = ?');
+    values.push(input.externalProvider);
   }
 
   if (updates.length === 0) {

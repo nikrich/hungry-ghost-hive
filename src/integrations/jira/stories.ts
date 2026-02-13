@@ -148,7 +148,7 @@ async function tryMoveToActiveSprint(
 
 /**
  * Sync a requirement and its stories to Jira.
- * If the requirement already has a jira_epic_key (imported via URL), skips epic creation.
+ * If the requirement already has an external_epic_key (imported via URL), skips epic creation.
  * Otherwise creates a Jira Epic for the requirement.
  * Then creates Jira Stories under the epic, creates issue links for dependencies,
  * and moves stories to the active sprint.
@@ -185,11 +185,11 @@ export async function syncRequirementToJira(
 
   let epicKey: string | null = null;
 
-  if (requirement.jira_epic_key && requirement.jira_epic_id) {
-    // Epic already exists (imported via Jira URL) — reuse it
-    epicKey = requirement.jira_epic_key;
-    result.epicKey = requirement.jira_epic_key;
-    result.epicId = requirement.jira_epic_id;
+  if (requirement.external_epic_key && requirement.external_epic_id) {
+    // Epic already exists (imported via URL) — reuse it
+    epicKey = requirement.external_epic_key;
+    result.epicKey = requirement.external_epic_key;
+    result.epicId = requirement.external_epic_id;
   } else {
     // Create a new Jira Epic
     let epic: CreateIssueResponse | null = null;
@@ -208,10 +208,11 @@ export async function syncRequirementToJira(
       result.epicKey = epic.key;
       result.epicId = epic.id;
 
-      // Update requirement with Jira epic info
+      // Update requirement with epic info (provider-agnostic)
       updateRequirement(db, requirement.id, {
-        jiraEpicKey: epic.key,
-        jiraEpicId: epic.id,
+        externalEpicKey: epic.key,
+        externalEpicId: epic.id,
+        externalProvider: 'jira',
       });
 
       // Record sync state
@@ -264,11 +265,12 @@ export async function syncRequirementToJira(
 
       const jiraStory = await createIssue(client, { fields } as any);
 
-      // Update local story with Jira info
+      // Update local story with external integration info
       updateStory(db, storyId, {
-        jiraIssueKey: jiraStory.key,
-        jiraIssueId: jiraStory.id,
-        jiraProjectKey: config.project_key,
+        externalIssueKey: jiraStory.key,
+        externalIssueId: jiraStory.id,
+        externalProjectKey: config.project_key,
+        externalProvider: 'jira',
       });
 
       // Record sync state
@@ -346,8 +348,8 @@ export async function syncStoryToJira(
   if (story.requirement_id) {
     const { getRequirementById } = await import('../../db/queries/requirements.js');
     const req = getRequirementById(db, story.requirement_id);
-    if (req?.jira_epic_key) {
-      epicKey = req.jira_epic_key;
+    if (req?.external_epic_key) {
+      epicKey = req.external_epic_key;
     }
   }
 
@@ -376,11 +378,12 @@ export async function syncStoryToJira(
 
   const jiraStory = await createIssue(client, { fields } as any);
 
-  // Update local story
+  // Update local story with external integration info
   updateStory(db, story.id, {
-    jiraIssueKey: jiraStory.key,
-    jiraIssueId: jiraStory.id,
-    jiraProjectKey: config.project_key,
+    externalIssueKey: jiraStory.key,
+    externalIssueId: jiraStory.id,
+    externalProjectKey: config.project_key,
+    externalProvider: 'jira',
   });
 
   // Record sync

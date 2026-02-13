@@ -577,19 +577,19 @@ export class Scheduler {
     if (!pmConfig || pmConfig.provider !== 'jira' || !pmConfig.jira) return;
 
     // Re-fetch the story from DB to get the latest Jira data (the passed-in
-    // story object may be stale — jira_issue_key is set during syncStoryToJira
+    // story object may be stale — external_issue_key is set during syncStoryToJira
     // which may have completed after this object was fetched).
     const freshStory = getStoryById(this.db, story.id);
-    if (!freshStory?.jira_issue_key) {
-      logger.debug(`Story ${story.id} has no Jira issue key, skipping subtask creation`);
+    if (!freshStory?.external_issue_key) {
+      logger.debug(`Story ${story.id} has no external issue key, skipping subtask creation`);
       return;
     }
 
     // Idempotency guard: skip if subtask was already created (prevents duplicates
     // if both the original hook and the repair loop fire for the same story)
-    if (freshStory.jira_subtask_key) {
+    if (freshStory.external_subtask_key) {
       logger.debug(
-        `Story ${story.id} already has Jira subtask ${freshStory.jira_subtask_key}, skipping`
+        `Story ${story.id} already has external subtask ${freshStory.external_subtask_key}, skipping`
       );
       return;
     }
@@ -612,7 +612,7 @@ export class Scheduler {
       // Create subtask
       const agentName = agent.tmux_session || agent.id;
       const subtask = await createSubtask(jiraClient, {
-        parentIssueKey: freshStory.jira_issue_key,
+        parentIssueKey: freshStory.external_issue_key,
         projectKey: pmConfig.jira.project_key,
         agentName,
         storyTitle: freshStory.title,
@@ -621,15 +621,15 @@ export class Scheduler {
       if (subtask) {
         // Persist subtask reference back to the story
         updateStory(this.db, freshStory.id, {
-          jiraSubtaskKey: subtask.key,
-          jiraSubtaskId: subtask.id,
+          externalSubtaskKey: subtask.key,
+          externalSubtaskId: subtask.id,
         });
         if (this.saveFn) this.saveFn();
 
         logger.info(`Created Jira subtask ${subtask.key} for story ${freshStory.id}`);
 
         // Post "assigned" comment
-        await postComment(jiraClient, freshStory.jira_issue_key, 'assigned', {
+        await postComment(jiraClient, freshStory.external_issue_key, 'assigned', {
           agentName,
           subtaskKey: subtask.key,
         });

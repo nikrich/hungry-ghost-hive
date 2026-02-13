@@ -155,7 +155,8 @@ describe('syncJiraStatusesToHive', () => {
     });
 
     // Update story to add Jira key and set initial status
-    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-123',
       'TEST-123',
       'planned',
       story.id,
@@ -219,7 +220,8 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-123',
       'TEST-123',
       'in_progress',
       story.id,
@@ -275,7 +277,8 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-123',
       'TEST-123',
       'planned',
       story.id,
@@ -306,7 +309,8 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-123',
       'TEST-123',
       'in_progress',
       story.id,
@@ -371,7 +375,8 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-123',
       'TEST-123',
       'merged',
       story.id,
@@ -426,7 +431,8 @@ describe('syncUnsyncedStoriesToJira', () => {
       title: 'Synced Story',
       description: 'Already synced',
     });
-    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-1',
       'TEST-1',
       'planned',
       story.id,

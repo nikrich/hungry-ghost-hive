@@ -37,7 +37,7 @@ export const approachCommand = new Command('approach')
         eventType: 'APPROACH_POSTED',
         message: approachText,
         metadata: {
-          jira_issue_key: story.jira_issue_key,
+          external_issue_key: story.external_issue_key,
         },
       });
       db.save();
@@ -45,7 +45,7 @@ export const approachCommand = new Command('approach')
       console.log(chalk.green(`Approach logged for story ${storyId}`));
 
       // Post to Jira if configured
-      if (!story.jira_issue_key) {
+      if (!story.external_issue_key) {
         console.log(chalk.gray('No Jira issue key on story, skipping Jira comment'));
         return;
       }
@@ -68,13 +68,13 @@ export const approachCommand = new Command('approach')
           clientSecret: process.env.JIRA_CLIENT_SECRET || '',
         });
 
-        const success = await postComment(jiraClient, story.jira_issue_key, 'approach_posted', {
+        const success = await postComment(jiraClient, story.external_issue_key, 'approach_posted', {
           agentName,
           approachText,
         });
 
         if (success) {
-          console.log(chalk.green(`Approach comment posted to Jira issue ${story.jira_issue_key}`));
+          console.log(chalk.green(`Approach comment posted to Jira issue ${story.external_issue_key}`));
         } else {
           console.log(chalk.yellow('Failed to post approach comment to Jira'));
         }

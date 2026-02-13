@@ -373,7 +373,7 @@ Respond in JSON format:
     const tokenStore = new TokenStore(join(paths.hiveDir, '.env'));
     await tokenStore.loadFromEnv();
 
-    // Re-fetch requirement from DB to pick up jira_epic_key/id that may have
+    // Re-fetch requirement from DB to pick up external_epic_key/id that may have
     // been set after this agent was constructed (e.g., by `hive req <epic-url>`).
     const freshRequirement = getRequirementById(this.db, this.requirement.id);
     if (!freshRequirement) return;
@@ -395,8 +395,8 @@ Respond in JSON format:
 
       if (result.epicKey) {
         this.log(
-          freshRequirement.jira_epic_key ? 'JIRA_EPIC_INGESTED' : 'JIRA_EPIC_CREATED',
-          `Epic ${result.epicKey} ${freshRequirement.jira_epic_key ? 'linked (existing)' : 'created'} for ${freshRequirement.id}`
+          freshRequirement.external_epic_key ? 'JIRA_EPIC_INGESTED' : 'JIRA_EPIC_CREATED',
+          `Epic ${result.epicKey} ${freshRequirement.external_epic_key ? 'linked (existing)' : 'created'} for ${freshRequirement.id}`
         );
       }
 

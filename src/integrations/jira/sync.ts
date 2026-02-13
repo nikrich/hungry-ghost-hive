@@ -122,10 +122,10 @@ export async function syncJiraStatusesToHive(
     return 0;
   }
 
-  // Fetch all stories that have a Jira issue key
+  // Fetch all stories that have an external issue key (provider-agnostic query)
   const storiesWithJira = queryAll<StoryRow>(
     db,
-    `SELECT * FROM stories WHERE jira_issue_key IS NOT NULL AND status NOT IN ('merged')`
+    `SELECT * FROM stories WHERE external_issue_key IS NOT NULL AND status NOT IN ('merged')`
   );
 
   if (storiesWithJira.length === 0) {
@@ -145,7 +145,7 @@ export async function syncJiraStatusesToHive(
   for (const story of storiesWithJira) {
     try {
       // Fetch current Jira issue status
-      const jiraIssue = await getIssue(client, story.jira_issue_key!, ['status']);
+      const jiraIssue = await getIssue(client, story.external_issue_key!, ['status']);
       const jiraStatusName = jiraIssue.fields.status.name;
 
       // Convert Jira status to Hive status
@@ -153,7 +153,7 @@ export async function syncJiraStatusesToHive(
 
       if (!mappedHiveStatus) {
         logger.debug(
-          `No Hive status mapping for Jira status "${jiraStatusName}" (${story.jira_issue_key}), skipping`
+          `No Hive status mapping for Jira status "${jiraStatusName}" (${story.external_issue_key}), skipping`
         );
         continue;
       }
@@ -171,7 +171,7 @@ export async function syncJiraStatusesToHive(
         // Only allow forward transitions — never regress stories backward
         if (!isForwardTransition(story.status, mappedHiveStatus)) {
           logger.debug(
-            `Skipping backward Jira sync for story ${story.id} (${story.jira_issue_key}): ` +
+            `Skipping backward Jira sync for story ${story.id} (${story.external_issue_key}): ` +
               `would regress ${story.status} → ${mappedHiveStatus} (Jira: "${jiraStatusName}")`
           );
           continue;
@@ -187,7 +187,7 @@ export async function syncJiraStatusesToHive(
             eventType: 'JIRA_SYNC_COMPLETED',
             message: `Synced status from Jira: ${story.status} → ${mappedHiveStatus} (Jira: "${jiraStatusName}")`,
             metadata: {
-              jiraKey: story.jira_issue_key,
+              jiraKey: story.external_issue_key,
               oldHiveStatus: story.status,
               newHiveStatus: mappedHiveStatus,
               jiraStatus: jiraStatusName,
@@ -196,7 +196,7 @@ export async function syncJiraStatusesToHive(
         });
 
         logger.debug(
-          `Synced Jira status for story ${story.id} (${story.jira_issue_key}): ${story.status} → ${mappedHiveStatus}`
+          `Synced Jira status for story ${story.id} (${story.external_issue_key}): ${story.status} → ${mappedHiveStatus}`
         );
 
         updatedCount++;
@@ -204,7 +204,7 @@ export async function syncJiraStatusesToHive(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.warn(
-        `Failed to sync Jira status for story ${story.id} (${story.jira_issue_key}): ${message}`
+        `Failed to sync Jira status for story ${story.id} (${story.external_issue_key}): ${message}`
       );
 
       createLog(db, {
@@ -213,7 +213,7 @@ export async function syncJiraStatusesToHive(
         eventType: 'JIRA_SYNC_WARNING',
         status: 'warn',
         message: `Failed to sync status from Jira: ${message}`,
-        metadata: { jiraKey: story.jira_issue_key, error: message },
+        metadata: { jiraKey: story.external_issue_key, error: message },
       });
     }
   }
@@ -238,10 +238,10 @@ export async function syncUnsyncedStoriesToJira(
   tokenStore: TokenStore,
   config: JiraConfig
 ): Promise<number> {
-  // Find stories that have no jira_issue_key but are not in draft status
+  // Find stories that have no external_issue_key but are not in draft status
   const unsyncedStories = queryAll<StoryRow>(
     db,
-    `SELECT * FROM stories WHERE jira_issue_key IS NULL AND status NOT IN ('draft') ORDER BY requirement_id, id`
+    `SELECT * FROM stories WHERE external_issue_key IS NULL AND status NOT IN ('draft') ORDER BY requirement_id, id`
   );
 
   if (unsyncedStories.length === 0) {
@@ -317,7 +317,7 @@ export async function syncUnsyncedStoriesToJira(
  * Detect stories that were assigned to agents but missed the Jira
  * assignment hook (subtask creation + status transition).
  *
- * This happens when a story is assigned before its jira_issue_key is set
+ * This happens when a story is assigned before its external_issue_key is set
  * (e.g., Jira sync hadn't completed yet). The original
  * handleJiraAfterAssignment() bails out with "no Jira issue key" and
  * never retries, leaving the story without a subtask in Jira.
@@ -338,15 +338,15 @@ export async function repairMissedAssignmentHooks(
   config: JiraConfig
 ): Promise<number> {
   // Find stories that:
-  // - Have a jira_issue_key (synced to Jira)
+  // - Have an external_issue_key (synced to a PM provider)
   // - Have an assigned_agent_id (assigned to an agent)
-  // - But are missing a jira_subtask_key (subtask never created)
+  // - But are missing an external_subtask_key (subtask never created)
   const storiesMissingSubtasks = queryAll<StoryRow>(
     db,
     `SELECT * FROM stories
-     WHERE jira_issue_key IS NOT NULL
+     WHERE external_issue_key IS NOT NULL
        AND assigned_agent_id IS NOT NULL
-       AND jira_subtask_key IS NULL
+       AND external_subtask_key IS NULL
        AND status NOT IN ('merged')
      ORDER BY created_at`
   );
@@ -377,8 +377,8 @@ export async function repairMissedAssignmentHooks(
 
       // Create the subtask
       const subtask = await createSubtask(client, {
-        parentIssueKey: story.jira_issue_key!,
-        projectKey: story.jira_project_key || config.project_key,
+        parentIssueKey: story.external_issue_key!,
+        projectKey: (story.external_project_key || config.project_key),
         agentName,
         storyTitle: story.title,
       });
@@ -386,8 +386,8 @@ export async function repairMissedAssignmentHooks(
       if (subtask) {
         // Persist subtask reference
         updateStory(db, story.id, {
-          jiraSubtaskKey: subtask.key,
-          jiraSubtaskId: subtask.id,
+          externalSubtaskKey: subtask.key,
+          externalSubtaskId: subtask.id,
         });
 
         logger.info(
@@ -395,7 +395,7 @@ export async function repairMissedAssignmentHooks(
         );
 
         // Post "assigned" comment
-        await postComment(client, story.jira_issue_key!, 'assigned', {
+        await postComment(client, story.external_issue_key!, 'assigned', {
           agentName,
           subtaskKey: subtask.key,
         });
@@ -408,7 +408,7 @@ export async function repairMissedAssignmentHooks(
           eventType: 'JIRA_ASSIGNMENT_REPAIRED',
           message: `Repaired missed assignment hook: created subtask ${subtask.key} for agent ${agentName}`,
           metadata: {
-            jiraKey: story.jira_issue_key,
+            jiraKey: story.external_issue_key,
             subtaskKey: subtask.key,
             agentName,
           },
@@ -430,7 +430,7 @@ export async function repairMissedAssignmentHooks(
         eventType: 'JIRA_ASSIGNMENT_REPAIR_FAILED',
         status: 'warn',
         message: `Failed to repair missed assignment hook: ${message}`,
-        metadata: { jiraKey: story.jira_issue_key, error: message },
+        metadata: { jiraKey: story.external_issue_key, error: message },
       });
     }
   }

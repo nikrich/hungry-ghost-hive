@@ -620,6 +620,77 @@ function runMigrations(db: SqlJsDatabase): void {
 
     db.run("INSERT INTO migrations (name) VALUES ('006-integrations.sql')");
   }
+
+  // Migration 011: Add generic provider-agnostic integration fields
+  const result011 = db.exec(
+    "SELECT name FROM migrations WHERE name = '011-generic-integration-fields.sql'"
+  );
+  const migration011Applied = result011.length > 0 && result011[0].values.length > 0;
+
+  if (!migration011Applied) {
+    // Add generic columns to stories table
+    const storyColumns011 = db.exec('PRAGMA table_info(stories)');
+    const storyColNames011 =
+      storyColumns011.length > 0
+        ? storyColumns011[0].values.map((col: unknown[]) => String(col[1]))
+        : [];
+    const storyGenericCols = [
+      'external_issue_key',
+      'external_issue_id',
+      'external_project_key',
+      'external_subtask_key',
+      'external_subtask_id',
+      'external_provider',
+    ];
+    for (const col of storyGenericCols) {
+      if (!storyColNames011.includes(col)) {
+        db.run(`ALTER TABLE stories ADD COLUMN ${col} TEXT`);
+      }
+    }
+
+    // Add generic columns to requirements table
+    const reqColumns011 = db.exec('PRAGMA table_info(requirements)');
+    const reqColNames011 =
+      reqColumns011.length > 0
+        ? reqColumns011[0].values.map((col: unknown[]) => String(col[1]))
+        : [];
+    const reqGenericCols = ['external_epic_key', 'external_epic_id', 'external_provider'];
+    for (const col of reqGenericCols) {
+      if (!reqColNames011.includes(col)) {
+        db.run(`ALTER TABLE requirements ADD COLUMN ${col} TEXT`);
+      }
+    }
+
+    // Copy data from jira_* to external_* columns
+    db.run(`
+      UPDATE stories SET
+        external_issue_key = jira_issue_key,
+        external_issue_id = jira_issue_id,
+        external_project_key = jira_project_key,
+        external_subtask_key = jira_subtask_key,
+        external_subtask_id = jira_subtask_id,
+        external_provider = 'jira'
+      WHERE jira_issue_key IS NOT NULL OR jira_subtask_key IS NOT NULL
+    `);
+
+    db.run(`
+      UPDATE requirements SET
+        external_epic_key = jira_epic_key,
+        external_epic_id = jira_epic_id,
+        external_provider = 'jira'
+      WHERE jira_epic_key IS NOT NULL
+    `);
+
+    // Add indexes on new generic columns
+    db.run(
+      'CREATE INDEX IF NOT EXISTS idx_stories_external_issue_key ON stories(external_issue_key)'
+    );
+    db.run(
+      'CREATE INDEX IF NOT EXISTS idx_stories_external_provider ON stories(external_provider)'
+    );
+
+    db.run("INSERT INTO migrations (name) VALUES ('011-generic-integration-fields.sql')");
+  }
 }
 
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
@@ -760,8 +831,13 @@ export interface RequirementRow {
   status: 'pending' | 'planning' | 'planned' | 'in_progress' | 'completed';
   godmode: number;
   target_branch: string;
+  /** @deprecated Use external_epic_key instead */
   jira_epic_key: string | null;
+  /** @deprecated Use external_epic_id instead */
   jira_epic_id: string | null;
+  external_epic_key: string | null;
+  external_epic_id: string | null;
+  external_provider: string | null;
   created_at: string;
 }
 
@@ -787,11 +863,22 @@ export interface StoryRow {
   assigned_agent_id: string | null;
   branch_name: string | null;
   pr_url: string | null;
+  /** @deprecated Use external_issue_key instead */
   jira_issue_key: string | null;
+  /** @deprecated Use external_issue_id instead */
   jira_issue_id: string | null;
+  /** @deprecated Use external_project_key instead */
   jira_project_key: string | null;
+  /** @deprecated Use external_subtask_key instead */
   jira_subtask_key: string | null;
+  /** @deprecated Use external_subtask_id instead */
   jira_subtask_id: string | null;
+  external_issue_key: string | null;
+  external_issue_id: string | null;
+  external_project_key: string | null;
+  external_subtask_key: string | null;
+  external_subtask_id: string | null;
+  external_provider: string | null;
   created_at: string;
   updated_at: string;
 }
