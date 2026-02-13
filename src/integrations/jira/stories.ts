@@ -239,10 +239,7 @@ export async function syncRequirementToJira(
     }
 
     try {
-      const acceptanceCriteria = safelyParseAcceptanceCriteria(
-        story.acceptance_criteria,
-        storyId
-      );
+      const acceptanceCriteria = safelyParseAcceptanceCriteria(story.acceptance_criteria, storyId);
 
       const storyLabels = ['hive-managed'];
       if (teamName) {
@@ -354,10 +351,7 @@ export async function syncStoryToJira(
     }
   }
 
-  const acceptanceCriteria = safelyParseAcceptanceCriteria(
-    story.acceptance_criteria,
-    story.id
-  );
+  const acceptanceCriteria = safelyParseAcceptanceCriteria(story.acceptance_criteria, story.id);
 
   const labels = ['hive-managed'];
   if (teamName) {

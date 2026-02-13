@@ -2,8 +2,8 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { generateTechLeadJiraInstructions } from '../../orchestrator/prompt-templates.js';
-import { safelyParseAcceptanceCriteria } from './stories.js';
 import * as logger from '../../utils/logger.js';
+import { safelyParseAcceptanceCriteria } from './stories.js';
 
 describe('Jira Story Creation', () => {
   describe('generateTechLeadJiraInstructions', () => {
