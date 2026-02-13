@@ -106,7 +106,12 @@ export function deleteAgentLogByRowId(db: Database, rowId: string): void {
   }
 }
 
-export function setRowHash(db: Database, table: ReplicatedTable, rowId: string, rowHash: string): void {
+export function setRowHash(
+  db: Database,
+  table: ReplicatedTable,
+  rowId: string,
+  rowHash: string
+): void {
   run(
     db,
     `
