@@ -150,7 +150,7 @@ export class JiraProjectManagementConnector implements IProjectManagementConnect
       fields[config.story_points_field || 'story_points'] = options.storyPoints;
     }
 
-    const result = await createIssue(client, { fields } as any);
+    const result = await createIssue(client, { fields });
     return { key: result.key, id: result.id };
   }
 
