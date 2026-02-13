@@ -1,0 +1,69 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
+import type { HiveConfig } from '../../../config/schema.js';
+import type { DatabaseClient, StoryRow } from '../../../db/client.js';
+import type { getAllAgents } from '../../../db/queries/agents.js';
+import type { MessageRow } from '../../../db/queries/messages.js';
+import type { Scheduler } from '../../../orchestrator/scheduler.js';
+import type { TmuxSession } from '../../../tmux/manager.js';
+import type { getHivePaths } from '../../../utils/paths.js';
+
+// --- Named constants (extracted from inline magic numbers) ---
+
+/** Number of tmux pane lines to capture for agent state detection */
+export const TMUX_CAPTURE_LINES = 50;
+/** Number of tmux pane lines to capture for brief status checks */
+export const TMUX_CAPTURE_LINES_SHORT = 30;
+/** Max retries when forcing bypass mode on an agent */
+export const BYPASS_MODE_MAX_RETRIES = 3;
+/** Lookback window in minutes for recent escalations to avoid duplicates */
+export const RECENT_ESCALATION_LOOKBACK_MINUTES = 30;
+/** Delay in ms after sending a message to an agent before killing session */
+export const AGENT_SPINDOWN_DELAY_MS = 1000;
+/** Delay in ms before killing tmux session when pipeline is empty */
+export const IDLE_SPINDOWN_DELAY_MS = 500;
+/** Delay in ms before sending Enter to prompt after nudge */
+export const POST_NUDGE_DELAY_MS = 100;
+/** Delay in ms between forwarding messages to an agent */
+export const MESSAGE_FORWARD_DELAY_MS = 100;
+/** Delay before escalating a stalled planning handoff from nudge to automation */
+export const PROACTIVE_HANDOFF_RETRY_DELAY_MS = 60000;
+
+// Agent state tracking for nudge logic
+export interface AgentStateTracking {
+  lastState: import('../../../state-detectors/types.js').AgentState;
+  lastStateChangeTime: number;
+  lastNudgeTime: number;
+}
+
+export interface PlanningHandoffTracking {
+  signature: string;
+  lastNudgeAt: number;
+}
+
+// Shared context passed between helper functions during a manager check cycle
+export interface ManagerCheckContext {
+  root: string;
+  config: HiveConfig;
+  paths: ReturnType<typeof getHivePaths>;
+  db: DatabaseClient;
+  scheduler: InstanceType<typeof Scheduler>;
+  hiveSessions: TmuxSession[];
+  // Counters accumulated across helpers
+  counters: {
+    nudged: number;
+    messagesForwarded: number;
+    escalationsCreated: number;
+    escalationsResolved: number;
+    queuedPRCount: number;
+    handoffPromoted: number;
+    handoffAutoAssigned: number;
+    jiraSynced: number;
+  };
+  // Shared state for dedup
+  escalatedSessions: Set<string | null>;
+  agentsBySessionName: Map<string, ReturnType<typeof getAllAgents>[number]>;
+  messagesToMarkRead: string[];
+}
+
+export type { MessageRow, StoryRow };
