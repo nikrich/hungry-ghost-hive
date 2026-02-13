@@ -10,9 +10,7 @@ vi.mock('openai', () => {
     chat: {
       completions: {
         create: vi.fn().mockResolvedValue({
-          choices: [
-            { message: { content: 'Mock response from GPT' }, finish_reason: 'stop' },
-          ],
+          choices: [{ message: { content: 'Mock response from GPT' }, finish_reason: 'stop' }],
           usage: { prompt_tokens: 120, completion_tokens: 60 },
         }),
       },
