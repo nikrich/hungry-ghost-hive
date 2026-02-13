@@ -64,7 +64,9 @@ export const approachCommand = new Command('approach')
         logger.warn(
           `Failed to post approach to PM provider: ${err instanceof Error ? err.message : String(err)}`
         );
-        console.log(chalk.yellow('Failed to post approach comment to PM provider (logged locally)'));
+        console.log(
+          chalk.yellow('Failed to post approach comment to PM provider (logged locally)')
+        );
       }
     });
   });

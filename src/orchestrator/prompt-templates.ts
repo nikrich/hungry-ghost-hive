@@ -54,7 +54,9 @@ export function generateSeniorPrompt(
 ): string {
   const storyList = stories
     .map(s => {
-      const externalInfo = s.external_subtask_key ? ` | External Subtask: ${s.external_subtask_key}` : '';
+      const externalInfo = s.external_subtask_key
+        ? ` | External Subtask: ${s.external_subtask_key}`
+        : '';
       return `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'}${externalInfo})\n  ${s.description}`;
     })
     .join('\n\n');
