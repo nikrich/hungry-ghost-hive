@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.30.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.1...hungry-ghost-hive-v0.30.2) (2026-02-13)
+
+
+### Code Refactoring
+
+* extract SQL schema and migrations from db/client.ts ([#363](https://github.com/nikrich/hungry-ghost-hive/issues/363)) ([7f6be7e](https://github.com/nikrich/hungry-ghost-hive/commit/7f6be7e43768ad388eab7fde796864d5033225d2))
+* split cli/commands/manager.ts into focused modules ([#365](https://github.com/nikrich/hungry-ghost-hive/issues/365)) ([e3dc515](https://github.com/nikrich/hungry-ghost-hive/commit/e3dc5158d6872a099c5219b2d0832b315047fe01))
+* split orchestrator/scheduler.ts into focused modules ([#369](https://github.com/nikrich/hungry-ghost-hive/issues/369)) ([b4ba680](https://github.com/nikrich/hungry-ghost-hive/commit/b4ba68030a75bd8a0ae59688e72177ead51a2585))
+
 ## [0.30.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.0...hungry-ghost-hive-v0.30.1) (2026-02-13)
 
 
