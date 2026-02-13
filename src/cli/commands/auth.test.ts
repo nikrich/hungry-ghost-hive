@@ -20,20 +20,34 @@ vi.mock('../../auth/token-store.js', () => ({
   })),
 }));
 
+let mockHiveRoot: string | null = null;
+
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withHiveRoot: vi.fn(async callback => {
-    const tempDir = mkdtempSync(join(tmpdir(), 'hive-auth-test-'));
-    mkdirSync(join(tempDir, '.hive'), { recursive: true });
-    try {
-      await callback({
-        paths: {
-          hiveDir: join(tempDir, '.hive'),
-        },
-      });
-    } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+  withHiveRoot: vi.fn(callback => {
+    if (!mockHiveRoot) {
+      mockHiveRoot = mkdtempSync(join(tmpdir(), 'hive-auth-test-'));
+      mkdirSync(join(mockHiveRoot, '.hive'), { recursive: true });
     }
+    return callback({
+      root: mockHiveRoot,
+      paths: {
+        hiveDir: join(mockHiveRoot, '.hive'),
+      },
+    });
   }),
+}));
+
+vi.mock('../../config/loader.js', () => ({
+  loadConfig: vi.fn(() => ({
+    integrations: {
+      source_control: {
+        provider: 'github',
+      },
+      project_management: {
+        provider: 'jira',
+      },
+    },
+  })),
 }));
 
 import { authCommand } from './auth.js';
@@ -96,6 +110,27 @@ describe('auth command', () => {
       const commandNames = authCommand.commands.map(cmd => cmd.name());
       expect(commandNames).toContain('github');
       expect(commandNames).toContain('jira');
+    });
+
+    it('should have --provider option', () => {
+      const providerOption = authCommand.options.find(opt => opt.long === '--provider');
+      expect(providerOption).toBeDefined();
+    });
+  });
+
+  describe('config-driven auth', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      if (mockHiveRoot) {
+        rmSync(mockHiveRoot, { recursive: true, force: true });
+        mockHiveRoot = null;
+      }
+    });
+
+    it('should support --provider option', () => {
+      const providerOpt = authCommand.options.find(opt => opt.long === '--provider');
+      expect(providerOpt).toBeDefined();
+      expect(providerOpt?.description).toBeTruthy();
     });
   });
 });
