@@ -6,9 +6,10 @@ import { Command } from 'commander';
 import { getEnvFilePath, loadEnvIntoProcess, readEnvFile } from '../../auth/env-store.js';
 import { runGitHubDeviceFlow } from '../../auth/github-oauth.js';
 import { startJiraOAuthFlow, storeJiraTokens } from '../../auth/jira-oauth.js';
-import { authRegistry } from '../../auth/registry.js';
 import { TokenStore } from '../../auth/token-store.js';
 import { loadConfig } from '../../config/loader.js';
+import { bootstrapConnectors } from '../../connectors/bootstrap.js';
+import { registry } from '../../connectors/registry.js';
 import { openBrowser } from '../../utils/open-browser.js';
 import { withHiveRoot } from '../../utils/with-hive-context.js';
 
@@ -17,22 +18,25 @@ export const authCommand = new Command('auth')
   .option('--provider <name>', 'Authenticate a specific provider')
   .action(async (options: { provider?: string }) => {
     try {
+      // Ensure connectors are registered
+      bootstrapConnectors();
+
       const { paths } = withHiveRoot(ctx => ctx);
 
       // If --provider flag is specified, authenticate that provider only
       if (options.provider) {
-        const connector = authRegistry.get(options.provider);
+        const connector = registry.getAuth(options.provider);
         if (!connector) {
           console.error(chalk.red(`Error: Unknown provider "${options.provider}"`));
           console.error(
-            chalk.gray(`Available providers: ${authRegistry.getProviderNames().join(', ')}`)
+            chalk.gray(`Available providers: ${registry.listAuthProviders().join(', ')}`)
           );
           process.exit(1);
         }
 
-        const result = await connector.run(paths.hiveDir);
+        const result = await connector.authenticate({ rootDir: paths.hiveDir });
         if (!result.success) {
-          console.error(chalk.red(`${connector.name} authentication failed:`));
+          console.error(chalk.red(`${connector.provider} authentication failed:`));
           console.error(chalk.gray(result.message || 'Unknown error'));
           process.exit(1);
         }
@@ -66,7 +70,7 @@ export const authCommand = new Command('auth')
       const results: Array<{ provider: string; success: boolean; message?: string }> = [];
 
       for (const providerName of providersToAuth) {
-        const connector = authRegistry.get(providerName);
+        const connector = registry.getAuth(providerName);
         if (!connector) {
           console.error(
             chalk.yellow(`Warning: No auth connector found for "${providerName}". Skipping.`)
@@ -79,11 +83,11 @@ export const authCommand = new Command('auth')
           continue;
         }
 
-        const result = await connector.run(paths.hiveDir);
+        const result = await connector.authenticate({ rootDir: paths.hiveDir });
         results.push(result);
 
         if (!result.success) {
-          console.error(chalk.red(`${connector.name} authentication failed:`));
+          console.error(chalk.red(`${connector.provider} authentication failed:`));
           console.error(chalk.gray(result.message || 'Unknown error'));
         }
 
