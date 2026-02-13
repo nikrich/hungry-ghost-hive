@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.5](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.4...hungry-ghost-hive-v0.30.5) (2026-02-13)
+
+
+### Code Refactoring
+
+* extract shared prompt sections into reusable helpers ([#377](https://github.com/nikrich/hungry-ghost-hive/issues/377)) ([19c2193](https://github.com/nikrich/hungry-ghost-hive/commit/19c2193c5944231d1343456591e649986b448eba))
+
 ## [0.30.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.3...hungry-ghost-hive-v0.30.4) (2026-02-13)
 
 
