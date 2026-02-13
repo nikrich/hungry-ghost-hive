@@ -6,6 +6,7 @@ import {
   isJiraUrl,
   parseEpicUrl as jiraParseEpicUrl,
 } from '../../integrations/jira/epic-import.js';
+import type { CreateIssueRequest } from '../../integrations/jira/types.js';
 import type {
   ConnectorEpic,
   ConnectorIssue,
@@ -30,25 +31,58 @@ export interface JiraPMConnectorOptions {
  *
  * Thin adapter that delegates to existing Jira integration modules
  * in `src/integrations/jira/`. The JiraClient is created lazily
- * on first API call.
+ * on first API call, and config/tokenStore are loaded from the workspace.
  */
 export class JiraProjectManagementConnector implements IProjectManagementConnector {
   readonly provider = 'jira';
 
-  private readonly config: JiraConfig;
-  private readonly tokenStore: TokenStore;
+  private config?: JiraConfig;
+  private tokenStore?: TokenStore;
 
-  constructor(options: JiraPMConnectorOptions) {
-    this.config = options.config;
-    this.tokenStore = options.tokenStore;
+  constructor(options?: JiraPMConnectorOptions) {
+    if (options) {
+      this.config = options.config;
+      this.tokenStore = options.tokenStore;
+    }
+  }
+
+  private async loadConfigAndTokenStore(): Promise<{ config: JiraConfig; tokenStore: TokenStore }> {
+    if (this.config && this.tokenStore) {
+      return { config: this.config, tokenStore: this.tokenStore };
+    }
+
+    // Load config from workspace
+    const { loadConfig } = await import('../../config/loader.js');
+    const { getHivePaths } = await import('../../utils/paths.js');
+    const { TokenStore } = await import('../../auth/token-store.js');
+    const { join } = await import('path');
+
+    const paths = getHivePaths(process.cwd());
+    const config = loadConfig(paths.hiveDir);
+
+    if (!config.integrations.project_management.jira) {
+      throw new Error('Jira is not configured. Run "hive init" or configure Jira in config.yml');
+    }
+
+    const envPath = join(paths.hiveDir, '.env');
+    const tokenStore = new TokenStore(envPath);
+    await tokenStore.loadFromEnv(envPath);
+
+    // Cache for future calls
+    this.config = config.integrations.project_management.jira;
+    this.tokenStore = tokenStore;
+
+    return { config: this.config, tokenStore };
   }
 
   private async getClient() {
     const { loadEnvIntoProcess } = await import('../../auth/env-store.js');
     const { JiraClient } = await import('../../integrations/jira/client.js');
+    const { tokenStore } = await this.loadConfigAndTokenStore();
+
     loadEnvIntoProcess();
     return new JiraClient({
-      tokenStore: this.tokenStore,
+      tokenStore,
       clientId: process.env.JIRA_CLIENT_ID || '',
       clientSecret: process.env.JIRA_CLIENT_SECRET || '',
     });
@@ -98,12 +132,13 @@ export class JiraProjectManagementConnector implements IProjectManagementConnect
 
   async createStory(options: CreateStoryOptions): Promise<{ key: string; id: string }> {
     const { createIssue } = await import('../../integrations/jira/issues.js');
+    const { config } = await this.loadConfigAndTokenStore();
 
     const client = await this.getClient();
-    const fields: Record<string, unknown> = {
+    const fields: CreateIssueRequest['fields'] = {
       project: { key: options.projectKey },
       summary: options.title,
-      issuetype: { name: this.config.story_type || 'Story' },
+      issuetype: { name: config.story_type || 'Story' },
       description: this.textToAdf(options.description),
       labels: options.labels,
     };
@@ -113,10 +148,10 @@ export class JiraProjectManagementConnector implements IProjectManagementConnect
     }
 
     if (options.storyPoints !== undefined) {
-      fields[this.config.story_points_field || 'story_points'] = options.storyPoints;
+      fields[config.story_points_field || 'story_points'] = options.storyPoints;
     }
 
-    const result = await createIssue(client, { fields } as any);
+    const result = await createIssue(client, { fields });
     return { key: result.key, id: result.id };
   }
 
@@ -227,8 +262,10 @@ export class JiraProjectManagementConnector implements IProjectManagementConnect
 
 /**
  * Register the Jira project management connector with the global registry.
- * Requires JiraPMConnectorOptions to be provided to the factory.
+ * The connector will load config and tokenStore lazily when first accessed.
+ *
+ * @param options - Optional config and tokenStore (primarily for testing)
  */
-export function register(options: JiraPMConnectorOptions): void {
+export function register(options?: JiraPMConnectorOptions): void {
   registry.registerProjectManagement('jira', () => new JiraProjectManagementConnector(options));
 }

@@ -28,8 +28,20 @@ vi.mock('../../auth/env-store.js', () => ({
   writeEnvEntries: vi.fn(),
 }));
 
+vi.mock('../../connectors/bootstrap.js', () => ({
+  bootstrapConnectors: vi.fn(),
+}));
+
+vi.mock('../../connectors/registry.js', () => ({
+  registry: {
+    listSourceControlProviders: vi.fn().mockReturnValue(['github']),
+    listProjectManagementProviders: vi.fn().mockReturnValue(['jira']),
+  },
+}));
+
 import { input, select } from '@inquirer/prompts';
 import { startJiraOAuthFlow } from '../../auth/jira-oauth.js';
+import { registry } from '../../connectors/registry.js';
 import { runInitWizard } from './init-wizard.js';
 import { runJiraSetup } from './jira-setup.js';
 
@@ -86,15 +98,21 @@ describe('Init Wizard', () => {
     });
 
     it('should throw on invalid source control provider', async () => {
+      // Mock registry to return only 'github'
+      vi.mocked(registry.listSourceControlProviders).mockReturnValueOnce(['github']);
+
       await expect(runInitWizard({ nonInteractive: true, sourceControl: 'svn' })).rejects.toThrow(
-        'Invalid source control provider: "svn"'
+        'Invalid source control provider: "svn". Valid options: github'
       );
     });
 
     it('should throw on invalid project management tool', async () => {
+      // Mock registry to return only 'jira'
+      vi.mocked(registry.listProjectManagementProviders).mockReturnValueOnce(['jira']);
+
       await expect(
         runInitWizard({ nonInteractive: true, projectManagement: 'trello' })
-      ).rejects.toThrow('Invalid project management tool: "trello"');
+      ).rejects.toThrow('Invalid project management tool: "trello". Valid options: none, jira');
     });
 
     it('should throw on invalid autonomy level', async () => {
@@ -157,28 +175,30 @@ describe('Init Wizard', () => {
       expect(result.integrations.autonomy).toEqual({ level: 'partial' });
     });
 
-    it('should configure source control prompt with correct choices', async () => {
+    it('should configure source control prompt with choices from registry', async () => {
       const mockSelect = vi.mocked(select);
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+
+      // Mock registry to return available providers
+      vi.mocked(registry.listSourceControlProviders).mockReturnValueOnce(['github']);
 
       await runInitWizard();
 
       const firstCall = mockSelect.mock.calls[0][0];
       expect(firstCall.message).toBe('Source control provider');
-      expect(firstCall.choices).toEqual([
-        { name: 'GitHub', value: 'github' },
-        { name: 'GitLab (coming soon)', value: 'gitlab', disabled: true },
-        { name: 'Bitbucket (coming soon)', value: 'bitbucket', disabled: true },
-      ]);
+      expect(firstCall.choices).toEqual([{ name: 'Github', value: 'github' }]);
     });
 
-    it('should configure project management prompt with correct choices', async () => {
+    it('should configure project management prompt with choices from registry', async () => {
       const mockSelect = vi.mocked(select);
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+
+      // Mock registry to return available providers
+      vi.mocked(registry.listProjectManagementProviders).mockReturnValueOnce(['jira']);
 
       await runInitWizard();
 

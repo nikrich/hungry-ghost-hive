@@ -6,6 +6,8 @@ import { join } from 'path';
 import { startJiraOAuthFlow, storeJiraTokens } from '../../auth/jira-oauth.js';
 import { TokenStore } from '../../auth/token-store.js';
 import type { IntegrationsConfig } from '../../config/schema.js';
+import { bootstrapConnectors } from '../../connectors/bootstrap.js';
+import { registry } from '../../connectors/registry.js';
 import { openBrowser } from '../../utils/open-browser.js';
 import { getHivePaths } from '../../utils/paths.js';
 import { runJiraSetup } from './jira-setup.js';
@@ -27,28 +29,41 @@ export async function runInitWizard(options: InitWizardOptions = {}): Promise<In
     return runNonInteractive(options);
   }
 
+  // Bootstrap connectors to ensure they're registered
+  bootstrapConnectors();
+
   console.log();
   console.log(chalk.bold('Configure your Hive workspace:'));
   console.log();
 
   // Step 1: Source control provider
+  const sourceControlProviders = registry.listSourceControlProviders();
+  const sourceControlChoices = sourceControlProviders.map(provider => {
+    // Capitalize first letter for display
+    const name = provider.charAt(0).toUpperCase() + provider.slice(1);
+    return { name, value: provider };
+  });
+
   const sourceControl = await select({
     message: 'Source control provider',
-    choices: [
-      { name: 'GitHub', value: 'github' },
-      { name: 'GitLab (coming soon)', value: 'gitlab', disabled: true },
-      { name: 'Bitbucket (coming soon)', value: 'bitbucket', disabled: true },
-    ],
-    default: 'github',
+    choices: sourceControlChoices,
+    default: sourceControlChoices.length > 0 ? sourceControlChoices[0].value : undefined,
   });
 
   // Step 2: Project management tool
+  const pmProviders = registry.listProjectManagementProviders();
+  const pmChoices = [
+    { name: 'None', value: 'none' },
+    ...pmProviders.map(provider => {
+      // Capitalize first letter for display
+      const name = provider.charAt(0).toUpperCase() + provider.slice(1);
+      return { name, value: provider };
+    }),
+  ];
+
   const projectManagement = await select({
     message: 'Project management tool',
-    choices: [
-      { name: 'None', value: 'none' },
-      { name: 'Jira', value: 'jira' },
-    ],
+    choices: pmChoices,
     default: 'none',
   });
 
@@ -86,24 +101,30 @@ async function runNonInteractive(options: InitWizardOptions): Promise<InitWizard
   return buildResult(sourceControl, projectManagement, autonomy, options);
 }
 
-function validateSourceControl(value: string): 'github' | 'bitbucket' | 'gitlab' {
-  const valid = ['github', 'bitbucket', 'gitlab'] as const;
-  if (!valid.includes(value as (typeof valid)[number])) {
+function validateSourceControl(value: string): string {
+  // Bootstrap connectors to ensure they're registered
+  bootstrapConnectors();
+
+  const valid = registry.listSourceControlProviders();
+  if (!valid.includes(value)) {
     throw new Error(
       `Invalid source control provider: "${value}". Valid options: ${valid.join(', ')}`
     );
   }
-  return value as 'github' | 'bitbucket' | 'gitlab';
+  return value;
 }
 
-function validateProjectManagement(value: string): 'none' | 'jira' {
-  const valid = ['none', 'jira'] as const;
-  if (!valid.includes(value as (typeof valid)[number])) {
+function validateProjectManagement(value: string): string {
+  // Bootstrap connectors to ensure they're registered
+  bootstrapConnectors();
+
+  const valid = ['none', ...registry.listProjectManagementProviders()];
+  if (!valid.includes(value)) {
     throw new Error(
       `Invalid project management tool: "${value}". Valid options: ${valid.join(', ')}`
     );
   }
-  return value as 'none' | 'jira';
+  return value;
 }
 
 function validateAutonomy(value: string): 'full' | 'partial' {
@@ -115,8 +136,8 @@ function validateAutonomy(value: string): 'full' | 'partial' {
 }
 
 async function buildResult(
-  sourceControl: 'github' | 'bitbucket' | 'gitlab',
-  projectManagement: 'none' | 'jira',
+  sourceControl: string,
+  projectManagement: string,
   autonomy: 'full' | 'partial',
   options: InitWizardOptions = {}
 ): Promise<InitWizardResult> {

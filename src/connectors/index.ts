@@ -34,3 +34,6 @@ export type { ISourceControlConnector } from './source-control/types.js';
 
 // Registry
 export { registry, type ConnectorFactory } from './registry.js';
+
+// Bootstrap
+export { bootstrapConnectors } from './bootstrap.js';

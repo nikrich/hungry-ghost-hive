@@ -307,17 +307,20 @@ describe('HiveConfigSchema', () => {
     }
   });
 
-  it('should reject invalid source_control provider', () => {
+  it('should accept any source_control provider string', () => {
     const config = {
       integrations: {
         source_control: {
-          provider: 'invalid_provider',
+          provider: 'custom_provider',
         },
       },
     };
 
     const result = HiveConfigSchema.safeParse(config);
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.integrations.source_control.provider).toBe('custom_provider');
+    }
   });
 
   it('should apply default source_control provider (github)', () => {
@@ -351,17 +354,20 @@ describe('HiveConfigSchema', () => {
     }
   });
 
-  it('should reject invalid project_management provider', () => {
+  it('should accept any project_management provider string', () => {
     const config = {
       integrations: {
         project_management: {
-          provider: 'invalid_pm_provider',
+          provider: 'linear',
         },
       },
     };
 
     const result = HiveConfigSchema.safeParse(config);
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.integrations.project_management.provider).toBe('linear');
+    }
   });
 
   it('should apply default project_management provider (none)', () => {
