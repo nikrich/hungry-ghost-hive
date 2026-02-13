@@ -74,6 +74,36 @@ function acceptanceCriteriaToAdf(description: string, criteria: string[]): AdfDo
 }
 
 /**
+ * Safely parse acceptance_criteria JSON string.
+ * Returns empty array if parsing fails or if result is not an array.
+ * Exported for testing.
+ */
+export function safelyParseAcceptanceCriteria(
+  acceptanceCriteriaJson: string | null,
+  storyId: string
+): string[] {
+  if (!acceptanceCriteriaJson) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(acceptanceCriteriaJson);
+    if (!Array.isArray(parsed)) {
+      logger.warn(
+        `acceptance_criteria for story ${storyId} is not an array, got: ${typeof parsed}`
+      );
+      return [];
+    }
+    return parsed as string[];
+  } catch (err) {
+    logger.warn(
+      `Failed to parse acceptance_criteria for story ${storyId}: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return [];
+  }
+}
+
+/**
  * Build the description ADF for a story, including acceptance criteria if present.
  */
 function buildStoryDescription(description: string, acceptanceCriteria: string[]): AdfDocument {
@@ -209,9 +239,10 @@ export async function syncRequirementToJira(
     }
 
     try {
-      const acceptanceCriteria = story.acceptance_criteria
-        ? (JSON.parse(story.acceptance_criteria) as string[])
-        : [];
+      const acceptanceCriteria = safelyParseAcceptanceCriteria(
+        story.acceptance_criteria,
+        storyId
+      );
 
       const storyLabels = ['hive-managed'];
       if (teamName) {
@@ -323,9 +354,10 @@ export async function syncStoryToJira(
     }
   }
 
-  const acceptanceCriteria = story.acceptance_criteria
-    ? (JSON.parse(story.acceptance_criteria) as string[])
-    : [];
+  const acceptanceCriteria = safelyParseAcceptanceCriteria(
+    story.acceptance_criteria,
+    story.id
+  );
 
   const labels = ['hive-managed'];
   if (teamName) {

@@ -1,7 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { generateTechLeadJiraInstructions } from '../../orchestrator/prompt-templates.js';
+import { safelyParseAcceptanceCriteria } from './stories.js';
+import * as logger from '../../utils/logger.js';
 
 describe('Jira Story Creation', () => {
   describe('generateTechLeadJiraInstructions', () => {
@@ -53,6 +55,54 @@ describe('Jira Story Creation', () => {
     it('should note sync failures do not block pipeline', () => {
       const result = generateTechLeadJiraInstructions('HIVE', 'https://mycompany.atlassian.net');
       expect(result).toContain('do NOT block the pipeline');
+    });
+  });
+
+  describe('safelyParseAcceptanceCriteria', () => {
+    it('should return empty array for null input', () => {
+      const result = safelyParseAcceptanceCriteria(null, 'story-123');
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array for empty string', () => {
+      const result = safelyParseAcceptanceCriteria('', 'story-123');
+      expect(result).toEqual([]);
+    });
+
+    it('should parse valid JSON array', () => {
+      const validJson = JSON.stringify(['criterion 1', 'criterion 2']);
+      const result = safelyParseAcceptanceCriteria(validJson, 'story-123');
+      expect(result).toEqual(['criterion 1', 'criterion 2']);
+    });
+
+    it('should return empty array for malformed JSON and log warning', () => {
+      const warnSpy = vi.spyOn(logger, 'warn');
+      const malformedJson = '{"invalid json';
+      const result = safelyParseAcceptanceCriteria(malformedJson, 'story-123');
+
+      expect(result).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to parse acceptance_criteria for story story-123')
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('should return empty array for non-array JSON and log warning', () => {
+      const warnSpy = vi.spyOn(logger, 'warn');
+      const nonArrayJson = '{"key": "value"}';
+      const result = safelyParseAcceptanceCriteria(nonArrayJson, 'story-456');
+
+      expect(result).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('acceptance_criteria for story story-456 is not an array')
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('should handle valid empty array', () => {
+      const emptyArrayJson = JSON.stringify([]);
+      const result = safelyParseAcceptanceCriteria(emptyArrayJson, 'story-789');
+      expect(result).toEqual([]);
     });
   });
 });
