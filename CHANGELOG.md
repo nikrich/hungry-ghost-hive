@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.30.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.3...hungry-ghost-hive-v0.30.4) (2026-02-13)
+
+
+### Code Refactoring
+
+* remove Jira-specific naming from provider-agnostic code paths ([#375](https://github.com/nikrich/hungry-ghost-hive/issues/375)) ([1444fad](https://github.com/nikrich/hungry-ghost-hive/commit/1444fad53780c5e24acfd65f4bab251c43579072))
+* unify duplicate auth connector registries ([#374](https://github.com/nikrich/hungry-ghost-hive/issues/374)) ([7e55170](https://github.com/nikrich/hungry-ghost-hive/commit/7e5517006b5046fbbe71140ca1d9b43d0660e552))
+
 ## [0.30.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.2...hungry-ghost-hive-v0.30.3) (2026-02-13)
 
 
