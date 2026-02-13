@@ -691,6 +691,30 @@ function runMigrations(db: SqlJsDatabase): void {
 
     db.run("INSERT INTO migrations (name) VALUES ('011-generic-integration-fields.sql')");
   }
+
+  // Migration 012: Add in_sprint column and unique constraint on integration_sync
+  const result012 = db.exec("SELECT name FROM migrations WHERE name = '012-sprint-tracking.sql'");
+  const migration012Applied = result012.length > 0 && result012[0].values.length > 0;
+
+  if (!migration012Applied) {
+    // Add in_sprint column to stories table
+    const storyColumns012 = db.exec('PRAGMA table_info(stories)');
+    const storyColNames012 =
+      storyColumns012.length > 0
+        ? storyColumns012[0].values.map((col: unknown[]) => String(col[1]))
+        : [];
+
+    if (!storyColNames012.includes('in_sprint')) {
+      db.run('ALTER TABLE stories ADD COLUMN in_sprint INTEGER DEFAULT 0');
+    }
+
+    // Add unique index on integration_sync to prevent duplicate sync records
+    db.run(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_integration_sync_unique ON integration_sync(entity_type, entity_id, provider)'
+    );
+
+    db.run("INSERT INTO migrations (name) VALUES ('012-sprint-tracking.sql')");
+  }
 }
 
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
@@ -879,6 +903,7 @@ export interface StoryRow {
   external_subtask_key: string | null;
   external_subtask_id: string | null;
   external_provider: string | null;
+  in_sprint: number;
   created_at: string;
   updated_at: string;
 }

@@ -15,13 +15,13 @@ import {
 } from '../../db/client.js';
 import { getAgentById } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
-import { updateStory, type StoryStatus } from '../../db/queries/stories.js';
+import { getStoryById, updateStory, type StoryStatus } from '../../db/queries/stories.js';
 import * as logger from '../../utils/logger.js';
 import { getHivePaths } from '../../utils/paths.js';
 import { JiraClient } from './client.js';
 import { createSubtask, postComment } from './comments.js';
 import { getIssue } from './issues.js';
-import { syncRequirementToJira } from './stories.js';
+import { syncRequirementToJira, tryMoveToActiveSprint } from './stories.js';
 import { syncStoryStatusToJira } from './transitions.js';
 
 /**
@@ -281,13 +281,28 @@ export async function syncUnsyncedStoriesToJira(
       // Get the team name from the first story's team_id
       const teamName = stories[0].team_id ?? undefined;
 
-      const storyIds = stories.map(s => s.id);
+      // Re-query guard: double-check each story still has no jira_issue_key
+      // (another sync cycle may have updated it since our initial query)
+      const confirmedStoryIds: string[] = [];
+      for (const s of stories) {
+        const fresh = getStoryById(db, s.id);
+        if (fresh && !fresh.jira_issue_key) {
+          confirmedStoryIds.push(s.id);
+        } else {
+          logger.debug(`Story ${s.id} now has Jira key, skipping re-sync`);
+        }
+      }
+
+      if (confirmedStoryIds.length === 0) {
+        continue;
+      }
+
       const result = await syncRequirementToJira(
         db,
         tokenStore,
         config,
         requirement,
-        storyIds,
+        confirmedStoryIds,
         teamName
       );
 
@@ -439,6 +454,56 @@ export async function repairMissedAssignmentHooks(
 }
 
 /**
+ * Retry sprint assignment for stories that have a Jira issue key
+ * but were not successfully moved to the active sprint.
+ *
+ * @param db - Database instance
+ * @param tokenStore - Token store for Jira API auth
+ * @param config - Jira configuration
+ * @returns Number of stories moved to sprint
+ */
+export async function retrySprintAssignment(
+  db: Database,
+  tokenStore: TokenStore,
+  config: JiraConfig
+): Promise<number> {
+  const storiesNotInSprint = queryAll<StoryRow>(
+    db,
+    `SELECT * FROM stories
+     WHERE jira_issue_key IS NOT NULL
+       AND (in_sprint IS NULL OR in_sprint = 0)
+       AND status NOT IN ('merged')
+     ORDER BY created_at`
+  );
+
+  if (storiesNotInSprint.length === 0) {
+    return 0;
+  }
+
+  logger.info(`Found ${storiesNotInSprint.length} story(ies) not in sprint — retrying assignment`);
+
+  loadEnvIntoProcess();
+
+  const client = new JiraClient({
+    tokenStore,
+    clientId: process.env.JIRA_CLIENT_ID || '',
+    clientSecret: process.env.JIRA_CLIENT_SECRET || '',
+  });
+
+  const issueKeys = storiesNotInSprint.map(s => s.jira_issue_key!).filter(Boolean);
+
+  const moved = await tryMoveToActiveSprint(client, config, issueKeys);
+  if (moved) {
+    for (const story of storiesNotInSprint) {
+      updateStory(db, story.id, { inSprint: true });
+    }
+    return storiesNotInSprint.length;
+  }
+
+  return 0;
+}
+
+/**
  * Top-level entry point for Jira bidirectional sync.
  *
  * Loads config and tokens from the hive root directory, checks if Jira
@@ -475,6 +540,9 @@ export async function syncFromJira(root: string, db: Database): Promise<number> 
 
     // Then: repair any assigned stories that missed the Jira assignment hook
     await repairMissedAssignmentHooks(db, tokenStore, jiraConfig);
+
+    // Retry sprint assignment for stories that failed to move into a sprint
+    await retrySprintAssignment(db, tokenStore, jiraConfig);
 
     // Finally: pull status updates FROM Jira
     return await syncJiraStatusesToHive(db, tokenStore, jiraConfig);

@@ -8,11 +8,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
 import { run } from '../../db/client.js';
+import { createSyncRecord } from '../../db/queries/integration-sync.js';
 import { createStory, getStoryById } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
 import {
   isForwardTransition,
   jiraStatusToHiveStatus,
+  retrySprintAssignment,
   syncJiraStatusesToHive,
   syncUnsyncedStoriesToJira,
 } from './sync.js';
@@ -517,5 +519,249 @@ describe('syncUnsyncedStoriesToJira', () => {
     const tokenStore = createTestTokenStore();
     const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
     expect(synced).toBe(0);
+  });
+
+  it('re-query guard filters stories that gained jira_issue_key after initial query', async () => {
+    // Create a requirement
+    run(db, `INSERT INTO requirements (id, title, description, status) VALUES (?, ?, ?, ?)`, [
+      'REQ-GUARD',
+      'Guard Req',
+      'Test re-query guard',
+      'planned',
+    ]);
+
+    // Create TWO stories without jira key
+    const story1 = createStory(db, {
+      requirementId: 'REQ-GUARD',
+      title: 'Story 1 - will get key',
+      description: 'Gets key before re-query',
+    });
+    const story2 = createStory(db, {
+      requirementId: 'REQ-GUARD',
+      title: 'Story 2 - stays unsynced',
+      description: 'Stays without key',
+    });
+    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story1.id]);
+    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story2.id]);
+
+    const tokenStore = createTestTokenStore({
+      JIRA_ACCESS_TOKEN: 'fake-token',
+      JIRA_CLOUD_ID: 'fake-cloud-id',
+    });
+
+    // Mock syncRequirementToJira to simulate: between initial query and call,
+    // story1 gets a jira key (via the mock updating the DB when called).
+    // But the re-query guard inside syncUnsyncedStoriesToJira re-checks each story.
+    const { syncRequirementToJira } = await import('./stories.js');
+    vi.mocked(syncRequirementToJira).mockReset();
+
+    // Give story1 a jira key BEFORE calling sync — this means the re-query guard
+    // will find it already has a key and filter it out, only passing story2 to sync.
+    run(db, 'UPDATE stories SET jira_issue_key = ? WHERE id = ?', ['TEST-999', story1.id]);
+
+    vi.mocked(syncRequirementToJira).mockResolvedValue({
+      epicKey: 'TEST-100',
+      epicId: '10100',
+      stories: [{ storyId: story2.id, jiraKey: 'TEST-101', jiraId: '10101' }],
+      errors: [],
+    });
+
+    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    // Only story2 should be synced (story1 was filtered by initial query since it now has a key)
+    expect(synced).toBe(1);
+    // Verify only story2 was passed to syncRequirementToJira
+    expect(syncRequirementToJira).toHaveBeenCalledWith(
+      db,
+      tokenStore,
+      baseConfig,
+      expect.objectContaining({ id: 'REQ-GUARD' }),
+      [story2.id],
+      undefined
+    );
+  });
+});
+
+describe('retrySprintAssignment', () => {
+  let db: Database;
+  let envDir: string;
+
+  const baseConfig: JiraConfig = {
+    project_key: 'TEST',
+    site_url: 'https://test.atlassian.net',
+    story_type: 'Story',
+    subtask_type: 'Subtask',
+    story_points_field: 'story_points',
+    status_mapping: {},
+  };
+
+  function createTestTokenStore(tokens?: Record<string, string>): TokenStore {
+    const envPath = join(envDir, `.env-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const content = tokens
+      ? Object.entries(tokens)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('\n')
+      : '';
+    writeFileSync(envPath, content);
+    const store = new TokenStore(envPath);
+    if (tokens) {
+      for (const [key, value] of Object.entries(tokens)) {
+        (store as any).tokens[key] = value;
+      }
+    }
+    return store;
+  }
+
+  beforeEach(async () => {
+    db = await createTestDatabase();
+    envDir = mkdtempSync(join(tmpdir(), 'hive-sprint-retry-test-'));
+    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+  });
+
+  it('returns 0 when no stories need sprint assignment', async () => {
+    const tokenStore = createTestTokenStore();
+    const count = await retrySprintAssignment(db, tokenStore, baseConfig);
+    expect(count).toBe(0);
+  });
+
+  it('returns 0 when all stories with jira keys are already in sprint', async () => {
+    const story = createStory(db, {
+      title: 'Sprint Story',
+      description: 'Already in sprint',
+    });
+    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 1, status = ? WHERE id = ?', [
+      'TEST-1',
+      'planned',
+      story.id,
+    ]);
+
+    const tokenStore = createTestTokenStore();
+    const count = await retrySprintAssignment(db, tokenStore, baseConfig);
+    expect(count).toBe(0);
+  });
+
+  it('retries sprint assignment for stories not in sprint', async () => {
+    const story = createStory(db, {
+      title: 'Not In Sprint',
+      description: 'Needs sprint assignment',
+    });
+    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
+      'TEST-2',
+      'planned',
+      story.id,
+    ]);
+
+    const tokenStore = createTestTokenStore({
+      JIRA_ACCESS_TOKEN: 'fake-token',
+      JIRA_CLOUD_ID: 'fake-cloud-id',
+    });
+
+    // Mock tryMoveToActiveSprint to succeed
+    const { tryMoveToActiveSprint } = await import('./stories.js');
+    vi.mocked(tryMoveToActiveSprint).mockResolvedValue(true);
+
+    const count = await retrySprintAssignment(db, tokenStore, baseConfig);
+    expect(count).toBe(1);
+
+    // Verify tryMoveToActiveSprint was called with the right keys
+    expect(tryMoveToActiveSprint).toHaveBeenCalledWith(
+      expect.anything(), // JiraClient
+      baseConfig,
+      ['TEST-2']
+    );
+
+    // Verify in_sprint was updated
+    const updated = getStoryById(db, story.id);
+    expect(updated?.in_sprint).toBe(1);
+  });
+
+  it('returns 0 when sprint move fails', async () => {
+    const story = createStory(db, {
+      title: 'Sprint Fail',
+      description: 'Sprint move will fail',
+    });
+    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
+      'TEST-3',
+      'planned',
+      story.id,
+    ]);
+
+    const tokenStore = createTestTokenStore({
+      JIRA_ACCESS_TOKEN: 'fake-token',
+      JIRA_CLOUD_ID: 'fake-cloud-id',
+    });
+
+    // Mock tryMoveToActiveSprint to fail
+    const { tryMoveToActiveSprint } = await import('./stories.js');
+    vi.mocked(tryMoveToActiveSprint).mockResolvedValue(false);
+
+    const count = await retrySprintAssignment(db, tokenStore, baseConfig);
+    expect(count).toBe(0);
+
+    // Verify in_sprint was NOT updated
+    const updated = getStoryById(db, story.id);
+    expect(updated?.in_sprint).toBe(0);
+  });
+
+  it('skips merged stories', async () => {
+    const story = createStory(db, {
+      title: 'Merged Story',
+      description: 'Already merged',
+    });
+    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
+      'TEST-4',
+      'merged',
+      story.id,
+    ]);
+
+    const tokenStore = createTestTokenStore();
+    const count = await retrySprintAssignment(db, tokenStore, baseConfig);
+    expect(count).toBe(0);
+  });
+});
+
+describe('idempotency guards', () => {
+  let db: Database;
+
+  beforeEach(async () => {
+    db = await createTestDatabase();
+  });
+
+  it('unique index prevents duplicate integration_sync records', () => {
+    // Create first sync record
+    createSyncRecord(db, {
+      entityType: 'story',
+      entityId: 'STORY-001',
+      provider: 'jira',
+      externalId: '10001',
+    });
+
+    // Attempt to create a duplicate should fail due to unique index
+    expect(() =>
+      createSyncRecord(db, {
+        entityType: 'story',
+        entityId: 'STORY-001',
+        provider: 'jira',
+        externalId: '10002',
+      })
+    ).toThrow();
+  });
+
+  it('allows sync records for different providers on same entity', () => {
+    createSyncRecord(db, {
+      entityType: 'story',
+      entityId: 'STORY-001',
+      provider: 'jira',
+      externalId: '10001',
+    });
+
+    // Different provider should succeed
+    expect(() =>
+      createSyncRecord(db, {
+        entityType: 'story',
+        entityId: 'STORY-001',
+        provider: 'github',
+        externalId: 'gh-001',
+      })
+    ).not.toThrow();
   });
 });
