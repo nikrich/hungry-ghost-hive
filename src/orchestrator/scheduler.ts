@@ -96,6 +96,14 @@ export class Scheduler {
   }
 
   /**
+   * Wait for all pending Jira operations to complete.
+   * Call this before closing the database to prevent "Database closed" errors.
+   */
+  async flushJiraQueue(): Promise<void> {
+    await this.jiraQueue.waitForCompletion();
+  }
+
+  /**
    * Create a git worktree for an agent
    * Returns the worktree path
    */

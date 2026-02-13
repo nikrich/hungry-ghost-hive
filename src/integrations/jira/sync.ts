@@ -6,13 +6,48 @@ import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
 import { loadConfig } from '../../config/loader.js';
 import type { JiraConfig } from '../../config/schema.js';
-import { queryAll, withTransaction, type StoryRow } from '../../db/client.js';
+import {
+  queryAll,
+  queryOne,
+  withTransaction,
+  type RequirementRow,
+  type StoryRow,
+} from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import { updateStory, type StoryStatus } from '../../db/queries/stories.js';
 import * as logger from '../../utils/logger.js';
 import { getHivePaths } from '../../utils/paths.js';
 import { JiraClient } from './client.js';
 import { getIssue } from './issues.js';
+import { syncRequirementToJira } from './stories.js';
+
+/**
+ * Ordered lifecycle stages for Hive stories.
+ * Used to prevent bidirectional sync from regressing story status.
+ */
+const STATUS_LIFECYCLE_ORDER: string[] = [
+  'draft',
+  'estimated',
+  'planned',
+  'in_progress',
+  'review',
+  'qa',
+  'qa_failed',
+  'pr_submitted',
+  'merged',
+];
+
+/**
+ * Check if transitioning from currentStatus to newStatus would be a regression.
+ * Returns true if the new status is earlier in the lifecycle than the current one.
+ */
+function isStatusRegression(currentStatus: string, newStatus: string): boolean {
+  const currentIdx = STATUS_LIFECYCLE_ORDER.indexOf(currentStatus);
+  const newIdx = STATUS_LIFECYCLE_ORDER.indexOf(newStatus);
+  // If either status is unknown, allow the transition
+  if (currentIdx === -1 || newIdx === -1) return false;
+  return newIdx < currentIdx;
+}
 
 /**
  * Status progression order for the Hive pipeline.
@@ -121,6 +156,14 @@ export async function syncJiraStatusesToHive(
       }
 
       // Check if status differs from current Hive status
+      // Guard: never regress status backward in the lifecycle
+      if (isStatusRegression(story.status, mappedHiveStatus)) {
+        logger.debug(
+          `Skipping Jira sync for ${story.id}: would regress ${story.status} → ${mappedHiveStatus}`
+        );
+        continue;
+      }
+
       if (mappedHiveStatus !== story.status) {
         // Only allow forward transitions — never regress stories backward
         if (!isForwardTransition(story.status, mappedHiveStatus)) {
@@ -176,15 +219,110 @@ export async function syncJiraStatusesToHive(
 }
 
 /**
+ * Detect stories that exist in the Hive DB but have no Jira issue key,
+ * and sync them to Jira by creating issues under the requirement's epic.
+ *
+ * This catches stories inserted directly into the DB (e.g., by the tech lead
+ * via SQL) that bypassed the normal sync flow.
+ *
+ * @param db - Database instance
+ * @param tokenStore - Token store for Jira API auth
+ * @param config - Jira configuration
+ * @returns Number of stories synced to Jira
+ */
+export async function syncUnsyncedStoriesToJira(
+  db: Database,
+  tokenStore: TokenStore,
+  config: JiraConfig
+): Promise<number> {
+  // Find stories that have no jira_issue_key but are not in draft status
+  const unsyncedStories = queryAll<StoryRow>(
+    db,
+    `SELECT * FROM stories WHERE jira_issue_key IS NULL AND status NOT IN ('draft') ORDER BY requirement_id, id`
+  );
+
+  if (unsyncedStories.length === 0) {
+    return 0;
+  }
+
+  logger.info(`Found ${unsyncedStories.length} unsynced story(ies) — syncing to Jira`);
+
+  // Group stories by requirement_id so we can batch-sync per epic
+  const byRequirement = new Map<string | null, StoryRow[]>();
+  for (const story of unsyncedStories) {
+    const reqId = story.requirement_id ?? null;
+    if (!byRequirement.has(reqId)) {
+      byRequirement.set(reqId, []);
+    }
+    byRequirement.get(reqId)!.push(story);
+  }
+
+  let syncedCount = 0;
+
+  for (const [requirementId, stories] of byRequirement) {
+    try {
+      if (!requirementId) {
+        logger.warn(`Skipping ${stories.length} unsynced stories with no requirement_id`);
+        continue;
+      }
+
+      const requirement = queryOne<RequirementRow>(db, `SELECT * FROM requirements WHERE id = ?`, [
+        requirementId,
+      ]);
+
+      if (!requirement) {
+        logger.warn(`Requirement ${requirementId} not found, skipping ${stories.length} stories`);
+        continue;
+      }
+
+      // Get the team name from the first story's team_id
+      const teamName = stories[0].team_id ?? undefined;
+
+      const storyIds = stories.map(s => s.id);
+      const result = await syncRequirementToJira(
+        db,
+        tokenStore,
+        config,
+        requirement,
+        storyIds,
+        teamName
+      );
+
+      syncedCount += result.stories.length;
+
+      if (result.errors.length > 0) {
+        for (const err of result.errors) {
+          logger.warn(`Jira sync error: ${err}`);
+        }
+      }
+
+      if (result.stories.length > 0) {
+        logger.info(
+          `Synced ${result.stories.length} story(ies) to Jira for requirement ${requirementId} (epic: ${result.epicKey})`
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`Failed to sync stories for requirement ${requirementId}: ${message}`);
+    }
+  }
+
+  return syncedCount;
+}
+
+/**
  * Top-level entry point for Jira bidirectional sync.
  *
  * Loads config and tokens from the hive root directory, checks if Jira
- * integration is enabled, and syncs Jira statuses back to Hive.
+ * integration is enabled, and:
+ * 1. Syncs unsynced stories TO Jira (creates missing Jira issues)
+ * 2. Syncs Jira statuses back to Hive (bidirectional status sync)
+ *
  * Never throws — all errors are caught and logged.
  *
  * @param root - Hive root directory
  * @param db - Database instance
- * @returns Number of stories updated
+ * @returns Number of stories updated (from bidirectional status sync)
  */
 export async function syncFromJira(root: string, db: Database): Promise<number> {
   try {
@@ -204,6 +342,10 @@ export async function syncFromJira(root: string, db: Database): Promise<number> 
     const tokenStore = new TokenStore(envPath);
     await tokenStore.loadFromEnv(envPath);
 
+    // First: push any unsynced stories TO Jira
+    await syncUnsyncedStoriesToJira(db, tokenStore, jiraConfig);
+
+    // Then: pull status updates FROM Jira
     return await syncJiraStatusesToHive(db, tokenStore, jiraConfig);
   } catch (err) {
     // Never block the pipeline — log and continue
