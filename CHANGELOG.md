@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.28.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.28.2...hungry-ghost-hive-v0.28.3) (2026-02-13)
+
+
+### Bug Fixes
+
+* add retry/repair logic for missed Jira assignment hooks ([#343](https://github.com/nikrich/hungry-ghost-hive/issues/343)) ([fa54508](https://github.com/nikrich/hungry-ghost-hive/commit/fa54508ab815fc5cc8b4e908f1b8c986cc4ae612))
+* await all syncStatusToJira calls in CLI commands ([#344](https://github.com/nikrich/hungry-ghost-hive/issues/344)) ([de920ab](https://github.com/nikrich/hungry-ghost-hive/commit/de920ab2351c9c100c419bbbf3bb5c04033f3efd))
+
 ## [0.28.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.28.1...hungry-ghost-hive-v0.28.2) (2026-02-13)
 
 
