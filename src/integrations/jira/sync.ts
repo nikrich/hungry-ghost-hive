@@ -22,7 +22,7 @@ import { JiraClient } from './client.js';
 import { createSubtask, postComment } from './comments.js';
 import { getIssue } from './issues.js';
 import { syncRequirementToJira } from './stories.js';
-import { syncStoryStatusToJira } from './transitions.js';
+import { syncStoryStatusToJira, transitionJiraIssue } from './transitions.js';
 
 /**
  * Ordered lifecycle stages for Hive stories.
@@ -439,12 +439,124 @@ export async function repairMissedAssignmentHooks(
 }
 
 /**
+ * Push Hive status changes to Jira for stories where the Hive status
+ * is ahead of the Jira status.
+ *
+ * This catches status changes that bypass the normal event-driven sync
+ * (e.g., manual DB fixes, race conditions, missed callbacks) and ensures
+ * Jira reflects the latest Hive status.
+ *
+ * Only pushes forward transitions — never regresses Jira status.
+ *
+ * @param db - Database instance
+ * @param tokenStore - Token store for Jira API auth
+ * @param config - Jira configuration with status_mapping
+ * @returns Number of stories whose Jira status was updated
+ */
+export async function syncHiveStatusesToJira(
+  db: Database,
+  tokenStore: TokenStore,
+  config: JiraConfig
+): Promise<number> {
+  // Skip if no status mapping configured
+  if (!config.status_mapping || Object.keys(config.status_mapping).length === 0) {
+    return 0;
+  }
+
+  // Fetch stories that have a Jira issue key and are not in draft
+  const storiesWithJira = queryAll<StoryRow>(
+    db,
+    `SELECT * FROM stories WHERE jira_issue_key IS NOT NULL AND status NOT IN ('draft') ORDER BY created_at`
+  );
+
+  if (storiesWithJira.length === 0) {
+    return 0;
+  }
+
+  loadEnvIntoProcess();
+
+  const client = new JiraClient({
+    tokenStore,
+    clientId: process.env.JIRA_CLIENT_ID || '',
+    clientSecret: process.env.JIRA_CLIENT_SECRET || '',
+  });
+
+  let pushedCount = 0;
+
+  for (const story of storiesWithJira) {
+    try {
+      // Fetch current Jira issue status
+      const jiraIssue = await getIssue(client, story.jira_issue_key!, ['status']);
+      const jiraStatusName = jiraIssue.fields.status.name;
+
+      // Map current Jira status to Hive status
+      const jiraAsHiveStatus = jiraStatusToHiveStatus(jiraStatusName, config.status_mapping);
+
+      if (!jiraAsHiveStatus) {
+        // Can't compare — Jira status has no mapping
+        continue;
+      }
+
+      // If Hive and Jira already agree, skip
+      if (jiraAsHiveStatus === story.status) {
+        continue;
+      }
+
+      // Only push if Hive is AHEAD (forward transition from Jira's perspective)
+      if (!isForwardTransition(jiraAsHiveStatus, story.status)) {
+        logger.debug(
+          `Skipping Hive→Jira push for ${story.id} (${story.jira_issue_key}): ` +
+            `Hive "${story.status}" is not ahead of Jira "${jiraStatusName}" (mapped: "${jiraAsHiveStatus}")`
+        );
+        continue;
+      }
+
+      // Push the Hive status to Jira
+      const transitioned = await transitionJiraIssue(
+        client,
+        story.jira_issue_key!,
+        story.status,
+        config.status_mapping
+      );
+
+      if (transitioned) {
+        pushedCount++;
+        logger.debug(
+          `Pushed Hive status to Jira for ${story.id} (${story.jira_issue_key}): "${jiraStatusName}" → "${story.status}"`
+        );
+
+        createLog(db, {
+          agentId: 'manager',
+          storyId: story.id,
+          eventType: 'JIRA_STATUS_PUSHED',
+          message: `Pushed Hive status to Jira: "${jiraStatusName}" → "${story.status}"`,
+          metadata: {
+            jiraKey: story.jira_issue_key,
+            oldJiraStatus: jiraStatusName,
+            hiveStatus: story.status,
+          },
+        });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(
+        `Failed to push Hive status to Jira for story ${story.id} (${story.jira_issue_key}): ${message}`
+      );
+    }
+  }
+
+  return pushedCount;
+}
+
+/**
  * Top-level entry point for Jira bidirectional sync.
  *
  * Loads config and tokens from the hive root directory, checks if Jira
  * integration is enabled, and:
  * 1. Syncs unsynced stories TO Jira (creates missing Jira issues)
- * 2. Syncs Jira statuses back to Hive (bidirectional status sync)
+ * 2. Repairs missed assignment hooks
+ * 3. Pushes Hive status changes TO Jira
+ * 4. Pulls Jira status changes back to Hive
  *
  * Never throws — all errors are caught and logged.
  *
@@ -475,6 +587,9 @@ export async function syncFromJira(root: string, db: Database): Promise<number> 
 
     // Then: repair any assigned stories that missed the Jira assignment hook
     await repairMissedAssignmentHooks(db, tokenStore, jiraConfig);
+
+    // Push Hive status changes TO Jira (catches missed event-driven syncs)
+    await syncHiveStatusesToJira(db, tokenStore, jiraConfig);
 
     // Finally: pull status updates FROM Jira
     return await syncJiraStatusesToHive(db, tokenStore, jiraConfig);

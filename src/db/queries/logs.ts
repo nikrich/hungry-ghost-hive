@@ -62,6 +62,7 @@ export type EventType =
   | 'JIRA_EPIC_INGESTED'
   | 'JIRA_ASSIGNMENT_REPAIRED'
   | 'JIRA_ASSIGNMENT_REPAIR_FAILED'
+  | 'JIRA_STATUS_PUSHED'
   | 'APPROACH_POSTED';
 
 export interface CreateLogInput {
