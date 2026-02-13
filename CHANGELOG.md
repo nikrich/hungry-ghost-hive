@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.28.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.28.1...hungry-ghost-hive-v0.28.2) (2026-02-13)
+
+
+### Bug Fixes
+
+* add defensive acceptance_criteria parsing in Jira sync ([#342](https://github.com/nikrich/hungry-ghost-hive/issues/342)) ([b6aa4d1](https://github.com/nikrich/hungry-ghost-hive/commit/b6aa4d1e1201fa704862c8f128718c4f22a4b97b))
+* auto-sync stories to Jira when missing jira_issue_key ([#338](https://github.com/nikrich/hungry-ghost-hive/issues/338)) ([a89b208](https://github.com/nikrich/hungry-ghost-hive/commit/a89b208c32f86f199a921a9ba7e94ea8cc02bfef))
+
 ## [0.28.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.28.0...hungry-ghost-hive-v0.28.1) (2026-02-13)
 
 
