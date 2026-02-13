@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.30.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.0...hungry-ghost-hive-v0.30.1) (2026-02-13)
+
+
+### Bug Fixes
+
+* propagate auth errors in sprint discovery instead of silently swallowing them ([#366](https://github.com/nikrich/hungry-ghost-hive/issues/366)) ([5f288d0](https://github.com/nikrich/hungry-ghost-hive/commit/5f288d09a4181a7ea34678b25ba8a7719b2fa49a))
+
+
+### Code Refactoring
+
+* split cluster/replication.ts into focused modules ([#364](https://github.com/nikrich/hungry-ghost-hive/issues/364)) ([8978a5a](https://github.com/nikrich/hungry-ghost-hive/commit/8978a5ad79ae6d717c569236e277328123f06bc1))
+
 ## [0.30.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.29.0...hungry-ghost-hive-v0.30.0) (2026-02-13)
 
 
