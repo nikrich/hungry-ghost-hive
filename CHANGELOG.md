@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.28.0...hungry-ghost-hive-v0.28.1) (2026-02-13)
+
+
+### Bug Fixes
+
+* prevent Jira sync from regressing story statuses and fix epic/subtask linking ([#336](https://github.com/nikrich/hungry-ghost-hive/issues/336)) ([94f22e4](https://github.com/nikrich/hungry-ghost-hive/commit/94f22e415dcc34346aabb20dfe754f799e5de17b))
+
 ## [0.28.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.27.0...hungry-ghost-hive-v0.28.0) (2026-02-12)
 
 
