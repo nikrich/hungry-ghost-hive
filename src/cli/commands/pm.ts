@@ -70,7 +70,9 @@ pmCommand
 
     const pmConnector = registry.getProjectManagement(pmProvider);
     if (!pmConnector) {
-      console.error(chalk.red(`Project management connector not found for provider: ${pmProvider}`));
+      console.error(
+        chalk.red(`Project management connector not found for provider: ${pmProvider}`)
+      );
       process.exit(1);
     }
 
@@ -160,7 +162,9 @@ pmCommand
 
     const pmConnector = registry.getProjectManagement(pmProvider);
     if (!pmConnector) {
-      console.error(chalk.red(`Project management connector not found for provider: ${pmProvider}`));
+      console.error(
+        chalk.red(`Project management connector not found for provider: ${pmProvider}`)
+      );
       process.exit(1);
     }
 
