@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { copyFileSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
-import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+import { fileURLToPath } from 'url';
 import { DatabaseCorruptionError, InitializationError } from '../errors/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -496,7 +496,10 @@ function runMigrations(db: SqlJsDatabase): void {
         // Skip ALTER TABLE statements (already handled above with existence checks)
         if (s.includes('ALTER TABLE')) return false;
         // Filter out pure comment blocks
-        const lines = s.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        const lines = s
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l.length > 0);
         const hasNonCommentLine = lines.some(l => !l.startsWith('--'));
         return hasNonCommentLine;
       });
@@ -535,7 +538,10 @@ function runMigrations(db: SqlJsDatabase): void {
         // Skip ALTER TABLE statements (already handled above)
         if (s.includes('ALTER TABLE')) return false;
         // Filter out pure comment blocks
-        const lines = s.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        const lines = s
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l.length > 0);
         const hasNonCommentLine = lines.some(l => !l.startsWith('--'));
         return hasNonCommentLine;
       });
