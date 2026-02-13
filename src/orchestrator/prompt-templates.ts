@@ -33,11 +33,11 @@ The command will:
 - Automatically create a corresponding Jira Story
 - Link it to the parent Epic (from the requirement)
 - Set story points, labels, and description in ADF format
-- Record the jira_issue_key on the local story for tracking
+- Record the external_issue_key on the local story for tracking
 
 ### Important Notes
 - Jira sync failures do NOT block the pipeline — stories are created locally regardless
-- Each story will have a \`jira_issue_key\` (e.g., ${projectKey}-123) after sync
+- Each story will have an \`external_issue_key\` (e.g., ${projectKey}-123) after sync
 - Acceptance criteria are rendered as a bulleted list in Jira's ADF format
 - All synced issues are tagged with the \`hive-managed\` label
 `;
@@ -54,7 +54,7 @@ export function generateSeniorPrompt(
 ): string {
   const storyList = stories
     .map(s => {
-      const jiraInfo = s.jira_subtask_key ? ` | Jira Subtask: ${s.jira_subtask_key}` : '';
+      const jiraInfo = s.external_subtask_key ? ` | Jira Subtask: ${s.external_subtask_key}` : '';
       return `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'}${jiraInfo})\n  ${s.description}`;
     })
     .join('\n\n');

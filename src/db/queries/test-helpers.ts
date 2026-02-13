@@ -46,6 +46,11 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'planning', 'planned', 'in_progress', 'completed')),
       godmode BOOLEAN DEFAULT 0,
       target_branch TEXT DEFAULT 'main',
+      jira_epic_key TEXT,
+      jira_epic_id TEXT,
+      external_epic_key TEXT,
+      external_epic_id TEXT,
+      external_provider TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -73,6 +78,16 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       branch_name TEXT,
       pr_url TEXT,
       jira_issue_key TEXT,
+      jira_issue_id TEXT,
+      jira_project_key TEXT,
+      jira_subtask_key TEXT,
+      jira_subtask_id TEXT,
+      external_issue_key TEXT,
+      external_issue_id TEXT,
+      external_project_key TEXT,
+      external_subtask_key TEXT,
+      external_subtask_id TEXT,
+      external_provider TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -107,6 +122,7 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       status TEXT DEFAULT 'queued' CHECK (status IN ('queued', 'reviewing', 'approved', 'merged', 'rejected', 'closed')),
       review_notes TEXT,
       jira_issue_key TEXT,
+      external_issue_key TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       reviewed_at TIMESTAMP

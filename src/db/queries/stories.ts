@@ -36,11 +36,22 @@ export interface UpdateStoryInput {
   assignedAgentId?: string | null;
   branchName?: string | null;
   prUrl?: string | null;
+  /** @deprecated Use externalIssueKey instead */
   jiraIssueKey?: string | null;
+  /** @deprecated Use externalIssueId instead */
   jiraIssueId?: string | null;
+  /** @deprecated Use externalProjectKey instead */
   jiraProjectKey?: string | null;
+  /** @deprecated Use externalSubtaskKey instead */
   jiraSubtaskKey?: string | null;
+  /** @deprecated Use externalSubtaskId instead */
   jiraSubtaskId?: string | null;
+  externalIssueKey?: string | null;
+  externalIssueId?: string | null;
+  externalProjectKey?: string | null;
+  externalSubtaskKey?: string | null;
+  externalSubtaskId?: string | null;
+  externalProvider?: string | null;
 }
 
 export function createStory(db: Database, input: CreateStoryInput): StoryRow {
@@ -203,25 +214,46 @@ export function updateStory(
     updates.push('pr_url = ?');
     values.push(input.prUrl);
   }
-  if (input.jiraIssueKey !== undefined) {
+  // Dual-write: support both legacy jira_* and new external_* columns
+  const issueKey = input.externalIssueKey !== undefined ? input.externalIssueKey : input.jiraIssueKey;
+  const issueId = input.externalIssueId !== undefined ? input.externalIssueId : input.jiraIssueId;
+  const projectKey = input.externalProjectKey !== undefined ? input.externalProjectKey : input.jiraProjectKey;
+  const subtaskKey = input.externalSubtaskKey !== undefined ? input.externalSubtaskKey : input.jiraSubtaskKey;
+  const subtaskId = input.externalSubtaskId !== undefined ? input.externalSubtaskId : input.jiraSubtaskId;
+
+  if (issueKey !== undefined) {
     updates.push('jira_issue_key = ?');
-    values.push(input.jiraIssueKey);
+    values.push(issueKey);
+    updates.push('external_issue_key = ?');
+    values.push(issueKey);
   }
-  if (input.jiraIssueId !== undefined) {
+  if (issueId !== undefined) {
     updates.push('jira_issue_id = ?');
-    values.push(input.jiraIssueId);
+    values.push(issueId);
+    updates.push('external_issue_id = ?');
+    values.push(issueId);
   }
-  if (input.jiraProjectKey !== undefined) {
+  if (projectKey !== undefined) {
     updates.push('jira_project_key = ?');
-    values.push(input.jiraProjectKey);
+    values.push(projectKey);
+    updates.push('external_project_key = ?');
+    values.push(projectKey);
   }
-  if (input.jiraSubtaskKey !== undefined) {
+  if (subtaskKey !== undefined) {
     updates.push('jira_subtask_key = ?');
-    values.push(input.jiraSubtaskKey);
+    values.push(subtaskKey);
+    updates.push('external_subtask_key = ?');
+    values.push(subtaskKey);
   }
-  if (input.jiraSubtaskId !== undefined) {
+  if (subtaskId !== undefined) {
     updates.push('jira_subtask_id = ?');
-    values.push(input.jiraSubtaskId);
+    values.push(subtaskId);
+    updates.push('external_subtask_id = ?');
+    values.push(subtaskId);
+  }
+  if (input.externalProvider !== undefined) {
+    updates.push('external_provider = ?');
+    values.push(input.externalProvider);
   }
 
   if (updates.length === 1) {
@@ -365,8 +397,21 @@ export function getStoriesWithOrphanedAssignments(
   );
 }
 
+/** @deprecated Use getStoryByExternalKey instead */
 export function getStoryByJiraKey(db: Database, jiraIssueKey: string): StoryRow | undefined {
-  return queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE jira_issue_key = ?', [jiraIssueKey]);
+  return queryOne<StoryRow>(
+    db,
+    'SELECT * FROM stories WHERE external_issue_key = ? OR jira_issue_key = ?',
+    [jiraIssueKey, jiraIssueKey]
+  );
+}
+
+export function getStoryByExternalKey(db: Database, externalIssueKey: string): StoryRow | undefined {
+  return queryOne<StoryRow>(
+    db,
+    'SELECT * FROM stories WHERE external_issue_key = ? OR jira_issue_key = ?',
+    [externalIssueKey, externalIssueKey]
+  );
 }
 
 export function updateStoryAssignment(db: Database, storyId: string, agentId: string | null): void {

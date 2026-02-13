@@ -135,7 +135,7 @@ export async function syncStoryStatusToJira(
 
   // Look up the story to get its Jira issue key
   const story = getStoryById(db, storyId);
-  if (!story?.jira_issue_key) {
+  if (!story?.external_issue_key) {
     return;
   }
 
@@ -150,7 +150,7 @@ export async function syncStoryStatusToJira(
 
     const transitioned = await transitionJiraIssue(
       client,
-      story.jira_issue_key,
+      story.external_issue_key,
       newStatus,
       config.status_mapping
     );
@@ -160,22 +160,22 @@ export async function syncStoryStatusToJira(
         agentId: 'manager',
         storyId,
         eventType: 'JIRA_TRANSITION_SUCCESS',
-        message: `Transitioned Jira issue ${story.jira_issue_key} for status change to "${newStatus}"`,
-        metadata: { jiraKey: story.jira_issue_key, hiveStatus: newStatus },
+        message: `Transitioned Jira issue ${story.external_issue_key} for status change to "${newStatus}"`,
+        metadata: { jiraKey: story.external_issue_key, hiveStatus: newStatus },
       });
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.warn(
-      `Failed to transition Jira issue ${story.jira_issue_key} for story ${storyId}: ${message}`
+      `Failed to transition Jira issue ${story.external_issue_key} for story ${storyId}: ${message}`
     );
     createLog(db, {
       agentId: 'manager',
       storyId,
       eventType: 'JIRA_TRANSITION_FAILED',
       status: 'warn',
-      message: `Failed to transition Jira issue ${story.jira_issue_key} to "${newStatus}": ${message}`,
-      metadata: { jiraKey: story.jira_issue_key, hiveStatus: newStatus, error: message },
+      message: `Failed to transition Jira issue ${story.external_issue_key} to "${newStatus}": ${message}`,
+      metadata: { jiraKey: story.external_issue_key, hiveStatus: newStatus, error: message },
     });
   }
 }

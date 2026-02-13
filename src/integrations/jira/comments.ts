@@ -364,8 +364,8 @@ export async function postJiraLifecycleComment(
 
     // Get story to check if it has a Jira issue key
     const story = queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
-    if (!story || !story.jira_issue_key) {
-      logger.debug(`Story ${storyId} has no Jira issue key, skipping ${event} comment`);
+    if (!story || !story.external_issue_key) {
+      logger.debug(`Story ${storyId} has no external issue key, skipping ${event} comment`);
       return;
     }
 
@@ -383,7 +383,7 @@ export async function postJiraLifecycleComment(
     });
 
     // Post comment
-    await postComment(jiraClient, story.jira_issue_key, event, context);
+    await postComment(jiraClient, story.external_issue_key, event, context);
   } catch (err) {
     logger.warn(
       `Failed to post ${event} Jira comment for story ${storyId}: ${err instanceof Error ? err.message : String(err)}`
@@ -416,8 +416,8 @@ export async function postProgressToSubtask(
     if (!pmConfig || pmConfig.provider !== 'jira' || !pmConfig.jira) return;
 
     const story = queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
-    if (!story?.jira_subtask_key) {
-      logger.debug(`Story ${storyId} has no Jira subtask, skipping progress update`);
+    if (!story?.external_subtask_key) {
+      logger.debug(`Story ${storyId} has no external subtask, skipping progress update`);
       return;
     }
 
@@ -432,13 +432,13 @@ export async function postProgressToSubtask(
     });
 
     // Post the progress comment to the subtask
-    await postComment(jiraClient, story.jira_subtask_key, 'progress', {
+    await postComment(jiraClient, story.external_subtask_key, 'progress', {
       agentName,
       reason: progressMessage,
     });
 
     // Transition subtask to "In Progress" if possible
-    await transitionSubtask(jiraClient, story.jira_subtask_key, 'In Progress');
+    await transitionSubtask(jiraClient, story.external_subtask_key, 'In Progress');
   } catch (err) {
     logger.warn(
       `Failed to post progress to subtask for story ${storyId}: ${err instanceof Error ? err.message : String(err)}`

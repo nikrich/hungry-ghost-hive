@@ -27,7 +27,7 @@ export const progressCommand = new Command('progress')
         process.exit(1);
       }
 
-      if (!story.jira_subtask_key) {
+      if (!story.external_subtask_key) {
         console.error(chalk.red(`Story ${storyId} has no Jira subtask.`));
         console.log(chalk.gray('Jira subtask is created when a story is assigned to an agent.'));
         process.exit(1);
@@ -56,7 +56,7 @@ export const progressCommand = new Command('progress')
         agentName
       );
 
-      console.log(chalk.green(`Posted progress update to subtask ${story.jira_subtask_key}`));
+      console.log(chalk.green(`Posted progress update to subtask ${story.external_subtask_key}`));
 
       // Optionally transition to Done
       if (options.done) {
@@ -70,9 +70,9 @@ export const progressCommand = new Command('progress')
             clientId: process.env.JIRA_CLIENT_ID || '',
             clientSecret: process.env.JIRA_CLIENT_SECRET || '',
           });
-          const transitioned = await transitionSubtask(jiraClient, story.jira_subtask_key, 'Done');
+          const transitioned = await transitionSubtask(jiraClient, story.external_subtask_key, 'Done');
           if (transitioned) {
-            console.log(chalk.green(`Transitioned subtask ${story.jira_subtask_key} to Done`));
+            console.log(chalk.green(`Transitioned subtask ${story.external_subtask_key} to Done`));
           } else {
             console.log(
               chalk.yellow(`Could not transition subtask to Done (may already be done).`)

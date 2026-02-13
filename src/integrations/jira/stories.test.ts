@@ -42,9 +42,9 @@ describe('Jira Story Creation', () => {
       expect(result).toContain('is blocked by');
     });
 
-    it('should mention jira_issue_key', () => {
+    it('should mention external_issue_key', () => {
       const result = generateTechLeadJiraInstructions('HIVE', 'https://mycompany.atlassian.net');
-      expect(result).toContain('jira_issue_key');
+      expect(result).toContain('external_issue_key');
     });
 
     it('should include example key with project prefix', () => {

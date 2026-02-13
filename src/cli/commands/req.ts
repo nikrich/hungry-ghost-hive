@@ -149,11 +149,12 @@ export const reqCommand = new Command('req')
             targetBranch,
           });
 
-          // If this came from a Jira epic URL, store the epic key/id
+          // If this came from a PM epic URL, store the epic key/id
           if (jiraEpicKey && jiraEpicId) {
             updateRequirement(db.db, req.id, {
-              jiraEpicKey,
-              jiraEpicId,
+              externalEpicKey: jiraEpicKey,
+              externalEpicId: jiraEpicId,
+              externalProvider: 'jira',
             });
           }
 
