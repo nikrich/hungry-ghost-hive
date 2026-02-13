@@ -93,7 +93,7 @@ describe('CLI Runtime Builders', () => {
         '--ask-for-approval',
         'never',
         '--sandbox',
-        'workspace-write',
+        'danger-full-access',
         '--model',
         'gpt-4o-mini',
       ]);
@@ -124,7 +124,7 @@ describe('CLI Runtime Builders', () => {
         '--ask-for-approval',
         'never',
         '--sandbox',
-        'workspace-write',
+        'danger-full-access',
         '--model',
         'gpt-4o-mini',
         'session-456',
