@@ -107,6 +107,7 @@ describe('context-files module', () => {
       external_subtask_key: null,
       external_subtask_id: null,
       external_provider: null,
+      in_sprint: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };

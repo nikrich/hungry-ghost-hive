@@ -5,7 +5,7 @@ import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import type { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
 import type { StoryRow } from '../../db/client.js';
-import { createSyncRecord } from '../../db/queries/integration-sync.js';
+import { createSyncRecord, getSyncRecordByEntity } from '../../db/queries/integration-sync.js';
 import { updateRequirement, type RequirementRow } from '../../db/queries/requirements.js';
 import { getStoryById, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
 import * as logger from '../../utils/logger.js';
@@ -115,14 +115,15 @@ function buildStoryDescription(description: string, acceptanceCriteria: string[]
 
 /**
  * Try to move issue keys into the active sprint for the project.
+ * Returns true if issues were successfully moved, false otherwise.
  * Logs warnings on failure but never throws.
  */
-async function tryMoveToActiveSprint(
+export async function tryMoveToActiveSprint(
   client: JiraClient,
   config: JiraConfig,
   issueKeys: string[]
-): Promise<void> {
-  if (issueKeys.length === 0) return;
+): Promise<boolean> {
+  if (issueKeys.length === 0) return false;
 
   try {
     const preferredBoardId = config.board_id ? Number(config.board_id) : undefined;
@@ -135,14 +136,16 @@ async function tryMoveToActiveSprint(
       logger.debug(
         `No active sprint found for project ${config.project_key}, skipping sprint assignment`
       );
-      return;
+      return false;
     }
     await moveIssuesToSprint(client, sprintInfo.sprint.id, issueKeys);
     logger.info(`Moved ${issueKeys.length} issue(s) to sprint "${sprintInfo.sprint.name}"`);
+    return true;
   } catch (err) {
     logger.warn(
       `Failed to move issues to active sprint: ${err instanceof Error ? err.message : String(err)}`
     );
+    return false;
   }
 }
 
@@ -239,6 +242,18 @@ export async function syncRequirementToJira(
       continue;
     }
 
+    // Idempotency guard: skip if this story was already synced to Jira
+    if (story.jira_issue_key) {
+      logger.debug(`Story ${storyId} already has Jira key ${story.jira_issue_key}, skipping`);
+      storyKeyMap[storyId] = story.jira_issue_key;
+      continue;
+    }
+    const existingSync = getSyncRecordByEntity(db, 'story', storyId, 'jira');
+    if (existingSync && existingSync.sync_status === 'synced') {
+      logger.debug(`Story ${storyId} already has sync record, skipping Jira creation`);
+      continue;
+    }
+
     try {
       const acceptanceCriteria = safelyParseAcceptanceCriteria(story.acceptance_criteria, storyId);
 
@@ -318,7 +333,12 @@ export async function syncRequirementToJira(
   }
 
   // Step 4: Move created stories to the active sprint
-  await tryMoveToActiveSprint(client, config, createdStoryKeys);
+  const movedToSprint = await tryMoveToActiveSprint(client, config, createdStoryKeys);
+  if (movedToSprint) {
+    for (const { storyId } of result.stories) {
+      updateStory(db, storyId, { inSprint: true });
+    }
+  }
 
   return result;
 }
@@ -395,7 +415,10 @@ export async function syncStoryToJira(
   });
 
   // Move to active sprint
-  await tryMoveToActiveSprint(client, config, [jiraStory.key]);
+  const movedToSprint = await tryMoveToActiveSprint(client, config, [jiraStory.key]);
+  if (movedToSprint) {
+    updateStory(db, story.id, { inSprint: true });
+  }
 
   return { jiraKey: jiraStory.key, jiraId: jiraStory.id };
 }

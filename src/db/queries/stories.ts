@@ -52,6 +52,7 @@ export interface UpdateStoryInput {
   externalSubtaskKey?: string | null;
   externalSubtaskId?: string | null;
   externalProvider?: string | null;
+  inSprint?: boolean;
 }
 
 export function createStory(db: Database, input: CreateStoryInput): StoryRow {
@@ -258,6 +259,10 @@ export function updateStory(
   if (input.externalProvider !== undefined) {
     updates.push('external_provider = ?');
     values.push(input.externalProvider);
+  }
+  if (input.inSprint !== undefined) {
+    updates.push('in_sprint = ?');
+    values.push(input.inSprint ? 1 : 0);
   }
 
   if (updates.length === 1) {

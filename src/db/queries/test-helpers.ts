@@ -88,6 +88,7 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       external_subtask_key TEXT,
       external_subtask_id TEXT,
       external_provider TEXT,
+      in_sprint INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -154,6 +155,28 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
     CREATE INDEX IF NOT EXISTS idx_agent_logs_agent ON agent_logs(agent_id);
     CREATE INDEX IF NOT EXISTS idx_agent_logs_story ON agent_logs(story_id);
     CREATE INDEX IF NOT EXISTS idx_agent_logs_timestamp ON agent_logs(timestamp);
+
+    CREATE TABLE IF NOT EXISTS migrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS integration_sync (
+      id TEXT PRIMARY KEY,
+      entity_type TEXT NOT NULL CHECK (entity_type IN ('story', 'requirement', 'pull_request')),
+      entity_id TEXT NOT NULL,
+      provider TEXT NOT NULL CHECK (provider IN ('jira', 'github', 'confluence')),
+      external_id TEXT NOT NULL,
+      last_synced_at TIMESTAMP,
+      sync_status TEXT DEFAULT 'pending' CHECK (sync_status IN ('pending', 'synced', 'failed')),
+      error_message TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_integration_sync_unique
+      ON integration_sync(entity_type, entity_id, provider);
   `);
 
   return db;
