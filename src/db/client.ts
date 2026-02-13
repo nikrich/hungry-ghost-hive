@@ -1,9 +1,13 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { copyFileSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { DatabaseCorruptionError, InitializationError } from '../errors/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export interface DatabaseClient {
   db: SqlJsDatabase;
@@ -17,147 +21,15 @@ export interface ReadOnlyDatabaseClient {
   close: () => void;
 }
 
-// Embedded initial migration SQL
-const INITIAL_MIGRATION = `
--- Hive Orchestrator Initial Schema
--- Version: 1.0
-
--- Teams
-CREATE TABLE IF NOT EXISTS teams (
-    id TEXT PRIMARY KEY,
-    repo_url TEXT NOT NULL,
-    repo_path TEXT NOT NULL,
-    name TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Agents
-CREATE TABLE IF NOT EXISTS agents (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa')),
-    team_id TEXT REFERENCES teams(id),
-    tmux_session TEXT,
-    model TEXT,
-    status TEXT DEFAULT 'idle' CHECK (status IN ('idle', 'working', 'blocked', 'terminated')),
-    current_story_id TEXT,
-    memory_state TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Requirements
-CREATE TABLE IF NOT EXISTS requirements (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    description TEXT NOT NULL,
-    submitted_by TEXT DEFAULT 'human',
-    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'planning', 'planned', 'in_progress', 'completed')),
-    godmode BOOLEAN DEFAULT 0,
-    target_branch TEXT DEFAULT 'main',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Stories
-CREATE TABLE IF NOT EXISTS stories (
-    id TEXT PRIMARY KEY,
-    requirement_id TEXT REFERENCES requirements(id),
-    team_id TEXT REFERENCES teams(id),
-    title TEXT NOT NULL,
-    description TEXT NOT NULL,
-    acceptance_criteria TEXT,
-    complexity_score INTEGER CHECK (complexity_score BETWEEN 1 AND 13),
-    story_points INTEGER,
-    status TEXT DEFAULT 'draft' CHECK (status IN (
-        'draft',
-        'estimated',
-        'planned',
-        'in_progress',
-        'review',
-        'qa',
-        'qa_failed',
-        'pr_submitted',
-        'merged'
-    )),
-    assigned_agent_id TEXT REFERENCES agents(id),
-    branch_name TEXT,
-    pr_url TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Story Dependencies
-CREATE TABLE IF NOT EXISTS story_dependencies (
-    story_id TEXT REFERENCES stories(id),
-    depends_on_story_id TEXT REFERENCES stories(id),
-    PRIMARY KEY (story_id, depends_on_story_id)
-);
-
--- Agent Logs (event sourcing - immutable append-only log)
-CREATE TABLE IF NOT EXISTS agent_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agent_id TEXT NOT NULL,
-    story_id TEXT REFERENCES stories(id),
-    event_type TEXT NOT NULL,
-    status TEXT,
-    message TEXT,
-    metadata TEXT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_agent_logs_agent ON agent_logs(agent_id);
-CREATE INDEX IF NOT EXISTS idx_agent_logs_story ON agent_logs(story_id);
-CREATE INDEX IF NOT EXISTS idx_agent_logs_timestamp ON agent_logs(timestamp);
-
--- Escalations
-CREATE TABLE IF NOT EXISTS escalations (
-    id TEXT PRIMARY KEY,
-    story_id TEXT REFERENCES stories(id),
-    from_agent_id TEXT REFERENCES agents(id),
-    to_agent_id TEXT REFERENCES agents(id),
-    reason TEXT NOT NULL,
-    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'acknowledged', 'resolved')),
-    resolution TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    resolved_at TIMESTAMP
-);
-
--- Pull Requests / Merge Queue
-CREATE TABLE IF NOT EXISTS pull_requests (
-    id TEXT PRIMARY KEY,
-    story_id TEXT REFERENCES stories(id),
-    team_id TEXT REFERENCES teams(id),
-    branch_name TEXT NOT NULL,
-    github_pr_number INTEGER,
-    github_pr_url TEXT,
-    submitted_by TEXT,
-    reviewed_by TEXT,
-    status TEXT DEFAULT 'queued' CHECK (status IN ('queued', 'reviewing', 'approved', 'merged', 'rejected', 'closed')),
-    review_notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    reviewed_at TIMESTAMP
-);
-
--- Migrations tracking
-CREATE TABLE IF NOT EXISTS migrations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Agent Messages (for inter-agent communication)
-CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY,
-    from_session TEXT NOT NULL,
-    to_session TEXT NOT NULL,
-    subject TEXT,
-    body TEXT NOT NULL,
-    reply TEXT,
-    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'read', 'replied')),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    replied_at TIMESTAMP
-);
-`;
+/**
+ * Load migration SQL from file
+ * @param migrationName Name of the migration file (e.g., '001-initial.sql')
+ * @returns SQL content of the migration file
+ */
+function loadMigration(migrationName: string): string {
+  const migrationPath = join(__dirname, 'migrations', migrationName);
+  return readFileSync(migrationPath, 'utf-8');
+}
 
 let SQL: Awaited<ReturnType<typeof initSqlJs>> | null = null;
 
@@ -331,7 +203,8 @@ function runMigrations(db: SqlJsDatabase): void {
 
   if (!initialMigration) {
     // Apply initial migration
-    db.run(INITIAL_MIGRATION);
+    const initialSql = loadMigration('001-initial.sql');
+    db.run(initialSql);
     db.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
   }
 
@@ -346,7 +219,8 @@ function runMigrations(db: SqlJsDatabase): void {
       columns.length > 0 && columns[0].values.some((col: unknown[]) => col[1] === 'model');
 
     if (!hasModelColumn) {
-      db.run('ALTER TABLE agents ADD COLUMN model TEXT');
+      const migration002Sql = loadMigration('002-add-agent-model.sql');
+      db.run(migration002Sql);
     }
     db.run("INSERT INTO migrations (name) VALUES ('002-add-agent-model.sql')");
   }
@@ -363,47 +237,16 @@ function runMigrations(db: SqlJsDatabase): void {
       prColumns[0].values.some((col: unknown[]) => col[1] === 'branch_name');
 
     if (!hasBranchName) {
-      // SQLite doesn't support ALTER COLUMN or ADD CONSTRAINT, so we need to recreate the table
-      db.run(`
-        CREATE TABLE pull_requests_new (
-          id TEXT PRIMARY KEY,
-          story_id TEXT REFERENCES stories(id),
-          team_id TEXT REFERENCES teams(id),
-          branch_name TEXT NOT NULL DEFAULT '',
-          github_pr_number INTEGER,
-          github_pr_url TEXT,
-          submitted_by TEXT,
-          reviewed_by TEXT,
-          status TEXT DEFAULT 'queued' CHECK (status IN ('queued', 'reviewing', 'approved', 'merged', 'rejected', 'closed')),
-          review_notes TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          reviewed_at TIMESTAMP
-        )
-      `);
+      const migration003Sql = loadMigration('003-fix-pull-requests.sql');
+      // Execute each statement separately since this migration has multiple statements
+      const statements = migration003Sql
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0 && !s.startsWith('--'));
 
-      // Copy existing data (map old statuses to new ones)
-      db.run(`
-        INSERT INTO pull_requests_new (id, story_id, github_pr_number, github_pr_url, status, review_notes, created_at, updated_at)
-        SELECT
-          id,
-          story_id,
-          github_pr_number,
-          github_pr_url,
-          CASE status
-            WHEN 'open' THEN 'queued'
-            WHEN 'review' THEN 'reviewing'
-            ELSE status
-          END,
-          review_comments,
-          created_at,
-          updated_at
-        FROM pull_requests
-      `);
-
-      // Drop old table and rename new one
-      db.run('DROP TABLE pull_requests');
-      db.run('ALTER TABLE pull_requests_new RENAME TO pull_requests');
+      for (const stmt of statements) {
+        db.run(stmt);
+      }
     }
 
     db.run("INSERT INTO migrations (name) VALUES ('003-fix-pull-requests.sql')");
@@ -419,19 +262,8 @@ function runMigrations(db: SqlJsDatabase): void {
     const hasMessagesTable = tables.length > 0 && tables[0].values.length > 0;
 
     if (!hasMessagesTable) {
-      db.run(`
-        CREATE TABLE messages (
-          id TEXT PRIMARY KEY,
-          from_session TEXT NOT NULL,
-          to_session TEXT NOT NULL,
-          subject TEXT,
-          body TEXT NOT NULL,
-          reply TEXT,
-          status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'read', 'replied')),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          replied_at TIMESTAMP
-        )
-      `);
+      const migration004Sql = loadMigration('004-add-messages.sql');
+      db.run(migration004Sql);
     }
 
     db.run("INSERT INTO migrations (name) VALUES ('004-add-messages.sql')");
@@ -506,7 +338,8 @@ function runMigrations(db: SqlJsDatabase): void {
       columns.length > 0 && columns[0].values.some((col: unknown[]) => col[1] === 'godmode');
 
     if (!hasGodmodeColumn) {
-      db.run('ALTER TABLE requirements ADD COLUMN godmode BOOLEAN DEFAULT 0');
+      const migration008Sql = loadMigration('008-add-godmode.sql');
+      db.run(migration008Sql);
     }
     db.run("INSERT INTO migrations (name) VALUES ('008-add-godmode.sql')");
   }
@@ -518,12 +351,16 @@ function runMigrations(db: SqlJsDatabase): void {
   const migration009Applied = result009.length > 0 && result009[0].values.length > 0;
 
   if (!migration009Applied) {
-    db.run(
-      'CREATE INDEX IF NOT EXISTS idx_pull_requests_status_branch ON pull_requests(status, branch_name)'
-    );
-    db.run(
-      'CREATE INDEX IF NOT EXISTS idx_pull_requests_github_pr_number ON pull_requests(github_pr_number)'
-    );
+    const migration009Sql = loadMigration('009-add-pr-sync-indexes.sql');
+    // Execute each statement separately
+    const statements = migration009Sql
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && !s.startsWith('--'));
+
+    for (const stmt of statements) {
+      db.run(stmt);
+    }
     db.run("INSERT INTO migrations (name) VALUES ('009-add-pr-sync-indexes.sql')");
   }
 
@@ -537,7 +374,8 @@ function runMigrations(db: SqlJsDatabase): void {
       columns.length > 0 && columns[0].values.some((col: unknown[]) => col[1] === 'target_branch');
 
     if (!hasTargetBranchColumn) {
-      db.run("ALTER TABLE requirements ADD COLUMN target_branch TEXT DEFAULT 'main'");
+      const migration010Sql = loadMigration('010-add-target-branch.sql');
+      db.run(migration010Sql);
     }
     db.run("INSERT INTO migrations (name) VALUES ('010-add-target-branch.sql')");
   }
@@ -661,33 +499,17 @@ function runMigrations(db: SqlJsDatabase): void {
       }
     }
 
-    // Copy data from jira_* to external_* columns
-    db.run(`
-      UPDATE stories SET
-        external_issue_key = jira_issue_key,
-        external_issue_id = jira_issue_id,
-        external_project_key = jira_project_key,
-        external_subtask_key = jira_subtask_key,
-        external_subtask_id = jira_subtask_id,
-        external_provider = 'jira'
-      WHERE jira_issue_key IS NOT NULL OR jira_subtask_key IS NOT NULL
-    `);
+    // Load and execute the data migration and index creation from file
+    const migration011Sql = loadMigration('011-generic-integration-fields.sql');
+    // Extract only the UPDATE and CREATE INDEX statements (skip ALTER TABLE)
+    const statements = migration011Sql
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && !s.startsWith('--') && !s.includes('ALTER TABLE'));
 
-    db.run(`
-      UPDATE requirements SET
-        external_epic_key = jira_epic_key,
-        external_epic_id = jira_epic_id,
-        external_provider = 'jira'
-      WHERE jira_epic_key IS NOT NULL
-    `);
-
-    // Add indexes on new generic columns
-    db.run(
-      'CREATE INDEX IF NOT EXISTS idx_stories_external_issue_key ON stories(external_issue_key)'
-    );
-    db.run(
-      'CREATE INDEX IF NOT EXISTS idx_stories_external_provider ON stories(external_provider)'
-    );
+    for (const stmt of statements) {
+      db.run(stmt);
+    }
 
     db.run("INSERT INTO migrations (name) VALUES ('011-generic-integration-fields.sql')");
   }
@@ -708,10 +530,17 @@ function runMigrations(db: SqlJsDatabase): void {
       db.run('ALTER TABLE stories ADD COLUMN in_sprint INTEGER DEFAULT 0');
     }
 
-    // Add unique index on integration_sync to prevent duplicate sync records
-    db.run(
-      'CREATE UNIQUE INDEX IF NOT EXISTS idx_integration_sync_unique ON integration_sync(entity_type, entity_id, provider)'
-    );
+    // Load and execute the index creation from file
+    const migration012Sql = loadMigration('012-sprint-tracking.sql');
+    // Extract only the CREATE INDEX statement (skip ALTER TABLE)
+    const statements = migration012Sql
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && !s.startsWith('--') && !s.includes('ALTER TABLE'));
+
+    for (const stmt of statements) {
+      db.run(stmt);
+    }
 
     db.run("INSERT INTO migrations (name) VALUES ('012-sprint-tracking.sql')");
   }
