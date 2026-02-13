@@ -60,6 +60,8 @@ export type EventType =
   | 'JIRA_BOARD_POLL_STARTED'
   | 'JIRA_BOARD_POLL_COMPLETED'
   | 'JIRA_EPIC_INGESTED'
+  | 'JIRA_ASSIGNMENT_REPAIRED'
+  | 'JIRA_ASSIGNMENT_REPAIR_FAILED'
   | 'APPROACH_POSTED';
 
 export interface CreateLogInput {

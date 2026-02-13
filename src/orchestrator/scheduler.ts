@@ -585,6 +585,15 @@ export class Scheduler {
       return;
     }
 
+    // Idempotency guard: skip if subtask was already created (prevents duplicates
+    // if both the original hook and the repair loop fire for the same story)
+    if (freshStory.jira_subtask_key) {
+      logger.debug(
+        `Story ${story.id} already has Jira subtask ${freshStory.jira_subtask_key}, skipping`
+      );
+      return;
+    }
+
     try {
       // Load token store
       const tokenStore = new TokenStore(join(this.config.rootDir, '.hive', '.env'));
