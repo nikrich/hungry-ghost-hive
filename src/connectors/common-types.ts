@@ -137,6 +137,46 @@ export interface ConnectorSyncResult {
   errors: string[];
 }
 
+// ── Lifecycle Events ────────────────────────────────────────────────────
+
+/** Provider-agnostic lifecycle events that trigger comments */
+export type ConnectorLifecycleEvent =
+  | 'assigned'
+  | 'work_started'
+  | 'progress'
+  | 'approach_posted'
+  | 'pr_created'
+  | 'qa_started'
+  | 'qa_passed'
+  | 'qa_failed'
+  | 'merged'
+  | 'blocked';
+
+/** Context for posting lifecycle event comments */
+export interface ConnectorCommentContext {
+  agentName?: string;
+  branchName?: string;
+  prUrl?: string;
+  reason?: string;
+  subtaskKey?: string;
+  approachText?: string;
+}
+
+/** Options for creating a subtask */
+export interface ConnectorCreateSubtaskOptions {
+  parentIssueKey: string;
+  projectKey: string;
+  agentName: string;
+  storyTitle: string;
+  approachSteps?: string[];
+}
+
+/** Result from creating a subtask */
+export interface ConnectorSubtaskResult {
+  key: string;
+  id: string;
+}
+
 // ── Options ─────────────────────────────────────────────────────────────────
 
 /** Options for creating a pull request */

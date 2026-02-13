@@ -1,15 +1,18 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { join } from 'path';
 import type { Database } from 'sql.js';
-import { loadEnvIntoProcess } from '../auth/env-store.js';
-import { TokenStore } from '../auth/token-store.js';
 import {
   getCliRuntimeBuilder,
   resolveRuntimeModelForCli,
   validateModelCliCompatibility,
 } from '../cli-runtimes/index.js';
 import type { HiveConfig, ModelsConfig, QAConfig, ScalingConfig } from '../config/schema.js';
+import { PMOperationQueue } from '../connectors/project-management/operation-queue.js';
+import {
+  createSubtaskForStory,
+  postCommentOnIssue,
+  syncStatusForStory,
+} from '../connectors/project-management/operations.js';
 import { queryAll, withTransaction } from '../db/client.js';
 import {
   createAgent,
@@ -32,10 +35,6 @@ import {
 import { getAllTeams, getTeamById } from '../db/queries/teams.js';
 import { FileSystemError, OperationalError } from '../errors/index.js';
 import { removeWorktree } from '../git/worktree.js';
-import { JiraClient } from '../integrations/jira/client.js';
-import { createSubtask, postComment } from '../integrations/jira/comments.js';
-import { JiraOperationQueue } from '../integrations/jira/operation-queue.js';
-import { syncStatusToJira } from '../integrations/jira/transitions.js';
 import {
   generateSessionName,
   getHiveSessions,
@@ -85,13 +84,13 @@ export class Scheduler {
   private db: Database;
   private config: SchedulerConfig;
   private saveFn?: () => void;
-  private jiraQueue: JiraOperationQueue;
+  private pmQueue: PMOperationQueue;
 
   constructor(db: Database, config: SchedulerConfig) {
     this.db = db;
     this.config = config;
     this.saveFn = config.saveFn;
-    this.jiraQueue = new JiraOperationQueue();
+    this.pmQueue = new PMOperationQueue();
   }
 
   /**
@@ -99,7 +98,7 @@ export class Scheduler {
    * Call this before closing the database to prevent "Database closed" errors.
    */
   async flushJiraQueue(): Promise<void> {
-    await this.jiraQueue.waitForCompletion();
+    await this.pmQueue.waitForCompletion();
   }
 
   /**
@@ -344,12 +343,12 @@ export class Scheduler {
           // - TokenStore file lock contention
           // - Jira API rate limiting
           // - Concurrent token refresh issues
-          this.jiraQueue.enqueue(`story-${story.id}-assignment`, async () => {
+          this.pmQueue.enqueue(`story-${story.id}-assignment`, async () => {
             await this.handleJiraAfterAssignment(story, targetAgent, team);
           });
 
-          this.jiraQueue.enqueue(`story-${story.id}-status-transition`, async () => {
-            await syncStatusToJira(this.config.rootDir, this.db, story.id, 'in_progress');
+          this.pmQueue.enqueue(`story-${story.id}-status-transition`, async () => {
+            await syncStatusForStory(this.config.rootDir, this.db, story.id, 'in_progress');
           });
         } catch (err) {
           errors.push(
@@ -373,13 +372,13 @@ export class Scheduler {
     agent: AgentRow,
     _team: { id: string; name: string }
   ): Promise<void> {
-    // Check if Jira is configured
+    // Check if PM is configured
     if (!this.config.hiveConfig) return;
     const pmConfig = this.config.hiveConfig.integrations?.project_management;
-    if (!pmConfig || pmConfig.provider !== 'jira' || !pmConfig.jira) return;
+    if (!pmConfig || pmConfig.provider === 'none') return;
 
-    // Re-fetch the story from DB to get the latest Jira data (the passed-in
-    // story object may be stale — external_issue_key is set during syncStoryToJira
+    // Re-fetch the story from DB to get the latest PM data (the passed-in
+    // story object may be stale — external_issue_key is set during sync
     // which may have completed after this object was fetched).
     const freshStory = getStoryById(this.db, story.id);
     if (!freshStory?.external_issue_key) {
@@ -397,28 +396,17 @@ export class Scheduler {
     }
 
     try {
-      // Load token store
-      const tokenStore = new TokenStore(join(this.config.rootDir, '.hive', '.env'));
-      await tokenStore.loadFromEnv();
-
-      // Ensure Jira credentials from .hive/.env are in process.env
-      loadEnvIntoProcess(this.config.rootDir);
-
-      // Create Jira client
-      const jiraClient = new JiraClient({
-        tokenStore,
-        clientId: process.env.JIRA_CLIENT_ID || '',
-        clientSecret: process.env.JIRA_CLIENT_SECRET || '',
-      });
-
-      // Create subtask
       const agentName = agent.tmux_session || agent.id;
-      const subtask = await createSubtask(jiraClient, {
-        parentIssueKey: freshStory.external_issue_key,
-        projectKey: pmConfig.jira.project_key,
-        agentName,
-        storyTitle: freshStory.title,
-      });
+      const subtask = await createSubtaskForStory(
+        this.config.rootDir,
+        freshStory.external_issue_key,
+        {
+          parentIssueKey: freshStory.external_issue_key,
+          projectKey: freshStory.external_project_key || '',
+          agentName,
+          storyTitle: freshStory.title,
+        }
+      );
 
       if (subtask) {
         // Persist subtask reference back to the story
@@ -428,17 +416,17 @@ export class Scheduler {
         });
         if (this.saveFn) this.saveFn();
 
-        logger.info(`Created Jira subtask ${subtask.key} for story ${freshStory.id}`);
+        logger.info(`Created subtask ${subtask.key} for story ${freshStory.id}`);
 
         // Post "assigned" comment
-        await postComment(jiraClient, freshStory.external_issue_key, 'assigned', {
+        await postCommentOnIssue(this.config.rootDir, freshStory.external_issue_key, 'assigned', {
           agentName,
           subtaskKey: subtask.key,
         });
       }
     } catch (err) {
       logger.warn(
-        `Jira integration failed for story ${story.id}: ${err instanceof Error ? err.message : String(err)}`
+        `PM integration failed for story ${story.id}: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   }
@@ -589,7 +577,7 @@ export class Scheduler {
           revived.push(agent.current_story_id);
 
           // Sync status change to Jira (fire and forget)
-          syncStatusToJira(this.config.rootDir, this.db, agent.current_story_id, 'planned');
+          syncStatusForStory(this.config.rootDir, this.db, agent.current_story_id, 'planned');
         }
       }
     }

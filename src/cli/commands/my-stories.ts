@@ -2,10 +2,10 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
+import { syncStatusForStory } from '../../connectors/project-management/operations.js';
 import { queryAll, queryOne, run, type StoryRow } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import { createStory, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
-import { syncStatusToJira } from '../../integrations/jira/transitions.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const myStoriesCommand = new Command('my-stories')
@@ -168,7 +168,7 @@ myStoriesCommand
       db.save();
 
       // Sync status change to Jira
-      await syncStatusToJira(root, db.db, storyId, 'in_progress');
+      await syncStatusForStory(root, db.db, storyId, 'in_progress');
 
       console.log(chalk.green(`Claimed story: ${storyId}`));
       console.log(chalk.gray(`Title: ${story.title}`));
@@ -198,7 +198,7 @@ myStoriesCommand
       db.save();
 
       // Sync status change to Jira
-      await syncStatusToJira(root, db.db, storyId, 'review');
+      await syncStatusForStory(root, db.db, storyId, 'review');
 
       console.log(chalk.green(`Story ${storyId} marked as ready for review.`));
     });

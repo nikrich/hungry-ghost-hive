@@ -2,6 +2,10 @@
 
 import { join } from 'path';
 import { loadConfig } from '../config/loader.js';
+import {
+  postLifecycleComment,
+  syncStatusForStory,
+} from '../connectors/project-management/operations.js';
 import type { DatabaseClient } from '../db/client.js';
 import { queryOne, withTransaction } from '../db/client.js';
 import { getAgentById, updateAgent } from '../db/queries/agents.js';
@@ -9,8 +13,6 @@ import { createLog } from '../db/queries/logs.js';
 import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
-import { postJiraLifecycleComment } from '../integrations/jira/comments.js';
-import { syncStatusToJira } from '../integrations/jira/transitions.js';
 import { getHivePaths } from './paths.js';
 import { ghRepoSlug } from './pr-sync.js';
 
@@ -162,7 +164,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
               });
 
               // Post Jira comment for merged event
-              postJiraLifecycleComment(db.db, paths.hiveDir, config, pr.story_id, 'merged').catch(
+              postLifecycleComment(db.db, paths.hiveDir, config, pr.story_id, 'merged').catch(
                 () => {
                   /* non-fatal */
                 }
@@ -180,7 +182,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
 
           // Sync status change to Jira (fire and forget, after DB commit)
           if (pr.story_id && prState.state === 'MERGED') {
-            syncStatusToJira(root, db.db, pr.story_id, 'merged');
+            syncStatusForStory(root, db.db, pr.story_id, 'merged');
           }
           continue;
         }
@@ -245,11 +247,11 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
 
         // Post Jira comment for merged event
         if (storyId) {
-          postJiraLifecycleComment(db.db, paths.hiveDir, config, storyId, 'merged').catch(() => {
+          postLifecycleComment(db.db, paths.hiveDir, config, storyId, 'merged').catch(() => {
             /* non-fatal */
           });
           // Sync status change to Jira (fire and forget, after DB commit)
-          syncStatusToJira(root, db.db, storyId, 'merged');
+          syncStatusForStory(root, db.db, storyId, 'merged');
         }
       } catch (mergeErr) {
         // Merge failed - revert PR status back to approved for retry (atomic transaction)

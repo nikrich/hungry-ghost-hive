@@ -2,15 +2,10 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { join } from 'path';
-import { loadEnvIntoProcess } from '../../auth/env-store.js';
-import { TokenStore } from '../../auth/token-store.js';
-import { loadConfig } from '../../config/loader.js';
+import { postCommentOnIssue } from '../../connectors/project-management/operations.js';
 import { queryOne } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import type { StoryRow } from '../../db/queries/stories.js';
-import { JiraClient } from '../../integrations/jira/client.js';
-import { postComment } from '../../integrations/jira/comments.js';
 import * as logger from '../../utils/logger.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 
@@ -20,7 +15,7 @@ export const approachCommand = new Command('approach')
   .argument('<approach-text>', 'Implementation approach description')
   .option('-f, --from <session>', 'Agent session name')
   .action(async (storyId: string, approachText: string, options: { from?: string }) => {
-    await withHiveContext(async ({ paths, db }) => {
+    await withHiveContext(async ({ root, db }) => {
       const agentName = options.from || 'unknown-agent';
 
       // Look up the story
@@ -51,27 +46,12 @@ export const approachCommand = new Command('approach')
       }
 
       try {
-        const config = loadConfig(paths.hiveDir);
-        const pmConfig = config.integrations?.project_management;
-        if (!pmConfig || pmConfig.provider !== 'jira' || !pmConfig.jira) {
-          console.log(chalk.gray('Jira integration not configured, skipping Jira comment'));
-          return;
-        }
-
-        const tokenStore = new TokenStore(join(paths.hiveDir, '.env'));
-        await tokenStore.loadFromEnv();
-        loadEnvIntoProcess();
-
-        const jiraClient = new JiraClient({
-          tokenStore,
-          clientId: process.env.JIRA_CLIENT_ID || '',
-          clientSecret: process.env.JIRA_CLIENT_SECRET || '',
-        });
-
-        const success = await postComment(jiraClient, story.external_issue_key, 'approach_posted', {
-          agentName,
-          approachText,
-        });
+        const success = await postCommentOnIssue(
+          root,
+          story.external_issue_key,
+          'approach_posted',
+          { agentName, approachText }
+        );
 
         if (success) {
           console.log(
