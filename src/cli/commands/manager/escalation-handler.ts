@@ -10,6 +10,7 @@ import {
 } from '../../../db/queries/escalations.js';
 import { createLog } from '../../../db/queries/logs.js';
 import {
+  AgentState,
   agentStates,
   buildAutoRecoveryReminder,
   captureTmuxPane,
@@ -18,7 +19,6 @@ import {
   getAgentType,
   nudgeAgent,
   sendToTmuxSession,
-  AgentState,
   type CLITool,
 } from './agent-monitoring.js';
 import type { ManagerCheckContext } from './types.js';
@@ -28,7 +28,11 @@ export async function handleEscalationAndNudge(
   ctx: ManagerCheckContext,
   sessionName: string,
   agent: ReturnType<typeof getAllAgents>[number] | undefined,
-  stateResult: { state: import('../../../state-detectors/types.js').AgentState; isWaiting: boolean; needsHuman: boolean },
+  stateResult: {
+    state: import('../../../state-detectors/types.js').AgentState;
+    isWaiting: boolean;
+    needsHuman: boolean;
+  },
   agentCliTool: CLITool,
   now: number
 ): Promise<void> {

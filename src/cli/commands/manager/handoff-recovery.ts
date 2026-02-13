@@ -3,11 +3,11 @@
 import chalk from 'chalk';
 import type { DatabaseClient, StoryRow } from '../../../db/client.js';
 import { queryAll, withTransaction } from '../../../db/client.js';
+import { getTechLead } from '../../../db/queries/agents.js';
 import { createEscalation } from '../../../db/queries/escalations.js';
 import { createLog } from '../../../db/queries/logs.js';
 import { updateRequirement } from '../../../db/queries/requirements.js';
 import { getStoriesByStatus, updateStory } from '../../../db/queries/stories.js';
-import { getTechLead } from '../../../db/queries/agents.js';
 import { syncStatusToJira } from '../../../integrations/jira/transitions.js';
 import { isTmuxSessionRunning } from '../../../tmux/manager.js';
 import { nudgeAgent, type CLITool } from './agent-monitoring.js';

@@ -20,11 +20,7 @@ import {
   type CLITool,
 } from '../../../utils/cli-commands.js';
 import type { AgentStateTracking, ManagerCheckContext, MessageRow } from './types.js';
-import {
-  BYPASS_MODE_MAX_RETRIES,
-  MESSAGE_FORWARD_DELAY_MS,
-  POST_NUDGE_DELAY_MS,
-} from './types.js';
+import { BYPASS_MODE_MAX_RETRIES, MESSAGE_FORWARD_DELAY_MS, POST_NUDGE_DELAY_MS } from './types.js';
 
 // In-memory state tracking per agent session
 export const agentStates = new Map<string, AgentStateTracking>();
@@ -232,6 +228,5 @@ export async function forwardMessages(
   }
 }
 
-export { buildAutoRecoveryReminder, captureTmuxPane, sendToTmuxSession };
-export { AgentState };
+export { AgentState, buildAutoRecoveryReminder, captureTmuxPane, sendToTmuxSession };
 export type { CLITool, StateDetectionResult };

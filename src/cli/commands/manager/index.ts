@@ -23,10 +23,7 @@ import {
   getPullRequestsByStatus,
   updatePullRequest,
 } from '../../../db/queries/pull-requests.js';
-import {
-  getStoriesByStatus,
-  updateStory,
-} from '../../../db/queries/stories.js';
+import { getStoriesByStatus, updateStory } from '../../../db/queries/stories.js';
 import { syncFromJira } from '../../../integrations/jira/sync.js';
 import { syncStatusToJira } from '../../../integrations/jira/transitions.js';
 import { Scheduler } from '../../../orchestrator/scheduler.js';
