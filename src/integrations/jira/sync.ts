@@ -13,13 +13,16 @@ import {
   type RequirementRow,
   type StoryRow,
 } from '../../db/client.js';
+import { getAgentById } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { updateStory, type StoryStatus } from '../../db/queries/stories.js';
 import * as logger from '../../utils/logger.js';
 import { getHivePaths } from '../../utils/paths.js';
 import { JiraClient } from './client.js';
+import { createSubtask, postComment } from './comments.js';
 import { getIssue } from './issues.js';
 import { syncRequirementToJira } from './stories.js';
+import { syncStoryStatusToJira } from './transitions.js';
 
 /**
  * Ordered lifecycle stages for Hive stories.
@@ -311,6 +314,131 @@ export async function syncUnsyncedStoriesToJira(
 }
 
 /**
+ * Detect stories that were assigned to agents but missed the Jira
+ * assignment hook (subtask creation + status transition).
+ *
+ * This happens when a story is assigned before its jira_issue_key is set
+ * (e.g., Jira sync hadn't completed yet). The original
+ * handleJiraAfterAssignment() bails out with "no Jira issue key" and
+ * never retries, leaving the story without a subtask in Jira.
+ *
+ * This repair function finds such stories and runs the assignment logic:
+ * 1. Create a subtask under the parent Jira issue
+ * 2. Post an "assigned" comment
+ * 3. Transition the Jira issue to match the story's current Hive status
+ *
+ * @param db - Database instance
+ * @param tokenStore - Token store for Jira API auth
+ * @param config - Jira configuration
+ * @returns Number of stories repaired
+ */
+export async function repairMissedAssignmentHooks(
+  db: Database,
+  tokenStore: TokenStore,
+  config: JiraConfig
+): Promise<number> {
+  // Find stories that:
+  // - Have a jira_issue_key (synced to Jira)
+  // - Have an assigned_agent_id (assigned to an agent)
+  // - But are missing a jira_subtask_key (subtask never created)
+  const storiesMissingSubtasks = queryAll<StoryRow>(
+    db,
+    `SELECT * FROM stories
+     WHERE jira_issue_key IS NOT NULL
+       AND assigned_agent_id IS NOT NULL
+       AND jira_subtask_key IS NULL
+       AND status NOT IN ('merged')
+     ORDER BY created_at`
+  );
+
+  if (storiesMissingSubtasks.length === 0) {
+    return 0;
+  }
+
+  logger.info(
+    `Found ${storiesMissingSubtasks.length} assigned story(ies) missing Jira subtasks — repairing`
+  );
+
+  loadEnvIntoProcess();
+
+  const client = new JiraClient({
+    tokenStore,
+    clientId: process.env.JIRA_CLIENT_ID || '',
+    clientSecret: process.env.JIRA_CLIENT_SECRET || '',
+  });
+
+  let repairedCount = 0;
+
+  for (const story of storiesMissingSubtasks) {
+    try {
+      // Look up the assigned agent for naming
+      const agent = getAgentById(db, story.assigned_agent_id!);
+      const agentName = agent?.tmux_session || agent?.id || story.assigned_agent_id!;
+
+      // Create the subtask
+      const subtask = await createSubtask(client, {
+        parentIssueKey: story.jira_issue_key!,
+        projectKey: story.jira_project_key || config.project_key,
+        agentName,
+        storyTitle: story.title,
+      });
+
+      if (subtask) {
+        // Persist subtask reference
+        updateStory(db, story.id, {
+          jiraSubtaskKey: subtask.key,
+          jiraSubtaskId: subtask.id,
+        });
+
+        logger.info(
+          `Repaired: created Jira subtask ${subtask.key} for story ${story.id} (agent: ${agentName})`
+        );
+
+        // Post "assigned" comment
+        await postComment(client, story.jira_issue_key!, 'assigned', {
+          agentName,
+          subtaskKey: subtask.key,
+        });
+
+        repairedCount++;
+
+        createLog(db, {
+          agentId: 'manager',
+          storyId: story.id,
+          eventType: 'JIRA_ASSIGNMENT_REPAIRED',
+          message: `Repaired missed assignment hook: created subtask ${subtask.key} for agent ${agentName}`,
+          metadata: {
+            jiraKey: story.jira_issue_key,
+            subtaskKey: subtask.key,
+            agentName,
+          },
+        });
+      }
+
+      // Transition the Jira issue to match the story's current status
+      // (e.g., if the story is already in_progress, ensure Jira reflects that)
+      if (story.status !== 'planned' && story.status !== 'draft') {
+        await syncStoryStatusToJira(db, tokenStore, config, story.id, story.status);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`Failed to repair assignment hook for story ${story.id}: ${message}`);
+
+      createLog(db, {
+        agentId: 'manager',
+        storyId: story.id,
+        eventType: 'JIRA_ASSIGNMENT_REPAIR_FAILED',
+        status: 'warn',
+        message: `Failed to repair missed assignment hook: ${message}`,
+        metadata: { jiraKey: story.jira_issue_key, error: message },
+      });
+    }
+  }
+
+  return repairedCount;
+}
+
+/**
  * Top-level entry point for Jira bidirectional sync.
  *
  * Loads config and tokens from the hive root directory, checks if Jira
@@ -345,7 +473,10 @@ export async function syncFromJira(root: string, db: Database): Promise<number> 
     // First: push any unsynced stories TO Jira
     await syncUnsyncedStoriesToJira(db, tokenStore, jiraConfig);
 
-    // Then: pull status updates FROM Jira
+    // Then: repair any assigned stories that missed the Jira assignment hook
+    await repairMissedAssignmentHooks(db, tokenStore, jiraConfig);
+
+    // Finally: pull status updates FROM Jira
     return await syncJiraStatusesToHive(db, tokenStore, jiraConfig);
   } catch (err) {
     // Never block the pipeline — log and continue
