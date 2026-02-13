@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.29.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.28.3...hungry-ghost-hive-v0.29.0) (2026-02-13)
+
+
+### Features
+
+* add PM provider validation to req command ([#353](https://github.com/nikrich/hungry-ghost-hive/issues/353)) ([7df6069](https://github.com/nikrich/hungry-ghost-hive/commit/7df6069ebcbd78751fd9e2cd6ac142c726c449f1))
+* define connector interfaces, types, and registry ([#346](https://github.com/nikrich/hungry-ghost-hive/issues/346)) ([03ddf2f](https://github.com/nikrich/hungry-ghost-hive/commit/03ddf2f9e51a63876ce870901aec00a3ab408f77))
+* generalize database integration fields to be provider-agnostic ([#351](https://github.com/nikrich/hungry-ghost-hive/issues/351)) ([48354a0](https://github.com/nikrich/hungry-ghost-hive/commit/48354a04ec295b1aa3fa2b1235e96f873e51f533))
+* implement GitHub source control and auth connectors ([#348](https://github.com/nikrich/hungry-ghost-hive/issues/348)) ([9ac9978](https://github.com/nikrich/hungry-ghost-hive/commit/9ac99785a7151006819bc1135d595ef95af1c356))
+* implement Jira project management and auth connectors ([#349](https://github.com/nikrich/hungry-ghost-hive/issues/349)) ([99666ec](https://github.com/nikrich/hungry-ghost-hive/commit/99666ec888b578b592d6da278b77484e2d93613a))
+* make auth command provider-agnostic ([#352](https://github.com/nikrich/hungry-ghost-hive/issues/352)) ([ee1ffec](https://github.com/nikrich/hungry-ghost-hive/commit/ee1ffec255b2984b184e65997f81851dd6728cf4))
+
+
+### Bug Fixes
+
+* apply prettier formatting to all unformatted files ([363997e](https://github.com/nikrich/hungry-ghost-hive/commit/363997e20e3be4ae2386fc1966ebf07e0bdaf20a))
+* apply prettier formatting to connector files ([ed30c48](https://github.com/nikrich/hungry-ghost-hive/commit/ed30c48fa2e7d65930b5318535d7a6853e4ccd05))
+
 ## [0.28.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.28.2...hungry-ghost-hive-v0.28.3) (2026-02-13)
 
 
