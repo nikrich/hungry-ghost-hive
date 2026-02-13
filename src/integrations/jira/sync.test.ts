@@ -10,7 +10,7 @@ import type { JiraConfig } from '../../config/schema.js';
 import { run } from '../../db/client.js';
 import { createStory, getStoryById } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
-import { jiraStatusToHiveStatus, syncJiraStatusesToHive } from './sync.js';
+import { isForwardTransition, jiraStatusToHiveStatus, syncJiraStatusesToHive } from './sync.js';
 import type { JiraIssue } from './types.js';
 
 // Mock Jira client and issues module
@@ -42,6 +42,40 @@ describe('jiraStatusToHiveStatus', () => {
 
   it('returns null for empty mapping', () => {
     expect(jiraStatusToHiveStatus('To Do', {})).toBeNull();
+  });
+});
+
+describe('isForwardTransition', () => {
+  it('allows forward transitions', () => {
+    expect(isForwardTransition('draft', 'estimated')).toBe(true);
+    expect(isForwardTransition('estimated', 'planned')).toBe(true);
+    expect(isForwardTransition('planned', 'in_progress')).toBe(true);
+    expect(isForwardTransition('in_progress', 'review')).toBe(true);
+    expect(isForwardTransition('review', 'pr_submitted')).toBe(true);
+    expect(isForwardTransition('pr_submitted', 'qa')).toBe(true);
+    expect(isForwardTransition('qa', 'merged')).toBe(true);
+  });
+
+  it('allows same-status (no-op)', () => {
+    expect(isForwardTransition('planned', 'planned')).toBe(true);
+    expect(isForwardTransition('in_progress', 'in_progress')).toBe(true);
+  });
+
+  it('prevents backward transitions', () => {
+    expect(isForwardTransition('in_progress', 'planned')).toBe(false);
+    expect(isForwardTransition('in_progress', 'draft')).toBe(false);
+    expect(isForwardTransition('review', 'planned')).toBe(false);
+    expect(isForwardTransition('merged', 'planned')).toBe(false);
+    expect(isForwardTransition('qa', 'planned')).toBe(false);
+  });
+
+  it('handles qa_failed ordering correctly', () => {
+    // qa_failed (order=4) same as review — so it's a lateral move from review
+    expect(isForwardTransition('review', 'qa_failed')).toBe(true);
+    // qa_failed is forward from in_progress
+    expect(isForwardTransition('in_progress', 'qa_failed')).toBe(true);
+    // qa_failed is backward from qa — blocked (manager handles this directly)
+    expect(isForwardTransition('qa', 'qa_failed')).toBe(false);
   });
 });
 
@@ -257,6 +291,72 @@ describe('syncJiraStatusesToHive', () => {
     // Should not throw - errors are logged
     const updated = await syncJiraStatusesToHive(db, tokenStore, config);
     expect(updated).toBe(0);
+  });
+
+  it('skips backward transitions (prevents status regression)', async () => {
+    // Story is in_progress in Hive, but Jira says "To Do" (which maps to planned)
+    const story = createStory(db, {
+      title: 'Test Story',
+      description: 'Test',
+    });
+
+    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-123',
+      'in_progress',
+      story.id,
+    ]);
+
+    const tokenStore = createTestTokenStore({
+      JIRA_ACCESS_TOKEN: 'fake-token',
+      JIRA_CLOUD_ID: 'fake-cloud-id',
+    });
+
+    const config: JiraConfig = {
+      ...baseConfig,
+      status_mapping: {
+        'To Do': 'planned',
+        'In Progress': 'in_progress',
+      },
+    };
+
+    // Jira reports "To Do" which maps to "planned" — backward from "in_progress"
+    const mockJiraIssue: JiraIssue = {
+      id: '10001',
+      key: 'TEST-123',
+      self: 'https://test.atlassian.net/rest/api/3/issue/10001',
+      fields: {
+        summary: 'Test Issue',
+        status: {
+          id: '1',
+          name: 'To Do',
+          statusCategory: { id: 2, key: 'new', name: 'To Do' },
+        },
+        issuetype: {
+          id: '10001',
+          name: 'Story',
+          subtask: false,
+        },
+        labels: [],
+        created: '2024-01-01T00:00:00.000Z',
+        updated: '2024-01-02T00:00:00.000Z',
+        project: {
+          id: '10000',
+          key: 'TEST',
+          name: 'Test Project',
+        },
+      },
+    };
+
+    const { getIssue } = await import('./issues.js');
+    vi.mocked(getIssue).mockResolvedValue(mockJiraIssue);
+
+    const updated = await syncJiraStatusesToHive(db, tokenStore, config);
+    // Should NOT update — backward transition blocked
+    expect(updated).toBe(0);
+
+    // Verify story was NOT regressed
+    const updatedStory = getStoryById(db, story.id);
+    expect(updatedStory?.status).toBe('in_progress');
   });
 
   it('skips merged stories', async () => {
