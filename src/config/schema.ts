@@ -80,7 +80,7 @@ const ScalingConfigSchema = z.object({
 // Source control integration
 const SourceControlConfigSchema = z.object({
   // Source control provider
-  provider: z.enum(['github', 'bitbucket', 'gitlab']).default('github'),
+  provider: z.string().min(1).default('github'),
 });
 
 // Jira configuration for project management
@@ -108,7 +108,7 @@ const JiraConfigSchema = z.object({
 // Project management integration
 const ProjectManagementConfigSchema = z.object({
   // Project management provider (none = no PM integration)
-  provider: z.enum(['none', 'jira']).default('none'),
+  provider: z.string().min(1).default('none'),
   // Jira-specific configuration (required when provider is 'jira')
   jira: JiraConfigSchema.optional(),
 });

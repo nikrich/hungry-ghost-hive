@@ -32,7 +32,11 @@ import {
   teamsCommand,
   versionCommand,
 } from './cli/commands/index.js';
+import { bootstrapConnectors } from './connectors/bootstrap.js';
 import { getVersion } from './utils/version.js';
+
+// Bootstrap connectors at startup
+bootstrapConnectors();
 
 const program = new Command();
 
