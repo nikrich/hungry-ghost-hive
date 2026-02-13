@@ -167,8 +167,8 @@ myStoriesCommand
       );
       db.save();
 
-      // Sync status change to Jira (fire and forget, after DB commit)
-      syncStatusToJira(root, db.db, storyId, 'in_progress');
+      // Sync status change to Jira
+      await syncStatusToJira(root, db.db, storyId, 'in_progress');
 
       console.log(chalk.green(`Claimed story: ${storyId}`));
       console.log(chalk.gray(`Title: ${story.title}`));
@@ -197,8 +197,8 @@ myStoriesCommand
       );
       db.save();
 
-      // Sync status change to Jira (fire and forget, after DB commit)
-      syncStatusToJira(root, db.db, storyId, 'review');
+      // Sync status change to Jira
+      await syncStatusToJira(root, db.db, storyId, 'review');
 
       console.log(chalk.green(`Story ${storyId} marked as ready for review.`));
     });
