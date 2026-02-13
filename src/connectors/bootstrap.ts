@@ -26,6 +26,9 @@ import { register as registerJiraProjectManagement } from './project-management/
 /**
  * Register all available connectors with the global registry.
  * Call this function once at application startup.
+ *
+ * Connectors that require configuration (like Jira PM) will load
+ * their config lazily when first accessed from the registry.
  */
 export function bootstrapConnectors(): void {
   // Register auth connectors
@@ -36,5 +39,6 @@ export function bootstrapConnectors(): void {
   registerGitHubSourceControl();
 
   // Register project management connectors
+  // Jira PM connector loads config/tokenStore lazily, so no args needed at bootstrap
   registerJiraProjectManagement();
 }
