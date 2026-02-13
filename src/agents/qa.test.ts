@@ -133,7 +133,10 @@ describe('QAAgent', () => {
       workDir: '/tmp/test',
       config: {
         maxRetries: 3,
-        checkpointTokenThreshold: 10000,
+        checkpointThreshold: 10000,
+        pollInterval: 1000,
+        llmTimeoutMs: 30000,
+        llmMaxRetries: 3,
       },
       qaConfig: {
         qualityChecks: ['npm run lint', 'npm run type-check'],
@@ -155,14 +158,18 @@ describe('QAAgent', () => {
     });
 
     it('should load pending QA stories for team', () => {
-      db.run(
-        `INSERT INTO stories (id, team_id, title, status) VALUES (?, ?, ?, ?)`,
-        ['story-1', teamId, 'Test Story 1', 'qa']
-      );
-      db.run(
-        `INSERT INTO stories (id, team_id, title, status) VALUES (?, ?, ?, ?)`,
-        ['story-2', teamId, 'Test Story 2', 'qa']
-      );
+      db.run(`INSERT INTO stories (id, team_id, title, status) VALUES (?, ?, ?, ?)`, [
+        'story-1',
+        teamId,
+        'Test Story 1',
+        'qa',
+      ]);
+      db.run(`INSERT INTO stories (id, team_id, title, status) VALUES (?, ?, ?, ?)`, [
+        'story-2',
+        teamId,
+        'Test Story 2',
+        'qa',
+      ]);
 
       const agent = new QAAgent(context);
       expect(agent).toBeDefined();

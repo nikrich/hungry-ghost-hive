@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AnthropicProvider } from './anthropic.js';
 import type { Message } from './provider.js';
 
@@ -198,7 +198,7 @@ describe('AnthropicProvider', () => {
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
       const mockClient = new Anthropic();
       vi.mocked(mockClient.messages.create).mockImplementation(
-        () =>
+        (() =>
           new Promise(resolve =>
             setTimeout(
               () =>
@@ -209,12 +209,10 @@ describe('AnthropicProvider', () => {
                 } as any),
               200
             )
-          )
+          )) as any
       );
 
-      await expect(
-        provider.complete(messages, { timeoutMs: 100 })
-      ).rejects.toThrow('timed out');
+      await expect(provider.complete(messages, { timeoutMs: 100 })).rejects.toThrow('timed out');
     });
   });
 

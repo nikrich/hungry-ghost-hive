@@ -183,7 +183,10 @@ describe('TechLeadAgent', () => {
       workDir: '/tmp/test',
       config: {
         maxRetries: 3,
-        checkpointTokenThreshold: 10000,
+        checkpointThreshold: 10000,
+        pollInterval: 1000,
+        llmTimeoutMs: 30000,
+        llmMaxRetries: 3,
       },
     };
   });
@@ -341,11 +344,9 @@ describe('TechLeadAgent', () => {
       const agent = new TechLeadAgent(reqContext);
       await agent.execute();
 
-      const req = queryOne<{ status: string }>(
-        db,
-        'SELECT status FROM requirements WHERE id = ?',
-        ['req-1']
-      );
+      const req = queryOne<{ status: string }>(db, 'SELECT status FROM requirements WHERE id = ?', [
+        'req-1',
+      ]);
       expect(req?.status).toBe('planned');
     });
   });
@@ -493,9 +494,11 @@ describe('TechLeadAgent', () => {
       const agent = new TechLeadAgent(reqContext);
       await agent.execute();
 
-      const updatedAgent = queryOne<{ status: string }>(db, 'SELECT status FROM agents WHERE id = ?', [
-        'agent-1',
-      ]);
+      const updatedAgent = queryOne<{ status: string }>(
+        db,
+        'SELECT status FROM agents WHERE id = ?',
+        ['agent-1']
+      );
       expect(updatedAgent?.status).toBe('blocked');
     });
   });

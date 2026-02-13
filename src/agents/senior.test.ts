@@ -113,17 +113,22 @@ describe('SeniorAgent', () => {
     provider = new MockLLMProvider();
 
     // Create a team
-    db.run(
-      `INSERT INTO teams (id, name, repo_url, repo_path) VALUES (?, ?, ?, ?)`,
-      ['team-1', 'Test Team', 'https://github.com/test/repo', '/path/to/repo']
-    );
+    db.run(`INSERT INTO teams (id, name, repo_url, repo_path) VALUES (?, ?, ?, ?)`, [
+      'team-1',
+      'Test Team',
+      'https://github.com/test/repo',
+      '/path/to/repo',
+    ]);
     teamId = 'team-1';
 
     // Create agent
-    db.run(
-      `INSERT INTO agents (id, type, team_id, status, tmux_session) VALUES (?, ?, ?, ?, ?)`,
-      ['agent-1', 'senior', teamId, 'idle', 'test-session']
-    );
+    db.run(`INSERT INTO agents (id, type, team_id, status, tmux_session) VALUES (?, ?, ?, ?, ?)`, [
+      'agent-1',
+      'senior',
+      teamId,
+      'idle',
+      'test-session',
+    ]);
 
     agentRow = queryOne<AgentRow>(db, 'SELECT * FROM agents WHERE id = ?', ['agent-1'])!;
 
@@ -135,7 +140,10 @@ describe('SeniorAgent', () => {
       teamId,
       config: {
         maxRetries: 3,
-        checkpointTokenThreshold: 10000,
+        checkpointThreshold: 10000,
+        pollInterval: 1000,
+        llmTimeoutMs: 30000,
+        llmMaxRetries: 3,
       },
     };
   });
@@ -306,9 +314,11 @@ describe('SeniorAgent', () => {
       const agent = new SeniorAgent(context);
       await agent.escalateToTechLead('Blocked by external dependency');
 
-      const updatedAgent = queryOne<{ status: string }>(db, 'SELECT status FROM agents WHERE id = ?', [
-        'agent-1',
-      ]);
+      const updatedAgent = queryOne<{ status: string }>(
+        db,
+        'SELECT status FROM agents WHERE id = ?',
+        ['agent-1']
+      );
 
       expect(updatedAgent?.status).toBe('blocked');
     });

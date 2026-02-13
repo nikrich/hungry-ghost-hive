@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenAIProvider } from './openai.js';
 import type { Message } from './provider.js';
 
@@ -186,7 +186,7 @@ describe('OpenAIProvider', () => {
       const OpenAI = (await import('openai')).default;
       const mockClient = new OpenAI();
       vi.mocked(mockClient.chat.completions.create).mockImplementation(
-        () =>
+        (() =>
           new Promise(resolve =>
             setTimeout(
               () =>
@@ -196,12 +196,10 @@ describe('OpenAIProvider', () => {
                 } as any),
               200
             )
-          )
+          )) as any
       );
 
-      await expect(
-        provider.complete(messages, { timeoutMs: 100 })
-      ).rejects.toThrow('timed out');
+      await expect(provider.complete(messages, { timeoutMs: 100 })).rejects.toThrow('timed out');
     });
 
     it('should handle null content', async () => {
@@ -350,9 +348,7 @@ describe('OpenAIProvider', () => {
     it('should handle API errors', async () => {
       const OpenAI = (await import('openai')).default;
       const mockClient = new OpenAI();
-      vi.mocked(mockClient.chat.completions.create).mockRejectedValueOnce(
-        new Error('API Error')
-      );
+      vi.mocked(mockClient.chat.completions.create).mockRejectedValueOnce(new Error('API Error'));
 
       const messages: Message[] = [{ role: 'user', content: 'Test' }];
 

@@ -120,7 +120,10 @@ describe('IntermediateAgent', () => {
       workDir: '/tmp/test',
       config: {
         maxRetries: 3,
-        checkpointTokenThreshold: 10000,
+        checkpointThreshold: 10000,
+        pollInterval: 1000,
+        llmTimeoutMs: 30000,
+        llmMaxRetries: 3,
       },
     };
   });
@@ -136,10 +139,12 @@ describe('IntermediateAgent', () => {
     });
 
     it('should load story from context.storyId', () => {
-      db.run(
-        `INSERT INTO stories (id, team_id, title, status) VALUES (?, ?, ?, ?)`,
-        ['story-1', teamId, 'Test Story', 'planned']
-      );
+      db.run(`INSERT INTO stories (id, team_id, title, status) VALUES (?, ?, ?, ?)`, [
+        'story-1',
+        teamId,
+        'Test Story',
+        'planned',
+      ]);
 
       const storyContext = { ...context, storyId: 'story-1' };
       const agent = new IntermediateAgent(storyContext);
@@ -147,10 +152,12 @@ describe('IntermediateAgent', () => {
     });
 
     it('should load story from agentRow.current_story_id', () => {
-      db.run(
-        `INSERT INTO stories (id, team_id, title, status) VALUES (?, ?, ?, ?)`,
-        ['story-1', teamId, 'Test Story', 'planned']
-      );
+      db.run(`INSERT INTO stories (id, team_id, title, status) VALUES (?, ?, ?, ?)`, [
+        'story-1',
+        teamId,
+        'Test Story',
+        'planned',
+      ]);
       db.run(`UPDATE agents SET current_story_id = ? WHERE id = ?`, ['story-1', 'agent-1']);
 
       agentRow = queryOne<AgentRow>(db, 'SELECT * FROM agents WHERE id = ?', ['agent-1'])!;
@@ -182,10 +189,12 @@ describe('IntermediateAgent', () => {
     });
 
     it('should include current story information', () => {
-      db.run(
-        `INSERT INTO stories (id, team_id, title, status) VALUES (?, ?, ?, ?)`,
-        ['story-1', teamId, 'Implement feature X', 'in_progress']
-      );
+      db.run(`INSERT INTO stories (id, team_id, title, status) VALUES (?, ?, ?, ?)`, [
+        'story-1',
+        teamId,
+        'Implement feature X',
+        'in_progress',
+      ]);
 
       const storyContext = { ...context, storyId: 'story-1' };
       const agent = new IntermediateAgent(storyContext);
@@ -350,9 +359,11 @@ describe('IntermediateAgent', () => {
 
       await agent.execute();
 
-      const updatedAgent = queryOne<{ status: string }>(db, 'SELECT status FROM agents WHERE id = ?', [
-        'agent-1',
-      ]);
+      const updatedAgent = queryOne<{ status: string }>(
+        db,
+        'SELECT status FROM agents WHERE id = ?',
+        ['agent-1']
+      );
 
       expect(updatedAgent?.status).toBe('blocked');
     });
