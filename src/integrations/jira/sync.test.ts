@@ -798,6 +798,7 @@ describe('syncHiveStatusesToJira', () => {
   }
 
   beforeEach(async () => {
+    vi.clearAllMocks();
     db = await createTestDatabase();
     envDir = mkdtempSync(join(tmpdir(), 'hive-sync-push-test-'));
     db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
