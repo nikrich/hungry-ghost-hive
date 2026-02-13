@@ -27,7 +27,7 @@ export interface ConnectorEpic {
   description: string;
   /** Provider that owns this epic */
   provider: string;
-  /** Provider-specific raw data (e.g., full Jira issue object) */
+  /** Provider-specific raw data (e.g., full issue object from the PM provider) */
   raw?: unknown;
 }
 
