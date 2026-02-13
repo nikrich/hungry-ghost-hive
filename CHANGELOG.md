@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.2...hungry-ghost-hive-v0.30.3) (2026-02-13)
+
+
+### Code Refactoring
+
+* migrate direct Jira imports to connector pattern in core modules ([#372](https://github.com/nikrich/hungry-ghost-hive/issues/372)) ([e8504c4](https://github.com/nikrich/hungry-ghost-hive/commit/e8504c48c17744b23fa46490acdf2f798cf35ff6))
+
 ## [0.30.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.1...hungry-ghost-hive-v0.30.2) (2026-02-13)
 
 
