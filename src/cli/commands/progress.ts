@@ -70,7 +70,11 @@ export const progressCommand = new Command('progress')
             clientId: process.env.JIRA_CLIENT_ID || '',
             clientSecret: process.env.JIRA_CLIENT_SECRET || '',
           });
-          const transitioned = await transitionSubtask(jiraClient, story.external_subtask_key, 'Done');
+          const transitioned = await transitionSubtask(
+            jiraClient,
+            story.external_subtask_key,
+            'Done'
+          );
           if (transitioned) {
             console.log(chalk.green(`Transitioned subtask ${story.external_subtask_key} to Done`));
           } else {

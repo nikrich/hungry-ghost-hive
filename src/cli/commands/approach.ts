@@ -74,7 +74,9 @@ export const approachCommand = new Command('approach')
         });
 
         if (success) {
-          console.log(chalk.green(`Approach comment posted to Jira issue ${story.external_issue_key}`));
+          console.log(
+            chalk.green(`Approach comment posted to Jira issue ${story.external_issue_key}`)
+          );
         } else {
           console.log(chalk.yellow('Failed to post approach comment to Jira'));
         }

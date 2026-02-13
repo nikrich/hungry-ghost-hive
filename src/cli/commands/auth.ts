@@ -3,10 +3,10 @@
 import { input } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { authRegistry } from '../../auth/registry.js';
 import { getEnvFilePath, loadEnvIntoProcess, readEnvFile } from '../../auth/env-store.js';
 import { runGitHubDeviceFlow } from '../../auth/github-oauth.js';
 import { startJiraOAuthFlow, storeJiraTokens } from '../../auth/jira-oauth.js';
+import { authRegistry } from '../../auth/registry.js';
 import { TokenStore } from '../../auth/token-store.js';
 import { loadConfig } from '../../config/loader.js';
 import { openBrowser } from '../../utils/open-browser.js';
@@ -24,7 +24,9 @@ export const authCommand = new Command('auth')
         const connector = authRegistry.get(options.provider);
         if (!connector) {
           console.error(chalk.red(`Error: Unknown provider "${options.provider}"`));
-          console.error(chalk.gray(`Available providers: ${authRegistry.getProviderNames().join(', ')}`));
+          console.error(
+            chalk.gray(`Available providers: ${authRegistry.getProviderNames().join(', ')}`)
+          );
           process.exit(1);
         }
 
@@ -57,14 +59,18 @@ export const authCommand = new Command('auth')
         return;
       }
 
-      console.log(chalk.bold(`Authenticating ${providersToAuth.length} configured provider(s)...\n`));
+      console.log(
+        chalk.bold(`Authenticating ${providersToAuth.length} configured provider(s)...\n`)
+      );
 
       const results: Array<{ provider: string; success: boolean; message?: string }> = [];
 
       for (const providerName of providersToAuth) {
         const connector = authRegistry.get(providerName);
         if (!connector) {
-          console.error(chalk.yellow(`Warning: No auth connector found for "${providerName}". Skipping.`));
+          console.error(
+            chalk.yellow(`Warning: No auth connector found for "${providerName}". Skipping.`)
+          );
           results.push({
             provider: providerName,
             success: false,

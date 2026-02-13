@@ -2,11 +2,11 @@
 
 import { input } from '@inquirer/prompts';
 import chalk from 'chalk';
+import { openBrowser } from '../../utils/open-browser.js';
 import type { AuthResult, IAuthConnector } from '../connector.js';
 import { getEnvFilePath, loadEnvIntoProcess, readEnvFile, writeEnvEntries } from '../env-store.js';
 import { startJiraOAuthFlow, storeJiraTokens } from '../jira-oauth.js';
 import { TokenStore } from '../token-store.js';
-import { openBrowser } from '../../utils/open-browser.js';
 
 /**
  * Jira authentication connector

@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { registry } from '../../connectors/registry.js';
-import type { IProjectManagementConnector } from '../../connectors/project-management/types.js';
 import type { ConnectorEpic, ConnectorParsedEpicUrl } from '../../connectors/common-types.js';
+import type { IProjectManagementConnector } from '../../connectors/project-management/types.js';
+import { registry } from '../../connectors/registry.js';
 
 function createMockPMConnector(provider: string): IProjectManagementConnector {
   return {

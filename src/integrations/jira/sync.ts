@@ -378,7 +378,7 @@ export async function repairMissedAssignmentHooks(
       // Create the subtask
       const subtask = await createSubtask(client, {
         parentIssueKey: story.external_issue_key!,
-        projectKey: (story.external_project_key || config.project_key),
+        projectKey: story.external_project_key || config.project_key,
         agentName,
         storyTitle: story.title,
       });

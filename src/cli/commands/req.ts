@@ -70,21 +70,13 @@ export const reqCommand = new Command('req')
         if (detectedProvider) {
           // URL is an epic URL for some provider
           if (pmProvider === 'none') {
-            console.error(
-              chalk.red(
-                `Epic URL detected but project management is not configured.`
-              )
-            );
+            console.error(chalk.red(`Epic URL detected but project management is not configured.`));
             console.log(
               chalk.gray(
                 `This looks like a ${detectedProvider} epic URL, but PM provider is set to 'none'.`
               )
             );
-            console.log(
-              chalk.gray(
-                `Configure a PM provider by running: hive init`
-              )
-            );
+            console.log(chalk.gray(`Configure a PM provider by running: hive init`));
             process.exit(1);
           }
 

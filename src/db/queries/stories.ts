@@ -215,11 +215,15 @@ export function updateStory(
     values.push(input.prUrl);
   }
   // Dual-write: support both legacy jira_* and new external_* columns
-  const issueKey = input.externalIssueKey !== undefined ? input.externalIssueKey : input.jiraIssueKey;
+  const issueKey =
+    input.externalIssueKey !== undefined ? input.externalIssueKey : input.jiraIssueKey;
   const issueId = input.externalIssueId !== undefined ? input.externalIssueId : input.jiraIssueId;
-  const projectKey = input.externalProjectKey !== undefined ? input.externalProjectKey : input.jiraProjectKey;
-  const subtaskKey = input.externalSubtaskKey !== undefined ? input.externalSubtaskKey : input.jiraSubtaskKey;
-  const subtaskId = input.externalSubtaskId !== undefined ? input.externalSubtaskId : input.jiraSubtaskId;
+  const projectKey =
+    input.externalProjectKey !== undefined ? input.externalProjectKey : input.jiraProjectKey;
+  const subtaskKey =
+    input.externalSubtaskKey !== undefined ? input.externalSubtaskKey : input.jiraSubtaskKey;
+  const subtaskId =
+    input.externalSubtaskId !== undefined ? input.externalSubtaskId : input.jiraSubtaskId;
 
   if (issueKey !== undefined) {
     updates.push('jira_issue_key = ?');
@@ -406,7 +410,10 @@ export function getStoryByJiraKey(db: Database, jiraIssueKey: string): StoryRow 
   );
 }
 
-export function getStoryByExternalKey(db: Database, externalIssueKey: string): StoryRow | undefined {
+export function getStoryByExternalKey(
+  db: Database,
+  externalIssueKey: string
+): StoryRow | undefined {
   return queryOne<StoryRow>(
     db,
     'SELECT * FROM stories WHERE external_issue_key = ? OR jira_issue_key = ?',

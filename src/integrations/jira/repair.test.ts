@@ -130,12 +130,11 @@ describe('repairMissedAssignmentHooks', () => {
       title: 'Not assigned',
       description: 'Test',
     });
-    run(db, `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?`, [
-      'TEST-1',
-      'TEST-1',
-      'planned',
-      story.id,
-    ]);
+    run(
+      db,
+      `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?`,
+      ['TEST-1', 'TEST-1', 'planned', story.id]
+    );
 
     const tokenStore = createTestTokenStore();
     const repaired = await repairMissedAssignmentHooks(db, tokenStore, baseConfig);

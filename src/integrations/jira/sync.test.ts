@@ -155,12 +155,11 @@ describe('syncJiraStatusesToHive', () => {
     });
 
     // Update story to add Jira key and set initial status
-    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
-      'TEST-123',
-      'TEST-123',
-      'planned',
-      story.id,
-    ]);
+    run(
+      db,
+      'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
+      ['TEST-123', 'TEST-123', 'planned', story.id]
+    );
 
     const tokenStore = createTestTokenStore({
       JIRA_ACCESS_TOKEN: 'fake-token',
@@ -220,12 +219,11 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
-      'TEST-123',
-      'TEST-123',
-      'in_progress',
-      story.id,
-    ]);
+    run(
+      db,
+      'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
+      ['TEST-123', 'TEST-123', 'in_progress', story.id]
+    );
 
     const tokenStore = createTestTokenStore({
       JIRA_ACCESS_TOKEN: 'fake-token',
@@ -277,12 +275,11 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
-      'TEST-123',
-      'TEST-123',
-      'planned',
-      story.id,
-    ]);
+    run(
+      db,
+      'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
+      ['TEST-123', 'TEST-123', 'planned', story.id]
+    );
 
     const tokenStore = createTestTokenStore({
       JIRA_ACCESS_TOKEN: 'fake-token',
@@ -309,12 +306,11 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
-      'TEST-123',
-      'TEST-123',
-      'in_progress',
-      story.id,
-    ]);
+    run(
+      db,
+      'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
+      ['TEST-123', 'TEST-123', 'in_progress', story.id]
+    );
 
     const tokenStore = createTestTokenStore({
       JIRA_ACCESS_TOKEN: 'fake-token',
@@ -375,12 +371,11 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
-      'TEST-123',
-      'TEST-123',
-      'merged',
-      story.id,
-    ]);
+    run(
+      db,
+      'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
+      ['TEST-123', 'TEST-123', 'merged', story.id]
+    );
 
     const tokenStore = createTestTokenStore();
     const config: JiraConfig = { ...baseConfig, status_mapping: { 'To Do': 'planned' } };
@@ -431,12 +426,11 @@ describe('syncUnsyncedStoriesToJira', () => {
       title: 'Synced Story',
       description: 'Already synced',
     });
-    run(db, 'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?', [
-      'TEST-1',
-      'TEST-1',
-      'planned',
-      story.id,
-    ]);
+    run(
+      db,
+      'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
+      ['TEST-1', 'TEST-1', 'planned', story.id]
+    );
 
     const tokenStore = createTestTokenStore();
     const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
