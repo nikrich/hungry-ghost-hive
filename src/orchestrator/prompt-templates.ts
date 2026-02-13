@@ -54,8 +54,8 @@ export function generateSeniorPrompt(
 ): string {
   const storyList = stories
     .map(s => {
-      const jiraInfo = s.external_subtask_key ? ` | Jira Subtask: ${s.external_subtask_key}` : '';
-      return `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'}${jiraInfo})\n  ${s.description}`;
+      const externalInfo = s.external_subtask_key ? ` | External Subtask: ${s.external_subtask_key}` : '';
+      return `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'}${externalInfo})\n  ${s.description}`;
     })
     .join('\n\n');
 

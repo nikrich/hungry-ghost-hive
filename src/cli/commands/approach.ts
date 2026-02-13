@@ -10,7 +10,7 @@ import * as logger from '../../utils/logger.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const approachCommand = new Command('approach')
-  .description('Post an implementation approach comment to a Jira story')
+  .description('Post an implementation approach comment to a story')
   .argument('<story-id>', 'Story ID to post approach for')
   .argument('<approach-text>', 'Implementation approach description')
   .option('-f, --from <session>', 'Agent session name')
@@ -39,9 +39,9 @@ export const approachCommand = new Command('approach')
 
       console.log(chalk.green(`Approach logged for story ${storyId}`));
 
-      // Post to Jira if configured
+      // Post to PM provider if configured
       if (!story.external_issue_key) {
-        console.log(chalk.gray('No Jira issue key on story, skipping Jira comment'));
+        console.log(chalk.gray('No external issue key on story, skipping PM provider comment'));
         return;
       }
 
@@ -55,16 +55,16 @@ export const approachCommand = new Command('approach')
 
         if (success) {
           console.log(
-            chalk.green(`Approach comment posted to Jira issue ${story.external_issue_key}`)
+            chalk.green(`Approach comment posted to PM provider issue ${story.external_issue_key}`)
           );
         } else {
-          console.log(chalk.yellow('Failed to post approach comment to Jira'));
+          console.log(chalk.yellow('Failed to post approach comment to PM provider'));
         }
       } catch (err) {
         logger.warn(
-          `Failed to post approach to Jira: ${err instanceof Error ? err.message : String(err)}`
+          `Failed to post approach to PM provider: ${err instanceof Error ? err.message : String(err)}`
         );
-        console.log(chalk.yellow('Failed to post approach comment to Jira (logged locally)'));
+        console.log(chalk.yellow('Failed to post approach comment to PM provider (logged locally)'));
       }
     });
   });

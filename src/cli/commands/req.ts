@@ -58,8 +58,8 @@ export const reqCommand = new Command('req')
         // Check if the input is an epic URL from a configured PM provider
         let title: string;
         let description: string;
-        let jiraEpicKey: string | undefined;
-        let jiraEpicId: string | undefined;
+        let epicKey: string | undefined;
+        let epicId: string | undefined;
 
         const pmProvider = config.integrations.project_management.provider;
         const pmConnector =
@@ -79,8 +79,8 @@ export const reqCommand = new Command('req')
             const epic = await pmConnector.fetchEpic(reqText);
             title = options.title || epic.title.substring(0, 100);
             description = epic.description;
-            jiraEpicKey = epic.key;
-            jiraEpicId = epic.id;
+            epicKey = epic.key;
+            epicId = epic.id;
 
             spinner.succeed(chalk.green(`Fetched epic: ${epic.key} — ${epic.title}`));
           } catch (err) {
@@ -151,11 +151,11 @@ export const reqCommand = new Command('req')
             targetBranch,
           });
 
-          // If this came from a Jira epic URL, store the epic key/id
-          if (jiraEpicKey && jiraEpicId) {
+          // If this came from a PM provider epic URL, store the epic key/id
+          if (epicKey && epicId) {
             updateRequirement(db.db, req.id, {
-              jiraEpicKey,
-              jiraEpicId,
+              jiraEpicKey: epicKey,
+              jiraEpicId: epicId,
             });
           }
 
