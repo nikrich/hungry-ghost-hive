@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.30.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.29.0...hungry-ghost-hive-v0.30.0) (2026-02-13)
+
+
+### Features
+
+* add periodic Hive-to-Jira status push in manager daemon ([#362](https://github.com/nikrich/hungry-ghost-hive/issues/362)) ([338aa07](https://github.com/nikrich/hungry-ghost-hive/commit/338aa07936aec50c26ab75a6974f1fef14bc7b1e))
+* add provider-agnostic pm command ([#355](https://github.com/nikrich/hungry-ghost-hive/issues/355)) ([886ca6a](https://github.com/nikrich/hungry-ghost-hive/commit/886ca6a94c50f5bf2fa2b86979d214afe990de12))
+* generalize config schema and init wizard for connector pattern ([#359](https://github.com/nikrich/hungry-ghost-hive/issues/359)) ([ebfc888](https://github.com/nikrich/hungry-ghost-hive/commit/ebfc888a8102b808573dcf473efdddc5e90506d3))
+
+
+### Bug Fixes
+
+* prevent Jira sync duplicates and add sprint retry mechanism ([#356](https://github.com/nikrich/hungry-ghost-hive/issues/356)) ([d120405](https://github.com/nikrich/hungry-ghost-hive/commit/d12040578d29a6dc410dba0671cfa957df6917cf))
+* use complexity_score fallback for Jira story points sync ([#354](https://github.com/nikrich/hungry-ghost-hive/issues/354)) ([37b612a](https://github.com/nikrich/hungry-ghost-hive/commit/37b612aac2bd6bf8d2be17fa794dfc9e9b360f97))
+
 ## [0.29.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.28.3...hungry-ghost-hive-v0.29.0) (2026-02-13)
 
 
