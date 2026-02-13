@@ -2,11 +2,11 @@
 
 import { describe, expect, it } from 'vitest';
 import type { StoryRow } from '../db/queries/stories.js';
-import { claudeCodeTemplate, codexTemplate, geminiTemplate } from './templates.js';
 import type { ContextFileOptions } from './index.js';
+import { claudeCodeTemplate, codexTemplate, geminiTemplate } from './templates.js';
 
 describe('templates module', () => {
-  const mockStory: StoryRow = {
+  const mockStory = {
     id: 'STORY-1',
     title: 'Test Story',
     description: 'Test description',
@@ -23,7 +23,7 @@ describe('templates module', () => {
     jira_issue_id: null,
     created_at: '2024-01-01',
     updated_at: '2024-01-01',
-  };
+  } as StoryRow;
 
   const baseOptions: ContextFileOptions = {
     team: {
@@ -44,8 +44,7 @@ describe('templates module', () => {
         build_command: 'npm run build',
         test_command: 'npm test',
       },
-      paths: {} as any,
-    },
+    } as any,
     cliTool: 'claude-code',
   };
 

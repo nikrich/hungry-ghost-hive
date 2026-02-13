@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { describe, expect, it } from 'vitest';
-import { UnsupportedFeatureError } from '../errors/index.js';
 import type { StoryRow } from '../db/queries/stories.js';
+import { UnsupportedFeatureError } from '../errors/index.js';
 import {
   formatGitWorkflow,
   formatHiveMsgCommands,
@@ -16,15 +16,20 @@ import type { ContextFileOptions } from './index.js';
 describe('generator module', () => {
   describe('generateContextFileContent', () => {
     const baseOptions: ContextFileOptions = {
-      team: { id: 'team-1', name: 'Test Team', repo_path: '/path/to/repo', repo_url: 'https://github.com/test/repo', created_at: '2024-01-01' },
+      team: {
+        id: 'team-1',
+        name: 'Test Team',
+        repo_path: '/path/to/repo',
+        repo_url: 'https://github.com/test/repo',
+        created_at: '2024-01-01',
+      },
       stories: [],
       agentType: 'senior',
       config: {
         models: {} as any,
         integrations: {} as any,
         qa: { quality_checks: ['npm run lint'], build_command: 'npm run build' },
-        paths: {} as any,
-      },
+      } as any,
       cliTool: 'claude-code',
     };
 
@@ -81,7 +86,7 @@ describe('generator module', () => {
           jira_issue_id: null,
           created_at: '2024-01-01',
           updated_at: '2024-01-01',
-        },
+        } as StoryRow,
       ];
 
       const result = formatStoriesForContext(stories);
@@ -113,7 +118,7 @@ describe('generator module', () => {
           jira_issue_id: null,
           created_at: '2024-01-01',
           updated_at: '2024-01-01',
-        },
+        } as StoryRow,
         {
           id: 'STORY-2',
           title: 'Second Story',
@@ -131,7 +136,7 @@ describe('generator module', () => {
           jira_issue_id: null,
           created_at: '2024-01-01',
           updated_at: '2024-01-01',
-        },
+        } as StoryRow,
       ];
 
       const result = formatStoriesForContext(stories);
@@ -160,7 +165,7 @@ describe('generator module', () => {
           jira_issue_id: null,
           created_at: '2024-01-01',
           updated_at: '2024-01-01',
-        },
+        } as StoryRow,
       ];
 
       const result = formatStoriesForContext(stories);
@@ -186,7 +191,7 @@ describe('generator module', () => {
           jira_issue_id: null,
           created_at: '2024-01-01',
           updated_at: '2024-01-01',
-        },
+        } as StoryRow,
       ];
 
       const result = formatStoriesForContext(stories);
