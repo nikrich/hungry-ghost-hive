@@ -38,10 +38,7 @@ export interface ISourceControlConnector {
    * @param workDir - Repository working directory
    * @param state - Filter by PR state (default: "open")
    */
-  listPullRequests(
-    workDir: string,
-    state?: 'open' | 'closed' | 'all'
-  ): Promise<ConnectorPRInfo[]>;
+  listPullRequests(workDir: string, state?: 'open' | 'closed' | 'all'): Promise<ConnectorPRInfo[]>;
 
   /**
    * Get the unified diff for a pull request.
