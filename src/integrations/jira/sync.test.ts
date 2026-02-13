@@ -15,6 +15,7 @@ import {
   isForwardTransition,
   jiraStatusToHiveStatus,
   retrySprintAssignment,
+  syncHiveStatusesToJira,
   syncJiraStatusesToHive,
   syncUnsyncedStoriesToJira,
 } from './sync.js';
@@ -763,5 +764,262 @@ describe('idempotency guards', () => {
         externalId: 'gh-001',
       })
     ).not.toThrow();
+  });
+});
+
+describe('syncHiveStatusesToJira', () => {
+  let db: Database;
+  let envDir: string;
+
+  const baseConfig: JiraConfig = {
+    project_key: 'TEST',
+    site_url: 'https://test.atlassian.net',
+    story_type: 'Story',
+    subtask_type: 'Subtask',
+    story_points_field: 'story_points',
+    status_mapping: {},
+  };
+
+  function createTestTokenStore(tokens?: Record<string, string>): TokenStore {
+    const envPath = join(envDir, `.env-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const content = tokens
+      ? Object.entries(tokens)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('\n')
+      : '';
+    writeFileSync(envPath, content);
+    const store = new TokenStore(envPath);
+    if (tokens) {
+      for (const [key, value] of Object.entries(tokens)) {
+        (store as any).tokens[key] = value;
+      }
+    }
+    return store;
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    db = await createTestDatabase();
+    envDir = mkdtempSync(join(tmpdir(), 'hive-sync-push-test-'));
+    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+  });
+
+  it('skips push when no status mapping configured', async () => {
+    const tokenStore = createTestTokenStore();
+    const config: JiraConfig = { ...baseConfig, status_mapping: {} };
+
+    const pushed = await syncHiveStatusesToJira(db, tokenStore, config);
+    expect(pushed).toBe(0);
+  });
+
+  it('skips stories without Jira issue key', async () => {
+    createStory(db, {
+      title: 'Test Story',
+      description: 'Test',
+    });
+
+    const tokenStore = createTestTokenStore();
+    const config: JiraConfig = { ...baseConfig, status_mapping: { 'To Do': 'planned' } };
+
+    const pushed = await syncHiveStatusesToJira(db, tokenStore, config);
+    expect(pushed).toBe(0);
+  });
+
+  it('pushes Hive status to Jira when Hive is ahead', async () => {
+    const story = createStory(db, {
+      title: 'Test Story',
+      description: 'Test',
+    });
+
+    // Story is in_progress in Hive, but Jira still shows planned
+    run(
+      db,
+      'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
+      ['TEST-123', 'TEST-123', 'in_progress', story.id]
+    );
+
+    const tokenStore = createTestTokenStore({
+      JIRA_ACCESS_TOKEN: 'fake-token',
+      JIRA_CLOUD_ID: 'fake-cloud-id',
+    });
+
+    const config: JiraConfig = {
+      ...baseConfig,
+      status_mapping: {
+        'To Do': 'planned',
+        'In Progress': 'in_progress',
+      },
+    };
+
+    // Mock getIssue to return Jira issue with older status
+    const mockJiraIssue: JiraIssue = {
+      id: '10001',
+      key: 'TEST-123',
+      self: 'https://test.atlassian.net/rest/api/3/issue/10001',
+      fields: {
+        summary: 'Test Issue',
+        status: {
+          id: '1',
+          name: 'To Do',
+          statusCategory: { id: 2, key: 'new', name: 'To Do' },
+        },
+        issuetype: {
+          id: '10001',
+          name: 'Story',
+          subtask: false,
+        },
+        labels: [],
+        created: '2024-01-01T00:00:00.000Z',
+        updated: '2024-01-02T00:00:00.000Z',
+        project: {
+          id: '10000',
+          key: 'TEST',
+          name: 'Test Project',
+        },
+      },
+    };
+
+    const { getIssue, getTransitions, transitionIssue } = await import('./issues.js');
+    vi.mocked(getIssue).mockResolvedValue(mockJiraIssue);
+    vi.mocked(getTransitions).mockResolvedValue({
+      transitions: [
+        {
+          id: '11',
+          name: 'Start Progress',
+          to: {
+            id: '3',
+            name: 'In Progress',
+            statusCategory: { id: 3, key: 'indeterminate', name: 'In Progress' },
+          },
+        },
+      ],
+    });
+    vi.mocked(transitionIssue).mockResolvedValue(undefined);
+
+    const pushed = await syncHiveStatusesToJira(db, tokenStore, config);
+    expect(pushed).toBe(1);
+    expect(transitionIssue).toHaveBeenCalledWith(expect.anything(), 'TEST-123', {
+      transition: { id: '11' },
+    });
+  });
+
+  it('skips push when Hive status matches Jira status', async () => {
+    const story = createStory(db, {
+      title: 'Test Story',
+      description: 'Test',
+    });
+
+    run(
+      db,
+      'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
+      ['TEST-123', 'TEST-123', 'in_progress', story.id]
+    );
+
+    const tokenStore = createTestTokenStore({
+      JIRA_ACCESS_TOKEN: 'fake-token',
+      JIRA_CLOUD_ID: 'fake-cloud-id',
+    });
+
+    const config: JiraConfig = {
+      ...baseConfig,
+      status_mapping: { 'In Progress': 'in_progress' },
+    };
+
+    // Jira status already matches Hive status
+    const mockJiraIssue: JiraIssue = {
+      id: '10001',
+      key: 'TEST-123',
+      self: 'https://test.atlassian.net/rest/api/3/issue/10001',
+      fields: {
+        summary: 'Test Issue',
+        status: {
+          id: '3',
+          name: 'In Progress',
+          statusCategory: { id: 3, key: 'indeterminate', name: 'In Progress' },
+        },
+        issuetype: {
+          id: '10001',
+          name: 'Story',
+          subtask: false,
+        },
+        labels: [],
+        created: '2024-01-01T00:00:00.000Z',
+        updated: '2024-01-02T00:00:00.000Z',
+        project: {
+          id: '10000',
+          key: 'TEST',
+          name: 'Test Project',
+        },
+      },
+    };
+
+    const { getIssue } = await import('./issues.js');
+    vi.mocked(getIssue).mockResolvedValue(mockJiraIssue);
+
+    const pushed = await syncHiveStatusesToJira(db, tokenStore, config);
+    expect(pushed).toBe(0);
+  });
+
+  it('prevents backward transitions when pushing to Jira', async () => {
+    const story = createStory(db, {
+      title: 'Test Story',
+      description: 'Test',
+    });
+
+    // Hive status is planned, but Jira is already in_progress (ahead)
+    run(
+      db,
+      'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
+      ['TEST-123', 'TEST-123', 'planned', story.id]
+    );
+
+    const tokenStore = createTestTokenStore({
+      JIRA_ACCESS_TOKEN: 'fake-token',
+      JIRA_CLOUD_ID: 'fake-cloud-id',
+    });
+
+    const config: JiraConfig = {
+      ...baseConfig,
+      status_mapping: {
+        'To Do': 'planned',
+        'In Progress': 'in_progress',
+      },
+    };
+
+    // Jira is ahead of Hive
+    const mockJiraIssue: JiraIssue = {
+      id: '10001',
+      key: 'TEST-123',
+      self: 'https://test.atlassian.net/rest/api/3/issue/10001',
+      fields: {
+        summary: 'Test Issue',
+        status: {
+          id: '3',
+          name: 'In Progress',
+          statusCategory: { id: 3, key: 'indeterminate', name: 'In Progress' },
+        },
+        issuetype: {
+          id: '10001',
+          name: 'Story',
+          subtask: false,
+        },
+        labels: [],
+        created: '2024-01-01T00:00:00.000Z',
+        updated: '2024-01-02T00:00:00.000Z',
+        project: {
+          id: '10000',
+          key: 'TEST',
+          name: 'Test Project',
+        },
+      },
+    };
+
+    const { getIssue, transitionIssue } = await import('./issues.js');
+    vi.mocked(getIssue).mockResolvedValue(mockJiraIssue);
+
+    const pushed = await syncHiveStatusesToJira(db, tokenStore, config);
+    expect(pushed).toBe(0);
+    // Should not attempt to transition backward
+    expect(transitionIssue).not.toHaveBeenCalled();
   });
 });
