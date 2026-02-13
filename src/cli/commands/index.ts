@@ -12,7 +12,7 @@ export { configCommand } from './config.js';
 export { escalationsCommand } from './escalations.js';
 export { initCommand } from './init.js';
 export { jiraCommand } from './jira.js';
-export { managerCommand } from './manager.js';
+export { managerCommand } from './manager/index.js';
 export { msgCommand } from './msg.js';
 export { myStoriesCommand } from './my-stories.js';
 export { nukeCommand } from './nuke.js';
