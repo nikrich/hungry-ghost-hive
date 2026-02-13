@@ -1,10 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { join } from 'path';
-import { TokenStore } from '../auth/token-store.js';
 import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../cli-runtimes/index.js';
 import { loadConfig } from '../config/index.js';
 import type { HiveConfig } from '../config/schema.js';
+import { syncRequirementToProvider } from '../connectors/project-management/operations.js';
 import { queryAll } from '../db/client.js';
 import { createAgent, getAgentsByType, updateAgent } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
@@ -21,7 +20,6 @@ import {
 } from '../db/queries/stories.js';
 import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
 import { NotFoundError } from '../errors/index.js';
-import { syncRequirementToJira } from '../integrations/jira/stories.js';
 import { generateTechLeadJiraInstructions } from '../orchestrator/prompt-templates.js';
 import { generateSessionName, spawnTmuxSession } from '../tmux/manager.js';
 import { findHiveRoot, getHivePaths } from '../utils/paths.js';
@@ -358,20 +356,10 @@ Respond in JSON format:
   }
 
   private async syncToJiraIfEnabled(storyIds: string[]): Promise<void> {
-    const config = this.loadHiveConfig();
-    if (!config) return;
-
-    const pmConfig = config.integrations.project_management;
-    if (pmConfig.provider !== 'jira' || !pmConfig.jira) return;
-
     if (!this.requirement) return;
 
-    // Load token store
     const hiveRoot = findHiveRoot(this.workDir);
     if (!hiveRoot) return;
-    const paths = getHivePaths(hiveRoot);
-    const tokenStore = new TokenStore(join(paths.hiveDir, '.env'));
-    await tokenStore.loadFromEnv();
 
     // Re-fetch requirement from DB to pick up external_epic_key/id that may have
     // been set after this agent was constructed (e.g., by `hive req <epic-url>`).
@@ -381,13 +369,12 @@ Respond in JSON format:
     // Determine team name for labels
     const teamName = this.teams.length > 0 ? this.teams[0].name : undefined;
 
-    this.log('JIRA_SYNC_STARTED', `Syncing requirement ${freshRequirement.id} to Jira`);
+    this.log('JIRA_SYNC_STARTED', `Syncing requirement ${freshRequirement.id} to PM provider`);
 
     try {
-      const result = await syncRequirementToJira(
+      const result = await syncRequirementToProvider(
+        hiveRoot,
         this.db,
-        tokenStore,
-        pmConfig.jira,
         freshRequirement,
         storyIds,
         teamName
@@ -401,7 +388,7 @@ Respond in JSON format:
       }
 
       for (const story of result.stories) {
-        this.log('JIRA_STORY_CREATED', `Jira issue ${story.jiraKey} created for ${story.storyId}`);
+        this.log('JIRA_STORY_CREATED', `Issue ${story.key} created for ${story.storyId}`);
       }
 
       if (result.errors.length > 0) {
@@ -412,7 +399,7 @@ Respond in JSON format:
 
       this.log(
         'JIRA_SYNC_COMPLETED',
-        `Synced ${result.stories.length}/${storyIds.length} stories to Jira`
+        `Synced ${result.stories.length}/${storyIds.length} stories to PM provider`
       );
     } catch (err) {
       // Jira sync failure should not block the pipeline

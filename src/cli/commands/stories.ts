@@ -2,9 +2,7 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { join } from 'path';
-import { TokenStore } from '../../auth/token-store.js';
-import { loadConfig } from '../../config/index.js';
+import { syncStoryToProvider } from '../../connectors/project-management/operations.js';
 import {
   createStory,
   getAllStories,
@@ -14,7 +12,6 @@ import {
   updateStory,
   type StoryStatus,
 } from '../../db/queries/stories.js';
-import { syncStoryToJira } from '../../integrations/jira/stories.js';
 import { statusColor } from '../../utils/logger.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
@@ -89,7 +86,7 @@ storiesCommand
       criteria?: string[];
       json?: boolean;
     }) => {
-      await withHiveContext(async ({ paths, db }) => {
+      await withHiveContext(async ({ root, db }) => {
         // Create local story
         const story = createStory(db.db, {
           requirementId: options.requirement || null,
@@ -108,28 +105,20 @@ storiesCommand
           });
         }
 
-        // Sync to Jira if PM provider is jira
-        let jiraKey: string | null = null;
+        // Sync to PM provider if configured
+        let externalKey: string | null = null;
         try {
-          const config = loadConfig(paths.hiveDir);
-          const pmConfig = config.integrations.project_management;
+          const updatedStory = getStoryById(db.db, story.id)!;
+          const result = await syncStoryToProvider(root, db.db, updatedStory);
 
-          if (pmConfig.provider === 'jira' && pmConfig.jira) {
-            const tokenStore = new TokenStore(join(paths.hiveDir, '.env'));
-            await tokenStore.loadFromEnv();
-
-            const updatedStory = getStoryById(db.db, story.id)!;
-            const result = await syncStoryToJira(db.db, tokenStore, pmConfig.jira, updatedStory);
-
-            if (result) {
-              jiraKey = result.jiraKey;
-            }
+          if (result) {
+            externalKey = result.key;
           }
         } catch (err) {
-          // Jira sync failure should not prevent local story creation
+          // PM sync failure should not prevent local story creation
           console.warn(
             chalk.yellow(
-              `Warning: Jira sync failed: ${err instanceof Error ? err.message : String(err)}`
+              `Warning: PM sync failed: ${err instanceof Error ? err.message : String(err)}`
             )
           );
         }
@@ -142,8 +131,8 @@ storiesCommand
 
         console.log(chalk.green(`\nStory created: ${chalk.bold(story.id)}`));
         console.log(chalk.gray(`  Title: ${options.title}`));
-        if (jiraKey) {
-          console.log(chalk.gray(`  Jira:  ${jiraKey}`));
+        if (externalKey) {
+          console.log(chalk.gray(`  External:  ${externalKey}`));
         }
         console.log();
       });

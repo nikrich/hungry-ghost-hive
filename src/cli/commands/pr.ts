@@ -6,6 +6,10 @@ import { execa } from 'execa';
 import { join } from 'path';
 import { fetchLocalClusterStatus } from '../../cluster/runtime.js';
 import { loadConfig } from '../../config/loader.js';
+import {
+  postLifecycleComment,
+  syncStatusForStory,
+} from '../../connectors/project-management/operations.js';
 import { createLog } from '../../db/queries/logs.js';
 import {
   createPullRequest,
@@ -18,8 +22,6 @@ import {
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
-import { postJiraLifecycleComment } from '../../integrations/jira/comments.js';
-import { syncStatusToJira } from '../../integrations/jira/transitions.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
@@ -108,7 +110,7 @@ prCommand
         updateStory(db.db, storyId, { status: 'pr_submitted' });
 
         // Sync status change to Jira
-        await syncStatusToJira(root, db.db, storyId, 'pr_submitted');
+        await syncStatusForStory(root, db.db, storyId, 'pr_submitted');
 
         const pr = createPullRequest(db.db, {
           storyId,
@@ -145,7 +147,7 @@ prCommand
         // Post Jira comment for PR created event
         try {
           const config = loadConfig(paths.hiveDir);
-          await postJiraLifecycleComment(db.db, paths.hiveDir, config, storyId, 'pr_created', {
+          await postLifecycleComment(db.db, paths.hiveDir, config, storyId, 'pr_created', {
             agentName: options.from,
             prUrl: pr.github_pr_url || undefined,
           });
@@ -392,7 +394,7 @@ prCommand
 
       // Sync status change to Jira
       if (storyId && newStatus === 'merged') {
-        await syncStatusToJira(root, db.db, storyId, 'merged');
+        await syncStatusForStory(root, db.db, storyId, 'merged');
       }
 
       // Immediately attempt to auto-merge approved PRs instead of waiting for manager daemon cycle
@@ -462,7 +464,7 @@ prCommand
 
       // Sync status change to Jira
       if (storyId) {
-        await syncStatusToJira(root, db.db, storyId, 'qa_failed');
+        await syncStatusForStory(root, db.db, storyId, 'qa_failed');
       }
 
       console.log(chalk.yellow(`PR ${prId} rejected.`));

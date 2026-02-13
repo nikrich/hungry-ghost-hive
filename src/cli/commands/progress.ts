@@ -2,14 +2,13 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { join } from 'path';
-import { loadEnvIntoProcess } from '../../auth/env-store.js';
-import { TokenStore } from '../../auth/token-store.js';
 import { loadConfig } from '../../config/loader.js';
+import {
+  postProgressUpdate,
+  transitionSubtaskStatus,
+} from '../../connectors/project-management/operations.js';
 import { queryOne } from '../../db/client.js';
 import type { StoryRow } from '../../db/queries/stories.js';
-import { JiraClient } from '../../integrations/jira/client.js';
-import { postProgressToSubtask, transitionSubtask } from '../../integrations/jira/comments.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const progressCommand = new Command('progress')
@@ -19,7 +18,7 @@ export const progressCommand = new Command('progress')
   .option('--from <session>', 'Agent tmux session name')
   .option('--done', 'Also transition the subtask to Done')
   .action(async (storyId: string, options: { message: string; from?: string; done?: boolean }) => {
-    await withHiveContext(async ({ db, paths }) => {
+    await withHiveContext(async ({ root, db, paths }) => {
       const story = queryOne<StoryRow>(db.db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
 
       if (!story) {
@@ -47,41 +46,21 @@ export const progressCommand = new Command('progress')
       }
 
       const config = loadConfig(paths.hiveDir);
-      await postProgressToSubtask(
-        db.db,
-        paths.hiveDir,
-        config,
-        storyId,
-        options.message,
-        agentName
-      );
+      await postProgressUpdate(db.db, paths.hiveDir, config, storyId, options.message, agentName);
 
       console.log(chalk.green(`Posted progress update to subtask ${story.external_subtask_key}`));
 
       // Optionally transition to Done
       if (options.done) {
-        const pmConfig = config.integrations?.project_management;
-        if (pmConfig?.provider === 'jira' && pmConfig.jira) {
-          const tokenStore = new TokenStore(join(paths.hiveDir, '.env'));
-          await tokenStore.loadFromEnv();
-          loadEnvIntoProcess();
-          const jiraClient = new JiraClient({
-            tokenStore,
-            clientId: process.env.JIRA_CLIENT_ID || '',
-            clientSecret: process.env.JIRA_CLIENT_SECRET || '',
-          });
-          const transitioned = await transitionSubtask(
-            jiraClient,
-            story.external_subtask_key,
-            'Done'
-          );
-          if (transitioned) {
-            console.log(chalk.green(`Transitioned subtask ${story.external_subtask_key} to Done`));
-          } else {
-            console.log(
-              chalk.yellow(`Could not transition subtask to Done (may already be done).`)
-            );
-          }
+        const transitioned = await transitionSubtaskStatus(
+          root,
+          story.external_subtask_key,
+          'Done'
+        );
+        if (transitioned) {
+          console.log(chalk.green(`Transitioned subtask ${story.external_subtask_key} to Done`));
+        } else {
+          console.log(chalk.yellow(`Could not transition subtask to Done (may already be done).`));
         }
       }
     });

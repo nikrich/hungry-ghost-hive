@@ -2,12 +2,12 @@
 
 import { execa } from 'execa';
 import type { Database } from 'sql.js';
+import { syncStatusForStory } from '../connectors/project-management/operations.js';
 import { queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import { createPullRequest } from '../db/queries/pull-requests.js';
 import { updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
-import { syncStatusToJira } from '../integrations/jira/transitions.js';
 import { extractStoryIdFromBranch } from './story-id.js';
 
 const GITHUB_PR_LIST_LIMIT = 20;
@@ -277,7 +277,7 @@ export async function syncMergedPRsFromGitHub(
 
       // Sync status changes to Jira (fire and forget, after DB commit)
       for (const update of toUpdate) {
-        syncStatusToJira(root, db, update.storyId, 'merged');
+        syncStatusForStory(root, db, update.storyId, 'merged');
       }
 
       storiesUpdated += toUpdate.length;

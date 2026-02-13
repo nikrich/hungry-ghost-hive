@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import type { Database } from 'sql.js';
+import { syncStatusForStory } from '../connectors/project-management/operations.js';
 import { createLog } from '../db/queries/logs.js';
 import { getStoriesWithOrphanedAssignments, updateStory } from '../db/queries/stories.js';
-import { syncStatusToJira } from '../integrations/jira/transitions.js';
 
 /**
  * Detect and recover orphaned stories (assigned to terminated agents).
@@ -29,7 +29,7 @@ export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): 
       recovered.push(assignment.id);
 
       // Sync status change to Jira (fire and forget)
-      syncStatusToJira(rootDir, db, assignment.id, 'planned');
+      syncStatusForStory(rootDir, db, assignment.id, 'planned');
     } catch (err) {
       console.error(
         `Failed to recover orphaned story ${assignment.id}: ${err instanceof Error ? err.message : 'Unknown error'}`

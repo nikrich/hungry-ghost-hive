@@ -1,9 +1,13 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import type {
+  ConnectorCommentContext,
+  ConnectorCreateSubtaskOptions,
   ConnectorEpic,
   ConnectorIssue,
+  ConnectorLifecycleEvent,
   ConnectorParsedEpicUrl,
+  ConnectorSubtaskResult,
   CreateEpicOptions,
   CreateStoryOptions,
   SearchIssuesOptions,
@@ -75,6 +79,34 @@ export interface IProjectManagementConnector {
     hiveStatus: string,
     statusMapping: Record<string, string>
   ): Promise<boolean>;
+
+  /**
+   * Post a lifecycle event comment to an issue.
+   * @param issueKey - Issue key to comment on
+   * @param event - Lifecycle event type
+   * @param context - Additional context for the comment
+   * @returns true if successful, false otherwise
+   */
+  postComment(
+    issueKey: string,
+    event: ConnectorLifecycleEvent,
+    context?: ConnectorCommentContext
+  ): Promise<boolean>;
+
+  /**
+   * Create a subtask under a parent issue.
+   * @param options - Subtask creation options
+   * @returns Created subtask result, or null if failed
+   */
+  createSubtask(options: ConnectorCreateSubtaskOptions): Promise<ConnectorSubtaskResult | null>;
+
+  /**
+   * Transition a subtask to a target status.
+   * @param subtaskKey - Subtask key to transition
+   * @param targetStatus - Target status name
+   * @returns true if the transition was applied, false if skipped
+   */
+  transitionSubtask(subtaskKey: string, targetStatus: string): Promise<boolean>;
 
   /**
    * Check whether a string looks like an epic URL for this provider.

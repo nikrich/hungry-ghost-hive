@@ -8,9 +8,13 @@ import {
 } from '../../integrations/jira/epic-import.js';
 import type { CreateIssueRequest } from '../../integrations/jira/types.js';
 import type {
+  ConnectorCommentContext,
+  ConnectorCreateSubtaskOptions,
   ConnectorEpic,
   ConnectorIssue,
+  ConnectorLifecycleEvent,
   ConnectorParsedEpicUrl,
+  ConnectorSubtaskResult,
   CreateEpicOptions,
   CreateStoryOptions,
   SearchIssuesOptions,
@@ -221,6 +225,34 @@ export class JiraProjectManagementConnector implements IProjectManagementConnect
     statusMapping: Record<string, string>
   ): Promise<boolean> {
     return this.transitionStory(issueKeyOrId, hiveStatus, statusMapping);
+  }
+
+  async postComment(
+    issueKey: string,
+    event: ConnectorLifecycleEvent,
+    context: ConnectorCommentContext = {}
+  ): Promise<boolean> {
+    const { postComment: jiraPostComment } = await import('../../integrations/jira/comments.js');
+    const client = await this.getClient();
+    return jiraPostComment(client, issueKey, event, context);
+  }
+
+  async createSubtask(
+    options: ConnectorCreateSubtaskOptions
+  ): Promise<ConnectorSubtaskResult | null> {
+    const { createSubtask: jiraCreateSubtask } =
+      await import('../../integrations/jira/comments.js');
+    const client = await this.getClient();
+    const result = await jiraCreateSubtask(client, options);
+    if (!result) return null;
+    return { key: result.key, id: result.id };
+  }
+
+  async transitionSubtask(subtaskKey: string, targetStatus: string): Promise<boolean> {
+    const { transitionSubtask: jiraTransitionSubtask } =
+      await import('../../integrations/jira/comments.js');
+    const client = await this.getClient();
+    return jiraTransitionSubtask(client, subtaskKey, targetStatus);
   }
 
   isEpicUrl(value: string): boolean {

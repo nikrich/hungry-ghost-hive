@@ -6,6 +6,10 @@ import { join } from 'path';
 import { ClusterRuntime, fetchLocalClusterStatus } from '../../../cluster/runtime.js';
 import { loadConfig } from '../../../config/loader.js';
 import type { HiveConfig } from '../../../config/schema.js';
+import {
+  syncFromProvider,
+  syncStatusForStory,
+} from '../../../connectors/project-management/operations.js';
 import type { StoryRow } from '../../../db/client.js';
 import { queryAll, withTransaction } from '../../../db/client.js';
 import { acquireLock } from '../../../db/lock.js';
@@ -24,8 +28,6 @@ import {
   updatePullRequest,
 } from '../../../db/queries/pull-requests.js';
 import { getStoriesByStatus, updateStory } from '../../../db/queries/stories.js';
-import { syncFromJira } from '../../../integrations/jira/sync.js';
-import { syncStatusToJira } from '../../../integrations/jira/transitions.js';
 import { Scheduler } from '../../../orchestrator/scheduler.js';
 import { AgentState } from '../../../state-detectors/types.js';
 import {
@@ -491,7 +493,7 @@ async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
 }
 
 async function syncJiraStatuses(ctx: ManagerCheckContext): Promise<void> {
-  const syncedStories = await syncFromJira(ctx.root, ctx.db.db);
+  const syncedStories = await syncFromProvider(ctx.root, ctx.db.db);
   if (syncedStories > 0) {
     ctx.counters.jiraSynced = syncedStories;
     console.log(chalk.cyan(`  Synced ${syncedStories} story status(es) from Jira`));
@@ -601,7 +603,7 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
       });
 
       // Sync status change to Jira
-      await syncStatusToJira(ctx.root, ctx.db.db, storyId, 'qa_failed');
+      await syncStatusForStory(ctx.root, ctx.db.db, storyId, 'qa_failed');
     }
 
     if (pr.submitted_by) {
