@@ -3,11 +3,26 @@
 import { describe, expect, it } from 'vitest';
 import type { StoryRow } from '../db/client.js';
 import {
+  formatSeniorSessionName,
   generateIntermediatePrompt,
   generateJuniorPrompt,
   generateQAPrompt,
   generateSeniorPrompt,
 } from './prompt-templates.js';
+
+describe('formatSeniorSessionName', () => {
+  it('should format a simple team name', () => {
+    expect(formatSeniorSessionName('TestTeam')).toBe('hive-senior-testteam');
+  });
+
+  it('should replace non-alphanumeric characters with hyphens', () => {
+    expect(formatSeniorSessionName('Test_Team-123!@#')).toBe('hive-senior-test-team-123---');
+  });
+
+  it('should lowercase the team name', () => {
+    expect(formatSeniorSessionName('MY-TEAM')).toBe('hive-senior-my-team');
+  });
+});
 
 describe('Prompt Templates', () => {
   const teamName = 'TestTeam';
