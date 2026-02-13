@@ -93,13 +93,25 @@ describe('getActiveSprint', () => {
     expect(sprint).toBeNull();
   });
 
-  it('should return null for kanban boards (API error)', async () => {
+  it('should return null for kanban boards (400 error)', async () => {
     const client = createMockClient(async () => {
-      throw new Error('The board does not support sprints');
+      const err: any = new Error('The board does not support sprints');
+      err.statusCode = 400;
+      throw err;
     });
 
     const sprint = await getActiveSprint(client, 99);
     expect(sprint).toBeNull();
+  });
+
+  it('should propagate auth errors (401) instead of swallowing them', async () => {
+    const client = createMockClient(async () => {
+      const err: any = new Error('Unauthorized');
+      err.statusCode = 401;
+      throw err;
+    });
+
+    await expect(getActiveSprint(client, 1)).rejects.toThrow('Unauthorized');
   });
 });
 
@@ -146,7 +158,9 @@ describe('getActiveSprintForProject', () => {
         };
       }
       if (url.includes(`/board/2/sprint`)) {
-        throw new Error('Kanban boards do not support sprints');
+        const err: any = new Error('Kanban boards do not support sprints');
+        err.statusCode = 400;
+        throw err;
       }
       if (url.includes(`/board/1/sprint`)) {
         return { values: [sampleSprint], startAt: 0, maxResults: 50, isLast: true };
@@ -183,5 +197,49 @@ describe('getActiveSprintForProject', () => {
 
     const result = await getActiveSprintForProject(client, 'EMPTY');
     expect(result).toBeNull();
+  });
+
+  it('should use fast path when preferredBoardId is set', async () => {
+    const client = createMockClient(async (url: string) => {
+      if (url.includes('/board/3/sprint')) {
+        return { values: [sampleSprint], startAt: 0, maxResults: 50, isLast: true };
+      }
+      throw new Error('Should not reach board listing');
+    });
+
+    const result = await getActiveSprintForProject(client, 'PROJ', 3);
+    expect(result).not.toBeNull();
+    expect(result!.sprint.id).toBe(42);
+    expect(result!.boardId).toBe(3);
+    // Should only have called once (direct board sprint query), not board listing
+    expect(client.request).toHaveBeenCalledTimes(1);
+  });
+
+  it('should fall back to board discovery when preferredBoardId sprint query fails', async () => {
+    const client = createMockClient(async (url: string) => {
+      if (url.includes('/board/99/sprint')) {
+        const err: any = new Error('Server error');
+        err.statusCode = 500;
+        throw err;
+      }
+      if (url.includes('board?projectKeyOrId=')) {
+        return {
+          values: [sampleBoard],
+          startAt: 0,
+          maxResults: 50,
+          total: 1,
+          isLast: true,
+        };
+      }
+      if (url.includes('/board/1/sprint')) {
+        return { values: [sampleSprint], startAt: 0, maxResults: 50, isLast: true };
+      }
+      return { values: [], startAt: 0, maxResults: 50, isLast: true };
+    });
+
+    const result = await getActiveSprintForProject(client, 'PROJ', 99);
+    expect(result).not.toBeNull();
+    expect(result!.sprint.id).toBe(42);
+    expect(result!.boardId).toBe(1);
   });
 });

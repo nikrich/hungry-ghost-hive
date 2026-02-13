@@ -39,6 +39,7 @@ export async function getBoardsForProject(
 /**
  * Get the active sprint for a specific board.
  * Returns null if the board has no active sprint (e.g., kanban boards).
+ * Throws on auth/network errors so callers can handle retry logic.
  */
 export async function getActiveSprint(
   client: JiraClient,
@@ -48,9 +49,14 @@ export async function getActiveSprint(
   try {
     const response = await client.request<SprintListResponse>(url);
     return response.values.length > 0 ? response.values[0] : null;
-  } catch {
-    // Kanban boards don't support sprints — return null gracefully
-    return null;
+  } catch (err) {
+    // Kanban boards return 400/404 for sprint endpoints — return null gracefully.
+    // But propagate auth (401/403) and network errors so callers can handle them.
+    const statusCode = (err as { statusCode?: number }).statusCode;
+    if (statusCode === 400 || statusCode === 404) {
+      return null;
+    }
+    throw err;
   }
 }
 
@@ -92,11 +98,13 @@ export async function moveIssuesToSprint(
 }
 
 /**
- * Find the active sprint for a project by discovering its boards.
- * Tries each board until an active sprint is found.
+ * Find the active sprint for a project.
  *
- * If the Agile API is not authorized, falls back to reading the sprint
- * custom field from an existing issue in the project.
+ * Strategy (in order):
+ * 1. If a preferred board ID is configured, query its sprints directly
+ *    (most reliable — avoids the board listing endpoint).
+ * 2. List all boards for the project and check each for an active sprint.
+ * 3. Fall back to discovering sprints via REST API v3 JQL search.
  *
  * Returns null if the project has no active sprint.
  */
@@ -105,10 +113,27 @@ export async function getActiveSprintForProject(
   projectKey: string,
   preferredBoardId?: number
 ): Promise<{ sprint: JiraSprint; boardId: number } | null> {
+  // Fast path: if a board ID is configured, try querying it directly.
+  // This avoids the board-listing endpoint which requires different permissions.
+  if (preferredBoardId) {
+    try {
+      const sprint = await getActiveSprint(client, preferredBoardId);
+      if (sprint) {
+        return { sprint, boardId: preferredBoardId };
+      }
+      // Sprint endpoint succeeded but no active sprint — return null
+      return null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.debug(`Direct sprint query on board ${preferredBoardId} failed: ${msg}`);
+      // Fall through to board discovery
+    }
+  }
+
+  // Standard path: discover boards, then find an active sprint.
   try {
     const boards = await getBoardsForProject(client, projectKey);
 
-    // Try the preferred board first if specified
     const sortedBoards = preferredBoardId
       ? [...boards].sort((a, b) =>
           a.id === preferredBoardId ? -1 : b.id === preferredBoardId ? 1 : 0
@@ -116,16 +141,21 @@ export async function getActiveSprintForProject(
       : boards;
 
     for (const board of sortedBoards) {
-      const sprint = await getActiveSprint(client, board.id);
-      if (sprint) {
-        return { sprint, boardId: board.id };
+      try {
+        const sprint = await getActiveSprint(client, board.id);
+        if (sprint) {
+          return { sprint, boardId: board.id };
+        }
+      } catch {
+        // This board's sprint endpoint failed — try next board
+        continue;
       }
     }
 
     return null;
-  } catch {
-    // Agile API not authorized — try REST API v3 fallback
-    logger.info('Agile API not available, falling back to sprint field discovery via REST API v3');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.info(`Agile API board listing failed (${msg}), falling back to REST API v3`);
     return getActiveSprintViaRestApi(client, projectKey, preferredBoardId);
   }
 }
@@ -186,8 +216,13 @@ async function getActiveSprintViaRestApi(
         boardId: s.boardId ?? 0,
       };
     }
-  } catch {
-    // JQL sprint functions may not work — return null
+
+    logger.debug(
+      `REST API v3 fallback found no issues in open/future sprints for project ${projectKey}`
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.debug(`REST API v3 sprint discovery failed for project ${projectKey}: ${msg}`);
   }
 
   return null;
