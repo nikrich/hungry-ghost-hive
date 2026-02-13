@@ -2,34 +2,45 @@
 
 /**
  * Unified story ID validation and extraction utilities
- * Story IDs follow the pattern: STORY-<identifier>
- * Examples: STORY-IMP-003, STORY-REF-022, STORY-ABC123XYZ
+ * Story IDs follow the pattern: PREFIX-<identifier>
+ * where PREFIX is 2+ uppercase letters (STORY, CONN, HT, INFRA, etc.)
+ * Examples: STORY-IMP-003, CONN-008, HT-001, INFRA-042
  */
 
 /**
- * Regex pattern for extracting story IDs from branch names
- * Matches: STORY-<alphanumeric and hyphens>
- * Examples: STORY-IMP-003, STORY-REF-022, STORY-ABC123XYZ
+ * Case-sensitive pattern matching any uppercase-letter prefix (2+ chars)
+ * followed by uppercase-alphanumeric segments separated by hyphens.
+ * Naturally stops at description segments (which contain lowercase letters).
+ * Examples: CONN-003, STORY-FIX-004, HT-001
  */
-export const STORY_ID_PATTERN = /STORY-[A-Z0-9]+(-[A-Z0-9]+)*/i;
+export const STORY_ID_PATTERN = /[A-Z]{2,}-[A-Z0-9]+(-[A-Z0-9]+)*/;
+
+/**
+ * Legacy case-insensitive pattern for STORY- prefix only.
+ * Used as a fallback when branch names contain lowercase story IDs.
+ */
+const LEGACY_STORY_PATTERN = /STORY-[A-Z0-9]+(-[A-Z0-9]+)*/i;
 
 /**
  * Validate if a string is a valid story ID
  */
 export function isValidStoryId(id: string | undefined | null): id is string {
   if (!id || typeof id !== 'string') return false;
-  return /^STORY-[A-Z0-9]+(-[A-Z0-9]+)*$/i.test(id);
+  return /^[A-Z]{2,}-[A-Z0-9]+(-[A-Z0-9]+)*$/i.test(id);
 }
 
 /**
  * Extract story ID from a branch name
- * Supports patterns like: feature/STORY-001-description, STORY-REF-022, etc.
- * The function extracts the story ID and removes any trailing segments that look like descriptions
- * (segments containing lowercase letters that aren't pure digits or uppercase)
+ * Supports patterns like: feature/CONN-003-description, feature/STORY-001-test, HT-001, etc.
+ * First tries the case-sensitive general pattern (matches any uppercase prefix),
+ * then falls back to the legacy case-insensitive STORY- pattern.
+ * Removes any trailing segments that look like descriptions.
  */
 export function extractStoryIdFromBranch(branchName: string): string | null {
   if (!branchName) return null;
-  const match = branchName.match(STORY_ID_PATTERN);
+  // Try legacy STORY- pattern first (case-insensitive) for backward compatibility,
+  // then fall back to general pattern for non-STORY prefixes (CONN-, HT-, INFRA-, etc.)
+  const match = branchName.match(LEGACY_STORY_PATTERN) || branchName.match(STORY_ID_PATTERN);
   if (!match) return null;
 
   // Get the original matched text (preserving case)
