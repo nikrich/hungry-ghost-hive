@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.28.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.27.0...hungry-ghost-hive-v0.28.0) (2026-02-12)
+
+
+### Features
+
+* add Jira CLI, sprint assignment, and board selection in init ([#332](https://github.com/nikrich/hungry-ghost-hive/issues/332)) ([6d0d223](https://github.com/nikrich/hungry-ghost-hive/commit/6d0d223cd41239d7da6929f08f3309b353ea04fb))
+* Jira integration — CLI, sprint assignment, env loading ([#333](https://github.com/nikrich/hungry-ghost-hive/issues/333)) ([7016cba](https://github.com/nikrich/hungry-ghost-hive/commit/7016cbae2eaeeb19f3eea0d008ef4c7491002c74))
+* rework Jira integration for epic URL import and sprint assignment ([#331](https://github.com/nikrich/hungry-ghost-hive/issues/331)) ([ae2b4a8](https://github.com/nikrich/hungry-ghost-hive/commit/ae2b4a852dff1fa5bb25382d5074930b540e615b))
+
 ## [0.27.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.26.0...hungry-ghost-hive-v0.27.0) (2026-02-12)
 
 
