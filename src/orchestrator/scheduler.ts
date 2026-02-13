@@ -10,7 +10,7 @@ import {
   validateModelCliCompatibility,
 } from '../cli-runtimes/index.js';
 import type { HiveConfig, ModelsConfig, QAConfig, ScalingConfig } from '../config/schema.js';
-import { queryAll, queryOne, withTransaction } from '../db/client.js';
+import { queryAll, withTransaction } from '../db/client.js';
 import {
   createAgent,
   getAgentById,
@@ -23,12 +23,9 @@ import { createLog } from '../db/queries/logs.js';
 import { isAgentReviewingPR } from '../db/queries/pull-requests.js';
 import { type RequirementRow } from '../db/queries/requirements.js';
 import {
-  getBatchStoryDependencies,
   getPlannedStories,
   getStoriesDependingOn,
-  getStoriesWithOrphanedAssignments,
   getStoryById,
-  getStoryDependencies,
   updateStory,
   type StoryRow,
 } from '../db/queries/stories.js';
@@ -49,6 +46,10 @@ import {
   startManager,
 } from '../tmux/manager.js';
 import * as logger from '../utils/logger.js';
+import { selectAgentWithLeastWorkload } from './agent-selector.js';
+import { getCapacityPoints, selectStoriesForCapacity } from './capacity-planner.js';
+import { areDependenciesSatisfied, topologicalSort } from './dependency-resolver.js';
+import { detectAndRecoverOrphanedStories } from './orphan-recovery.js';
 import {
   generateIntermediatePrompt,
   generateJuniorPrompt,
@@ -68,8 +69,6 @@ const GODMODE_TEMPERATURE = 0.7;
 const DEFAULT_PENDING_PER_QA_AGENT = 2.5;
 /** Default maximum number of QA agents per team */
 const DEFAULT_MAX_QA_AGENTS = 5;
-/** Minimum refactor budget points when capacity is low */
-const MIN_REFACTOR_BUDGET_POINTS = 1;
 /** Default manager check interval in seconds */
 const DEFAULT_MANAGER_INTERVAL_SECONDS = 60;
 
@@ -162,209 +161,9 @@ export class Scheduler {
     }
   }
 
-  /**
-   * Build a dependency graph for stories
-   * Returns a map of story ID to its direct dependencies
-   */
-  private buildDependencyGraph(stories: StoryRow[]): Map<string, Set<string>> {
-    const graph = new Map<string, Set<string>>();
-    const storyIds = new Set(stories.map(s => s.id));
-
-    // Initialize all stories in the graph
-    for (const story of stories) {
-      if (!graph.has(story.id)) {
-        graph.set(story.id, new Set());
-      }
-    }
-
-    // Fetch all dependencies in a single query to avoid N+1 pattern
-    const allDepsMap = getBatchStoryDependencies(this.db, Array.from(storyIds));
-
-    // Add dependencies (only within the planned set; external deps handled by areDependenciesSatisfied)
-    for (const [storyId, depIds] of allDepsMap) {
-      for (const depId of depIds) {
-        if (storyIds.has(depId)) {
-          graph.get(storyId)!.add(depId);
-        }
-      }
-    }
-
-    return graph;
-  }
-
-  /**
-   * Topological sort of stories based on dependencies
-   * Returns stories in order where dependencies come before dependents
-   * Returns null if circular dependency is detected
-   */
-  private topologicalSort(stories: StoryRow[]): StoryRow[] | null {
-    const graph = this.buildDependencyGraph(stories);
-    const storyMap = new Map(stories.map(s => [s.id, s]));
-
-    // Kahn's algorithm for topological sort
-    const inDegree = new Map<string, number>();
-    const result: StoryRow[] = [];
-
-    // Calculate in-degrees: count how many dependencies each story has
-    for (const [storyId, dependencies] of graph.entries()) {
-      inDegree.set(storyId, dependencies.size);
-    }
-
-    // Find all nodes with in-degree 0 (no dependencies)
-    const queue: string[] = [];
-    for (const [storyId, degree] of inDegree.entries()) {
-      if (degree === 0) {
-        queue.push(storyId);
-      }
-    }
-
-    // Process queue using Kahn's algorithm
-    while (queue.length > 0) {
-      const storyId = queue.shift()!;
-      const story = storyMap.get(storyId);
-      if (story) {
-        result.push(story);
-      }
-
-      // For each story that depends on this one, reduce in-degree
-      for (const [otherStoryId, dependencies] of graph.entries()) {
-        if (dependencies.has(storyId)) {
-          const newDegree = (inDegree.get(otherStoryId) || 0) - 1;
-          inDegree.set(otherStoryId, newDegree);
-          if (newDegree === 0) {
-            queue.push(otherStoryId);
-          }
-        }
-      }
-    }
-
-    // Check for circular dependencies
-    if (result.length !== stories.length) {
-      return null;
-    }
-
-    return result;
-  }
-
-  /**
-   * Check if a story's dependencies are satisfied
-   * A dependency is satisfied only if it's merged (completed)
-   */
-  private areDependenciesSatisfied(storyId: string): boolean {
-    const dependencies = getStoryDependencies(this.db, storyId);
-
-    for (const dep of dependencies) {
-      // Check if dependency is in a terminal state (merged)
-      if (dep.status !== 'merged') {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  /**
-   * Select the agent with the least workload (queue-depth aware)
-   * Returns the agent with fewest active stories; breaks ties by creation order
-   */
-  private selectAgentWithLeastWorkload(agents: AgentRow[]): AgentRow {
-    let selectedAgent = agents[0];
-    let minWorkload = this.getAgentWorkload(selectedAgent.id);
-
-    for (let i = 1; i < agents.length; i++) {
-      const workload = this.getAgentWorkload(agents[i].id);
-      if (workload < minWorkload) {
-        minWorkload = workload;
-        selectedAgent = agents[i];
-      }
-    }
-
-    return selectedAgent;
-  }
-
-  /**
-   * Calculate queue depth for an agent (number of active stories)
-   */
-  private getAgentWorkload(agentId: string): number {
-    const result = queryOne<{ count: number }>(
-      this.db,
-      `
-      SELECT COUNT(*) as count FROM stories
-      WHERE assigned_agent_id = ?
-        AND status IN ('in_progress', 'review', 'qa', 'qa_failed')
-    `,
-      [agentId]
-    );
-    return result?.count || 0;
-  }
-
-  /**
-   * Convention-based story typing: refactor stories start with "Refactor:".
-   */
-  private isRefactorStory(story: StoryRow): boolean {
-    return /^refactor\s*:/i.test(story.title.trim());
-  }
-
-  /**
-   * Capacity computations prefer story points, then complexity score, then 1.
-   */
-  private getCapacityPoints(story: StoryRow): number {
-    return story.story_points || story.complexity_score || 1;
-  }
-
-  /**
-   * Apply configurable refactor-capacity policy before assignment.
-   */
-  private selectStoriesForCapacity(stories: StoryRow[]): StoryRow[] {
-    const refactorConfig = this.config.scaling.refactor || {
-      enabled: false,
-      capacity_percent: 0,
-      allow_without_feature_work: false,
-    };
-
-    if (!refactorConfig.enabled) {
-      return stories.filter(story => !this.isRefactorStory(story));
-    }
-
-    const featureStories = stories.filter(story => !this.isRefactorStory(story));
-    const featurePoints = featureStories.reduce(
-      (sum, story) => sum + this.getCapacityPoints(story),
-      0
-    );
-    const hasFeatureWork = featureStories.length > 0;
-
-    if (!hasFeatureWork && !refactorConfig.allow_without_feature_work) {
-      return [];
-    }
-
-    let refactorBudgetPoints = hasFeatureWork
-      ? Math.floor((featurePoints * refactorConfig.capacity_percent) / 100)
-      : Number.POSITIVE_INFINITY;
-
-    if (hasFeatureWork && refactorConfig.capacity_percent > 0 && refactorBudgetPoints === 0) {
-      refactorBudgetPoints = MIN_REFACTOR_BUDGET_POINTS;
-    }
-
-    let usedRefactorPoints = 0;
-    const selected: StoryRow[] = [];
-
-    for (const story of stories) {
-      if (!this.isRefactorStory(story)) {
-        selected.push(story);
-        continue;
-      }
-
-      const points = this.getCapacityPoints(story);
-      if (usedRefactorPoints + points > refactorBudgetPoints) {
-        continue;
-      }
-
-      selected.push(story);
-      usedRefactorPoints += points;
-    }
-
-    return selected;
-  }
+  // Dependency resolution, capacity planning, agent selection, and orphan recovery
+  // are extracted to standalone modules for direct testability.
+  // See: dependency-resolver.ts, capacity-planner.ts, agent-selector.ts, orphan-recovery.ts
 
   /**
    * Assign planned stories to available agents
@@ -380,7 +179,7 @@ export class Scheduler {
     let preventedDuplicates = 0;
 
     // Topological sort stories to respect dependencies
-    const sortedStories = this.topologicalSort(plannedStories);
+    const sortedStories = topologicalSort(this.db, plannedStories);
     if (sortedStories === null) {
       errors.push('Circular dependency detected in planned stories');
       return { assigned, errors, preventedDuplicates };
@@ -422,7 +221,7 @@ export class Scheduler {
       }
 
       // Assign stories based on complexity and capacity policy
-      const storiesToAssign = this.selectStoriesForCapacity(stories);
+      const storiesToAssign = selectStoriesForCapacity(stories, this.config.scaling);
 
       // Separate blocker stories from regular stories
       const blockerStories: StoryRow[] = [];
@@ -454,7 +253,7 @@ export class Scheduler {
         }
 
         // Check if dependencies are satisfied before assigning
-        if (!this.areDependenciesSatisfied(story.id)) {
+        if (!areDependenciesSatisfied(this.db, story.id)) {
           continue;
         }
 
@@ -471,7 +270,8 @@ export class Scheduler {
         } else if (complexity <= this.config.scaling.junior_max_complexity) {
           // Assign to Junior with least workload
           const juniors = agents.filter(a => a.type === 'junior' && a.status === 'idle');
-          targetAgent = juniors.length > 0 ? this.selectAgentWithLeastWorkload(juniors) : undefined;
+          targetAgent =
+            juniors.length > 0 ? selectAgentWithLeastWorkload(this.db, juniors) : undefined;
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnJunior(teamId, team.name, team.repo_path);
@@ -482,7 +282,7 @@ export class Scheduler {
               );
               targetAgent =
                 intermediates.length > 0
-                  ? this.selectAgentWithLeastWorkload(intermediates)
+                  ? selectAgentWithLeastWorkload(this.db, intermediates)
                   : senior;
             }
           }
@@ -492,7 +292,9 @@ export class Scheduler {
             a => a.type === 'intermediate' && a.status === 'idle'
           );
           targetAgent =
-            intermediates.length > 0 ? this.selectAgentWithLeastWorkload(intermediates) : undefined;
+            intermediates.length > 0
+              ? selectAgentWithLeastWorkload(this.db, intermediates)
+              : undefined;
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnIntermediate(teamId, team.name, team.repo_path);
@@ -663,7 +465,7 @@ export class Scheduler {
 
     // Filter out stories with unresolved dependencies
     for (const story of stories) {
-      if (this.areDependenciesSatisfied(story.id)) {
+      if (areDependenciesSatisfied(this.db, story.id)) {
         return story;
       }
     }
@@ -683,13 +485,14 @@ export class Scheduler {
       const plannedStories = getPlannedStories(this.db).filter(s => s.team_id === team.id);
 
       // Filter to only assignable stories (dependencies satisfied, within refactor capacity)
-      const assignableStories = this.selectStoriesForCapacity(plannedStories).filter(story =>
-        this.areDependenciesSatisfied(story.id)
-      );
+      const assignableStories = selectStoriesForCapacity(
+        plannedStories,
+        this.config.scaling
+      ).filter(story => areDependenciesSatisfied(this.db, story.id));
 
       // Count story points only from assignable work
       const assignableStoryPoints = assignableStories.reduce(
-        (sum, story) => sum + this.getCapacityPoints(story),
+        (sum, story) => sum + getCapacityPoints(story),
         0
       );
 
@@ -727,41 +530,6 @@ export class Scheduler {
         }
       }
     }
-  }
-
-  /**
-   * Detect and recover orphaned stories (assigned to terminated agents)
-   * Returns the story IDs that were recovered
-   */
-  private detectAndRecoverOrphanedStories(): string[] {
-    const orphanedAssignments = getStoriesWithOrphanedAssignments(this.db);
-    const recovered: string[] = [];
-
-    for (const assignment of orphanedAssignments) {
-      try {
-        // Update story in single atomic operation
-        updateStory(this.db, assignment.id, {
-          assignedAgentId: null,
-          status: 'planned',
-        });
-        createLog(this.db, {
-          agentId: 'scheduler',
-          storyId: assignment.id,
-          eventType: 'ORPHANED_STORY_RECOVERED',
-          message: `Recovered from terminated agent ${assignment.agent_id}`,
-        });
-        recovered.push(assignment.id);
-
-        // Sync status change to Jira (fire and forget)
-        syncStatusToJira(this.config.rootDir, this.db, assignment.id, 'planned');
-      } catch (err) {
-        console.error(
-          `Failed to recover orphaned story ${assignment.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
-        );
-      }
-    }
-
-    return recovered;
   }
 
   /**
@@ -827,7 +595,7 @@ export class Scheduler {
     }
 
     // Detect and recover orphaned stories (assigned to terminated agents)
-    const orphanedRecovered = this.detectAndRecoverOrphanedStories();
+    const orphanedRecovered = detectAndRecoverOrphanedStories(this.db, this.config.rootDir);
 
     return { terminated, revived, orphanedRecovered };
   }

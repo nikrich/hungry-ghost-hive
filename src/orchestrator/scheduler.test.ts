@@ -15,6 +15,18 @@ import {
 } from '../db/queries/stories.js';
 import { createTeam } from '../db/queries/teams.js';
 import * as worktreeModule from '../git/worktree.js';
+import { getAgentWorkload, selectAgentWithLeastWorkload } from './agent-selector.js';
+import {
+  getCapacityPoints,
+  isRefactorStory,
+  selectStoriesForCapacity,
+} from './capacity-planner.js';
+import {
+  areDependenciesSatisfied,
+  buildDependencyGraph,
+  topologicalSort,
+} from './dependency-resolver.js';
+import { detectAndRecoverOrphanedStories } from './orphan-recovery.js';
 import { Scheduler } from './scheduler.js';
 
 vi.mock('../git/worktree.js', () => ({
@@ -181,8 +193,7 @@ describe('Scheduler Topological Sort', () => {
     const story2 = createStory(db, { teamId: team.id, title: 'Story 2', description: 'Test' });
 
     // Mock the private method by accessing it through reflection
-    const sortMethod = (scheduler as any).topologicalSort;
-    const sorted = sortMethod.call(scheduler, [story1, story2]);
+    const sorted = topologicalSort(db, [story1, story2]);
 
     expect(sorted).not.toBeNull();
     expect(sorted).toHaveLength(2);
@@ -202,8 +213,7 @@ describe('Scheduler Topological Sort', () => {
     addStoryDependency(db, storyB.id, storyA.id);
     addStoryDependency(db, storyC.id, storyB.id);
 
-    const sortMethod = (scheduler as any).topologicalSort;
-    const sorted = sortMethod.call(scheduler, [storyC, storyA, storyB]);
+    const sorted = topologicalSort(db, [storyC, storyA, storyB]);
 
     expect(sorted).not.toBeNull();
     expect(sorted).toHaveLength(3);
@@ -230,8 +240,7 @@ describe('Scheduler Topological Sort', () => {
     addStoryDependency(db, storyD.id, storyB.id);
     addStoryDependency(db, storyD.id, storyC.id);
 
-    const sortMethod = (scheduler as any).topologicalSort;
-    const sorted = sortMethod.call(scheduler, [storyD, storyB, storyA, storyC]);
+    const sorted = topologicalSort(db, [storyD, storyB, storyA, storyC]);
 
     expect(sorted).not.toBeNull();
     expect(sorted).toHaveLength(4);
@@ -261,8 +270,7 @@ describe('Scheduler Topological Sort', () => {
     addStoryDependency(db, storyB.id, storyA.id);
     addStoryDependency(db, storyA.id, storyB.id);
 
-    const sortMethod = (scheduler as any).topologicalSort;
-    const sorted = sortMethod.call(scheduler, [storyA, storyB]);
+    const sorted = topologicalSort(db, [storyA, storyB]);
 
     expect(sorted).toBeNull();
   });
@@ -285,12 +293,12 @@ describe('Scheduler Dependency Satisfaction', () => {
     addStoryDependency(db, mainStory.id, depStory.id);
 
     // Initially, dependencies are not satisfied
-    let isSatisfied = (scheduler as any).areDependenciesSatisfied.call(scheduler, mainStory.id);
+    let isSatisfied = areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(false);
 
     // Mark dependency as merged
     updateStory(db, depStory.id, { status: 'merged' });
-    isSatisfied = (scheduler as any).areDependenciesSatisfied.call(scheduler, mainStory.id);
+    isSatisfied = areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(true);
   });
 
@@ -311,7 +319,7 @@ describe('Scheduler Dependency Satisfaction', () => {
 
     // Mark dependency as in_progress - this should NOT satisfy the dependency
     updateStory(db, depStory.id, { status: 'in_progress' });
-    const isSatisfied = (scheduler as any).areDependenciesSatisfied.call(scheduler, mainStory.id);
+    const isSatisfied = areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(false);
   });
 
@@ -333,7 +341,7 @@ describe('Scheduler Dependency Satisfaction', () => {
     // Update main story status to planned (default)
     updateStory(db, mainStory.id, { status: 'planned' });
 
-    const isSatisfied = (scheduler as any).areDependenciesSatisfied.call(scheduler, mainStory.id);
+    const isSatisfied = areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(false);
   });
 
@@ -356,12 +364,12 @@ describe('Scheduler Dependency Satisfaction', () => {
 
     // Mark only first dependency as merged
     updateStory(db, dep1.id, { status: 'merged' });
-    let isSatisfied = (scheduler as any).areDependenciesSatisfied.call(scheduler, mainStory.id);
+    let isSatisfied = areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(false);
 
     // Mark second dependency as merged too
     updateStory(db, dep2.id, { status: 'merged' });
-    isSatisfied = (scheduler as any).areDependenciesSatisfied.call(scheduler, mainStory.id);
+    isSatisfied = areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(true);
   });
 });
@@ -380,8 +388,7 @@ describe('Scheduler Build Dependency Graph', () => {
     addStoryDependency(db, storyB.id, storyA.id);
     addStoryDependency(db, storyC.id, storyA.id);
 
-    const graphMethod = (scheduler as any).buildDependencyGraph;
-    const graph = graphMethod.call(scheduler, [storyA, storyB, storyC]);
+    const graph = buildDependencyGraph(db, [storyA, storyB, storyC]);
 
     expect(graph.has(storyA.id)).toBe(true);
     expect(graph.has(storyB.id)).toBe(true);
@@ -405,9 +412,8 @@ describe('Scheduler Build Dependency Graph', () => {
     // B depends on A (A is not in the filter list)
     addStoryDependency(db, storyB.id, storyA.id);
 
-    const graphMethod = (scheduler as any).buildDependencyGraph;
     // Only include B and C in the graph
-    const graph = graphMethod.call(scheduler, [storyB, storyC]);
+    const graph = buildDependencyGraph(db, [storyB, storyC]);
 
     expect(graph.has(storyB.id)).toBe(true);
     expect(graph.has(storyC.id)).toBe(true);
@@ -479,17 +485,15 @@ describe('Scheduler Orphaned Story Recovery', () => {
     });
 
     // Get the recovery method
-    const recoverMethod = (scheduler as any).detectAndRecoverOrphanedStories;
-    const recovered = recoverMethod.call(scheduler);
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
 
     // Verify the story was recovered
     expect(recovered).toContain(story.id);
     expect(recovered.length).toBe(1);
 
     // Verify the story's assignment was cleared and status changed
-    const recoveredStory = (scheduler as any).db.exec(
-      `SELECT assigned_agent_id, status FROM stories WHERE id = ?`,
-      [story.id]
+    const recoveredStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
     expect(recoveredStory?.[0]).toBeNull(); // assigned_agent_id should be null
@@ -519,16 +523,14 @@ describe('Scheduler Orphaned Story Recovery', () => {
     });
 
     // Get the recovery method
-    const recoverMethod = (scheduler as any).detectAndRecoverOrphanedStories;
-    const recovered = recoverMethod.call(scheduler);
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
 
     // Verify no stories were recovered
     expect(recovered.length).toBe(0);
 
     // Verify the story's assignment was NOT changed
-    const unchangedStory = (scheduler as any).db.exec(
-      `SELECT assigned_agent_id, status FROM stories WHERE id = ?`,
-      [story.id]
+    const unchangedStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
     expect(unchangedStory?.[0]).toBe(activeAgentId);
@@ -572,8 +574,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     });
 
     // Get the recovery method
-    const recoverMethod = (scheduler as any).detectAndRecoverOrphanedStories;
-    const recovered = recoverMethod.call(scheduler);
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
 
     // Verify both stories were recovered
     expect(recovered.length).toBe(2);
@@ -583,18 +584,15 @@ describe('Scheduler Orphaned Story Recovery', () => {
 });
 
 describe('Scheduler Refactor Capacity Policy', () => {
-  function createSchedulerWithRefactorConfig(config: {
+  function createRefactorScalingConfig(config: {
     enabled: boolean;
     capacity_percent: number;
     allow_without_feature_work: boolean;
-  }): Scheduler {
-    return new Scheduler(db, {
-      ...mockConfig,
-      scaling: {
-        ...mockConfig.scaling,
-        refactor: config,
-      },
-    } as any);
+  }) {
+    return {
+      ...mockConfig.scaling,
+      refactor: config,
+    } as any;
   }
 
   it('should enforce refactor budget based on feature workload', () => {
@@ -625,18 +623,20 @@ describe('Scheduler Refactor Capacity Policy', () => {
     });
     updateStory(db, refactorB.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
 
-    const localScheduler = createSchedulerWithRefactorConfig({
+    const scalingConfig = createRefactorScalingConfig({
       enabled: true,
       capacity_percent: 10,
       allow_without_feature_work: true,
     });
 
-    const selectMethod = (localScheduler as any).selectStoriesForCapacity;
-    const selected = selectMethod.call(localScheduler, [
-      getStoryById(db, feature.id)!,
-      getStoryById(db, refactorA.id)!,
-      getStoryById(db, refactorB.id)!,
-    ]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [
+        getStoryById(db, feature.id)!,
+        getStoryById(db, refactorA.id)!,
+        getStoryById(db, refactorB.id)!,
+      ],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected.map(s => s.id)).toContain(feature.id);
     expect(selected.map(s => s.id)).toContain(refactorA.id);
@@ -656,16 +656,16 @@ describe('Scheduler Refactor Capacity Policy', () => {
     });
     updateStory(db, refactor.id, { status: 'planned', storyPoints: 3, complexityScore: 3 });
 
-    const localScheduler = createSchedulerWithRefactorConfig({
+    const scalingConfig = createRefactorScalingConfig({
       enabled: true,
       capacity_percent: 10,
       allow_without_feature_work: true,
     });
 
-    const selectMethod = (localScheduler as any).selectStoriesForCapacity;
-    const selected = selectMethod.call(localScheduler, [
-      getStoryById(db, refactor.id)!,
-    ]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [getStoryById(db, refactor.id)!],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected).toHaveLength(1);
     expect(selected[0].id).toBe(refactor.id);
@@ -684,16 +684,16 @@ describe('Scheduler Refactor Capacity Policy', () => {
     });
     updateStory(db, refactor.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
 
-    const localScheduler = createSchedulerWithRefactorConfig({
+    const scalingConfig = createRefactorScalingConfig({
       enabled: true,
       capacity_percent: 10,
       allow_without_feature_work: false,
     });
 
-    const selectMethod = (localScheduler as any).selectStoriesForCapacity;
-    const selected = selectMethod.call(localScheduler, [
-      getStoryById(db, refactor.id)!,
-    ]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [getStoryById(db, refactor.id)!],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected).toHaveLength(0);
   });
@@ -738,25 +738,19 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     };
   }
 
-  function mkSchedulerWithRefactor(config?: {
+  function mkScalingConfig(config?: {
     enabled: boolean;
     capacity_percent: number;
     allow_without_feature_work: boolean;
-  }): Scheduler {
+  }) {
     if (!config) {
-      return new Scheduler(db, {
-        ...mockConfig,
-        scaling: { ...mockConfig.scaling },
-      } as any);
+      return { ...mockConfig.scaling } as any;
     }
 
-    return new Scheduler(db, {
-      ...mockConfig,
-      scaling: {
-        ...mockConfig.scaling,
-        refactor: config,
-      },
-    } as any);
+    return {
+      ...mockConfig.scaling,
+      refactor: config,
+    } as any;
   }
 
   beforeEach(() => {
@@ -772,9 +766,7 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     '\tRefactor: simplify parser',
     'Refactor:',
   ])('should detect refactor story title: %s', title => {
-    const localScheduler = mkSchedulerWithRefactor();
-    const isRefactor = (localScheduler as any).isRefactorStory.bind(localScheduler);
-    expect(isRefactor(mkStory(title))).toBe(true);
+    expect(isRefactorStory(mkStory(title))).toBe(true);
   });
 
   it.each([
@@ -784,318 +776,306 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     'Maintenance task',
     '',
   ])('should not detect non-refactor story title: %s', title => {
-    const localScheduler = mkSchedulerWithRefactor();
-    const isRefactor = (localScheduler as any).isRefactorStory.bind(localScheduler);
-    expect(isRefactor(mkStory(title))).toBe(false);
+    expect(isRefactorStory(mkStory(title))).toBe(false);
   });
 
   // 5 tests: capacity point calculation
   it('should use story_points when both story_points and complexity_score exist', () => {
-    const localScheduler = mkSchedulerWithRefactor();
-    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
     expect(getCapacityPoints(mkStory('Feature', 8, 3))).toBe(8);
   });
 
   it('should use complexity_score when story_points is null', () => {
-    const localScheduler = mkSchedulerWithRefactor();
-    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
     expect(getCapacityPoints(mkStory('Feature', null, 5))).toBe(5);
   });
 
   it('should default to 1 when both story_points and complexity_score are null', () => {
-    const localScheduler = mkSchedulerWithRefactor();
-    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
     expect(getCapacityPoints(mkStory('Feature', null, null))).toBe(1);
   });
 
   it('should treat story_points 0 as missing and fall back to complexity_score', () => {
-    const localScheduler = mkSchedulerWithRefactor();
-    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
     expect(getCapacityPoints(mkStory('Feature', 0, 4))).toBe(4);
   });
 
   it('should treat 0/0 points as minimum 1 capacity unit', () => {
-    const localScheduler = mkSchedulerWithRefactor();
-    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
     expect(getCapacityPoints(mkStory('Feature', 0, 0))).toBe(1);
   });
 
   it('should use story_points when complexity_score is null', () => {
-    const localScheduler = mkSchedulerWithRefactor();
-    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
     expect(getCapacityPoints(mkStory('Feature', 6, null))).toBe(6);
   });
 
   it('should pass through non-integer capacity points as provided', () => {
-    const localScheduler = mkSchedulerWithRefactor();
-    const getCapacityPoints = (localScheduler as any).getCapacityPoints.bind(localScheduler);
     expect(getCapacityPoints(mkStory('Feature', 2.5, null))).toBe(2.5);
   });
 
   // 12 tests: capacity selection behavior
   it('should filter out refactor stories when refactor policy is disabled', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: false,
       capacity_percent: 100,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const feature = mkStory('Feature: add endpoint', 8, 8);
     const refactor = mkStory('Refactor: split parser', 2, 2);
-    const selected = selectStories([feature, refactor]) as StoryRow[];
+    const selected = selectStoriesForCapacity([feature, refactor], scalingConfig) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id]);
   });
 
   it('should include all refactor stories when capacity percent is 100', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 100,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const feature = mkStory('Feature: add endpoint', 10, 10);
     const refactorA = mkStory('Refactor: split parser', 3, 3);
     const refactorB = mkStory('Refactor: normalize naming', 4, 4);
-    const selected = selectStories([feature, refactorA, refactorB]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [feature, refactorA, refactorB],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id, refactorB.id]);
   });
 
   it('should include no refactor stories when capacity percent is 0 and feature work exists', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 0,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const feature = mkStory('Feature: add endpoint', 10, 10);
     const refactor = mkStory('Refactor: split parser', 1, 1);
-    const selected = selectStories([feature, refactor]) as StoryRow[];
+    const selected = selectStoriesForCapacity([feature, refactor], scalingConfig) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id]);
   });
 
   it('should allow at least one refactor point when percent is positive but rounded budget is zero', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 10,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const feature = mkStory('Feature: tiny patch', 5, 5); // floor(5 * 0.1) = 0 -> min 1
     const refactor = mkStory('Refactor: tighten types', 1, 1);
-    const selected = selectStories([feature, refactor]) as StoryRow[];
+    const selected = selectStoriesForCapacity([feature, refactor], scalingConfig) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactor.id]);
   });
 
   it('should compute budget from total feature story points across multiple stories', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 20,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const featureA = mkStory('Feature: A', 5, 5);
     const featureB = mkStory('Feature: B', 5, 5); // total feature = 10, budget = 2
     const refactorA = mkStory('Refactor: A', 1, 1);
     const refactorB = mkStory('Refactor: B', 1, 1);
     const refactorC = mkStory('Refactor: C', 1, 1);
-    const selected = selectStories([
-      featureA,
-      featureB,
-      refactorA,
-      refactorB,
-      refactorC,
-    ]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [featureA, featureB, refactorA, refactorB, refactorC],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([featureA.id, featureB.id, refactorA.id, refactorB.id]);
   });
 
   it('should skip a refactor story that exceeds remaining budget', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 20,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const feature = mkStory('Feature: A', 10, 10); // budget = 2
     const refactorLarge = mkStory('Refactor: big cleanup', 3, 3);
-    const selected = selectStories([feature, refactorLarge]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [feature, refactorLarge],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id]);
   });
 
   it('should select a later smaller refactor story if an earlier one exceeds budget', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 20,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const feature = mkStory('Feature: A', 10, 10); // budget = 2
     const refactorLarge = mkStory('Refactor: big cleanup', 3, 3); // skipped
     const refactorSmall = mkStory('Refactor: tiny cleanup', 2, 2); // fits
-    const selected = selectStories([feature, refactorLarge, refactorSmall]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [feature, refactorLarge, refactorSmall],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactorSmall.id]);
   });
 
   it('should allow refactor-only queues when configured to allow without feature work', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 10,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const refactorA = mkStory('Refactor: A', 3, 3);
     const refactorB = mkStory('Refactor: B', 5, 5);
-    const selected = selectStories([refactorA, refactorB]) as StoryRow[];
+    const selected = selectStoriesForCapacity([refactorA, refactorB], scalingConfig) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([refactorA.id, refactorB.id]);
   });
 
   it('should block refactor-only queues when allow_without_feature_work is false', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 10,
       allow_without_feature_work: false,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const refactorA = mkStory('Refactor: A', 3, 3);
     const refactorB = mkStory('Refactor: B', 5, 5);
-    const selected = selectStories([refactorA, refactorB]) as StoryRow[];
+    const selected = selectStoriesForCapacity([refactorA, refactorB], scalingConfig) as StoryRow[];
 
     expect(selected).toHaveLength(0);
   });
 
   it('should preserve order of selected stories', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 20,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const featureA = mkStory('Feature: A', 5, 5);
     const refactorA = mkStory('Refactor: A', 1, 1);
     const featureB = mkStory('Feature: B', 5, 5);
     const refactorB = mkStory('Refactor: B', 1, 1);
-    const selected = selectStories([featureA, refactorA, featureB, refactorB]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [featureA, refactorA, featureB, refactorB],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([featureA.id, refactorA.id, featureB.id, refactorB.id]);
   });
 
   it('should default to disabled behavior when refactor config is missing', () => {
-    const localScheduler = mkSchedulerWithRefactor();
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
+    const scalingConfig = mkScalingConfig();
 
     const feature = mkStory('Feature: A', 5, 5);
     const refactor = mkStory('Refactor: A', 1, 1);
-    const selected = selectStories([feature, refactor]) as StoryRow[];
+    const selected = selectStoriesForCapacity([feature, refactor], scalingConfig) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id]);
   });
 
   it('should return an empty array when no stories are provided', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 50,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
-    const selected = selectStories([]) as StoryRow[];
+    const selected = selectStoriesForCapacity([], scalingConfig) as StoryRow[];
     expect(selected).toEqual([]);
   });
 
   it('should include refactor stories when cumulative points exactly match budget', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 30,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const feature = mkStory('Feature: A', 10, 10); // budget = 3
     const refactorA = mkStory('Refactor: A', 1, 1);
     const refactorB = mkStory('Refactor: B', 2, 2);
-    const selected = selectStories([feature, refactorA, refactorB]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [feature, refactorA, refactorB],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id, refactorB.id]);
   });
 
   it('should continue selecting later refactors after partially consuming budget and skipping a too-large one', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 50,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const feature = mkStory('Feature: A', 10, 10); // budget = 5
     const refactorA = mkStory('Refactor: A', 2, 2); // used = 2
     const refactorLarge = mkStory('Refactor: Large', 4, 4); // skipped (2 + 4 > 5)
     const refactorB = mkStory('Refactor: B', 3, 3); // used = 5
-    const selected = selectStories([feature, refactorA, refactorLarge, refactorB]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [feature, refactorA, refactorLarge, refactorB],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id, refactorB.id]);
   });
 
   it('should derive feature budget from complexity when story_points are not set', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 20,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const featureA = mkStory('Feature: A', null, 6);
     const featureB = mkStory('Feature: B', null, 4); // feature total = 10, budget = 2
     const refactorA = mkStory('Refactor: A', 1, 1);
     const refactorB = mkStory('Refactor: B', 2, 2);
-    const selected = selectStories([featureA, featureB, refactorA, refactorB]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [featureA, featureB, refactorA, refactorB],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([featureA.id, featureB.id, refactorA.id]);
   });
 
   it('should allow one point of refactor work when feature stories have no explicit points', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 10,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const feature = mkStory('Feature: A', null, null); // defaults to 1, floor(1 * 0.1)=0 -> min 1
     const refactorA = mkStory('Refactor: A', 1, 1);
     const refactorB = mkStory('Refactor: B', 1, 1);
-    const selected = selectStories([feature, refactorA, refactorB]) as StoryRow[];
+    const selected = selectStoriesForCapacity(
+      [feature, refactorA, refactorB],
+      scalingConfig
+    ) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id]);
   });
 
   it('should ignore capacity_percent for refactor-only queues when allow_without_feature_work is true', () => {
-    const localScheduler = mkSchedulerWithRefactor({
+    const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 0,
       allow_without_feature_work: true,
     });
-    const selectStories = (localScheduler as any).selectStoriesForCapacity.bind(localScheduler);
 
     const refactorA = mkStory('Refactor: A', 2, 2);
     const refactorB = mkStory('Refactor: B', 4, 4);
-    const selected = selectStories([refactorA, refactorB]) as StoryRow[];
+    const selected = selectStoriesForCapacity([refactorA, refactorB], scalingConfig) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([refactorA.id, refactorB.id]);
   });
@@ -1139,6 +1119,8 @@ describe('Scheduler Agent Selection', () => {
         current_story_id: null,
         memory_state: null,
         last_seen: null,
+        cli_tool: 'claude',
+        worktree_path: null,
         created_at: '',
         updated_at: '',
       },
@@ -1152,6 +1134,8 @@ describe('Scheduler Agent Selection', () => {
         current_story_id: null,
         memory_state: null,
         last_seen: null,
+        cli_tool: 'claude',
+        worktree_path: null,
         created_at: '',
         updated_at: '',
       },
@@ -1165,13 +1149,14 @@ describe('Scheduler Agent Selection', () => {
         current_story_id: null,
         memory_state: null,
         last_seen: null,
+        cli_tool: 'claude',
+        worktree_path: null,
         created_at: '',
         updated_at: '',
       },
     ];
 
-    const selectMethod = (scheduler as any).selectAgentWithLeastWorkload;
-    const selected = selectMethod.call(scheduler, agents);
+    const selected = selectAgentWithLeastWorkload(db, agents);
 
     // Should select junior-3 who has zero stories
     expect(selected.id).toBe('junior-3');
@@ -1195,6 +1180,8 @@ describe('Scheduler Agent Selection', () => {
         current_story_id: null,
         memory_state: null,
         last_seen: null,
+        cli_tool: 'claude',
+        worktree_path: null,
         created_at: '',
         updated_at: '',
       },
@@ -1208,13 +1195,14 @@ describe('Scheduler Agent Selection', () => {
         current_story_id: null,
         memory_state: null,
         last_seen: null,
+        cli_tool: 'claude',
+        worktree_path: null,
         created_at: '',
         updated_at: '',
       },
     ];
 
-    const selectMethod = (scheduler as any).selectAgentWithLeastWorkload;
-    const selected = selectMethod.call(scheduler, agents);
+    const selected = selectAgentWithLeastWorkload(db, agents);
 
     expect(selected.id).toBe('agent-1');
   });
@@ -1234,8 +1222,7 @@ describe('Scheduler Agent Selection', () => {
     updateStory(db, story1.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
     updateStory(db, story2.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
 
-    const workloadMethod = (scheduler as any).getAgentWorkload;
-    const workload = workloadMethod.call(scheduler, 'agent-1');
+    const workload = getAgentWorkload(db, 'agent-1');
 
     expect(workload).toBe(2);
   });
@@ -1250,8 +1237,7 @@ describe('Scheduler Agent Selection', () => {
       `INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`
     );
 
-    const workloadMethod = (scheduler as any).getAgentWorkload;
-    const workload = workloadMethod.call(scheduler, 'agent-1');
+    const workload = getAgentWorkload(db, 'agent-1');
 
     expect(workload).toBe(0);
   });
@@ -1367,7 +1353,7 @@ describe('Scheduler Story Assignment Prevention', () => {
     addStoryDependency(db, storyB.id, storyA.id);
 
     // B should not be ready for assignment because A is not merged yet
-    const satisfied = (scheduler as any).areDependenciesSatisfied(storyB.id);
+    const satisfied = areDependenciesSatisfied(db, storyB.id);
     expect(satisfied).toBe(false);
   });
 
@@ -1389,7 +1375,7 @@ describe('Scheduler Story Assignment Prevention', () => {
     addStoryDependency(db, storyB.id, storyA.id);
 
     // B should be ready for assignment
-    const satisfied = (scheduler as any).areDependenciesSatisfied(storyB.id);
+    const satisfied = areDependenciesSatisfied(db, storyB.id);
     expect(satisfied).toBe(true);
   });
 
