@@ -22,6 +22,7 @@ import {
   msgCommand,
   myStoriesCommand,
   nukeCommand,
+  pmCommand,
   prCommand,
   progressCommand,
   reqCommand,
@@ -48,6 +49,7 @@ program.addCommand(configCommand);
 program.addCommand(clusterCommand);
 
 // Integrations
+program.addCommand(pmCommand);
 program.addCommand(jiraCommand);
 
 // Repository and team management

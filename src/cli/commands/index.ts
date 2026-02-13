@@ -14,6 +14,7 @@ export { initCommand } from './init.js';
 export { jiraCommand } from './jira.js';
 export { managerCommand } from './manager.js';
 export { msgCommand } from './msg.js';
+export { pmCommand } from './pm.js';
 export { myStoriesCommand } from './my-stories.js';
 export { nukeCommand } from './nuke.js';
 export { prCommand } from './pr.js';
