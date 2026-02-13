@@ -373,23 +373,31 @@ Respond in JSON format:
     const tokenStore = new TokenStore(join(paths.hiveDir, '.env'));
     await tokenStore.loadFromEnv();
 
+    // Re-fetch requirement from DB to pick up jira_epic_key/id that may have
+    // been set after this agent was constructed (e.g., by `hive req <epic-url>`).
+    const freshRequirement = getRequirementById(this.db, this.requirement.id);
+    if (!freshRequirement) return;
+
     // Determine team name for labels
     const teamName = this.teams.length > 0 ? this.teams[0].name : undefined;
 
-    this.log('JIRA_SYNC_STARTED', `Syncing requirement ${this.requirement.id} to Jira`);
+    this.log('JIRA_SYNC_STARTED', `Syncing requirement ${freshRequirement.id} to Jira`);
 
     try {
       const result = await syncRequirementToJira(
         this.db,
         tokenStore,
         pmConfig.jira,
-        this.requirement,
+        freshRequirement,
         storyIds,
         teamName
       );
 
       if (result.epicKey) {
-        this.log('JIRA_EPIC_CREATED', `Epic ${result.epicKey} created for ${this.requirement.id}`);
+        this.log(
+          freshRequirement.jira_epic_key ? 'JIRA_EPIC_INGESTED' : 'JIRA_EPIC_CREATED',
+          `Epic ${result.epicKey} ${freshRequirement.jira_epic_key ? 'linked (existing)' : 'created'} for ${freshRequirement.id}`
+        );
       }
 
       for (const story of result.stories) {

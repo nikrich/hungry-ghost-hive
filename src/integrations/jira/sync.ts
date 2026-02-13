@@ -15,6 +15,33 @@ import { JiraClient } from './client.js';
 import { getIssue } from './issues.js';
 
 /**
+ * Status progression order for the Hive pipeline.
+ * Higher numbers represent further progress. Used to prevent
+ * Jira sync from regressing stories backward.
+ */
+const STATUS_ORDER: Record<string, number> = {
+  draft: 0,
+  estimated: 1,
+  planned: 2,
+  in_progress: 3,
+  review: 4,
+  pr_submitted: 5,
+  qa: 6,
+  qa_failed: 4, // allowed as a backward step from qa
+  merged: 7,
+};
+
+/**
+ * Check whether transitioning from currentStatus to newStatus is a
+ * forward (or lateral) move in the pipeline.
+ */
+export function isForwardTransition(currentStatus: string, newStatus: string): boolean {
+  const currentOrder = STATUS_ORDER[currentStatus] ?? -1;
+  const newOrder = STATUS_ORDER[newStatus] ?? -1;
+  return newOrder >= currentOrder;
+}
+
+/**
  * Convert a Jira status name to a Hive status using the configured status mapping.
  * @param jiraStatusName - The Jira status name (e.g., "In Progress")
  * @param statusMapping - The status mapping from config (Jira status → Hive status)
@@ -95,6 +122,15 @@ export async function syncJiraStatusesToHive(
 
       // Check if status differs from current Hive status
       if (mappedHiveStatus !== story.status) {
+        // Only allow forward transitions — never regress stories backward
+        if (!isForwardTransition(story.status, mappedHiveStatus)) {
+          logger.debug(
+            `Skipping backward Jira sync for story ${story.id} (${story.jira_issue_key}): ` +
+              `would regress ${story.status} → ${mappedHiveStatus} (Jira: "${jiraStatusName}")`
+          );
+          continue;
+        }
+
         // Update the story status in Hive
         await withTransaction(db, () => {
           updateStory(db, story.id, { status: mappedHiveStatus as StoryStatus });

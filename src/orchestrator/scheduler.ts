@@ -568,8 +568,11 @@ export class Scheduler {
     const pmConfig = this.config.hiveConfig.integrations?.project_management;
     if (!pmConfig || pmConfig.provider !== 'jira' || !pmConfig.jira) return;
 
-    // Check if story has a Jira issue key
-    if (!story.jira_issue_key) {
+    // Re-fetch the story from DB to get the latest Jira data (the passed-in
+    // story object may be stale — jira_issue_key is set during syncStoryToJira
+    // which may have completed after this object was fetched).
+    const freshStory = getStoryById(this.db, story.id);
+    if (!freshStory?.jira_issue_key) {
       logger.debug(`Story ${story.id} has no Jira issue key, skipping subtask creation`);
       return;
     }
@@ -592,24 +595,24 @@ export class Scheduler {
       // Create subtask
       const agentName = agent.tmux_session || agent.id;
       const subtask = await createSubtask(jiraClient, {
-        parentIssueKey: story.jira_issue_key,
+        parentIssueKey: freshStory.jira_issue_key,
         projectKey: pmConfig.jira.project_key,
         agentName,
-        storyTitle: story.title,
+        storyTitle: freshStory.title,
       });
 
       if (subtask) {
         // Persist subtask reference back to the story
-        updateStory(this.db, story.id, {
+        updateStory(this.db, freshStory.id, {
           jiraSubtaskKey: subtask.key,
           jiraSubtaskId: subtask.id,
         });
         if (this.saveFn) this.saveFn();
 
-        logger.info(`Created Jira subtask ${subtask.key} for story ${story.id}`);
+        logger.info(`Created Jira subtask ${subtask.key} for story ${freshStory.id}`);
 
         // Post "assigned" comment
-        await postComment(jiraClient, story.jira_issue_key, 'assigned', {
+        await postComment(jiraClient, freshStory.jira_issue_key, 'assigned', {
           agentName,
           subtaskKey: subtask.key,
         });

@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { confirm, select } from '@inquirer/prompts';
+import { confirm, input, select } from '@inquirer/prompts';
 import chalk from 'chalk';
 import type { JiraConfig } from '../../config/schema.js';
 
@@ -475,11 +475,52 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
     }
   }
 
-  // Step 4: Board selection for sprint operations
+  // Step 4: Board setup - ask user how they want to configure the board
+  console.log();
+  const boardSetupMethod = await select({
+    message: 'Which board should I work from?',
+    choices: [
+      { name: 'Select an existing board', value: 'existing' },
+      { name: 'Provide a board URL/link', value: 'link' },
+    ],
+  });
+
   let boardId: string | undefined;
-  try {
+
+  if (boardSetupMethod === 'link') {
+    const boardUrl = await input({
+      message: 'Jira board URL',
+      validate: (value: string) => {
+        const parsed = parseBoardIdFromUrl(value);
+        return parsed !== null
+          ? true
+          : 'Could not extract board ID from URL. Please provide a valid Jira board URL.';
+      },
+    });
+    boardId = parseBoardIdFromUrl(boardUrl)!;
+
+    console.log(chalk.gray(`Validating board ID ${boardId}...`));
+    const board = await validateBoardId(cloudId, accessToken, boardId);
+    if (board) {
+      console.log(chalk.green(`Validated board: ${board.name} (${board.type})`));
+    } else {
+      console.log(
+        chalk.yellow(`Could not validate board ${boardId} via API, using ID as provided.`)
+      );
+    }
+  } else {
+    // existing board selection
     console.log(chalk.gray(`Fetching boards for ${selectedProject.key}...`));
-    const boards = await fetchProjectBoards(cloudId, accessToken, selectedProject.key);
+    let boards: JiraBoard[] = [];
+    try {
+      boards = await fetchProjectBoards(cloudId, accessToken, selectedProject.key);
+    } catch {
+      console.log(
+        chalk.yellow(
+          'Could not fetch boards (missing Jira Software permissions). Enter board ID manually or provide a board URL.'
+        )
+      );
+    }
 
     if (boards.length === 1) {
       boardId = String(boards[0].id);
@@ -498,10 +539,6 @@ export async function runJiraSetup(options: JiraSetupOptions): Promise<JiraSetup
         chalk.yellow('No boards found. Sprint operations will use best-effort discovery.')
       );
     }
-  } catch {
-    console.log(
-      chalk.yellow('Could not fetch boards. Sprint operations will use best-effort discovery.')
-    );
   }
 
   // Step 5: Detect story points field

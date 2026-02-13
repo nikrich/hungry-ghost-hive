@@ -147,21 +147,33 @@ hive my-stories refactor --session ${sessionName} --title "<short title>" --desc
 \`\`\`
 Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
 
-## Jira Progress Updates
-Post progress updates to your Jira subtask at key milestones so the team can track your work:
+## Jira Progress Updates — Be Verbose!
+You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
 \`\`\`bash
 # After creating your feature branch
-hive progress <story-id> -m "Branch created, starting implementation" --from ${sessionName}
+hive progress <story-id> -m "Branch created off origin/main. Starting with codebase exploration." --from ${sessionName}
+
+# After exploring the codebase — explain what you found
+hive progress <story-id> -m "Explored codebase: found X in file Y. Will modify Z because [reason]. Alternative approach considered: [what], rejected because [why]." --from ${sessionName}
+
+# When making key implementation decisions
+hive progress <story-id> -m "Decision: using [approach] because [rationale]. Files affected: [list]. Potential risks: [list]." --from ${sessionName}
 
 # After tests pass locally
-hive progress <story-id> -m "Implementation complete, all tests passing" --from ${sessionName}
+hive progress <story-id> -m "Implementation complete. Changed [N] files: [list key changes]. All [N] tests passing. Added [N] new tests for [what]." --from ${sessionName}
 
 # Before creating the PR
-hive progress <story-id> -m "Creating pull request for review" --from ${sessionName}
+hive progress <story-id> -m "Creating pull request. Summary of all changes: [brief summary]." --from ${sessionName}
 
 # When done (transitions subtask to Done)
 hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done
 \`\`\`
+
+**IMPORTANT:** Do NOT just post generic one-liners. Every progress update should include:
+- What you did and what you decided
+- Why you chose this approach over alternatives
+- What files you changed and why
+- Any risks, assumptions, or trade-offs
 
 ## Guidelines
 - Follow existing code patterns in the repository
@@ -281,21 +293,33 @@ hive my-stories refactor --session ${sessionName} --title "<short title>" --desc
 \`\`\`
 Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
 
-## Jira Progress Updates
-Post progress updates to your Jira subtask at key milestones so the team can track your work:
+## Jira Progress Updates — Be Verbose!
+You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
 \`\`\`bash
 # After creating your feature branch
-hive progress <story-id> -m "Branch created, starting implementation" --from ${sessionName}
+hive progress <story-id> -m "Branch created off origin/main. Starting with codebase exploration." --from ${sessionName}
+
+# After exploring the codebase — explain what you found
+hive progress <story-id> -m "Explored codebase: found X in file Y. Will modify Z because [reason]. Alternative approach considered: [what], rejected because [why]." --from ${sessionName}
+
+# When making key implementation decisions
+hive progress <story-id> -m "Decision: using [approach] because [rationale]. Files affected: [list]. Potential risks: [list]." --from ${sessionName}
 
 # After tests pass locally
-hive progress <story-id> -m "Implementation complete, all tests passing" --from ${sessionName}
+hive progress <story-id> -m "Implementation complete. Changed [N] files: [list key changes]. All [N] tests passing. Added [N] new tests for [what]." --from ${sessionName}
 
 # Before creating the PR
-hive progress <story-id> -m "Creating pull request for review" --from ${sessionName}
+hive progress <story-id> -m "Creating pull request. Summary of all changes: [brief summary]." --from ${sessionName}
 
 # When done (transitions subtask to Done)
 hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done
 \`\`\`
+
+**IMPORTANT:** Do NOT just post generic one-liners. Every progress update should include:
+- What you did and what you decided
+- Why you chose this approach over alternatives
+- What files you changed and why
+- Any risks, assumptions, or trade-offs
 
 ## Guidelines
 - Follow existing code patterns
@@ -415,21 +439,33 @@ hive my-stories refactor --session ${sessionName} --title "<short title>" --desc
 \`\`\`
 Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
 
-## Jira Progress Updates
-Post progress updates to your Jira subtask at key milestones so the team can track your work:
+## Jira Progress Updates — Be Verbose!
+You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
 \`\`\`bash
 # After creating your feature branch
-hive progress <story-id> -m "Branch created, starting implementation" --from ${sessionName}
+hive progress <story-id> -m "Branch created off origin/main. Starting with codebase exploration." --from ${sessionName}
+
+# After exploring the codebase — explain what you found
+hive progress <story-id> -m "Explored codebase: found X in file Y. Will modify Z because [reason]. Alternative approach considered: [what], rejected because [why]." --from ${sessionName}
+
+# When making key implementation decisions
+hive progress <story-id> -m "Decision: using [approach] because [rationale]. Files affected: [list]. Potential risks: [list]." --from ${sessionName}
 
 # After tests pass locally
-hive progress <story-id> -m "Implementation complete, all tests passing" --from ${sessionName}
+hive progress <story-id> -m "Implementation complete. Changed [N] files: [list key changes]. All [N] tests passing. Added [N] new tests for [what]." --from ${sessionName}
 
 # Before creating the PR
-hive progress <story-id> -m "Creating pull request for review" --from ${sessionName}
+hive progress <story-id> -m "Creating pull request. Summary of all changes: [brief summary]." --from ${sessionName}
 
 # When done (transitions subtask to Done)
 hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done
 \`\`\`
+
+**IMPORTANT:** Do NOT just post generic one-liners. Every progress update should include:
+- What you did and what you decided
+- Why you chose this approach over alternatives
+- What files you changed and why
+- Any risks, assumptions, or trade-offs
 
 ## Guidelines
 - Follow existing patterns exactly
