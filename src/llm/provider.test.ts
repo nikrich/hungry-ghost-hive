@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigurationError } from '../errors/index.js';
 import { getProviderApiKey, validateProviderConfig, type ProviderConfig } from './provider.js';
 
