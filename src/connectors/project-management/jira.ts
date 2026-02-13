@@ -6,6 +6,7 @@ import {
   isJiraUrl,
   parseEpicUrl as jiraParseEpicUrl,
 } from '../../integrations/jira/epic-import.js';
+import type { CreateIssueRequest } from '../../integrations/jira/types.js';
 import type {
   ConnectorEpic,
   ConnectorIssue,
@@ -134,7 +135,7 @@ export class JiraProjectManagementConnector implements IProjectManagementConnect
     const { config } = await this.loadConfigAndTokenStore();
 
     const client = await this.getClient();
-    const fields: Record<string, unknown> = {
+    const fields: CreateIssueRequest['fields'] = {
       project: { key: options.projectKey },
       summary: options.title,
       issuetype: { name: config.story_type || 'Story' },

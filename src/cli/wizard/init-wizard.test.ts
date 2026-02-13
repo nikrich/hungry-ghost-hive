@@ -188,9 +188,7 @@ describe('Init Wizard', () => {
 
       const firstCall = mockSelect.mock.calls[0][0];
       expect(firstCall.message).toBe('Source control provider');
-      expect(firstCall.choices).toEqual([
-        { name: 'Github', value: 'github' },
-      ]);
+      expect(firstCall.choices).toEqual([{ name: 'Github', value: 'github' }]);
     });
 
     it('should configure project management prompt with choices from registry', async () => {
