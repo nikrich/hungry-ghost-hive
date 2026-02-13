@@ -270,8 +270,9 @@ export async function syncRequirementToJira(
         labels: storyLabels,
       };
 
-      if (story.story_points !== null) {
-        fields[config.story_points_field || 'story_points'] = story.story_points;
+      const points = story.story_points ?? story.complexity_score;
+      if (points !== null && points !== undefined) {
+        fields[config.story_points_field || 'story_points'] = points;
       }
 
       if (epicKey) {
@@ -388,8 +389,9 @@ export async function syncStoryToJira(
     labels,
   };
 
-  if (story.story_points !== null) {
-    fields[config.story_points_field || 'story_points'] = story.story_points;
+  const points = story.story_points ?? story.complexity_score;
+  if (points !== null && points !== undefined) {
+    fields[config.story_points_field || 'story_points'] = points;
   }
 
   if (epicKey) {

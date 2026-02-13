@@ -177,6 +177,10 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_integration_sync_unique
       ON integration_sync(entity_type, entity_id, provider);
+    CREATE INDEX IF NOT EXISTS idx_integration_sync_entity ON integration_sync(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_integration_sync_provider ON integration_sync(provider, external_id);
+    CREATE INDEX IF NOT EXISTS idx_integration_sync_status ON integration_sync(sync_status);
+    CREATE INDEX IF NOT EXISTS idx_integration_sync_last_synced ON integration_sync(last_synced_at);
   `);
 
   return db;
