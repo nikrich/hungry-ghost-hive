@@ -238,15 +238,8 @@ function runMigrations(db: SqlJsDatabase): void {
 
     if (!hasBranchName) {
       const migration003Sql = loadMigration('003-fix-pull-requests.sql');
-      // Execute each statement separately since this migration has multiple statements
-      const statements = migration003Sql
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0 && !s.startsWith('--'));
-
-      for (const stmt of statements) {
-        db.run(stmt);
-      }
+      // Use db.exec() to handle multiple statements with comments properly
+      db.exec(migration003Sql);
     }
 
     db.run("INSERT INTO migrations (name) VALUES ('003-fix-pull-requests.sql')");
@@ -352,15 +345,8 @@ function runMigrations(db: SqlJsDatabase): void {
 
   if (!migration009Applied) {
     const migration009Sql = loadMigration('009-add-pr-sync-indexes.sql');
-    // Execute each statement separately
-    const statements = migration009Sql
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--'));
-
-    for (const stmt of statements) {
-      db.run(stmt);
-    }
+    // Use db.exec() to handle multiple statements with comments properly
+    db.exec(migration009Sql);
     db.run("INSERT INTO migrations (name) VALUES ('009-add-pr-sync-indexes.sql')");
   }
 
@@ -501,11 +487,19 @@ function runMigrations(db: SqlJsDatabase): void {
 
     // Load and execute the data migration and index creation from file
     const migration011Sql = loadMigration('011-generic-integration-fields.sql');
-    // Extract only the UPDATE and CREATE INDEX statements (skip ALTER TABLE)
+    // Execute the UPDATE and CREATE INDEX statements (ALTER TABLE already done above)
     const statements = migration011Sql
       .split(';')
       .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--') && !s.includes('ALTER TABLE'));
+      .filter(s => {
+        if (s.length === 0) return false;
+        // Skip ALTER TABLE statements (already handled above with existence checks)
+        if (s.includes('ALTER TABLE')) return false;
+        // Filter out pure comment blocks
+        const lines = s.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        const hasNonCommentLine = lines.some(l => !l.startsWith('--'));
+        return hasNonCommentLine;
+      });
 
     for (const stmt of statements) {
       db.run(stmt);
@@ -532,11 +526,19 @@ function runMigrations(db: SqlJsDatabase): void {
 
     // Load and execute the index creation from file
     const migration012Sql = loadMigration('012-sprint-tracking.sql');
-    // Extract only the CREATE INDEX statement (skip ALTER TABLE)
+    // Execute CREATE INDEX statement (ALTER TABLE already done above)
     const statements = migration012Sql
       .split(';')
       .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--') && !s.includes('ALTER TABLE'));
+      .filter(s => {
+        if (s.length === 0) return false;
+        // Skip ALTER TABLE statements (already handled above)
+        if (s.includes('ALTER TABLE')) return false;
+        // Filter out pure comment blocks
+        const lines = s.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        const hasNonCommentLine = lines.some(l => !l.startsWith('--'));
+        return hasNonCommentLine;
+      });
 
     for (const stmt of statements) {
       db.run(stmt);
