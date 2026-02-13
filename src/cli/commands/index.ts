@@ -16,6 +16,7 @@ export { managerCommand } from './manager.js';
 export { msgCommand } from './msg.js';
 export { myStoriesCommand } from './my-stories.js';
 export { nukeCommand } from './nuke.js';
+export { pmCommand } from './pm.js';
 export { prCommand } from './pr.js';
 export { progressCommand } from './progress.js';
 export { reqCommand } from './req.js';
