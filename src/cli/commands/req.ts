@@ -65,41 +65,6 @@ export const reqCommand = new Command('req')
         const pmConnector =
           pmProvider !== 'none' ? registry.getProjectManagement(pmProvider) : null;
 
-        // Validate epic URL before processing
-        const detectedProvider = detectEpicUrlProvider(reqText);
-        if (detectedProvider) {
-          // URL is an epic URL for some provider
-          if (pmProvider === 'none') {
-            console.error(chalk.red(`Epic URL detected but project management is not configured.`));
-            console.log(
-              chalk.gray(
-                `This looks like a ${detectedProvider} epic URL, but PM provider is set to 'none'.`
-              )
-            );
-            console.log(chalk.gray(`Configure a PM provider by running: hive init`));
-            process.exit(1);
-          }
-
-          if (detectedProvider !== pmProvider) {
-            console.error(
-              chalk.red(
-                `Epic URL provider mismatch: expected ${pmProvider}, got ${detectedProvider}`
-              )
-            );
-            console.log(
-              chalk.gray(
-                `Your project management provider is configured as '${pmProvider}', but this URL is from '${detectedProvider}'.`
-              )
-            );
-            console.log(
-              chalk.gray(
-                `Either use a ${pmProvider} epic URL or reconfigure your PM provider with: hive init`
-              )
-            );
-            process.exit(1);
-          }
-        }
-
         if (pmConnector && pmConnector.isEpicUrl(reqText)) {
           const parsed = pmConnector.parseEpicUrl(reqText);
           if (!parsed) {
@@ -186,12 +151,11 @@ export const reqCommand = new Command('req')
             targetBranch,
           });
 
-          // If this came from a PM epic URL, store the epic key/id
+          // If this came from a Jira epic URL, store the epic key/id
           if (jiraEpicKey && jiraEpicId) {
             updateRequirement(db.db, req.id, {
-              externalEpicKey: jiraEpicKey,
-              externalEpicId: jiraEpicId,
-              externalProvider: 'jira',
+              jiraEpicKey,
+              jiraEpicId,
             });
           }
 
@@ -321,22 +285,6 @@ export const reqCommand = new Command('req')
       });
     }
   );
-
-/**
- * Detect which PM provider an epic URL belongs to by checking all registered providers.
- * @param url - The URL to check
- * @returns The provider name if the URL matches a registered provider, null otherwise
- */
-function detectEpicUrlProvider(url: string): string | null {
-  const providers = registry.listProjectManagementProviders();
-  for (const provider of providers) {
-    const connector = registry.getProjectManagement(provider);
-    if (connector && connector.isEpicUrl(url)) {
-      return provider;
-    }
-  }
-  return null;
-}
 
 async function promptTargetBranch(): Promise<string> {
   const rl = readline.createInterface({
