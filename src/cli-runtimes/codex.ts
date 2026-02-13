@@ -20,13 +20,13 @@ export class CodexRuntimeBuilder implements CliRuntimeBuilder {
     const approvalPolicy = safetyMode === 'safe' ? 'on-request' : 'never';
     return [
       'codex',
+      'resume',
       '--ask-for-approval',
       approvalPolicy,
       '--sandbox',
       'workspace-write',
       '--model',
       model,
-      '--resume',
       sessionId,
     ];
   }
