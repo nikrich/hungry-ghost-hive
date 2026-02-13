@@ -108,9 +108,16 @@ const JiraConfigSchema = z.object({
 // Project management integration
 const ProjectManagementConfigSchema = z.object({
   // Project management provider (none = no PM integration)
-  provider: z.enum(['none', 'jira']).default('none'),
+  // Accepts known providers ('none', 'jira') plus any string for future/third-party providers
+  provider: z
+    .string()
+    .default('none')
+    .refine(val => val.length > 0, { message: 'provider must not be empty' }),
   // Jira-specific configuration (required when provider is 'jira')
   jira: JiraConfigSchema.optional(),
+  // Dynamic provider configuration for non-Jira providers
+  // Each key is a provider name, value is the provider-specific config object
+  provider_config: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 });
 
 // Autonomy configuration
@@ -127,16 +134,26 @@ const IntegrationsConfigSchema = z
     autonomy: AutonomyConfigSchema.default({}),
   })
   .superRefine((integrations, ctx) => {
+    const pm = integrations.project_management;
+
     // Validate that jira config is provided when provider is 'jira'
-    if (
-      integrations.project_management.provider === 'jira' &&
-      !integrations.project_management.jira
-    ) {
+    if (pm.provider === 'jira' && !pm.jira) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['project_management', 'jira'],
         message: 'jira configuration is required when provider is "jira"',
       });
+    }
+
+    // For non-built-in providers, validate that provider_config has an entry
+    if (pm.provider !== 'none' && pm.provider !== 'jira') {
+      if (!pm.provider_config?.[pm.provider]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['project_management', 'provider_config'],
+          message: `provider_config.${pm.provider} is required when provider is "${pm.provider}"`,
+        });
+      }
     }
   });
 
