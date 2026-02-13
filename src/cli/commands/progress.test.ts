@@ -38,7 +38,9 @@ vi.mock('../../integrations/jira/comments.js', () => ({
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withHiveContext: vi.fn(callback => callback({ db: { db: {} }, paths: { hiveDir: '/tmp/.hive' } })),
+  withHiveContext: vi.fn(callback =>
+    callback({ db: { db: {} }, paths: { hiveDir: '/tmp/.hive' } })
+  ),
 }));
 
 import { progressCommand } from './progress.js';

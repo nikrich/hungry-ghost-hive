@@ -63,7 +63,10 @@ vi.mock('../../utils/auto-merge.js', () => ({
 }));
 
 vi.mock('../../utils/pr-sync.js', () => ({
-  getExistingPRIdentifiers: vi.fn(() => ({ existingBranches: new Set(), existingPrNumbers: new Set() })),
+  getExistingPRIdentifiers: vi.fn(() => ({
+    existingBranches: new Set(),
+    existingPrNumbers: new Set(),
+  })),
   syncOpenGitHubPRs: vi.fn(() => ({ imported: [], synced: 0 })),
 }));
 
@@ -73,7 +76,9 @@ vi.mock('../../utils/story-id.js', () => ({
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withHiveContext: vi.fn(callback => callback({ db: { db: {}, save: vi.fn() }, root: '/tmp', paths: { hiveDir: '/tmp/.hive' } })),
+  withHiveContext: vi.fn(callback =>
+    callback({ db: { db: {}, save: vi.fn() }, root: '/tmp', paths: { hiveDir: '/tmp/.hive' } })
+  ),
   withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {} } })),
 }));
 

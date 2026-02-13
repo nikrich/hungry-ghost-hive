@@ -4,12 +4,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies
 vi.mock('../../db/queries/teams.js', () => ({
-  createTeam: vi.fn(() => ({ id: 'team-1', name: 'test-team', repo_url: 'https://github.com/test/repo.git', repo_path: 'repos/repo' })),
+  createTeam: vi.fn(() => ({
+    id: 'team-1',
+    name: 'test-team',
+    repo_url: 'https://github.com/test/repo.git',
+    repo_path: 'repos/repo',
+  })),
   getTeamByName: vi.fn(),
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withHiveContext: vi.fn(callback => callback({ db: { db: {} }, root: '/tmp', paths: { reposDir: '/tmp/repos' } })),
+  withHiveContext: vi.fn(callback =>
+    callback({ db: { db: {} }, root: '/tmp', paths: { reposDir: '/tmp/repos' } })
+  ),
 }));
 
 import { addRepoCommand } from './add-repo.js';

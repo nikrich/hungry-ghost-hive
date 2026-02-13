@@ -18,7 +18,9 @@ vi.mock('../../tmux/manager.js', () => ({
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withHiveContext: vi.fn(callback => callback({ db: { db: {}, save: vi.fn() }, root: '/tmp', paths: { hiveDir: '/tmp/.hive' } })),
+  withHiveContext: vi.fn(callback =>
+    callback({ db: { db: {}, save: vi.fn() }, root: '/tmp', paths: { hiveDir: '/tmp/.hive' } })
+  ),
 }));
 
 import { cleanupCommand } from './cleanup.js';
