@@ -139,9 +139,8 @@ describe('JiraProjectManagementConnector', () => {
     });
 
     it('should parse URL and fetch epic by extracted key', async () => {
-      const { isJiraUrl, parseEpicUrl, fetchEpicFromJira } = await import(
-        '../../integrations/jira/epic-import.js'
-      );
+      const { isJiraUrl, parseEpicUrl, fetchEpicFromJira } =
+        await import('../../integrations/jira/epic-import.js');
       vi.mocked(isJiraUrl).mockReturnValue(true);
       vi.mocked(parseEpicUrl).mockReturnValue({
         issueKey: 'TEST-5',
@@ -264,12 +263,9 @@ describe('JiraProjectManagementConnector', () => {
         'In Progress': 'in_progress',
       });
 
-      expect(transitionJiraIssue).toHaveBeenCalledWith(
-        expect.anything(),
-        'TEST-1',
-        'in_progress',
-        { 'In Progress': 'in_progress' }
-      );
+      expect(transitionJiraIssue).toHaveBeenCalledWith(expect.anything(), 'TEST-1', 'in_progress', {
+        'In Progress': 'in_progress',
+      });
       expect(result).toBe(true);
     });
 
@@ -296,7 +292,11 @@ describe('JiraProjectManagementConnector', () => {
             fields: {
               summary: 'Test Issue',
               description: null,
-              status: { id: '1', name: 'To Do', statusCategory: { id: 2, key: 'new', name: 'To Do' } },
+              status: {
+                id: '1',
+                name: 'To Do',
+                statusCategory: { id: 2, key: 'new', name: 'To Do' },
+              },
               issuetype: { id: '10001', name: 'Story', subtask: false },
               labels: ['hive-managed'],
               assignee: { accountId: 'abc', displayName: 'Alice', active: true },
@@ -346,7 +346,11 @@ describe('JiraProjectManagementConnector', () => {
         fields: {
           summary: 'Test Issue',
           description: null,
-          status: { id: '1', name: 'In Progress', statusCategory: { id: 3, key: 'indeterminate', name: 'In Progress' } },
+          status: {
+            id: '1',
+            name: 'In Progress',
+            statusCategory: { id: 3, key: 'indeterminate', name: 'In Progress' },
+          },
           issuetype: { id: '10001', name: 'Bug', subtask: false },
           labels: [],
           created: '2024-01-01',

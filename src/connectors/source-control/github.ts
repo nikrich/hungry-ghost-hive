@@ -24,7 +24,11 @@ export class GitHubSourceControlConnector implements ISourceControlConnector {
     return createPullRequest(workDir, options);
   }
 
-  async mergePullRequest(workDir: string, prNumber: number, options?: MergePROptions): Promise<void> {
+  async mergePullRequest(
+    workDir: string,
+    prNumber: number,
+    options?: MergePROptions
+  ): Promise<void> {
     const { mergePullRequest } = await import('../../git/github.js');
     await mergePullRequest(workDir, prNumber, {
       method: options?.method,

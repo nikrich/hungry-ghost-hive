@@ -230,8 +230,5 @@ export class JiraProjectManagementConnector implements IProjectManagementConnect
  * Requires JiraPMConnectorOptions to be provided to the factory.
  */
 export function register(options: JiraPMConnectorOptions): void {
-  registry.registerProjectManagement(
-    'jira',
-    () => new JiraProjectManagementConnector(options)
-  );
+  registry.registerProjectManagement('jira', () => new JiraProjectManagementConnector(options));
 }

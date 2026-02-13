@@ -30,7 +30,10 @@ describe('GitHubSourceControlConnector', () => {
   describe('createPullRequest', () => {
     it('should delegate to github.createPullRequest', async () => {
       const { createPullRequest } = await import('../../git/github.js');
-      vi.mocked(createPullRequest).mockResolvedValue({ number: 42, url: 'https://github.com/test/repo/pull/42' });
+      vi.mocked(createPullRequest).mockResolvedValue({
+        number: 42,
+        url: 'https://github.com/test/repo/pull/42',
+      });
 
       const result = await connector.createPullRequest('/work', {
         title: 'feat: add feature',

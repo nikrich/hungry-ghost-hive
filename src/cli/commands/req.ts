@@ -72,7 +72,9 @@ export const reqCommand = new Command('req')
             process.exit(1);
           }
 
-          const spinner = ora(`Fetching epic ${parsed.issueKey} from ${pmConnector.provider}...`).start();
+          const spinner = ora(
+            `Fetching epic ${parsed.issueKey} from ${pmConnector.provider}...`
+          ).start();
           try {
             const epic = await pmConnector.fetchEpic(reqText);
             title = options.title || epic.title.substring(0, 100);
