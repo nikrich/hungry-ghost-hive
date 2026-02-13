@@ -156,6 +156,14 @@ export const assignCommand = new Command('assign')
           spinner.succeed(chalk.green(summaryMsg));
         }
 
+        // Wait for all Jira operations (subtask creation, status transitions) to complete
+        // before the DB is closed by withHiveContext
+        if (result.assigned > 0) {
+          spinner.text = 'Syncing with Jira...';
+          await scheduler.flushJiraQueue();
+          db.save();
+        }
+
         // Determine if we should start the manager, but don't start it yet
         // Wait until after withHiveContext closes the DB to prevent race condition
         if (result.assigned > 0) {

@@ -568,8 +568,9 @@ async function syncJiraStatuses(ctx: ManagerCheckContext): Promise<void> {
   if (syncedStories > 0) {
     ctx.counters.jiraSynced = syncedStories;
     console.log(chalk.cyan(`  Synced ${syncedStories} story status(es) from Jira`));
-    ctx.db.save();
   }
+  // Always save after Jira sync — syncFromJira now also pushes unsynced stories TO Jira
+  ctx.db.save();
 }
 
 function getRequirementKey(requirementId: string | null): string {

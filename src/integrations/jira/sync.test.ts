@@ -10,12 +10,18 @@ import type { JiraConfig } from '../../config/schema.js';
 import { run } from '../../db/client.js';
 import { createStory, getStoryById } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
-import { isForwardTransition, jiraStatusToHiveStatus, syncJiraStatusesToHive } from './sync.js';
+import {
+  isForwardTransition,
+  jiraStatusToHiveStatus,
+  syncJiraStatusesToHive,
+  syncUnsyncedStoriesToJira,
+} from './sync.js';
 import type { JiraIssue } from './types.js';
 
 // Mock Jira client and issues module
 vi.mock('./client.js');
 vi.mock('./issues.js');
+vi.mock('./stories.js');
 
 describe('jiraStatusToHiveStatus', () => {
   it('maps Jira status to Hive status (case-insensitive)', () => {
@@ -376,5 +382,140 @@ describe('syncJiraStatusesToHive', () => {
 
     const updated = await syncJiraStatusesToHive(db, tokenStore, config);
     expect(updated).toBe(0);
+  });
+});
+
+describe('syncUnsyncedStoriesToJira', () => {
+  let db: Database;
+  let envDir: string;
+
+  const baseConfig: JiraConfig = {
+    project_key: 'TEST',
+    site_url: 'https://test.atlassian.net',
+    story_type: 'Story',
+    subtask_type: 'Subtask',
+    story_points_field: 'story_points',
+    status_mapping: {},
+  };
+
+  function createTestTokenStore(tokens?: Record<string, string>): TokenStore {
+    const envPath = join(envDir, `.env-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const content = tokens
+      ? Object.entries(tokens)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('\n')
+      : '';
+    writeFileSync(envPath, content);
+    const store = new TokenStore(envPath);
+    if (tokens) {
+      for (const [key, value] of Object.entries(tokens)) {
+        (store as any).tokens[key] = value;
+      }
+    }
+    return store;
+  }
+
+  beforeEach(async () => {
+    db = await createTestDatabase();
+    envDir = mkdtempSync(join(tmpdir(), 'hive-sync-unsynced-test-'));
+    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+  });
+
+  it('returns 0 when all stories already have jira keys', async () => {
+    const story = createStory(db, {
+      title: 'Synced Story',
+      description: 'Already synced',
+    });
+    run(db, 'UPDATE stories SET jira_issue_key = ?, status = ? WHERE id = ?', [
+      'TEST-1',
+      'planned',
+      story.id,
+    ]);
+
+    const tokenStore = createTestTokenStore();
+    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    expect(synced).toBe(0);
+  });
+
+  it('returns 0 when no stories exist', async () => {
+    const tokenStore = createTestTokenStore();
+    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    expect(synced).toBe(0);
+  });
+
+  it('skips draft stories without jira keys', async () => {
+    createStory(db, {
+      title: 'Draft Story',
+      description: 'Still in draft',
+    });
+    // Default status is 'draft', so it should be skipped
+
+    const tokenStore = createTestTokenStore();
+    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    expect(synced).toBe(0);
+  });
+
+  it('syncs stories without jira keys that have a requirement', async () => {
+    // Create a requirement
+    run(db, `INSERT INTO requirements (id, title, description, status) VALUES (?, ?, ?, ?)`, [
+      'REQ-TEST',
+      'Test Req',
+      'Test requirement',
+      'planned',
+    ]);
+
+    // Create a team
+    run(db, `INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)`, [
+      'team-test',
+      'https://github.com/test/test.git',
+      'repos/test',
+      'test-team',
+    ]);
+
+    // Create story without jira key but with requirement and non-draft status
+    const story = createStory(db, {
+      requirementId: 'REQ-TEST',
+      teamId: 'team-test',
+      title: 'Unsynced Story',
+      description: 'Needs Jira sync',
+    });
+    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story.id]);
+
+    const tokenStore = createTestTokenStore({
+      JIRA_ACCESS_TOKEN: 'fake-token',
+      JIRA_CLOUD_ID: 'fake-cloud-id',
+    });
+
+    // Mock syncRequirementToJira
+    const { syncRequirementToJira } = await import('./stories.js');
+    vi.mocked(syncRequirementToJira).mockResolvedValue({
+      epicKey: 'TEST-100',
+      epicId: '10100',
+      stories: [{ storyId: story.id, jiraKey: 'TEST-101', jiraId: '10101' }],
+      errors: [],
+    });
+
+    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    expect(synced).toBe(1);
+    expect(syncRequirementToJira).toHaveBeenCalledWith(
+      db,
+      tokenStore,
+      baseConfig,
+      expect.objectContaining({ id: 'REQ-TEST' }),
+      [story.id],
+      'team-test'
+    );
+  });
+
+  it('skips stories without a requirement_id', async () => {
+    const story = createStory(db, {
+      title: 'Orphan Story',
+      description: 'No requirement',
+    });
+    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story.id]);
+
+    const tokenStore = createTestTokenStore();
+    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    expect(synced).toBe(0);
   });
 });
