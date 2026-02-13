@@ -8,7 +8,7 @@ vi.mock('../../cli-runtimes/index.js', () => ({
     buildResumeCommand: vi.fn(() => ['claude', 'code']),
   })),
   resolveRuntimeModelForCli: vi.fn(model => model),
-  selectCompatibleModelForCli: vi.fn((cli, model) => model),
+  selectCompatibleModelForCli: vi.fn((_cli, model) => model),
 }));
 
 vi.mock('../../config/index.js', () => ({
@@ -24,7 +24,7 @@ vi.mock('../../config/index.js', () => ({
 }));
 
 vi.mock('../../db/client.js', () => ({
-  withTransaction: vi.fn(async (db, fn) => fn()),
+  withTransaction: vi.fn(async (_db, fn) => fn()),
 }));
 
 vi.mock('../../db/queries/agents.js', () => ({
@@ -48,7 +48,9 @@ vi.mock('../../tmux/manager.js', () => ({
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withHiveContext: vi.fn(callback => callback({ db: { db: {} }, root: '/tmp', paths: { hiveDir: '/tmp/.hive' } })),
+  withHiveContext: vi.fn(callback =>
+    callback({ db: { db: {} }, root: '/tmp', paths: { hiveDir: '/tmp/.hive' } })
+  ),
 }));
 
 import { resumeCommand } from './resume.js';
