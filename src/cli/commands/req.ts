@@ -4,20 +4,16 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { existsSync, readFileSync } from 'fs';
 import ora from 'ora';
-import { join } from 'path';
 import readline from 'readline';
-import { loadEnvIntoProcess } from '../../auth/env-store.js';
-import { TokenStore } from '../../auth/token-store.js';
 import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../../cli-runtimes/index.js';
 import { fetchLocalClusterStatus } from '../../cluster/runtime.js';
 import { loadConfig } from '../../config/loader.js';
+import { registry } from '../../connectors/registry.js';
 import { withTransaction } from '../../db/client.js';
 import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { createRequirement, updateRequirement } from '../../db/queries/requirements.js';
 import { getAllTeams } from '../../db/queries/teams.js';
-import { JiraClient } from '../../integrations/jira/client.js';
-import { fetchEpicFromJira, isJiraUrl, parseEpicUrl } from '../../integrations/jira/epic-import.js';
 import { isTmuxAvailable, spawnTmuxSession } from '../../tmux/manager.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 import { startDashboard } from '../dashboard/index.js';
@@ -59,42 +55,26 @@ export const reqCommand = new Command('req')
 
         const config = loadConfig(paths.hiveDir);
 
-        // Check if the input is a Jira epic URL
+        // Check if the input is an epic URL from a configured PM provider
         let title: string;
         let description: string;
         let jiraEpicKey: string | undefined;
         let jiraEpicId: string | undefined;
 
-        if (isJiraUrl(reqText)) {
-          const parsed = parseEpicUrl(reqText);
+        const pmProvider = config.integrations.project_management.provider;
+        const pmConnector =
+          pmProvider !== 'none' ? registry.getProjectManagement(pmProvider) : null;
+
+        if (pmConnector && pmConnector.isEpicUrl(reqText)) {
+          const parsed = pmConnector.parseEpicUrl(reqText);
           if (!parsed) {
-            console.error(chalk.red('Could not parse Jira URL. Supported formats:'));
-            console.log(chalk.gray('  https://site.atlassian.net/browse/KEY-123'));
-            console.log(chalk.gray('  https://site.atlassian.net/issues/KEY-123'));
+            console.error(chalk.red('Could not parse epic URL.'));
             process.exit(1);
           }
 
-          const jiraConfig = config.integrations.project_management.jira;
-          if (!jiraConfig) {
-            console.error(
-              chalk.red('Jira is not configured. Run `hive init` with Jira integration first.')
-            );
-            process.exit(1);
-          }
-
-          const spinner = ora(`Fetching epic ${parsed.issueKey} from Jira...`).start();
+          const spinner = ora(`Fetching epic ${parsed.issueKey} from ${pmConnector.provider}...`).start();
           try {
-            const tokenStore = new TokenStore(join(paths.hiveDir, '.env'));
-            await tokenStore.loadFromEnv();
-            loadEnvIntoProcess();
-
-            const client = new JiraClient({
-              tokenStore,
-              clientId: process.env.JIRA_CLIENT_ID || '',
-              clientSecret: process.env.JIRA_CLIENT_SECRET || '',
-            });
-
-            const epic = await fetchEpicFromJira(client, parsed.issueKey);
+            const epic = await pmConnector.fetchEpic(reqText);
             title = options.title || epic.title.substring(0, 100);
             description = epic.description;
             jiraEpicKey = epic.key;
@@ -102,7 +82,7 @@ export const reqCommand = new Command('req')
 
             spinner.succeed(chalk.green(`Fetched epic: ${epic.key} — ${epic.title}`));
           } catch (err) {
-            spinner.fail(chalk.red(`Failed to fetch epic from Jira`));
+            spinner.fail(chalk.red(`Failed to fetch epic from ${pmConnector.provider}`));
             console.error(err instanceof Error ? err.message : String(err));
             process.exit(1);
           }
