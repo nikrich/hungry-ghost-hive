@@ -144,7 +144,7 @@ describe('Jira Story Creation', () => {
       tokenStore = new TokenStore(envDir);
 
       // Mock JiraClient constructor
-      vi.mocked(JiraClient).mockImplementation(() => ({} as any));
+      vi.mocked(JiraClient).mockImplementation(() => ({}) as any);
 
       // Mock createIssue to return a fake Jira issue
       vi.mocked(createIssue).mockResolvedValue({
@@ -175,7 +175,10 @@ describe('Jira Story Creation', () => {
         storyPoints: null,
       });
 
-      const updatedStory = (await import('../../db/queries/stories.js')).getStoryById(db, story.id)!;
+      const updatedStory = (await import('../../db/queries/stories.js')).getStoryById(
+        db,
+        story.id
+      )!;
 
       await syncStoryToJira(db, tokenStore, mockConfig, updatedStory);
 
@@ -205,7 +208,10 @@ describe('Jira Story Creation', () => {
         storyPoints: 8,
       });
 
-      const updatedStory = (await import('../../db/queries/stories.js')).getStoryById(db, story.id)!;
+      const updatedStory = (await import('../../db/queries/stories.js')).getStoryById(
+        db,
+        story.id
+      )!;
 
       await syncStoryToJira(db, tokenStore, mockConfig, updatedStory);
 
