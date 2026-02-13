@@ -107,8 +107,8 @@ prCommand
         // Update story status
         updateStory(db.db, storyId, { status: 'pr_submitted' });
 
-        // Sync status change to Jira (fire and forget)
-        syncStatusToJira(root, db.db, storyId, 'pr_submitted');
+        // Sync status change to Jira
+        await syncStatusToJira(root, db.db, storyId, 'pr_submitted');
 
         const pr = createPullRequest(db.db, {
           storyId,
@@ -390,9 +390,9 @@ prCommand
 
       db.save();
 
-      // Sync status change to Jira (fire and forget, after DB commit)
+      // Sync status change to Jira
       if (storyId && newStatus === 'merged') {
-        syncStatusToJira(root, db.db, storyId, 'merged');
+        await syncStatusToJira(root, db.db, storyId, 'merged');
       }
 
       // Immediately attempt to auto-merge approved PRs instead of waiting for manager daemon cycle
@@ -460,9 +460,9 @@ prCommand
 
       db.save();
 
-      // Sync status change to Jira (fire and forget, after DB commit)
+      // Sync status change to Jira
       if (storyId) {
-        syncStatusToJira(root, db.db, storyId, 'qa_failed');
+        await syncStatusToJira(root, db.db, storyId, 'qa_failed');
       }
 
       console.log(chalk.yellow(`PR ${prId} rejected.`));

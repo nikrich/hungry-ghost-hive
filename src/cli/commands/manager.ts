@@ -685,9 +685,9 @@ async function promoteEstimatedStoriesToPlanned(
 
   ctx.db.save();
 
-  // Sync status changes to Jira (fire and forget, after DB commit)
+  // Sync status changes to Jira
   for (const story of stories) {
-    syncStatusToJira(ctx.root, ctx.db.db, story.id, 'planned');
+    await syncStatusToJira(ctx.root, ctx.db.db, story.id, 'planned');
   }
 
   return promoted;
@@ -1146,8 +1146,8 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
         });
       });
 
-      // Sync status change to Jira (fire and forget, after DB commit)
-      syncStatusToJira(ctx.root, ctx.db.db, storyId, 'qa_failed');
+      // Sync status change to Jira
+      await syncStatusToJira(ctx.root, ctx.db.db, storyId, 'qa_failed');
     }
 
     if (pr.submitted_by) {
