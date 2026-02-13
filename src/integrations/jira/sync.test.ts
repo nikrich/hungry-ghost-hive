@@ -897,11 +897,9 @@ describe('syncHiveStatusesToJira', () => {
 
     const pushed = await syncHiveStatusesToJira(db, tokenStore, config);
     expect(pushed).toBe(1);
-    expect(transitionIssue).toHaveBeenCalledWith(
-      expect.anything(),
-      'TEST-123',
-      { transition: { id: '11' } }
-    );
+    expect(transitionIssue).toHaveBeenCalledWith(expect.anything(), 'TEST-123', {
+      transition: { id: '11' },
+    });
   });
 
   it('skips push when Hive status matches Jira status', async () => {
