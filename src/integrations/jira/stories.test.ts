@@ -1,9 +1,27 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import type { Database } from 'sql.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TokenStore } from '../../auth/token-store.js';
+import type { JiraConfig } from '../../config/schema.js';
+import { createStory } from '../../db/queries/stories.js';
+import { createTestDatabase } from '../../db/queries/test-helpers.js';
 import { generateTechLeadJiraInstructions } from '../../orchestrator/prompt-templates.js';
 import * as logger from '../../utils/logger.js';
-import { safelyParseAcceptanceCriteria } from './stories.js';
+import { JiraClient } from './client.js';
+import { createIssue } from './issues.js';
+import { safelyParseAcceptanceCriteria, syncStoryToJira } from './stories.js';
+
+// Mock Jira client and issues
+vi.mock('./client.js');
+vi.mock('./issues.js');
+vi.mock('./sprints.js', () => ({
+  getActiveSprintForProject: vi.fn().mockResolvedValue(null),
+  moveIssuesToSprint: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe('Jira Story Creation', () => {
   describe('generateTechLeadJiraInstructions', () => {
@@ -103,6 +121,124 @@ describe('Jira Story Creation', () => {
       const emptyArrayJson = JSON.stringify([]);
       const result = safelyParseAcceptanceCriteria(emptyArrayJson, 'story-789');
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('Story Points Fallback', () => {
+    let db: Database;
+    let envDir: string;
+    let tokenStore: TokenStore;
+
+    const mockConfig: JiraConfig = {
+      project_key: 'TEST',
+      site_url: 'https://test.atlassian.net',
+      story_type: 'Story',
+      subtask_type: 'Subtask',
+      story_points_field: 'customfield_10016',
+      status_mapping: {},
+    };
+
+    beforeEach(async () => {
+      db = await createTestDatabase();
+      envDir = mkdtempSync(join(tmpdir(), 'hive-test-'));
+      tokenStore = new TokenStore(envDir);
+
+      // Mock JiraClient constructor
+      vi.mocked(JiraClient).mockImplementation(() => ({} as any));
+
+      // Mock createIssue to return a fake Jira issue
+      vi.mocked(createIssue).mockResolvedValue({
+        id: 'jira-id-123',
+        key: 'TEST-123',
+        self: 'https://test.atlassian.net/rest/api/3/issue/123',
+      });
+    });
+
+    afterEach(() => {
+      rmSync(envDir, { recursive: true, force: true });
+      vi.clearAllMocks();
+    });
+
+    it('should use complexity_score when story_points is null', async () => {
+      const { updateStory } = await import('../../db/queries/stories.js');
+      const story = createStory(db, {
+        title: 'Test Story',
+        description: 'Test description',
+        requirementId: null,
+        teamId: null,
+        acceptanceCriteria: null,
+      });
+
+      // Update with complexity_score but leave story_points null
+      updateStory(db, story.id, {
+        complexityScore: 5,
+        storyPoints: null,
+      });
+
+      const updatedStory = (await import('../../db/queries/stories.js')).getStoryById(db, story.id)!;
+
+      await syncStoryToJira(db, tokenStore, mockConfig, updatedStory);
+
+      expect(createIssue).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          fields: expect.objectContaining({
+            customfield_10016: 5,
+          }),
+        })
+      );
+    });
+
+    it('should use story_points when both story_points and complexity_score are set', async () => {
+      const { updateStory } = await import('../../db/queries/stories.js');
+      const story = createStory(db, {
+        title: 'Test Story',
+        description: 'Test description',
+        requirementId: null,
+        teamId: null,
+        acceptanceCriteria: null,
+      });
+
+      // Update with both complexity_score and story_points
+      updateStory(db, story.id, {
+        complexityScore: 5,
+        storyPoints: 8,
+      });
+
+      const updatedStory = (await import('../../db/queries/stories.js')).getStoryById(db, story.id)!;
+
+      await syncStoryToJira(db, tokenStore, mockConfig, updatedStory);
+
+      expect(createIssue).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          fields: expect.objectContaining({
+            customfield_10016: 8,
+          }),
+        })
+      );
+    });
+
+    it('should not include story points field when both are null', async () => {
+      const story = createStory(db, {
+        title: 'Test Story',
+        description: 'Test description',
+        requirementId: null,
+        teamId: null,
+        acceptanceCriteria: null,
+      });
+
+      // Story defaults to null for both fields
+      await syncStoryToJira(db, tokenStore, mockConfig, story);
+
+      expect(createIssue).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          fields: expect.not.objectContaining({
+            customfield_10016: expect.anything(),
+          }),
+        })
+      );
     });
   });
 });

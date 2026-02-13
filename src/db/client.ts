@@ -715,6 +715,24 @@ function runMigrations(db: SqlJsDatabase): void {
 
     db.run("INSERT INTO migrations (name) VALUES ('012-sprint-tracking.sql')");
   }
+
+  // Migration 007: Backfill story_points from complexity_score
+  const result007Backfill = db.exec(
+    "SELECT name FROM migrations WHERE name = '007-backfill-story-points.sql'"
+  );
+  const migration007BackfillApplied =
+    result007Backfill.length > 0 && result007Backfill[0].values.length > 0;
+
+  if (!migration007BackfillApplied) {
+    // Backfill story_points from complexity_score where story_points is NULL
+    db.run(`
+      UPDATE stories
+      SET story_points = complexity_score
+      WHERE story_points IS NULL
+        AND complexity_score IS NOT NULL
+    `);
+    db.run("INSERT INTO migrations (name) VALUES ('007-backfill-story-points.sql')");
+  }
 }
 
 export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
