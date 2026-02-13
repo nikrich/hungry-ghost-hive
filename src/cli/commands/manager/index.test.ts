@@ -2,13 +2,13 @@
 
 import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getApprovedPullRequests, updatePullRequest } from '../../db/queries/pull-requests.js';
+import { getApprovedPullRequests, updatePullRequest } from '../../../db/queries/pull-requests.js';
 
 // Mock the functions we're testing with
-vi.mock('../../db/queries/pull-requests.js');
-vi.mock('../../db/queries/stories.js');
-vi.mock('../../db/queries/logs.js');
-vi.mock('../../tmux/manager.js', () => ({
+vi.mock('../../../db/queries/pull-requests.js');
+vi.mock('../../../db/queries/stories.js');
+vi.mock('../../../db/queries/logs.js');
+vi.mock('../../../tmux/manager.js', () => ({
   sendMessageWithConfirmation: vi.fn(),
   getHiveSessions: vi.fn(),
   sendToTmuxSession: vi.fn(),
@@ -18,7 +18,7 @@ vi.mock('../../tmux/manager.js', () => ({
   stopManager: vi.fn(),
   killTmuxSession: vi.fn(),
 }));
-vi.mock('../../utils/cli-commands.js', () => ({
+vi.mock('../../../utils/cli-commands.js', () => ({
   getAvailableCommands: vi.fn(() => ({
     msgReply: (id: string, msg: string, session: string) =>
       `hive msg reply ${id} "${msg}" --to ${session}`,
@@ -75,7 +75,7 @@ describe('Message Forwarding with Delivery Confirmation', () => {
   });
 
   it('should forward messages with delivery confirmation', async () => {
-    const { sendMessageWithConfirmation } = await import('../../tmux/manager.js');
+    const { sendMessageWithConfirmation } = await import('../../../tmux/manager.js');
 
     vi.mocked(sendMessageWithConfirmation).mockResolvedValue(true);
 
@@ -87,7 +87,7 @@ describe('Message Forwarding with Delivery Confirmation', () => {
   });
 
   it('should handle delivery confirmation failures gracefully', async () => {
-    const { sendMessageWithConfirmation } = await import('../../tmux/manager.js');
+    const { sendMessageWithConfirmation } = await import('../../../tmux/manager.js');
 
     vi.mocked(sendMessageWithConfirmation).mockResolvedValue(false);
 
@@ -96,7 +96,7 @@ describe('Message Forwarding with Delivery Confirmation', () => {
   });
 
   it('should wait between message deliveries', async () => {
-    const { sendMessageWithConfirmation } = await import('../../tmux/manager.js');
+    const { sendMessageWithConfirmation } = await import('../../../tmux/manager.js');
 
     vi.mocked(sendMessageWithConfirmation).mockResolvedValue(true);
 
