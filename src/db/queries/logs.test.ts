@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import type { Database } from 'sql.js';
+import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createAgent } from './agents.js';
 import {
@@ -122,6 +123,78 @@ describe('logs queries', () => {
       });
 
       expect(log.metadata).toBe(JSON.stringify(metadata));
+    });
+
+    it('should resolve tmux session names to canonical agent IDs', () => {
+      const qaAgent = createAgent(db, {
+        type: 'qa',
+        teamId,
+        tmuxSession: 'hive-qa-testteam',
+      });
+
+      const log = createLog(db, {
+        agentId: 'hive-qa-testteam',
+        eventType: 'PR_REVIEW_STARTED',
+      });
+
+      expect(log.agent_id).toBe(qaAgent.id);
+    });
+
+    it('should create a synthetic agent row for unknown system actors', () => {
+      const log = createLog(db, {
+        agentId: 'scheduler',
+        eventType: 'TEAM_SCALED_UP',
+      });
+
+      expect(log.agent_id).toBe('scheduler');
+      const result = db.exec("SELECT id, type, status FROM agents WHERE id = 'scheduler'");
+      expect(result[0]?.values[0]).toEqual(['scheduler', 'tech_lead', 'terminated']);
+    });
+
+    it('should drop invalid story references to avoid FK failures', () => {
+      const log = createLog(db, {
+        agentId,
+        storyId: 'STORY-DOES-NOT-EXIST',
+        eventType: 'STORY_PROGRESS_UPDATE',
+      });
+
+      expect(log.story_id).toBeNull();
+    });
+
+    it('should support legacy agents schemas without last_seen', async () => {
+      const SQL = await initSqlJs();
+      const legacyDb = new SQL.Database();
+      legacyDb.run('PRAGMA foreign_keys = ON');
+      legacyDb.run(`
+        CREATE TABLE agents (
+          id TEXT PRIMARY KEY,
+          type TEXT,
+          status TEXT,
+          created_at TIMESTAMP,
+          updated_at TIMESTAMP
+        );
+      `);
+      legacyDb.run(`CREATE TABLE stories (id TEXT PRIMARY KEY);`);
+      legacyDb.run(`
+        CREATE TABLE agent_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          agent_id TEXT NOT NULL REFERENCES agents(id),
+          story_id TEXT REFERENCES stories(id),
+          event_type TEXT NOT NULL,
+          status TEXT,
+          message TEXT,
+          metadata TEXT,
+          timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      const log = createLog(legacyDb, {
+        agentId: 'scheduler',
+        eventType: 'TEAM_SCALED_UP',
+      });
+      expect(log.agent_id).toBe('scheduler');
+      const row = legacyDb.exec("SELECT id, status FROM agents WHERE id = 'scheduler'");
+      expect(row[0]?.values[0]).toEqual(['scheduler', 'terminated']);
     });
   });
 
