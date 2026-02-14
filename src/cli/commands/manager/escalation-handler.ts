@@ -9,6 +9,7 @@ import {
   updateEscalation,
 } from '../../../db/queries/escalations.js';
 import { createLog } from '../../../db/queries/logs.js';
+import { killTmuxSession, sendEnterToTmuxSession } from '../../../tmux/manager.js';
 import {
   AgentState,
   agentStates,
@@ -17,14 +18,22 @@ import {
   describeAgentState,
   detectAgentState,
   getAgentType,
-  isInterruptionPrompt,
   nudgeAgent,
-  sendEnterToTmuxSession,
   sendToTmuxSession,
   type CLITool,
 } from './agent-monitoring.js';
 import type { ManagerCheckContext } from './types.js';
 import { RECENT_ESCALATION_LOOKBACK_MINUTES, TMUX_CAPTURE_LINES } from './types.js';
+
+const INTERRUPTION_FIRST_RECOVERY_COMMAND = 'continue';
+const INTERRUPTION_HARD_RESET_ATTEMPTS = 3;
+const interruptionRecoveryAttempts = new Map<string, number>();
+const INTERRUPTION_PROMPT_PATTERN =
+  /conversation interrupted|tell the model what to do differently|hit [`'"]?\/feedback[`'"]? to report the issue/i;
+
+function isInterruptionPrompt(output: string): boolean {
+  return INTERRUPTION_PROMPT_PATTERN.test(output);
+}
 
 function getCodexPermissionActionHint(output: string): string | null {
   if (!/Yes,\s*and don't ask again/i.test(output)) {
@@ -105,42 +114,80 @@ export async function handleEscalationAndNudge(
   now: number
 ): Promise<void> {
   const currentTrackedState = agentStates.get(sessionName);
+  const interrupted =
+    stateResult.state === AgentState.USER_DECLINED && isInterruptionPrompt(output);
+
+  if (!interrupted) {
+    interruptionRecoveryAttempts.delete(sessionName);
+  }
 
   // Conversation interruptions are usually recoverable without human intervention.
-  // Auto-inject a continuation prompt and skip human escalation for this case.
-  if (stateResult.state === AgentState.USER_DECLINED && isInterruptionPrompt(output)) {
+  // Try "continue" first, then stronger prompt, then recycle the session.
+  if (interrupted) {
     const timeSinceLastNudge = currentTrackedState
       ? now - currentTrackedState.lastNudgeTime
       : Infinity;
-    if (timeSinceLastNudge > ctx.config.manager.nudge_cooldown_ms) {
-      const prompt = buildInterruptionRecoveryPrompt(sessionName, agent?.current_story_id);
-      await sendToTmuxSession(sessionName, prompt);
-      await sendEnterToTmuxSession(sessionName);
-      ctx.counters.nudged++;
+    if (timeSinceLastNudge <= ctx.config.manager.nudge_cooldown_ms) {
+      return;
+    }
 
-      if (currentTrackedState) {
-        currentTrackedState.lastNudgeTime = now;
-      } else {
-        agentStates.set(sessionName, {
-          lastState: stateResult.state,
-          lastStateChangeTime: now,
-          lastNudgeTime: now,
-        });
-      }
-
+    const attempts = interruptionRecoveryAttempts.get(sessionName) || 0;
+    if (attempts >= INTERRUPTION_HARD_RESET_ATTEMPTS) {
+      await killTmuxSession(sessionName);
+      interruptionRecoveryAttempts.delete(sessionName);
       createLog(ctx.db.db, {
         agentId: 'manager',
         storyId: agent?.current_story_id || undefined,
         eventType: 'STORY_PROGRESS_UPDATE',
-        message: `Auto-recovery prompt sent to interrupted session ${sessionName}`,
+        message: `Auto-restarted interrupted session ${sessionName} after ${attempts} failed recovery attempts`,
         metadata: {
           session_name: sessionName,
           detected_state: stateResult.state,
-          recovery: 'conversation_interrupted',
+          recovery: 'conversation_interrupted_restart',
+          attempts,
         },
       });
       ctx.db.save();
+      console.log(
+        chalk.yellow(
+          `  AUTO-RESTART: ${sessionName} remained interrupted after ${attempts} attempts`
+        )
+      );
+      return;
     }
+
+    const prompt =
+      attempts === 0
+        ? INTERRUPTION_FIRST_RECOVERY_COMMAND
+        : buildInterruptionRecoveryPrompt(sessionName, agent?.current_story_id);
+    await sendToTmuxSession(sessionName, prompt);
+    await sendEnterToTmuxSession(sessionName);
+    interruptionRecoveryAttempts.set(sessionName, attempts + 1);
+    ctx.counters.nudged++;
+
+    if (currentTrackedState) {
+      currentTrackedState.lastNudgeTime = now;
+    } else {
+      agentStates.set(sessionName, {
+        lastState: stateResult.state,
+        lastStateChangeTime: now,
+        lastNudgeTime: now,
+      });
+    }
+
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId: agent?.current_story_id || undefined,
+      eventType: 'STORY_PROGRESS_UPDATE',
+      message: `Auto-recovery message sent to interrupted session ${sessionName}`,
+      metadata: {
+        session_name: sessionName,
+        detected_state: stateResult.state,
+        recovery: 'conversation_interrupted',
+        attempt: attempts + 1,
+      },
+    });
+    ctx.db.save();
 
     return;
   }
@@ -196,6 +243,7 @@ export async function handleEscalationAndNudge(
 
     console.log(chalk.red(`  ESCALATION: ${sessionName} needs human input`));
   } else if (!waitingInfo.isWaiting && !waitingInfo.needsHuman) {
+    interruptionRecoveryAttempts.delete(sessionName);
     // Agent recovered - auto-resolve active escalations
     const activeEscalations = getActiveEscalationsForAgent(ctx.db.db, sessionName);
     for (const escalation of activeEscalations) {
