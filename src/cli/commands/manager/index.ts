@@ -438,6 +438,8 @@ async function backfillPRNumbers(ctx: ManagerCheckContext): Promise<void> {
 
 async function runHealthCheck(ctx: ManagerCheckContext): Promise<void> {
   const healthResult = await ctx.scheduler.healthCheck();
+  const recoveredStoryIds = [...healthResult.revived, ...healthResult.orphanedRecovered];
+
   if (healthResult.terminated > 0) {
     console.log(
       chalk.yellow(`  Health check: ${healthResult.terminated} dead agent(s) cleaned up`)
@@ -455,6 +457,31 @@ async function runHealthCheck(ctx: ManagerCheckContext): Promise<void> {
       )
     );
     ctx.db.save();
+  }
+
+  // If health/orphan recovery returned stories to planned, immediately re-assign
+  // so the queue does not stall waiting for a manual `hive assign`.
+  if (recoveredStoryIds.length > 0) {
+    const assignmentResult = await ctx.scheduler.assignStories();
+    ctx.db.save();
+
+    if (assignmentResult.assigned > 0) {
+      await ctx.scheduler.flushJiraQueue();
+      ctx.db.save();
+      console.log(
+        chalk.green(
+          `  Recovered ${recoveredStoryIds.length} story(ies), auto-assigned ${assignmentResult.assigned}`
+        )
+      );
+    }
+
+    if (assignmentResult.errors.length > 0) {
+      console.log(
+        chalk.yellow(
+          `  Assignment errors during health recovery: ${assignmentResult.errors.length}`
+        )
+      );
+    }
   }
 }
 
