@@ -73,7 +73,9 @@ export interface CreateLogInput {
   metadata?: Record<string, unknown> | null;
 }
 
-function inferAgentType(agentId: string): 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa' {
+function inferAgentType(
+  agentId: string
+): 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa' {
   const normalized = agentId.toLowerCase();
   if (normalized.includes('qa')) return 'qa';
   if (normalized.includes('senior')) return 'senior';
