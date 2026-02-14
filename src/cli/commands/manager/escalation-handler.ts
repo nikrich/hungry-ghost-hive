@@ -135,7 +135,7 @@ export async function handleEscalationAndNudge(
   const currentTrackedState = agentStates.get(sessionName);
   const interrupted =
     stateResult.state === AgentState.USER_DECLINED && isInterruptionPrompt(output);
-  const rateLimited = stateResult.state === AgentState.USER_DECLINED && isRateLimitPrompt(output);
+  const rateLimited = isRateLimitPrompt(output);
 
   if (!interrupted) {
     interruptionRecoveryAttempts.delete(sessionName);

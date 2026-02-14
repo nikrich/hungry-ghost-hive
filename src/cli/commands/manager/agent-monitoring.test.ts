@@ -7,6 +7,10 @@ import { detectAgentState } from './agent-monitoring.js';
 const INTERRUPTION_BANNER = `■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit \`/feedback\` to report the issue.`;
 const RATE_LIMIT_BANNER =
   '■ exceeded retry limit, last status: 429 Too Many Requests, request id: abc123';
+const ANTHROPIC_RATE_LIMIT =
+  'API Error: {"type":"error","error":{"type":"rate_limit_error","message":"Rate limit exceeded"}}';
+const GEMINI_RATE_LIMIT =
+  'RESOURCE_EXHAUSTED: Quota exceeded for quota metric GenerateContent requests per minute.';
 
 describe('detectAgentState interruption fallback', () => {
   it('treats interruption banner as blocked for codex sessions', () => {
@@ -46,5 +50,28 @@ describe('detectAgentState interruption fallback', () => {
 
     expect(result.state).toBe(AgentState.USER_DECLINED);
     expect(result.needsHuman).toBe(false);
+  });
+
+  it('detects anthropic/openai style rate-limit errors', () => {
+    const result = detectAgentState(ANTHROPIC_RATE_LIMIT, 'claude');
+
+    expect(result.state).toBe(AgentState.USER_DECLINED);
+    expect(result.isWaiting).toBe(true);
+    expect(result.needsHuman).toBe(false);
+  });
+
+  it('detects gemini resource exhausted quota errors', () => {
+    const result = detectAgentState(GEMINI_RATE_LIMIT, 'gemini');
+
+    expect(result.state).toBe(AgentState.USER_DECLINED);
+    expect(result.isWaiting).toBe(true);
+    expect(result.needsHuman).toBe(false);
+  });
+
+  it('does not treat planning text about rate limits as blocked state', () => {
+    const output = 'Plan: add rate limiting middleware and return 429 for burst traffic.';
+    const result = detectAgentState(output, 'codex');
+
+    expect(result.state).not.toBe(AgentState.USER_DECLINED);
   });
 });
