@@ -61,6 +61,7 @@ import {
 } from './agent-monitoring.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
+import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
 import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
 import { findStaleSessionEscalations } from './stale-escalations.js';
@@ -408,6 +409,7 @@ async function managerCheck(
     // Discover active tmux sessions
     const sessions = await getHiveSessions();
     ctx.hiveSessions = sessions.filter(s => s.name.startsWith('hive-'));
+    resolveOrphanedSessionEscalations(ctx);
 
     prepareSessionData(ctx);
     resolveStaleEscalations(ctx);
@@ -604,6 +606,60 @@ function resolveStaleEscalations(ctx: ManagerCheckContext): void {
 
   ctx.db.save();
   console.log(chalk.yellow(`  Auto-cleared ${staleEscalations.length} stale escalation(s)`));
+}
+
+function resolveOrphanedSessionEscalations(ctx: ManagerCheckContext): void {
+  const pendingEscalations = getPendingEscalations(ctx.db.db);
+  if (pendingEscalations.length === 0) {
+    return;
+  }
+
+  const activeSessionNames = new Set(ctx.hiveSessions.map(session => session.name));
+  const agentStatusBySessionName = new Map<string, string>();
+  for (const agent of getAllAgents(ctx.db.db)) {
+    if (agent.tmux_session) {
+      agentStatusBySessionName.set(agent.tmux_session, agent.status);
+    }
+  }
+
+  let resolvedCount = 0;
+  for (const escalation of pendingEscalations) {
+    const fromSession = escalation.from_agent_id;
+    if (
+      !shouldAutoResolveOrphanedManagerEscalation(
+        fromSession,
+        activeSessionNames,
+        agentStatusBySessionName
+      )
+    ) {
+      continue;
+    }
+
+    updateEscalation(ctx.db.db, escalation.id, {
+      status: 'resolved',
+      resolution: `Manager auto-resolved stale escalation from inactive session ${fromSession}`,
+    });
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId: escalation.story_id || undefined,
+      eventType: 'ESCALATION_RESOLVED',
+      message: `Auto-resolved stale escalation ${escalation.id} from inactive session ${fromSession}`,
+      metadata: {
+        escalation_id: escalation.id,
+        from_agent_id: fromSession,
+        recovery: 'orphaned_session_escalation',
+      },
+    });
+    resolvedCount++;
+  }
+
+  if (resolvedCount > 0) {
+    ctx.counters.escalationsResolved += resolvedCount;
+    ctx.db.save();
+    console.log(
+      chalk.green(`  AUTO-RESOLVED: ${resolvedCount} stale escalation(s) from inactive sessions`)
+    );
+  }
 }
 
 async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
