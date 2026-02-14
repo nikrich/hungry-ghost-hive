@@ -52,7 +52,12 @@ const RATE_LIMIT_CONTEXT_PATTERNS = [
   /tokens?\s+per\s+(?:min|minute)/i,
   /\b(?:rpm|tpm)\b/i,
 ];
-const RATE_LIMIT_RETRY_PATTERNS = [/retry after/i, /exceeded retry limit/i, /try again/i, /backoff/i];
+const RATE_LIMIT_RETRY_PATTERNS = [
+  /retry after/i,
+  /exceeded retry limit/i,
+  /try again/i,
+  /backoff/i,
+];
 const RATE_LIMIT_WINDOW_LINES = 120;
 
 function getRecentPaneOutput(output: string, lineCount: number): string {
@@ -69,7 +74,9 @@ export function isRateLimitPrompt(output: string): boolean {
     return true;
   }
 
-  const hasRateLimitContext = RATE_LIMIT_CONTEXT_PATTERNS.some(pattern => pattern.test(recentOutput));
+  const hasRateLimitContext = RATE_LIMIT_CONTEXT_PATTERNS.some(pattern =>
+    pattern.test(recentOutput)
+  );
   const hasRetrySignal = RATE_LIMIT_RETRY_PATTERNS.some(pattern => pattern.test(recentOutput));
   return hasRateLimitContext && hasRetrySignal;
 }

@@ -107,6 +107,8 @@ describe('buildRateLimitRecoveryPrompt', () => {
     const prompt = buildRateLimitRecoveryPrompt('hive-junior-grigora-11', 90000);
 
     expect(prompt).toContain('continue your assigned story from your last checkpoint');
-    expect(prompt).toContain('hive pr submit -b <branch> -s <story-id> --from hive-junior-grigora-11');
+    expect(prompt).toContain(
+      'hive pr submit -b <branch> -s <story-id> --from hive-junior-grigora-11'
+    );
   });
 });
