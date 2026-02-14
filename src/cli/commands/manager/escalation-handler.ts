@@ -24,6 +24,62 @@ import {
 import type { ManagerCheckContext } from './types.js';
 import { RECENT_ESCALATION_LOOKBACK_MINUTES, TMUX_CAPTURE_LINES } from './types.js';
 
+function getCodexPermissionActionHint(output: string): string | null {
+  if (!/Yes,\s*and don't ask again/i.test(output)) {
+    return null;
+  }
+
+  const prefixMatch = output.match(/commands that start with `([^`]+)`/i);
+  if (prefixMatch?.[1]) {
+    return `Select option 2 ("Yes, and don't ask again for commands that start with \`${prefixMatch[1]}\`").`;
+  }
+
+  return 'Select option 2 ("Yes, and don\'t ask again").';
+}
+
+function getGenericPermissionActionHint(output: string): string {
+  if (/\[y\/n\]|\(y\/n\)|yes\/no/i.test(output)) {
+    return 'Approve in the agent session (press y then Enter).';
+  }
+  return 'Approve the permission gate in the agent session.';
+}
+
+function getActionHintForBlockedState(
+  state: import('../../../state-detectors/types.js').AgentState,
+  cliTool: CLITool,
+  output: string
+): string {
+  switch (state) {
+    case AgentState.PERMISSION_REQUIRED: {
+      if (cliTool === 'codex') {
+        return getCodexPermissionActionHint(output) || getGenericPermissionActionHint(output);
+      }
+      return getGenericPermissionActionHint(output);
+    }
+    case AgentState.AWAITING_SELECTION:
+      return 'Choose one of the presented options in the agent session and confirm.';
+    case AgentState.ASKING_QUESTION:
+      return 'Answer the question in the agent session, then press Enter.';
+    case AgentState.PLAN_APPROVAL:
+      return 'Approve the plan prompt in the agent session so work can continue.';
+    case AgentState.USER_DECLINED:
+      return 'Agent is blocked after a declined prompt; re-open the session and confirm the next gate.';
+    default:
+      return 'Open the agent session and resolve the blocked prompt.';
+  }
+}
+
+export function buildHumanApprovalReason(
+  sessionName: string,
+  waitingReason: string | undefined,
+  state: import('../../../state-detectors/types.js').AgentState,
+  cliTool: CLITool,
+  output: string
+): string {
+  const actionHint = getActionHintForBlockedState(state, cliTool, output);
+  return `Approval required (${cliTool}) in ${sessionName}: ${waitingReason || 'Unknown question'}. Action: ${actionHint}`;
+}
+
 export async function handleEscalationAndNudge(
   ctx: ManagerCheckContext,
   sessionName: string,
@@ -34,6 +90,7 @@ export async function handleEscalationAndNudge(
     needsHuman: boolean;
   },
   agentCliTool: CLITool,
+  output: string,
   now: number
 ): Promise<void> {
   const waitingInfo = {
@@ -52,19 +109,26 @@ export async function handleEscalationAndNudge(
   if (waitingInfo.needsHuman && !hasRecentEscalation) {
     // Create escalation for human attention
     const storyId = agent?.current_story_id || null;
+    const escalationReason = buildHumanApprovalReason(
+      sessionName,
+      waitingInfo.reason,
+      stateResult.state,
+      agentCliTool,
+      output
+    );
 
     const escalation = createEscalation(ctx.db.db, {
       storyId,
       fromAgentId: sessionName,
       toAgentId: null,
-      reason: `Approval required: ${waitingInfo.reason || 'Unknown question'}`,
+      reason: escalationReason,
     });
     createLog(ctx.db.db, {
       agentId: 'manager',
       storyId,
       eventType: 'ESCALATION_CREATED',
       status: 'error',
-      message: `${sessionName} requires human approval: ${waitingInfo.reason || 'Unknown question'}`,
+      message: `${sessionName} requires human approval: ${escalationReason}`,
       metadata: {
         escalation_id: escalation.id,
         session_name: sessionName,

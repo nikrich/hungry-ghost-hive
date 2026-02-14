@@ -8,6 +8,19 @@ import { getPendingEscalations, type EscalationRow } from '../../../db/queries/e
 // Store escalations for selection lookup
 let currentEscalations: EscalationRow[] = [];
 
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return text.substring(0, Math.max(0, max - 3)) + '...';
+}
+
+function summarizeEscalationReason(reason: string): string {
+  const actionMatch = reason.match(/Action:\s*(.+)$/i);
+  if (actionMatch?.[1]) {
+    return `ACTION: ${truncate(actionMatch[1], 38)}`;
+  }
+  return truncate(reason, 38);
+}
+
 export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
   const list = blessed.list({
     parent: screen,
@@ -108,7 +121,8 @@ export async function updateEscalationsPanel(
   const items = escalations.map((esc: EscalationRow) => {
     const icon = esc.to_agent_id ? '{yellow-fg}!{/}' : '{red-fg}!!{/}';
     const target = esc.to_agent_id || 'HUMAN';
-    return `${icon} ${esc.id}\n   ${target}\n   ${esc.reason.substring(0, 25)}...`;
+    const summary = summarizeEscalationReason(esc.reason);
+    return `${icon} ${esc.id}\n   ${target}\n   ${summary}`;
   });
 
   list.setItems(items);
