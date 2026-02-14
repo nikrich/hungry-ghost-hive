@@ -777,7 +777,9 @@ async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext): Promi
   );
   if (assignmentResult.errors.length > 0) {
     console.log(
-      chalk.yellow(`  Assignment errors during QA-failed recovery: ${assignmentResult.errors.length}`)
+      chalk.yellow(
+        `  Assignment errors during QA-failed recovery: ${assignmentResult.errors.length}`
+      )
     );
   }
 }
