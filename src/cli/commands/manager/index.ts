@@ -14,7 +14,7 @@ import type { StoryRow } from '../../../db/client.js';
 import { queryAll, withTransaction } from '../../../db/client.js';
 import { acquireLock } from '../../../db/lock.js';
 import { getAgentById, getAllAgents } from '../../../db/queries/agents.js';
-import { getPendingEscalations } from '../../../db/queries/escalations.js';
+import { getPendingEscalations, updateEscalation } from '../../../db/queries/escalations.js';
 import { createLog } from '../../../db/queries/logs.js';
 import {
   getAllPendingMessages,
@@ -63,6 +63,7 @@ import { handleEscalationAndNudge } from './escalation-handler.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
 import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
+import { findStaleSessionEscalations } from './stale-escalations.js';
 import type { ManagerCheckContext } from './types.js';
 import { TMUX_CAPTURE_LINES, TMUX_CAPTURE_LINES_SHORT } from './types.js';
 
@@ -408,12 +409,14 @@ async function managerCheck(
     const sessions = await getHiveSessions();
     ctx.hiveSessions = sessions.filter(s => s.name.startsWith('hive-'));
 
+    prepareSessionData(ctx);
+    resolveStaleEscalations(ctx);
+
     if (ctx.hiveSessions.length === 0) {
       console.log(chalk.gray('  No agent sessions found'));
       return;
     }
 
-    prepareSessionData(ctx);
     await scanAgentSessions(ctx);
     batchMarkMessagesRead(ctx);
     await notifyQAOfQueuedPRs(ctx);
@@ -549,6 +552,58 @@ function prepareSessionData(ctx: ManagerCheckContext): void {
     }
   }
   ctx.agentsBySessionName = bySessionName;
+}
+
+function resolveStaleEscalations(ctx: ManagerCheckContext): void {
+  const staleAfterMs = Math.max(
+    1,
+    ctx.config.manager.nudge_cooldown_ms,
+    ctx.config.manager.stuck_threshold_ms
+  );
+  const pendingEscalations = getPendingEscalations(ctx.db.db);
+  if (pendingEscalations.length === 0) return;
+
+  const uniqueAgents = new Map<string, ReturnType<typeof getAllAgents>[number]>();
+  for (const agent of ctx.agentsBySessionName.values()) {
+    uniqueAgents.set(agent.id, agent);
+  }
+
+  const staleEscalations = findStaleSessionEscalations({
+    pendingEscalations,
+    agents: [...uniqueAgents.values()],
+    liveSessionNames: new Set(ctx.hiveSessions.map(session => session.name)),
+    nowMs: Date.now(),
+    staleAfterMs,
+  });
+
+  if (staleEscalations.length === 0) return;
+
+  withTransaction(ctx.db.db, () => {
+    for (const stale of staleEscalations) {
+      updateEscalation(ctx.db.db, stale.escalation.id, {
+        status: 'resolved',
+        resolution: `Manager auto-resolved stale escalation: ${stale.reason}`,
+      });
+      if (stale.escalation.from_agent_id) {
+        ctx.escalatedSessions.delete(stale.escalation.from_agent_id);
+      }
+      ctx.counters.escalationsResolved++;
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        storyId: stale.escalation.story_id || undefined,
+        eventType: 'ESCALATION_RESOLVED',
+        message: `Auto-resolved stale escalation ${stale.escalation.id}`,
+        metadata: {
+          escalation_id: stale.escalation.id,
+          from_agent_id: stale.escalation.from_agent_id,
+          reason: stale.reason,
+        },
+      });
+    }
+  });
+
+  ctx.db.save();
+  console.log(chalk.yellow(`  Auto-cleared ${staleEscalations.length} stale escalation(s)`));
 }
 
 async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
