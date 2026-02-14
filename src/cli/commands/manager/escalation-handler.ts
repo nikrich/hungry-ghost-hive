@@ -113,7 +113,9 @@ export async function handleEscalationAndNudge(
   // Conversation interruptions are usually recoverable without human intervention.
   // Auto-inject a continuation prompt and skip human escalation for this case.
   if (stateResult.state === AgentState.USER_DECLINED && isInterruptionPrompt(output)) {
-    const timeSinceLastNudge = currentTrackedState ? now - currentTrackedState.lastNudgeTime : Infinity;
+    const timeSinceLastNudge = currentTrackedState
+      ? now - currentTrackedState.lastNudgeTime
+      : Infinity;
     if (timeSinceLastNudge > ctx.config.manager.nudge_cooldown_ms) {
       const prompt = buildInterruptionRecoveryPrompt(sessionName, agent?.current_story_id);
       await sendToTmuxSession(sessionName, prompt);
