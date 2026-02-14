@@ -21,4 +21,12 @@ describe('detectAgentState interruption fallback', () => {
     expect(result.state).toBe(AgentState.USER_DECLINED);
     expect(result.needsHuman).toBe(true);
   });
+
+  it('prioritizes interruption over stale working text in pane history', () => {
+    const output = `I'm working through the design.\n${INTERRUPTION_BANNER}`;
+    const result = detectAgentState(output, 'codex');
+
+    expect(result.state).toBe(AgentState.USER_DECLINED);
+    expect(result.needsHuman).toBe(true);
+  });
 });

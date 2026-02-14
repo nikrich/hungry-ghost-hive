@@ -35,11 +35,8 @@ const INTERRUPTION_PROMPT_PATTERN =
   /conversation interrupted|tell the model what to do differently|hit [`'"]?\/feedback[`'"]? to report the issue/i;
 
 export function detectAgentState(output: string, cliTool: CLITool): StateDetectionResult {
-  const detected = stateDetectors[cliTool].detectState(output);
-  if (detected.state !== AgentState.UNKNOWN) {
-    return detected;
-  }
-
+  // Interruption banners can coexist with stale "working" text in pane history.
+  // Treat interruption as authoritative blocked state to force escalation.
   if (INTERRUPTION_PROMPT_PATTERN.test(output)) {
     return {
       state: AgentState.USER_DECLINED,
@@ -50,7 +47,7 @@ export function detectAgentState(output: string, cliTool: CLITool): StateDetecti
     };
   }
 
-  return detected;
+  return stateDetectors[cliTool].detectState(output);
 }
 
 export function describeAgentState(state: AgentState, cliTool: CLITool): string {

@@ -49,6 +49,7 @@ import {
 } from '../../../utils/pr-sync.js';
 import { withHiveContext, withHiveRoot } from '../../../utils/with-hive-context.js';
 import {
+  agentStates,
   detectAgentState,
   enforceBypassMode,
   forwardMessages,
@@ -802,6 +803,22 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
 
     const agentSession = findSessionForAgent(ctx.hiveSessions, agent);
     if (!agentSession) continue;
+    const now = Date.now();
+
+    const trackedState = agentStates.get(agentSession.name);
+    if (trackedState && now - trackedState.lastNudgeTime < ctx.config.manager.nudge_cooldown_ms) {
+      continue;
+    }
+
+    const agentCliTool = (agent.cli_tool || 'claude') as CLITool;
+    const output = await captureTmuxPane(agentSession.name, TMUX_CAPTURE_LINES_SHORT);
+    const stateResult = detectAgentState(output, agentCliTool);
+    if (stateResult.needsHuman) {
+      continue;
+    }
+    if (!stateResult.isWaiting || stateResult.state === AgentState.THINKING) {
+      continue;
+    }
 
     await sendToTmuxSession(
       agentSession.name,
@@ -812,6 +829,15 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
     );
     await sendEnterToTmuxSession(agentSession.name);
     ctx.counters.nudged++;
+    if (trackedState) {
+      trackedState.lastNudgeTime = now;
+    } else {
+      agentStates.set(agentSession.name, {
+        lastState: stateResult.state,
+        lastStateChangeTime: now,
+        lastNudgeTime: now,
+      });
+    }
   }
 }
 
