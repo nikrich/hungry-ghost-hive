@@ -5,6 +5,8 @@ import { AgentState } from '../../../state-detectors/types.js';
 import { detectAgentState } from './agent-monitoring.js';
 
 const INTERRUPTION_BANNER = `■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit \`/feedback\` to report the issue.`;
+const RATE_LIMIT_BANNER =
+  '■ exceeded retry limit, last status: 429 Too Many Requests, request id: abc123';
 
 describe('detectAgentState interruption fallback', () => {
   it('treats interruption banner as blocked for codex sessions', () => {
@@ -28,5 +30,21 @@ describe('detectAgentState interruption fallback', () => {
 
     expect(result.state).toBe(AgentState.USER_DECLINED);
     expect(result.needsHuman).toBe(true);
+  });
+
+  it('treats rate limit prompts as recoverable waiting state', () => {
+    const result = detectAgentState(RATE_LIMIT_BANNER, 'codex');
+
+    expect(result.state).toBe(AgentState.USER_DECLINED);
+    expect(result.isWaiting).toBe(true);
+    expect(result.needsHuman).toBe(false);
+  });
+
+  it('prioritizes rate-limit fallback over stale question text in pane history', () => {
+    const output = `${RATE_LIMIT_BANNER}\n› Write tests for @filename`;
+    const result = detectAgentState(output, 'codex');
+
+    expect(result.state).toBe(AgentState.USER_DECLINED);
+    expect(result.needsHuman).toBe(false);
   });
 });

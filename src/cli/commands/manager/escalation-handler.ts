@@ -18,6 +18,7 @@ import {
   describeAgentState,
   detectAgentState,
   getAgentType,
+  isRateLimitPrompt,
   nudgeAgent,
   sendToTmuxSession,
   type CLITool,
@@ -27,7 +28,10 @@ import { RECENT_ESCALATION_LOOKBACK_MINUTES, TMUX_CAPTURE_LINES } from './types.
 
 const INTERRUPTION_FIRST_RECOVERY_COMMAND = 'continue';
 const INTERRUPTION_HARD_RESET_ATTEMPTS = 3;
+const RATE_LIMIT_INITIAL_BACKOFF_MS = 90000;
+const RATE_LIMIT_MAX_BACKOFF_MS = 300000;
 const interruptionRecoveryAttempts = new Map<string, number>();
+const rateLimitRecoveryAttempts = new Map<string, number>();
 const INTERRUPTION_PROMPT_PATTERN =
   /conversation interrupted|tell the model what to do differently|hit [`'"]?\/feedback[`'"]? to report the issue/i;
 
@@ -100,6 +104,21 @@ export function buildInterruptionRecoveryPrompt(
   return `Manager auto-recovery: your session was interrupted. Continue ${storyLabel} from your last checkpoint now. Do not reply with a status update; resume implementation immediately, run tests/validation, then submit with: hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}.`;
 }
 
+function getRateLimitBackoffMs(attempts: number): number {
+  return Math.min(RATE_LIMIT_MAX_BACKOFF_MS, RATE_LIMIT_INITIAL_BACKOFF_MS * 2 ** attempts);
+}
+
+export function buildRateLimitRecoveryPrompt(
+  sessionName: string,
+  backoffMs: number,
+  storyId?: string | null
+): string {
+  const storyLabel = storyId || 'your assigned story';
+  const submitStory = storyId || '<story-id>';
+  const backoffSeconds = Math.max(30, Math.round(backoffMs / 1000));
+  return `Manager auto-recovery: rate limit detected (HTTP 429). Pause before retrying to reduce API pressure. Run: sleep ${backoffSeconds}. After the pause, continue ${storyLabel} from your last checkpoint and batch work to reduce requests. When done, submit with: hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}.`;
+}
+
 export async function handleEscalationAndNudge(
   ctx: ManagerCheckContext,
   sessionName: string,
@@ -116,9 +135,63 @@ export async function handleEscalationAndNudge(
   const currentTrackedState = agentStates.get(sessionName);
   const interrupted =
     stateResult.state === AgentState.USER_DECLINED && isInterruptionPrompt(output);
+  const rateLimited = stateResult.state === AgentState.USER_DECLINED && isRateLimitPrompt(output);
 
   if (!interrupted) {
     interruptionRecoveryAttempts.delete(sessionName);
+  }
+  if (!rateLimited) {
+    rateLimitRecoveryAttempts.delete(sessionName);
+  }
+
+  if (rateLimited) {
+    const attempts = rateLimitRecoveryAttempts.get(sessionName) || 0;
+    const backoffMs = getRateLimitBackoffMs(attempts);
+    const timeSinceLastNudge = currentTrackedState
+      ? now - currentTrackedState.lastNudgeTime
+      : Infinity;
+    if (timeSinceLastNudge <= backoffMs) {
+      return;
+    }
+
+    await sendToTmuxSession(
+      sessionName,
+      buildRateLimitRecoveryPrompt(sessionName, backoffMs, agent?.current_story_id)
+    );
+    await sendEnterToTmuxSession(sessionName);
+    rateLimitRecoveryAttempts.set(sessionName, attempts + 1);
+    ctx.counters.nudged++;
+
+    if (currentTrackedState) {
+      currentTrackedState.lastNudgeTime = now;
+    } else {
+      agentStates.set(sessionName, {
+        lastState: stateResult.state,
+        lastStateChangeTime: now,
+        lastNudgeTime: now,
+      });
+    }
+
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId: agent?.current_story_id || undefined,
+      eventType: 'STORY_PROGRESS_UPDATE',
+      message: `Auto-backoff message sent to rate-limited session ${sessionName}`,
+      metadata: {
+        session_name: sessionName,
+        detected_state: stateResult.state,
+        recovery: 'rate_limit_backoff',
+        attempt: attempts + 1,
+        backoff_ms: backoffMs,
+      },
+    });
+    ctx.db.save();
+    console.log(
+      chalk.yellow(
+        `  AUTO-BACKOFF: ${sessionName} hit rate limit, requested ${Math.round(backoffMs / 1000)}s pause`
+      )
+    );
+    return;
   }
 
   // Conversation interruptions are usually recoverable without human intervention.

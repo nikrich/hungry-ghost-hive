@@ -2,7 +2,11 @@
 
 import { describe, expect, it } from 'vitest';
 import { AgentState } from '../../../state-detectors/types.js';
-import { buildHumanApprovalReason, buildInterruptionRecoveryPrompt } from './escalation-handler.js';
+import {
+  buildHumanApprovalReason,
+  buildInterruptionRecoveryPrompt,
+  buildRateLimitRecoveryPrompt,
+} from './escalation-handler.js';
 
 describe('buildHumanApprovalReason', () => {
   it('should include option-2 guidance for codex permission menus', () => {
@@ -85,5 +89,24 @@ describe('buildInterruptionRecoveryPrompt', () => {
 
     expect(prompt).toContain('Continue your assigned story from your last checkpoint');
     expect(prompt).toContain('hive pr submit -b <branch> -s <story-id> --from hive-junior-grigora');
+  });
+});
+
+describe('buildRateLimitRecoveryPrompt', () => {
+  it('includes sleep/pause and story-specific submit instructions', () => {
+    const prompt = buildRateLimitRecoveryPrompt('hive-intermediate-grigora-8', 120000, 'STORY-003');
+
+    expect(prompt).toContain('rate limit detected (HTTP 429)');
+    expect(prompt).toContain('Run: sleep 120');
+    expect(prompt).toContain(
+      'hive pr submit -b <branch> -s STORY-003 --from hive-intermediate-grigora-8'
+    );
+  });
+
+  it('falls back to generic story placeholder when story id is missing', () => {
+    const prompt = buildRateLimitRecoveryPrompt('hive-junior-grigora-11', 90000);
+
+    expect(prompt).toContain('continue your assigned story from your last checkpoint');
+    expect(prompt).toContain('hive pr submit -b <branch> -s <story-id> --from hive-junior-grigora-11');
   });
 });
