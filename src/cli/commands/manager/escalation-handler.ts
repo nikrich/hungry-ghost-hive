@@ -9,7 +9,7 @@ import {
   updateEscalation,
 } from '../../../db/queries/escalations.js';
 import { createLog } from '../../../db/queries/logs.js';
-import { killTmuxSession } from '../../../tmux/manager.js';
+import { killTmuxSession, sendEnterToTmuxSession } from '../../../tmux/manager.js';
 import {
   AgentState,
   agentStates,
@@ -18,9 +18,7 @@ import {
   describeAgentState,
   detectAgentState,
   getAgentType,
-  isInterruptionPrompt,
   nudgeAgent,
-  sendEnterToTmuxSession,
   sendToTmuxSession,
   type CLITool,
 } from './agent-monitoring.js';
@@ -30,6 +28,12 @@ import { RECENT_ESCALATION_LOOKBACK_MINUTES, TMUX_CAPTURE_LINES } from './types.
 const INTERRUPTION_FIRST_RECOVERY_COMMAND = 'continue';
 const INTERRUPTION_HARD_RESET_ATTEMPTS = 3;
 const interruptionRecoveryAttempts = new Map<string, number>();
+const INTERRUPTION_PROMPT_PATTERN =
+  /conversation interrupted|tell the model what to do differently|hit [`'"]?\/feedback[`'"]? to report the issue/i;
+
+function isInterruptionPrompt(output: string): boolean {
+  return INTERRUPTION_PROMPT_PATTERN.test(output);
+}
 
 function getCodexPermissionActionHint(output: string): string | null {
   if (!/Yes,\s*and don't ask again/i.test(output)) {
