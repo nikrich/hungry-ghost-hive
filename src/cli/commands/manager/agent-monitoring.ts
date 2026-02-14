@@ -31,7 +31,22 @@ export const stateDetectors: Record<CLITool, ReturnType<typeof getStateDetector>
   gemini: getStateDetector('gemini'),
 };
 
+const INTERRUPTION_PROMPT_PATTERN =
+  /conversation interrupted|tell the model what to do differently|hit [`'"]?\/feedback[`'"]? to report the issue/i;
+
 export function detectAgentState(output: string, cliTool: CLITool): StateDetectionResult {
+  // Interruption banners can coexist with stale "working" text in pane history.
+  // Treat interruption as authoritative blocked state to force escalation.
+  if (INTERRUPTION_PROMPT_PATTERN.test(output)) {
+    return {
+      state: AgentState.USER_DECLINED,
+      confidence: 0.9,
+      reason: `Detected ${cliTool} interruption prompt`,
+      isWaiting: true,
+      needsHuman: true,
+    };
+  }
+
   return stateDetectors[cliTool].detectState(output);
 }
 
