@@ -24,6 +24,36 @@ import {
 import type { ManagerCheckContext } from './types.js';
 import { RECENT_ESCALATION_LOOKBACK_MINUTES, TMUX_CAPTURE_LINES } from './types.js';
 
+function getCodexPermissionActionHint(output: string): string | null {
+  if (!/Yes,\s*and don't ask again/i.test(output)) {
+    return null;
+  }
+
+  const prefixMatch = output.match(/commands that start with `([^`]+)`/i);
+  if (prefixMatch?.[1]) {
+    return `Select option 2 ("Yes, and don't ask again for commands that start with \`${prefixMatch[1]}\`").`;
+  }
+
+  return 'Select option 2 ("Yes, and don\'t ask again").';
+}
+
+function buildHumanApprovalReason(
+  sessionName: string,
+  waitingReason: string | undefined,
+  state: import('../../../state-detectors/types.js').AgentState,
+  cliTool: CLITool,
+  output: string
+): string {
+  if (cliTool === 'codex' && state === AgentState.PERMISSION_REQUIRED) {
+    const actionHint = getCodexPermissionActionHint(output);
+    if (actionHint) {
+      return `Approval required: Codex permission gate in ${sessionName}. ${actionHint} This persists the approval and restores autonomous execution.`;
+    }
+  }
+
+  return `Approval required: ${waitingReason || 'Unknown question'}`;
+}
+
 export async function handleEscalationAndNudge(
   ctx: ManagerCheckContext,
   sessionName: string,
@@ -34,6 +64,7 @@ export async function handleEscalationAndNudge(
     needsHuman: boolean;
   },
   agentCliTool: CLITool,
+  output: string,
   now: number
 ): Promise<void> {
   const waitingInfo = {
@@ -52,19 +83,26 @@ export async function handleEscalationAndNudge(
   if (waitingInfo.needsHuman && !hasRecentEscalation) {
     // Create escalation for human attention
     const storyId = agent?.current_story_id || null;
+    const escalationReason = buildHumanApprovalReason(
+      sessionName,
+      waitingInfo.reason,
+      stateResult.state,
+      agentCliTool,
+      output
+    );
 
     const escalation = createEscalation(ctx.db.db, {
       storyId,
       fromAgentId: sessionName,
       toAgentId: null,
-      reason: `Approval required: ${waitingInfo.reason || 'Unknown question'}`,
+      reason: escalationReason,
     });
     createLog(ctx.db.db, {
       agentId: 'manager',
       storyId,
       eventType: 'ESCALATION_CREATED',
       status: 'error',
-      message: `${sessionName} requires human approval: ${waitingInfo.reason || 'Unknown question'}`,
+      message: `${sessionName} requires human approval: ${escalationReason}`,
       metadata: {
         escalation_id: escalation.id,
         session_name: sessionName,

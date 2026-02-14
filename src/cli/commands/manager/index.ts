@@ -555,7 +555,15 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 
     await handlePlanApproval(session.name, stateResult, now, agentCliTool, safetyMode);
 
-    await handleEscalationAndNudge(ctx, session.name, agent, stateResult, agentCliTool, now);
+    await handleEscalationAndNudge(
+      ctx,
+      session.name,
+      agent,
+      stateResult,
+      agentCliTool,
+      output,
+      now
+    );
   }
 }
 
