@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { AgentState } from '../../../state-detectors/types.js';
-import { buildHumanApprovalReason } from './escalation-handler.js';
+import { buildHumanApprovalReason, buildInterruptionRecoveryPrompt } from './escalation-handler.js';
 
 describe('buildHumanApprovalReason', () => {
   it('should include option-2 guidance for codex permission menus', () => {
@@ -66,5 +66,24 @@ $ git restore --worktree
 
     expect(reason).toContain('Approval required (claude)');
     expect(reason).toContain('Action: Agent is blocked after a declined prompt');
+  });
+});
+
+describe('buildInterruptionRecoveryPrompt', () => {
+  it('includes story-specific resume and submit instructions', () => {
+    const prompt = buildInterruptionRecoveryPrompt('hive-intermediate-grigora', 'STORY-003');
+
+    expect(prompt).toContain('Continue STORY-003 from your last checkpoint');
+    expect(prompt).toContain(
+      'hive pr submit -b <branch> -s STORY-003 --from hive-intermediate-grigora'
+    );
+    expect(prompt).toContain('Do not wait for further instructions');
+  });
+
+  it('falls back to generic story placeholder when story id is missing', () => {
+    const prompt = buildInterruptionRecoveryPrompt('hive-junior-grigora');
+
+    expect(prompt).toContain('Continue your assigned story from your last checkpoint');
+    expect(prompt).toContain('hive pr submit -b <branch> -s <story-id> --from hive-junior-grigora');
   });
 });
