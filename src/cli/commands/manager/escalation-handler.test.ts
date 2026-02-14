@@ -77,7 +77,7 @@ describe('buildInterruptionRecoveryPrompt', () => {
     expect(prompt).toContain(
       'hive pr submit -b <branch> -s STORY-003 --from hive-intermediate-grigora'
     );
-    expect(prompt).toContain('Do not wait for further instructions');
+    expect(prompt).toContain('Do not reply with a status update');
   });
 
   it('falls back to generic story placeholder when story id is missing', () => {

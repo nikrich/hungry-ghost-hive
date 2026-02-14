@@ -88,11 +88,7 @@ export function buildInterruptionRecoveryPrompt(
 ): string {
   const storyLabel = storyId || 'your assigned story';
   const submitStory = storyId || '<story-id>';
-  return `# Manager auto-recovery: your session was interrupted.
-# Continue ${storyLabel} from your last checkpoint.
-# Finish remaining implementation + tests, run validation, then submit:
-# hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}
-# Do not wait for further instructions.`;
+  return `Manager auto-recovery: your session was interrupted. Continue ${storyLabel} from your last checkpoint now. Do not reply with a status update; resume implementation immediately, run tests/validation, then submit with: hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}.`;
 }
 
 export async function handleEscalationAndNudge(
