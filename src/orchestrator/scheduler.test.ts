@@ -537,6 +537,57 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(unchangedStory?.[1]).toBe('in_progress');
   });
 
+  it('should recover stale in_progress stories without assigned agents', async () => {
+    const team = createTeam(db, {
+      name: 'Stale Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const staleStory = createStory(db, {
+      teamId: team.id,
+      title: 'Stale In Progress Story',
+      description: 'Lost assignment',
+    });
+    updateStory(db, staleStory.id, {
+      status: 'in_progress',
+      assignedAgentId: null,
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).toContain(staleStory.id);
+
+    const recoveredStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${staleStory.id}'`
+    )[0]?.values[0];
+
+    expect(recoveredStory?.[0]).toBeNull();
+    expect(recoveredStory?.[1]).toBe('planned');
+  });
+
+  it('should not recover planned stories that are unassigned', async () => {
+    const team = createTeam(db, {
+      name: 'Planned Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const plannedStory = createStory(db, {
+      teamId: team.id,
+      title: 'Already Planned',
+      description: 'Should stay planned',
+    });
+    updateStory(db, plannedStory.id, {
+      status: 'planned',
+      assignedAgentId: null,
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).not.toContain(plannedStory.id);
+  });
+
   it('should recover multiple orphaned stories', async () => {
     const team = createTeam(db, {
       name: 'Test Team',
