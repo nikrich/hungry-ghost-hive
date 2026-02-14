@@ -17,7 +17,9 @@ import {
   describeAgentState,
   detectAgentState,
   getAgentType,
+  isInterruptionPrompt,
   nudgeAgent,
+  sendEnterToTmuxSession,
   sendToTmuxSession,
   type CLITool,
 } from './agent-monitoring.js';
@@ -80,6 +82,15 @@ export function buildHumanApprovalReason(
   return `Approval required (${cliTool}) in ${sessionName}: ${waitingReason || 'Unknown question'}. Action: ${actionHint}`;
 }
 
+export function buildInterruptionRecoveryPrompt(
+  sessionName: string,
+  storyId?: string | null
+): string {
+  const storyLabel = storyId || 'your assigned story';
+  const submitStory = storyId || '<story-id>';
+  return `Manager auto-recovery: your session was interrupted. Continue ${storyLabel} from your last checkpoint now. Do not reply with a status update; resume implementation immediately, run tests/validation, then submit with: hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}.`;
+}
+
 export async function handleEscalationAndNudge(
   ctx: ManagerCheckContext,
   sessionName: string,
@@ -93,6 +104,47 @@ export async function handleEscalationAndNudge(
   output: string,
   now: number
 ): Promise<void> {
+  const currentTrackedState = agentStates.get(sessionName);
+
+  // Conversation interruptions are usually recoverable without human intervention.
+  // Auto-inject a continuation prompt and skip human escalation for this case.
+  if (stateResult.state === AgentState.USER_DECLINED && isInterruptionPrompt(output)) {
+    const timeSinceLastNudge = currentTrackedState
+      ? now - currentTrackedState.lastNudgeTime
+      : Infinity;
+    if (timeSinceLastNudge > ctx.config.manager.nudge_cooldown_ms) {
+      const prompt = buildInterruptionRecoveryPrompt(sessionName, agent?.current_story_id);
+      await sendToTmuxSession(sessionName, prompt);
+      await sendEnterToTmuxSession(sessionName);
+      ctx.counters.nudged++;
+
+      if (currentTrackedState) {
+        currentTrackedState.lastNudgeTime = now;
+      } else {
+        agentStates.set(sessionName, {
+          lastState: stateResult.state,
+          lastStateChangeTime: now,
+          lastNudgeTime: now,
+        });
+      }
+
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        storyId: agent?.current_story_id || undefined,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Auto-recovery prompt sent to interrupted session ${sessionName}`,
+        metadata: {
+          session_name: sessionName,
+          detected_state: stateResult.state,
+          recovery: 'conversation_interrupted',
+        },
+      });
+      ctx.db.save();
+    }
+
+    return;
+  }
+
   const waitingInfo = {
     isWaiting: stateResult.isWaiting,
     needsHuman: stateResult.needsHuman,
@@ -172,7 +224,6 @@ export async function handleEscalationAndNudge(
     }
   } else if (waitingInfo.isWaiting && stateResult.state !== AgentState.THINKING) {
     // Agent idle/waiting - check if we should nudge
-    const currentTrackedState = agentStates.get(sessionName);
     if (currentTrackedState) {
       const timeSinceStateChange = now - currentTrackedState.lastStateChangeTime;
       const timeSinceLastNudge = now - currentTrackedState.lastNudgeTime;

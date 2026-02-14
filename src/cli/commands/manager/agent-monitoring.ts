@@ -34,10 +34,14 @@ export const stateDetectors: Record<CLITool, ReturnType<typeof getStateDetector>
 const INTERRUPTION_PROMPT_PATTERN =
   /conversation interrupted|tell the model what to do differently|hit [`'"]?\/feedback[`'"]? to report the issue/i;
 
+export function isInterruptionPrompt(output: string): boolean {
+  return INTERRUPTION_PROMPT_PATTERN.test(output);
+}
+
 export function detectAgentState(output: string, cliTool: CLITool): StateDetectionResult {
   // Interruption banners can coexist with stale "working" text in pane history.
   // Treat interruption as authoritative blocked state to force escalation.
-  if (INTERRUPTION_PROMPT_PATTERN.test(output)) {
+  if (isInterruptionPrompt(output)) {
     return {
       state: AgentState.USER_DECLINED,
       confidence: 0.9,
@@ -243,5 +247,11 @@ export async function forwardMessages(
   }
 }
 
-export { AgentState, buildAutoRecoveryReminder, captureTmuxPane, sendToTmuxSession };
+export {
+  AgentState,
+  buildAutoRecoveryReminder,
+  captureTmuxPane,
+  sendEnterToTmuxSession,
+  sendToTmuxSession,
+};
 export type { CLITool, StateDetectionResult };

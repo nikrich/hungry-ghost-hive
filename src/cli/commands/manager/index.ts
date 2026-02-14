@@ -514,7 +514,14 @@ function prepareSessionData(ctx: ManagerCheckContext): void {
 
   // Batch fetch all agents and index by session name
   const allAgents = getAllAgents(ctx.db.db);
-  ctx.agentsBySessionName = new Map(allAgents.map(a => [`hive-${a.id}`, a]));
+  const bySessionName = new Map<string, (typeof allAgents)[number]>();
+  for (const agent of allAgents) {
+    bySessionName.set(`hive-${agent.id}`, agent);
+    if (agent.tmux_session) {
+      bySessionName.set(agent.tmux_session, agent);
+    }
+  }
+  ctx.agentsBySessionName = bySessionName;
 }
 
 async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
@@ -806,6 +813,18 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
     const now = Date.now();
 
     const trackedState = agentStates.get(agentSession.name);
+    if (
+      trackedState &&
+      [
+        AgentState.ASKING_QUESTION,
+        AgentState.AWAITING_SELECTION,
+        AgentState.PLAN_APPROVAL,
+        AgentState.PERMISSION_REQUIRED,
+        AgentState.USER_DECLINED,
+      ].includes(trackedState.lastState)
+    ) {
+      continue;
+    }
     if (trackedState && now - trackedState.lastNudgeTime < ctx.config.manager.nudge_cooldown_ms) {
       continue;
     }
