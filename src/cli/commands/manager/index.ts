@@ -575,20 +575,69 @@ function batchMarkMessagesRead(ctx: ManagerCheckContext): void {
 }
 
 async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
-  const queuedPRs = getMergeQueue(ctx.db.db);
-  ctx.counters.queuedPRCount = queuedPRs.length;
+  const openPRs = getMergeQueue(ctx.db.db);
+  ctx.counters.queuedPRCount = openPRs.length;
 
-  if (queuedPRs.length > 0) {
+  const queuedPRs = openPRs.filter(pr => pr.status === 'queued');
+  if (queuedPRs.length === 0) {
+    return;
+  }
+
+  const reviewingSessions = new Set(
+    openPRs
+      .filter(pr => pr.status === 'reviewing' && pr.reviewed_by)
+      .map(pr => pr.reviewed_by as string)
+  );
+
+  const idleQASessions = ctx.hiveSessions.filter(session => {
+    if (!session.name.includes('-qa-')) return false;
+    if (reviewingSessions.has(session.name)) return false;
+    const agent = ctx.agentsBySessionName.get(session.name);
+    return Boolean(agent && agent.status === 'idle');
+  });
+
+  let dispatchCount = 0;
+  for (const qa of idleQASessions) {
+    const nextPR = queuedPRs[dispatchCount];
+    if (!nextPR) break;
+
+    await withTransaction(ctx.db.db, () => {
+      updatePullRequest(ctx.db.db, nextPR.id, {
+        status: 'reviewing',
+        reviewedBy: qa.name,
+      });
+      createLog(ctx.db.db, {
+        agentId: qa.name,
+        storyId: nextPR.story_id || undefined,
+        eventType: 'PR_REVIEW_STARTED',
+        message: `Manager assigned PR review: ${nextPR.id}`,
+        metadata: { pr_id: nextPR.id, branch: nextPR.branch_name },
+      });
+    });
+    dispatchCount++;
+    ctx.db.save();
+
+    const githubLine = nextPR.github_pr_url ? `\n# GitHub: ${nextPR.github_pr_url}` : '';
+    await sendToTmuxSession(
+      qa.name,
+      `# You are assigned PR review ${nextPR.id} (${nextPR.story_id || 'no-story'}).${githubLine}
+# Execute now:
+#   hive pr show ${nextPR.id}
+#   hive pr approve ${nextPR.id}
+# (If manual merge is required in this repo, use --no-merge.)
+# or reject:
+#   hive pr reject ${nextPR.id} -r "reason"`
+    );
+  }
+
+  // Fallback nudge if PRs are still queued but all QA sessions are busy/unavailable.
+  if (dispatchCount === 0) {
     const qaSessions = ctx.hiveSessions.filter(s => s.name.includes('-qa-'));
     for (const qa of qaSessions) {
-      // Only notify idle QA agents to avoid interrupting their work
-      const agent = ctx.agentsBySessionName.get(qa.name);
-      if (agent && agent.status === 'idle') {
-        await sendToTmuxSession(
-          qa.name,
-          `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
-        );
-      }
+      await sendToTmuxSession(
+        qa.name,
+        `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
+      );
     }
   }
 }
