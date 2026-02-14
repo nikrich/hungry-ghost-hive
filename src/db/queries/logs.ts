@@ -84,18 +84,56 @@ function inferAgentType(
   return 'tech_lead';
 }
 
+function getAgentColumnNames(db: Database): Set<string> {
+  const result = db.exec('PRAGMA table_info(agents)');
+  if (result.length === 0) return new Set<string>();
+
+  const columnNames = new Set<string>();
+  for (const row of result[0].values) {
+    // PRAGMA table_info columns: cid, name, type, notnull, dflt_value, pk
+    columnNames.add(String(row[1]));
+  }
+  return columnNames;
+}
+
 function ensureLogAgentExists(db: Database, agentId: string): void {
   const existing = queryOne<{ id: string }>(db, 'SELECT id FROM agents WHERE id = ?', [agentId]);
   if (existing?.id) return;
 
+  const columns = getAgentColumnNames(db);
   const now = new Date().toISOString();
+  const insertColumns: string[] = ['id'];
+  const insertValues: (string | null)[] = [agentId];
+
+  if (columns.has('type')) {
+    insertColumns.push('type');
+    insertValues.push(inferAgentType(agentId));
+  }
+  if (columns.has('status')) {
+    insertColumns.push('status');
+    insertValues.push('terminated');
+  }
+  if (columns.has('created_at')) {
+    insertColumns.push('created_at');
+    insertValues.push(now);
+  }
+  if (columns.has('updated_at')) {
+    insertColumns.push('updated_at');
+    insertValues.push(now);
+  }
+  if (columns.has('last_seen')) {
+    insertColumns.push('last_seen');
+    insertValues.push(now);
+  }
+
+  const placeholders = insertColumns.map(() => '?').join(', ');
   run(
     db,
     `
-    INSERT INTO agents (id, type, status, created_at, updated_at, last_seen)
-    VALUES (?, ?, 'terminated', ?, ?, ?)
+    INSERT OR IGNORE INTO agents (${insertColumns.join(', ')})
+    VALUES (${placeholders})
   `,
-    [agentId, inferAgentType(agentId), now, now, now]
+    insertValues
   );
 }
 
@@ -103,14 +141,20 @@ function resolveLogAgentId(db: Database, rawAgentId: string): string {
   const direct = queryOne<{ id: string }>(db, 'SELECT id FROM agents WHERE id = ?', [rawAgentId]);
   if (direct?.id) return direct.id;
 
+  const columns = getAgentColumnNames(db);
+
   // Many call-sites provide tmux session names (for example: "hive-qa-team-1").
   // Prefer resolving those back to canonical agent IDs so logs remain linked.
-  const bySession = queryOne<{ id: string }>(
-    db,
-    'SELECT id FROM agents WHERE tmux_session = ? ORDER BY updated_at DESC LIMIT 1',
-    [rawAgentId]
-  );
-  if (bySession?.id) return bySession.id;
+  if (columns.has('tmux_session')) {
+    const bySession = queryOne<{ id: string }>(
+      db,
+      `SELECT id FROM agents WHERE tmux_session = ?${
+        columns.has('updated_at') ? ' ORDER BY updated_at DESC' : ''
+      } LIMIT 1`,
+      [rawAgentId]
+    );
+    if (bySession?.id) return bySession.id;
+  }
 
   // Last resort: create a lightweight synthetic agent row for system/session actors
   // like "manager" or "scheduler" so FK constraints cannot fail logging.
