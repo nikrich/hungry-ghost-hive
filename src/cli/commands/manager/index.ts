@@ -60,6 +60,7 @@ import {
 } from './agent-monitoring.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
+import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
 import type { ManagerCheckContext } from './types.js';
 import { TMUX_CAPTURE_LINES, TMUX_CAPTURE_LINES_SHORT } from './types.js';
@@ -705,9 +706,7 @@ async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
     const agent = getAgentById(ctx.db.db, story.assigned_agent_id);
     if (!agent || agent.status !== 'working') continue;
 
-    const agentSession = ctx.hiveSessions.find(
-      s => s.name === agent.tmux_session || s.name.includes(agent.id)
-    );
+    const agentSession = findSessionForAgent(ctx.hiveSessions, agent);
     if (!agentSession) continue;
     const agentCliTool = (agent.cli_tool || 'claude') as CLITool;
 
@@ -798,18 +797,21 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
   for (const story of stuckStories) {
     if (!story.assigned_agent_id) continue;
 
-    const agentSession = ctx.hiveSessions.find(s =>
-      s.name.includes(story.assigned_agent_id?.replace(/^hive-/, '') || '')
-    );
-    if (agentSession) {
-      await sendToTmuxSession(
-        agentSession.name,
-        `# REMINDER: Story ${story.id} has been in progress for a while.
+    const agent = getAgentById(ctx.db.db, story.assigned_agent_id);
+    if (!agent) continue;
+
+    const agentSession = findSessionForAgent(ctx.hiveSessions, agent);
+    if (!agentSession) continue;
+
+    await sendToTmuxSession(
+      agentSession.name,
+      `# REMINDER: Story ${story.id} has been in progress for a while.
 # If stuck, escalate to your Senior or Tech Lead.
 # If done, submit your PR: hive pr submit -b <branch> -s ${story.id} --from ${agentSession.name}
 # Then mark complete: hive my-stories complete ${story.id}`
-      );
-    }
+    );
+    await sendEnterToTmuxSession(agentSession.name);
+    ctx.counters.nudged++;
   }
 }
 
