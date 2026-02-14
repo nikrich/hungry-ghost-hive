@@ -416,6 +416,7 @@ async function managerCheck(
     batchMarkMessagesRead(ctx);
     await notifyQAOfQueuedPRs(ctx);
     await handleRejectedPRs(ctx);
+    await recoverUnassignedQAFailedStories(ctx);
     await nudgeQAFailedStories(ctx);
     await spinDownMergedAgents(ctx);
     await spinDownIdleAgents(ctx);
@@ -727,6 +728,59 @@ hive pr queue`
       );
       await sendEnterToTmuxSession(agentSession.name);
     }
+  }
+}
+
+async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
+  const recoverableStories = queryAll<StoryRow>(
+    ctx.db.db,
+    `
+    SELECT * FROM stories
+    WHERE status = 'qa_failed'
+      AND assigned_agent_id IS NULL
+  `
+  );
+
+  if (recoverableStories.length === 0) return;
+
+  await withTransaction(ctx.db.db, () => {
+    for (const story of recoverableStories) {
+      updateStory(ctx.db.db, story.id, { status: 'planned', assignedAgentId: null });
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        storyId: story.id,
+        eventType: 'ORPHANED_STORY_RECOVERED',
+        message: `Recovered QA-failed story ${story.id} (unassigned) back to planned`,
+        metadata: { from_status: 'qa_failed', to_status: 'planned' },
+      });
+    }
+  });
+  ctx.db.save();
+
+  for (const story of recoverableStories) {
+    await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'planned');
+  }
+
+  // Proactively re-assign recovered work so it does not stall until manual `hive assign`.
+  const assignmentResult = await ctx.scheduler.assignStories();
+  ctx.db.save();
+
+  if (assignmentResult.assigned > 0) {
+    await ctx.scheduler.flushJiraQueue();
+    ctx.db.save();
+  }
+
+  console.log(
+    chalk.yellow(
+      `  Recovered ${recoverableStories.length} QA-failed unassigned story(ies), assigned ${assignmentResult.assigned}`
+    )
+  );
+  if (assignmentResult.errors.length > 0) {
+    console.log(
+      chalk.yellow(
+        `  Assignment errors during QA-failed recovery: ${assignmentResult.errors.length}`
+      )
+    );
   }
 }
 
