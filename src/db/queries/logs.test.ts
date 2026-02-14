@@ -123,6 +123,42 @@ describe('logs queries', () => {
 
       expect(log.metadata).toBe(JSON.stringify(metadata));
     });
+
+    it('should resolve tmux session names to canonical agent IDs', () => {
+      const qaAgent = createAgent(db, {
+        type: 'qa',
+        teamId,
+        tmuxSession: 'hive-qa-testteam',
+      });
+
+      const log = createLog(db, {
+        agentId: 'hive-qa-testteam',
+        eventType: 'PR_REVIEW_STARTED',
+      });
+
+      expect(log.agent_id).toBe(qaAgent.id);
+    });
+
+    it('should create a synthetic agent row for unknown system actors', () => {
+      const log = createLog(db, {
+        agentId: 'scheduler',
+        eventType: 'TEAM_SCALED_UP',
+      });
+
+      expect(log.agent_id).toBe('scheduler');
+      const result = db.exec("SELECT id, type, status FROM agents WHERE id = 'scheduler'");
+      expect(result[0]?.values[0]).toEqual(['scheduler', 'tech_lead', 'terminated']);
+    });
+
+    it('should drop invalid story references to avoid FK failures', () => {
+      const log = createLog(db, {
+        agentId,
+        storyId: 'STORY-DOES-NOT-EXIST',
+        eventType: 'STORY_PROGRESS_UPDATE',
+      });
+
+      expect(log.story_id).toBeNull();
+    });
   });
 
   describe('getLogById', () => {
