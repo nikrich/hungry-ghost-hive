@@ -33,9 +33,52 @@ export const stateDetectors: Record<CLITool, ReturnType<typeof getStateDetector>
 
 const INTERRUPTION_PROMPT_PATTERN =
   /conversation interrupted|tell the model what to do differently|hit [`'"]?\/feedback[`'"]? to report the issue/i;
+const RATE_LIMIT_HARD_PATTERNS = [
+  /too many requests/i,
+  /rate_limit_error/i,
+  /resource[_\s-]?exhausted/i,
+  /request(?:\s+has\s+been)?\s+throttled/i,
+  /rate[\s_-]?limit(?:\s+reached|\s+exceeded)/i,
+  /(?:status|error|code)\s*[:=]?\s*429\b/i,
+  /\b429\b.*(?:too many requests|rate[\s_-]?limit|throttl|quota|retry)/i,
+];
+const RATE_LIMIT_CONTEXT_PATTERNS = [
+  /\b429\b/i,
+  /rate[\s_-]?limit/i,
+  /quota/i,
+  /resource[_\s-]?exhausted/i,
+  /throttl/i,
+  /requests?\s+per\s+(?:min|minute)/i,
+  /tokens?\s+per\s+(?:min|minute)/i,
+  /\b(?:rpm|tpm)\b/i,
+];
+const RATE_LIMIT_RETRY_PATTERNS = [
+  /retry after/i,
+  /exceeded retry limit/i,
+  /try again/i,
+  /backoff/i,
+];
+const RATE_LIMIT_WINDOW_LINES = 120;
+
+function getRecentPaneOutput(output: string, lineCount: number): string {
+  return output.split('\n').slice(-lineCount).join('\n');
+}
 
 export function isInterruptionPrompt(output: string): boolean {
   return INTERRUPTION_PROMPT_PATTERN.test(output);
+}
+
+export function isRateLimitPrompt(output: string): boolean {
+  const recentOutput = getRecentPaneOutput(output, RATE_LIMIT_WINDOW_LINES);
+  if (RATE_LIMIT_HARD_PATTERNS.some(pattern => pattern.test(recentOutput))) {
+    return true;
+  }
+
+  const hasRateLimitContext = RATE_LIMIT_CONTEXT_PATTERNS.some(pattern =>
+    pattern.test(recentOutput)
+  );
+  const hasRetrySignal = RATE_LIMIT_RETRY_PATTERNS.some(pattern => pattern.test(recentOutput));
+  return hasRateLimitContext && hasRetrySignal;
 }
 
 export function detectAgentState(output: string, cliTool: CLITool): StateDetectionResult {
@@ -48,6 +91,18 @@ export function detectAgentState(output: string, cliTool: CLITool): StateDetecti
       reason: `Detected ${cliTool} interruption prompt`,
       isWaiting: true,
       needsHuman: true,
+    };
+  }
+
+  // API throttling is recoverable by backing off and retrying.
+  // Keep this ahead of normal detector logic so stale prompts do not trigger escalations.
+  if (isRateLimitPrompt(output)) {
+    return {
+      state: AgentState.USER_DECLINED,
+      confidence: 0.85,
+      reason: `Detected ${cliTool} rate-limit prompt`,
+      isWaiting: true,
+      needsHuman: false,
     };
   }
 
