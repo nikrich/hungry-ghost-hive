@@ -114,7 +114,8 @@ export async function handleEscalationAndNudge(
   now: number
 ): Promise<void> {
   const currentTrackedState = agentStates.get(sessionName);
-  const interrupted = stateResult.state === AgentState.USER_DECLINED && isInterruptionPrompt(output);
+  const interrupted =
+    stateResult.state === AgentState.USER_DECLINED && isInterruptionPrompt(output);
 
   if (!interrupted) {
     interruptionRecoveryAttempts.delete(sessionName);
@@ -148,7 +149,9 @@ export async function handleEscalationAndNudge(
       });
       ctx.db.save();
       console.log(
-        chalk.yellow(`  AUTO-RESTART: ${sessionName} remained interrupted after ${attempts} attempts`)
+        chalk.yellow(
+          `  AUTO-RESTART: ${sessionName} remained interrupted after ${attempts} attempts`
+        )
       );
       return;
     }
