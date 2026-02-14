@@ -73,9 +73,60 @@ export interface CreateLogInput {
   metadata?: Record<string, unknown> | null;
 }
 
+function inferAgentType(agentId: string): 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa' {
+  const normalized = agentId.toLowerCase();
+  if (normalized.includes('qa')) return 'qa';
+  if (normalized.includes('senior')) return 'senior';
+  if (normalized.includes('intermediate')) return 'intermediate';
+  if (normalized.includes('junior')) return 'junior';
+  return 'tech_lead';
+}
+
+function ensureLogAgentExists(db: Database, agentId: string): void {
+  const existing = queryOne<{ id: string }>(db, 'SELECT id FROM agents WHERE id = ?', [agentId]);
+  if (existing?.id) return;
+
+  const now = new Date().toISOString();
+  run(
+    db,
+    `
+    INSERT INTO agents (id, type, status, created_at, updated_at, last_seen)
+    VALUES (?, ?, 'terminated', ?, ?, ?)
+  `,
+    [agentId, inferAgentType(agentId), now, now, now]
+  );
+}
+
+function resolveLogAgentId(db: Database, rawAgentId: string): string {
+  const direct = queryOne<{ id: string }>(db, 'SELECT id FROM agents WHERE id = ?', [rawAgentId]);
+  if (direct?.id) return direct.id;
+
+  // Many call-sites provide tmux session names (for example: "hive-qa-team-1").
+  // Prefer resolving those back to canonical agent IDs so logs remain linked.
+  const bySession = queryOne<{ id: string }>(
+    db,
+    'SELECT id FROM agents WHERE tmux_session = ? ORDER BY updated_at DESC LIMIT 1',
+    [rawAgentId]
+  );
+  if (bySession?.id) return bySession.id;
+
+  // Last resort: create a lightweight synthetic agent row for system/session actors
+  // like "manager" or "scheduler" so FK constraints cannot fail logging.
+  ensureLogAgentExists(db, rawAgentId);
+  return rawAgentId;
+}
+
+function resolveLogStoryId(db: Database, storyId?: string | null): string | null {
+  if (!storyId) return null;
+  const story = queryOne<{ id: string }>(db, 'SELECT id FROM stories WHERE id = ?', [storyId]);
+  return story?.id || null;
+}
+
 export function createLog(db: Database, input: CreateLogInput): AgentLogRow {
   const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
   const now = new Date().toISOString();
+  const resolvedAgentId = resolveLogAgentId(db, input.agentId);
+  const resolvedStoryId = resolveLogStoryId(db, input.storyId);
 
   run(
     db,
@@ -84,8 +135,8 @@ export function createLog(db: Database, input: CreateLogInput): AgentLogRow {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
     [
-      input.agentId,
-      input.storyId || null,
+      resolvedAgentId,
+      resolvedStoryId,
       input.eventType,
       input.status || null,
       input.message || null,
