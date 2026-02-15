@@ -931,7 +931,10 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
       stateResult,
       agentCliTool,
       output,
-      now
+      now,
+      {
+        allowRoutineNudge: staticStatus.unchangedForMs >= SCREEN_STATIC_STUCK_THRESHOLD_MS,
+      }
     );
     const actionNotes = [];
     if (ctx.counters.nudged > beforeNudged) actionNotes.push('nudged');

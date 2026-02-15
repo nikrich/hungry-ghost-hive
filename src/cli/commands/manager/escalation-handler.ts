@@ -135,8 +135,12 @@ export async function handleEscalationAndNudge(
   },
   agentCliTool: CLITool,
   output: string,
-  now: number
+  now: number,
+  options?: {
+    allowRoutineNudge?: boolean;
+  }
 ): Promise<void> {
+  const allowRoutineNudge = options?.allowRoutineNudge ?? true;
   const currentTrackedState = agentStates.get(sessionName);
   const interrupted =
     stateResult.state === AgentState.USER_DECLINED && isInterruptionPrompt(output);
@@ -377,6 +381,10 @@ export async function handleEscalationAndNudge(
     }
   } else if (waitingInfo.isWaiting && stateResult.state !== AgentState.THINKING) {
     // Agent idle/waiting - check if we should nudge
+    if (!allowRoutineNudge) {
+      verboseLog(ctx, `escalationCheck: ${sessionName} skip=routine_nudge_suppressed`);
+      return;
+    }
     if (currentTrackedState) {
       const timeSinceStateChange = now - currentTrackedState.lastStateChangeTime;
       const timeSinceLastNudge = now - currentTrackedState.lastNudgeTime;
