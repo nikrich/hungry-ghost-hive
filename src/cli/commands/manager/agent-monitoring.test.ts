@@ -11,6 +11,7 @@ const ANTHROPIC_RATE_LIMIT =
   'API Error: {"type":"error","error":{"type":"rate_limit_error","message":"Rate limit exceeded"}}';
 const GEMINI_RATE_LIMIT =
   'RESOURCE_EXHAUSTED: Quota exceeded for quota metric GenerateContent requests per minute.';
+const INTERACTIVE_PROMPT = '› Improve documentation in @filename\n\n  ? for shortcuts';
 
 describe('detectAgentState interruption fallback', () => {
   it('treats interruption banner as blocked for codex sessions', () => {
@@ -73,5 +74,31 @@ describe('detectAgentState interruption fallback', () => {
     const result = detectAgentState(output, 'codex');
 
     expect(result.state).not.toBe(AgentState.USER_DECLINED);
+  });
+
+  it('detects interactive input prompt for codex sessions', () => {
+    const result = detectAgentState(INTERACTIVE_PROMPT, 'codex');
+
+    expect(result.state).toBe(AgentState.ASKING_QUESTION);
+    expect(result.isWaiting).toBe(true);
+    expect(result.needsHuman).toBe(true);
+  });
+
+  it('detects interactive input prompt across all cli providers', () => {
+    const claudeResult = detectAgentState(INTERACTIVE_PROMPT, 'claude');
+    const geminiResult = detectAgentState(INTERACTIVE_PROMPT, 'gemini');
+
+    expect(claudeResult.state).toBe(AgentState.ASKING_QUESTION);
+    expect(claudeResult.needsHuman).toBe(true);
+    expect(geminiResult.state).toBe(AgentState.ASKING_QUESTION);
+    expect(geminiResult.needsHuman).toBe(true);
+  });
+
+  it('prioritizes interactive prompt over stale processing text', () => {
+    const output = `Partition processing now complete.\n${INTERACTIVE_PROMPT}`;
+    const result = detectAgentState(output, 'codex');
+
+    expect(result.state).toBe(AgentState.ASKING_QUESTION);
+    expect(result.needsHuman).toBe(true);
   });
 });

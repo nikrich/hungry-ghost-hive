@@ -58,7 +58,10 @@ const RATE_LIMIT_RETRY_PATTERNS = [
   /try again/i,
   /backoff/i,
 ];
+const INTERACTIVE_PROMPT_LINE_PATTERN = /^\s*(?:›|>)\s+\S.+$/m;
+const INTERACTIVE_SHORTCUT_HINT_PATTERN = /\?\s*for shortcuts/i;
 const RATE_LIMIT_WINDOW_LINES = 120;
+const INTERACTIVE_PROMPT_WINDOW_LINES = 80;
 
 function getRecentPaneOutput(output: string, lineCount: number): string {
   return output.split('\n').slice(-lineCount).join('\n');
@@ -79,6 +82,14 @@ export function isRateLimitPrompt(output: string): boolean {
   );
   const hasRetrySignal = RATE_LIMIT_RETRY_PATTERNS.some(pattern => pattern.test(recentOutput));
   return hasRateLimitContext && hasRetrySignal;
+}
+
+export function isInteractiveInputPrompt(output: string): boolean {
+  const recentOutput = getRecentPaneOutput(output, INTERACTIVE_PROMPT_WINDOW_LINES);
+  return (
+    INTERACTIVE_PROMPT_LINE_PATTERN.test(recentOutput) &&
+    INTERACTIVE_SHORTCUT_HINT_PATTERN.test(recentOutput)
+  );
 }
 
 export function detectAgentState(output: string, cliTool: CLITool): StateDetectionResult {
@@ -103,6 +114,19 @@ export function detectAgentState(output: string, cliTool: CLITool): StateDetecti
       reason: `Detected ${cliTool} rate-limit prompt`,
       isWaiting: true,
       needsHuman: false,
+    };
+  }
+
+  // Cross-CLI interactive prompts (e.g. "› ...", "? for shortcuts") mean the
+  // agent is waiting for direct input, even if stale pane text contains
+  // "processing"/"working" words.
+  if (isInteractiveInputPrompt(output)) {
+    return {
+      state: AgentState.ASKING_QUESTION,
+      confidence: 0.9,
+      reason: `Detected ${cliTool} interactive input prompt`,
+      isWaiting: true,
+      needsHuman: true,
     };
   }
 
