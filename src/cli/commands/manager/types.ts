@@ -52,6 +52,7 @@ export interface ManagerCheckContext {
   // Counters accumulated across helpers
   counters: {
     nudged: number;
+    autoProgressed: number;
     messagesForwarded: number;
     escalationsCreated: number;
     escalationsResolved: number;

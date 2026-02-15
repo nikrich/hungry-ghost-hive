@@ -2,6 +2,7 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
+import { execa } from 'execa';
 import { join } from 'path';
 import { ClusterRuntime, fetchLocalClusterStatus } from '../../../cluster/runtime.js';
 import { loadConfig } from '../../../config/loader.js';
@@ -23,7 +24,9 @@ import {
 } from '../../../db/queries/messages.js';
 import {
   backfillGithubPrNumbers,
+  createPullRequest,
   getMergeQueue,
+  getOpenPullRequestsByStory,
   getPullRequestsByStatus,
   updatePullRequest,
 } from '../../../db/queries/pull-requests.js';
@@ -60,6 +63,7 @@ import {
   updateAgentStateTracking,
 } from './agent-monitoring.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
+import { assessCompletionFromOutput } from './done-intelligence.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
 import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
 import { findSessionForAgent } from './session-resolution.js';
@@ -67,6 +71,8 @@ import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
 import { findStaleSessionEscalations } from './stale-escalations.js';
 import type { ManagerCheckContext } from './types.js';
 import { TMUX_CAPTURE_LINES, TMUX_CAPTURE_LINES_SHORT } from './types.js';
+
+const DONE_INFERENCE_CONFIDENCE_THRESHOLD = 0.82;
 
 export const managerCommand = new Command('manager').description(
   'Micromanager daemon that keeps agents productive'
@@ -383,6 +389,7 @@ async function managerCheck(
       hiveSessions: [],
       counters: {
         nudged: 0,
+        autoProgressed: 0,
         messagesForwarded: 0,
         escalationsCreated: 0,
         escalationsResolved: 0,
@@ -977,6 +984,31 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       continue;
     }
 
+    const completionAssessment = await assessCompletionFromOutput(
+      ctx.config,
+      agentSession.name,
+      story.id,
+      output
+    );
+    const aiSaysDone =
+      completionAssessment.done &&
+      completionAssessment.confidence >= DONE_INFERENCE_CONFIDENCE_THRESHOLD;
+
+    if (aiSaysDone) {
+      const progressed = await autoProgressDoneStory(
+        ctx,
+        story,
+        agent,
+        agentSession.name,
+        completionAssessment.reason,
+        completionAssessment.confidence
+      );
+      if (progressed) {
+        ctx.counters.autoProgressed++;
+        continue;
+      }
+    }
+
     if (stateResult.state === AgentState.WORK_COMPLETE) {
       await sendToTmuxSession(
         agentSession.name,
@@ -1021,6 +1053,105 @@ hive progress ${story.id} -m "PR submitted to merge queue" --from ${agentSession
   }
 }
 
+async function autoProgressDoneStory(
+  ctx: ManagerCheckContext,
+  story: StoryRow,
+  agent: ReturnType<typeof getAllAgents>[number],
+  sessionName: string,
+  reason: string,
+  confidence: number
+): Promise<boolean> {
+  const openPRs = getOpenPullRequestsByStory(ctx.db.db, story.id);
+  if (openPRs.length > 0) {
+    if (story.status !== 'pr_submitted') {
+      updateStory(ctx.db.db, story.id, { status: 'pr_submitted' });
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        storyId: story.id,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Auto-progressed ${story.id} to pr_submitted (existing PR detected)`,
+        metadata: {
+          session_name: sessionName,
+          recovery: 'done_inference_existing_pr',
+          reason,
+          confidence,
+          open_pr_count: openPRs.length,
+        },
+      });
+      ctx.db.save();
+      await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'pr_submitted');
+    }
+    await sendToTmuxSession(
+      sessionName,
+      `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), detected existing PR, and moved story to PR-submitted state.`
+    );
+    await sendEnterToTmuxSession(sessionName);
+    return true;
+  }
+
+  const branch = await resolveStoryBranchName(ctx.root, story, agent);
+  if (!branch) {
+    return false;
+  }
+
+  await withTransaction(ctx.db.db, () => {
+    updateStory(ctx.db.db, story.id, { status: 'pr_submitted', branchName: branch });
+    createPullRequest(ctx.db.db, {
+      storyId: story.id,
+      teamId: story.team_id || null,
+      branchName: branch,
+      submittedBy: sessionName,
+    });
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId: story.id,
+      eventType: 'PR_SUBMITTED',
+      message: `Auto-submitted PR for ${story.id} after AI completion inference`,
+      metadata: {
+        session_name: sessionName,
+        recovery: 'done_inference_auto_submit',
+        reason,
+        confidence,
+        branch,
+      },
+    });
+  });
+
+  ctx.db.save();
+  await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'pr_submitted');
+  await ctx.scheduler.checkMergeQueue();
+  ctx.db.save();
+
+  await sendToTmuxSession(
+    sessionName,
+    `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), auto-submitted branch ${branch} to merge queue.`
+  );
+  await sendEnterToTmuxSession(sessionName);
+  return true;
+}
+
+async function resolveStoryBranchName(
+  root: string,
+  story: StoryRow,
+  agent: ReturnType<typeof getAllAgents>[number]
+): Promise<string | null> {
+  if (story.branch_name && story.branch_name.trim().length > 0) {
+    return story.branch_name.trim();
+  }
+
+  if (!agent.worktree_path) return null;
+
+  const worktreeDir = join(root, agent.worktree_path);
+  try {
+    const result = await execa('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: worktreeDir });
+    const branch = result.stdout.trim();
+    if (!branch || branch === 'HEAD') return null;
+    return branch;
+  } catch {
+    return null;
+  }
+}
+
 async function notifyUnassignedStories(ctx: ManagerCheckContext): Promise<void> {
   const plannedStories = queryAll<StoryRow>(
     ctx.db.db,
@@ -1054,6 +1185,7 @@ function printSummary(ctx: ManagerCheckContext): void {
     escalationsCreated,
     escalationsResolved,
     nudged,
+    autoProgressed,
     messagesForwarded,
     queuedPRCount,
     handoffPromoted,
@@ -1065,6 +1197,7 @@ function printSummary(ctx: ManagerCheckContext): void {
   if (escalationsCreated > 0) summary.push(`${escalationsCreated} escalations created`);
   if (escalationsResolved > 0) summary.push(`${escalationsResolved} escalations auto-resolved`);
   if (nudged > 0) summary.push(`${nudged} nudged`);
+  if (autoProgressed > 0) summary.push(`${autoProgressed} auto-progressed`);
   if (messagesForwarded > 0) summary.push(`${messagesForwarded} messages forwarded`);
   if (queuedPRCount > 0) summary.push(`${queuedPRCount} PRs queued`);
   if (handoffPromoted > 0) summary.push(`${handoffPromoted} auto-promoted from estimated`);
