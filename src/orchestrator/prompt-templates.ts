@@ -149,11 +149,15 @@ If NO story is assigned to you:
 function autonomousWorkflowSection(sessionName: string): string {
   return `## Autonomous Workflow
 You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
-After completing a story:
+After completing a story, you MUST emit an explicit completion signal by running these commands in order:
+1. \`hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s <story-id> --from ${sessionName}\`
+2. \`hive my-stories complete <story-id>\`
+3. \`hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done\`
+Do NOT stop at a text summary. A story is not done until these commands run successfully.
+
+After signaling completion:
 1. Run \`hive my-stories ${sessionName}\` to get your next assignment
 2. If no stories assigned, WAIT — do not self-assign or claim work
-3. ALWAYS submit PRs to hive after creating them on GitHub:
-   \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
 
 Start by running \`hive my-stories ${sessionName}\`. If you have an assigned story, begin working on it. If not, WAIT for assignment.`;
 }

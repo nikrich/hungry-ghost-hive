@@ -44,6 +44,7 @@ export interface PlanningHandoffTracking {
 // Shared context passed between helper functions during a manager check cycle
 export interface ManagerCheckContext {
   root: string;
+  verbose: boolean;
   config: HiveConfig;
   paths: ReturnType<typeof getHivePaths>;
   db: DatabaseClient;
@@ -52,6 +53,7 @@ export interface ManagerCheckContext {
   // Counters accumulated across helpers
   counters: {
     nudged: number;
+    autoProgressed: number;
     messagesForwarded: number;
     escalationsCreated: number;
     escalationsResolved: number;
