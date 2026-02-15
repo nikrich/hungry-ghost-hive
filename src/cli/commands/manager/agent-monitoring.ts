@@ -58,7 +58,20 @@ const RATE_LIMIT_RETRY_PATTERNS = [
   /try again/i,
   /backoff/i,
 ];
+const INTERACTIVE_PROMPT_LINE_PATTERN = /^\s*(?:›|>)\s+\S.+$/m;
+const INTERACTIVE_PROMPT_UI_SIGNAL_PATTERNS = [
+  /\?\s*for shortcuts/i,
+  /\bcontext left\b/i,
+  /\[pasted content\s+\d+\s+chars\]/i,
+];
+const INTERACTIVE_PROMPT_HUMAN_NEEDED_PATTERNS = [
+  /\?\s*$/,
+  /\b(?:choose|select|pick)\b/i,
+  /\b(?:confirm|approve|deny)\b/i,
+  /\b(?:yes|no|y\/n)\b/i,
+];
 const RATE_LIMIT_WINDOW_LINES = 120;
+const INTERACTIVE_PROMPT_WINDOW_LINES = 80;
 
 function getRecentPaneOutput(output: string, lineCount: number): string {
   return output.split('\n').slice(-lineCount).join('\n');
@@ -79,6 +92,32 @@ export function isRateLimitPrompt(output: string): boolean {
   );
   const hasRetrySignal = RATE_LIMIT_RETRY_PATTERNS.some(pattern => pattern.test(recentOutput));
   return hasRateLimitContext && hasRetrySignal;
+}
+
+export function isInteractiveInputPrompt(output: string): boolean {
+  const recentOutput = getRecentPaneOutput(output, INTERACTIVE_PROMPT_WINDOW_LINES);
+  const hasUiSignal = INTERACTIVE_PROMPT_UI_SIGNAL_PATTERNS.some(pattern =>
+    pattern.test(recentOutput)
+  );
+  return INTERACTIVE_PROMPT_LINE_PATTERN.test(recentOutput) && hasUiSignal;
+}
+
+function getLatestInteractivePromptLine(output: string): string | null {
+  const recentOutput = getRecentPaneOutput(output, INTERACTIVE_PROMPT_WINDOW_LINES);
+  const lines = recentOutput.split('\n').reverse();
+  for (const line of lines) {
+    if (INTERACTIVE_PROMPT_LINE_PATTERN.test(line)) {
+      return line.trim();
+    }
+  }
+  return null;
+}
+
+function interactivePromptNeedsHuman(output: string): boolean {
+  const promptLine = getLatestInteractivePromptLine(output);
+  if (!promptLine) return false;
+  const normalizedPrompt = promptLine.replace(/^\s*(?:›|>)\s*/, '');
+  return INTERACTIVE_PROMPT_HUMAN_NEEDED_PATTERNS.some(pattern => pattern.test(normalizedPrompt));
 }
 
 export function detectAgentState(output: string, cliTool: CLITool): StateDetectionResult {
@@ -103,6 +142,21 @@ export function detectAgentState(output: string, cliTool: CLITool): StateDetecti
       reason: `Detected ${cliTool} rate-limit prompt`,
       isWaiting: true,
       needsHuman: false,
+    };
+  }
+
+  // Cross-CLI interactive prompts (e.g. "› ...", "? for shortcuts") mean the
+  // agent is waiting at prompt, even if stale pane text contains active words.
+  // Some prompt lines are actual questions/approvals (needsHuman=true), while
+  // others are just ready-for-input idle prompts (needsHuman=false).
+  if (isInteractiveInputPrompt(output)) {
+    const needsHuman = interactivePromptNeedsHuman(output);
+    return {
+      state: needsHuman ? AgentState.ASKING_QUESTION : AgentState.IDLE_AT_PROMPT,
+      confidence: 0.9,
+      reason: `Detected ${cliTool} interactive input prompt (${needsHuman ? 'question' : 'idle'})`,
+      isWaiting: true,
+      needsHuman,
     };
   }
 

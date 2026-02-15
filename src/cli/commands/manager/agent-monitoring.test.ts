@@ -11,6 +11,9 @@ const ANTHROPIC_RATE_LIMIT =
   'API Error: {"type":"error","error":{"type":"rate_limit_error","message":"Rate limit exceeded"}}';
 const GEMINI_RATE_LIMIT =
   'RESOURCE_EXHAUSTED: Quota exceeded for quota metric GenerateContent requests per minute.';
+const INTERACTIVE_PROMPT = '› Improve documentation in @filename\n\n  ? for shortcuts';
+const INTERACTIVE_PROMPT_WITH_PASTE = '› [Pasted Content 1203 chars]\n\n  16% context left';
+const INTERACTIVE_QUESTION_PROMPT = '› Should I submit this PR now?\n\n  12% context left';
 
 describe('detectAgentState interruption fallback', () => {
   it('treats interruption banner as blocked for codex sessions', () => {
@@ -73,5 +76,47 @@ describe('detectAgentState interruption fallback', () => {
     const result = detectAgentState(output, 'codex');
 
     expect(result.state).not.toBe(AgentState.USER_DECLINED);
+  });
+
+  it('detects idle interactive prompt for codex sessions', () => {
+    const result = detectAgentState(INTERACTIVE_PROMPT, 'codex');
+
+    expect(result.state).toBe(AgentState.IDLE_AT_PROMPT);
+    expect(result.isWaiting).toBe(true);
+    expect(result.needsHuman).toBe(false);
+  });
+
+  it('detects idle interactive prompt across all cli providers', () => {
+    const claudeResult = detectAgentState(INTERACTIVE_PROMPT, 'claude');
+    const geminiResult = detectAgentState(INTERACTIVE_PROMPT, 'gemini');
+
+    expect(claudeResult.state).toBe(AgentState.IDLE_AT_PROMPT);
+    expect(claudeResult.needsHuman).toBe(false);
+    expect(geminiResult.state).toBe(AgentState.IDLE_AT_PROMPT);
+    expect(geminiResult.needsHuman).toBe(false);
+  });
+
+  it('prioritizes interactive prompt over stale processing text', () => {
+    const output = `Partition processing now complete.\n${INTERACTIVE_PROMPT}`;
+    const result = detectAgentState(output, 'codex');
+
+    expect(result.state).toBe(AgentState.IDLE_AT_PROMPT);
+    expect(result.needsHuman).toBe(false);
+  });
+
+  it('detects interactive prompt with pasted-content and context-left ui', () => {
+    const result = detectAgentState(INTERACTIVE_PROMPT_WITH_PASTE, 'codex');
+
+    expect(result.state).toBe(AgentState.IDLE_AT_PROMPT);
+    expect(result.isWaiting).toBe(true);
+    expect(result.needsHuman).toBe(false);
+  });
+
+  it('detects interactive prompt with explicit question as human-needed', () => {
+    const result = detectAgentState(INTERACTIVE_QUESTION_PROMPT, 'codex');
+
+    expect(result.state).toBe(AgentState.ASKING_QUESTION);
+    expect(result.isWaiting).toBe(true);
+    expect(result.needsHuman).toBe(true);
   });
 });
