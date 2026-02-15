@@ -64,6 +64,12 @@ const INTERACTIVE_PROMPT_UI_SIGNAL_PATTERNS = [
   /\bcontext left\b/i,
   /\[pasted content\s+\d+\s+chars\]/i,
 ];
+const INTERACTIVE_PROMPT_HUMAN_NEEDED_PATTERNS = [
+  /\?\s*$/,
+  /\b(?:choose|select|pick)\b/i,
+  /\b(?:confirm|approve|deny)\b/i,
+  /\b(?:yes|no|y\/n)\b/i,
+];
 const RATE_LIMIT_WINDOW_LINES = 120;
 const INTERACTIVE_PROMPT_WINDOW_LINES = 80;
 
@@ -96,6 +102,24 @@ export function isInteractiveInputPrompt(output: string): boolean {
   return INTERACTIVE_PROMPT_LINE_PATTERN.test(recentOutput) && hasUiSignal;
 }
 
+function getLatestInteractivePromptLine(output: string): string | null {
+  const recentOutput = getRecentPaneOutput(output, INTERACTIVE_PROMPT_WINDOW_LINES);
+  const lines = recentOutput.split('\n').reverse();
+  for (const line of lines) {
+    if (INTERACTIVE_PROMPT_LINE_PATTERN.test(line)) {
+      return line.trim();
+    }
+  }
+  return null;
+}
+
+function interactivePromptNeedsHuman(output: string): boolean {
+  const promptLine = getLatestInteractivePromptLine(output);
+  if (!promptLine) return false;
+  const normalizedPrompt = promptLine.replace(/^\s*(?:›|>)\s*/, '');
+  return INTERACTIVE_PROMPT_HUMAN_NEEDED_PATTERNS.some(pattern => pattern.test(normalizedPrompt));
+}
+
 export function detectAgentState(output: string, cliTool: CLITool): StateDetectionResult {
   // Interruption banners can coexist with stale "working" text in pane history.
   // Treat interruption as authoritative blocked state to force escalation.
@@ -122,15 +146,17 @@ export function detectAgentState(output: string, cliTool: CLITool): StateDetecti
   }
 
   // Cross-CLI interactive prompts (e.g. "› ...", "? for shortcuts") mean the
-  // agent is waiting for direct input, even if stale pane text contains
-  // "processing"/"working" words.
+  // agent is waiting at prompt, even if stale pane text contains active words.
+  // Some prompt lines are actual questions/approvals (needsHuman=true), while
+  // others are just ready-for-input idle prompts (needsHuman=false).
   if (isInteractiveInputPrompt(output)) {
+    const needsHuman = interactivePromptNeedsHuman(output);
     return {
-      state: AgentState.ASKING_QUESTION,
+      state: needsHuman ? AgentState.ASKING_QUESTION : AgentState.IDLE_AT_PROMPT,
       confidence: 0.9,
-      reason: `Detected ${cliTool} interactive input prompt`,
+      reason: `Detected ${cliTool} interactive input prompt (${needsHuman ? 'question' : 'idle'})`,
       isWaiting: true,
-      needsHuman: true,
+      needsHuman,
     };
   }
 
