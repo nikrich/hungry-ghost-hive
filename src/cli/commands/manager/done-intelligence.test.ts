@@ -45,6 +45,14 @@ const mockConfig = {
       safety_mode: 'unsafe',
     },
   },
+  manager: {
+    completion_classifier: {
+      provider: 'openai',
+      model: 'gpt-5.2-codex',
+      max_tokens: 250,
+      temperature: 0,
+    },
+  },
 } as any;
 
 describe('done intelligence', () => {

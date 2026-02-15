@@ -190,6 +190,13 @@ const AgentsConfigSchema = z.object({
 });
 
 // Manager daemon configuration
+const ManagerCompletionClassifierConfigSchema = z.object({
+  provider: z.enum(['anthropic', 'openai']).default('openai'),
+  model: z.string().default('gpt-5.2-codex'),
+  max_tokens: z.number().int().positive().default(250),
+  temperature: z.number().min(0).max(2).default(0),
+});
+
 const ManagerConfigSchema = z.object({
   fast_poll_interval: z.number().int().positive().default(15000),
   slow_poll_interval: z.number().int().positive().default(60000),
@@ -197,6 +204,8 @@ const ManagerConfigSchema = z.object({
   nudge_cooldown_ms: z.number().int().positive().default(300000),
   // Static-screen inactivity window before full AI stuck/done assessment
   screen_static_inactivity_threshold_ms: z.number().int().positive().default(600000),
+  // AI model used by manager semantic done/stuck classifier
+  completion_classifier: ManagerCompletionClassifierConfigSchema.default({}),
   lock_stale_ms: z.number().int().positive().default(120000),
   // Shell command timeouts to prevent manager hangs
   git_timeout_ms: z.number().int().positive().default(30000), // 30s for git operations
@@ -445,6 +454,12 @@ manager:
   nudge_cooldown_ms: 300000
   # Static inactivity window before full AI analysis (ms, default 10 minutes)
   screen_static_inactivity_threshold_ms: 600000
+  # AI semantic classifier model used by manager for done/stuck inference
+  completion_classifier:
+    provider: openai
+    model: gpt-5.2-codex
+    max_tokens: 250
+    temperature: 0
   # Time before manager lock is considered stale (ms)
   lock_stale_ms: 120000
   # Timeout for git operations to prevent manager hangs (ms)

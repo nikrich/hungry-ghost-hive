@@ -176,12 +176,12 @@ function buildCompletionClassifierPrompt(
 }
 
 function createCompletionClassifier(config: HiveConfig): LLMProvider {
-  const modelConfig = config.models.tech_lead;
+  const modelConfig = config.manager.completion_classifier;
   return createProvider({
     provider: modelConfig.provider,
     model: modelConfig.model,
-    maxTokens: 250,
-    temperature: 0,
+    maxTokens: modelConfig.max_tokens,
+    temperature: modelConfig.temperature,
   });
 }
 
