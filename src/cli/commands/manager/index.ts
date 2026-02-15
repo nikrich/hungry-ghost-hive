@@ -91,6 +91,13 @@ interface ScreenStaticStatus {
   shouldRunFullAiDetection: boolean;
 }
 
+interface ScreenStaticEligibility {
+  unchangedForMs: number;
+  meetsStaticThreshold: boolean;
+  aiCooldownRemainingMs: number;
+  canRunAiNow: boolean;
+}
+
 const screenStaticBySession = new Map<string, ScreenStaticTracking>();
 
 function verboseLog(verbose: boolean, message: string): void {
@@ -172,6 +179,31 @@ function markFullAiDetectionRun(sessionName: string, nowMs: number): void {
   const tracking = screenStaticBySession.get(sessionName);
   if (!tracking) return;
   tracking.lastAiAssessmentMs = nowMs;
+}
+
+function getScreenStaticEligibility(
+  sessionName: string,
+  nowMs: number
+): ScreenStaticEligibility | null {
+  const tracking = screenStaticBySession.get(sessionName);
+  if (!tracking) return null;
+
+  const unchangedForMs = nowMs - tracking.unchangedSinceMs;
+  const meetsStaticThreshold = unchangedForMs >= SCREEN_STATIC_STUCK_THRESHOLD_MS;
+  const aiCooldownRemainingMs = meetsStaticThreshold
+    ? Math.max(0, SCREEN_STATIC_AI_RECHECK_MS - (nowMs - tracking.lastAiAssessmentMs))
+    : SCREEN_STATIC_STUCK_THRESHOLD_MS - unchangedForMs;
+  const canRunAiNow =
+    meetsStaticThreshold &&
+    (tracking.lastAiAssessmentMs === 0 ||
+      nowMs - tracking.lastAiAssessmentMs >= SCREEN_STATIC_AI_RECHECK_MS);
+
+  return {
+    unchangedForMs,
+    meetsStaticThreshold,
+    aiCooldownRemainingMs,
+    canRunAiNow,
+  };
 }
 
 export const managerCommand = new Command('manager').description(
@@ -1308,6 +1340,30 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
     verboseLogCtx(
       ctx,
       `nudgeStuckStories: story=${story.id} session=${agentSession.name} cli=${agent.cli_tool || 'claude'}`
+    );
+
+    const staticEligibility = getScreenStaticEligibility(agentSession.name, now);
+    if (!staticEligibility) {
+      verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} skip=no_screen_tracking`);
+      continue;
+    }
+    if (!staticEligibility.meetsStaticThreshold) {
+      verboseLogCtx(
+        ctx,
+        `nudgeStuckStories: story=${story.id} skip=static_window remaining=${formatDuration(staticEligibility.aiCooldownRemainingMs)}`
+      );
+      continue;
+    }
+    if (!staticEligibility.canRunAiNow) {
+      verboseLogCtx(
+        ctx,
+        `nudgeStuckStories: story=${story.id} skip=ai_cooldown remaining=${formatDuration(staticEligibility.aiCooldownRemainingMs)} unchanged=${formatDuration(staticEligibility.unchangedForMs)}`
+      );
+      continue;
+    }
+    verboseLogCtx(
+      ctx,
+      `nudgeStuckStories: story=${story.id} static_window_met unchanged=${formatDuration(staticEligibility.unchangedForMs)}`
     );
 
     const trackedState = agentStates.get(agentSession.name);
