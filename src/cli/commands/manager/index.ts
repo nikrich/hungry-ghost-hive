@@ -2,7 +2,6 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { execa } from 'execa';
 import { join } from 'path';
 import { ClusterRuntime, fetchLocalClusterStatus } from '../../../cluster/runtime.js';
 import { loadConfig } from '../../../config/loader.js';
@@ -24,9 +23,7 @@ import {
 } from '../../../db/queries/messages.js';
 import {
   backfillGithubPrNumbers,
-  createPullRequest,
   getMergeQueue,
-  getOpenPullRequestsByStory,
   getPullRequestsByStatus,
   updatePullRequest,
 } from '../../../db/queries/pull-requests.js';
@@ -386,7 +383,6 @@ async function managerCheck(
       hiveSessions: [],
       counters: {
         nudged: 0,
-        autoProgressed: 0,
         messagesForwarded: 0,
         escalationsCreated: 0,
         escalationsResolved: 0,
@@ -981,56 +977,27 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       continue;
     }
 
-    const canAutoProgress =
-      stateResult.state === AgentState.WORK_COMPLETE || stateResult.state === AgentState.IDLE_AT_PROMPT;
-    if (canAutoProgress) {
-      const openPRs = getOpenPullRequestsByStory(ctx.db.db, story.id);
-      if (openPRs.length > 0) {
-        if (story.status !== 'pr_submitted') {
-          updateStory(ctx.db.db, story.id, { status: 'pr_submitted' });
-          ctx.db.save();
-          await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'pr_submitted');
-        }
-        ctx.counters.autoProgressed++;
-        continue;
-      }
-
-      const branch = await resolveStoryBranchName(ctx.root, story, agent);
-      if (branch) {
-        await withTransaction(ctx.db.db, () => {
-          updateStory(ctx.db.db, story.id, { status: 'pr_submitted', branchName: branch });
-          createPullRequest(ctx.db.db, {
-            storyId: story.id,
-            teamId: story.team_id || null,
-            branchName: branch,
-            submittedBy: agentSession.name,
-          });
-          createLog(ctx.db.db, {
-            agentId: 'manager',
-            storyId: story.id,
-            eventType: 'PR_SUBMITTED',
-            message: `Manager auto-progressed ${story.id} to PR queue`,
-            metadata: {
-              story_id: story.id,
-              session_name: agentSession.name,
-              branch,
-              recovery: 'auto_progress_when_done',
-            },
-          });
+    if (stateResult.state === AgentState.WORK_COMPLETE) {
+      await sendToTmuxSession(
+        agentSession.name,
+        `# MANDATORY COMPLETION SIGNAL: execute now for ${story.id}
+hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${story.id} --from ${agentSession.name}
+hive my-stories complete ${story.id}
+hive progress ${story.id} -m "PR submitted to merge queue" --from ${agentSession.name} --done
+# Do not stop at a summary. Completion requires the commands above.`
+      );
+      await sendEnterToTmuxSession(agentSession.name);
+      ctx.counters.nudged++;
+      if (trackedState) {
+        trackedState.lastNudgeTime = now;
+      } else {
+        agentStates.set(agentSession.name, {
+          lastState: stateResult.state,
+          lastStateChangeTime: now,
+          lastNudgeTime: now,
         });
-        ctx.db.save();
-        await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'pr_submitted');
-        await ctx.scheduler.checkMergeQueue();
-        ctx.db.save();
-        await sendToTmuxSession(
-          agentSession.name,
-          `# AUTO-PROGRESS: Manager detected ${story.id} as done and submitted it to merge queue on branch ${branch}.
-# Check queue/status with: hive pr queue`
-        );
-        await sendEnterToTmuxSession(agentSession.name);
-        ctx.counters.autoProgressed++;
-        continue;
       }
+      continue;
     }
 
     await sendToTmuxSession(
@@ -1051,30 +1018,6 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
         lastNudgeTime: now,
       });
     }
-  }
-}
-
-async function resolveStoryBranchName(
-  root: string,
-  story: StoryRow,
-  agent: ReturnType<typeof getAllAgents>[number]
-): Promise<string | null> {
-  if (story.branch_name && story.branch_name.trim().length > 0) {
-    return story.branch_name.trim();
-  }
-
-  if (!agent.worktree_path) return null;
-
-  const worktreeDir = join(root, agent.worktree_path);
-  try {
-    const result = await execa('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: worktreeDir });
-    const branch = result.stdout.trim();
-    if (!branch || branch === 'HEAD') {
-      return null;
-    }
-    return branch;
-  } catch {
-    return null;
   }
 }
 
@@ -1111,7 +1054,6 @@ function printSummary(ctx: ManagerCheckContext): void {
     escalationsCreated,
     escalationsResolved,
     nudged,
-    autoProgressed,
     messagesForwarded,
     queuedPRCount,
     handoffPromoted,
@@ -1123,7 +1065,6 @@ function printSummary(ctx: ManagerCheckContext): void {
   if (escalationsCreated > 0) summary.push(`${escalationsCreated} escalations created`);
   if (escalationsResolved > 0) summary.push(`${escalationsResolved} escalations auto-resolved`);
   if (nudged > 0) summary.push(`${nudged} nudged`);
-  if (autoProgressed > 0) summary.push(`${autoProgressed} auto-progressed`);
   if (messagesForwarded > 0) summary.push(`${messagesForwarded} messages forwarded`);
   if (queuedPRCount > 0) summary.push(`${queuedPRCount} PRs queued`);
   if (handoffPromoted > 0) summary.push(`${handoffPromoted} auto-promoted from estimated`);

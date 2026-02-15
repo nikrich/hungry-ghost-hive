@@ -282,6 +282,8 @@ describe('Prompt Templates', () => {
 
       expect(prompt).toContain('DO NOT ask "Is there anything else?"');
       expect(prompt).toContain('autonomous agent');
+      expect(prompt).toContain('A story is not done until these commands run successfully');
+      expect(prompt).toContain('hive pr submit -b $(git rev-parse --abbrev-ref HEAD)');
     });
 
     it('should include instructions to check for merge conflicts before submission', () => {
