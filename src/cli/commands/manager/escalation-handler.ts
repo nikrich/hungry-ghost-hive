@@ -156,9 +156,7 @@ export async function handleEscalationAndNudge(
   if (rateLimited) {
     const attempts = rateLimitRecoveryAttempts.get(sessionName) || 0;
     const backoffMs = getRateLimitBackoffMs(attempts);
-    const timeSinceLastNudge = currentTrackedState
-      ? now - lastEscalationNudgeTime
-      : Infinity;
+    const timeSinceLastNudge = currentTrackedState ? now - lastEscalationNudgeTime : Infinity;
     if (timeSinceLastNudge <= backoffMs) {
       verboseLog(
         ctx,
@@ -218,9 +216,7 @@ export async function handleEscalationAndNudge(
   // Conversation interruptions are usually recoverable without human intervention.
   // Try "continue" first, then stronger prompt, then recycle the session.
   if (interrupted) {
-    const timeSinceLastNudge = currentTrackedState
-      ? now - lastEscalationNudgeTime
-      : Infinity;
+    const timeSinceLastNudge = currentTrackedState ? now - lastEscalationNudgeTime : Infinity;
     if (timeSinceLastNudge <= ctx.config.manager.nudge_cooldown_ms) {
       verboseLog(
         ctx,

@@ -117,8 +117,6 @@ function validateConfigModelRuntimeCompatibility(config: HiveConfig): void {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new ConfigError(
-      `Invalid configuration:\n  - manager.completion_classifier: ${message}`
-    );
+    throw new ConfigError(`Invalid configuration:\n  - manager.completion_classifier: ${message}`);
   }
 }

@@ -66,8 +66,8 @@ import {
   handlePermissionPrompt,
   handlePlanApproval,
   nudgeAgent,
-  withManagerNudgeEnvelope,
   updateAgentStateTracking,
+  withManagerNudgeEnvelope,
 } from './agent-monitoring.js';
 import { assessCompletionFromOutput } from './done-intelligence.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
@@ -215,9 +215,8 @@ function applyHumanInterventionStateOverride(
 
   const transientIntervention =
     [timeoutIntervention, doneFalseIntervention]
-      .filter(
-        (candidate): candidate is ClassifierTimeoutIntervention =>
-          Boolean(candidate && storyId && candidate.storyId === storyId)
+      .filter((candidate): candidate is ClassifierTimeoutIntervention =>
+        Boolean(candidate && storyId && candidate.storyId === storyId)
       )
       .sort((a, b) => b.createdAtMs - a.createdAtMs)[0] ?? null;
 
@@ -225,18 +224,18 @@ function applyHumanInterventionStateOverride(
     storyId === null
       ? null
       : (getActiveEscalationsForAgent(ctx.db.db, sessionName).find(
-            escalation =>
-              escalation.story_id === storyId &&
-              (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
-                escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
-          ) ??
-          getPendingEscalations(ctx.db.db).find(
-            escalation =>
-              escalation.story_id === storyId &&
-              (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
-                escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
-          ) ??
-          null);
+          escalation =>
+            escalation.story_id === storyId &&
+            (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
+              escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
+        ) ??
+        getPendingEscalations(ctx.db.db).find(
+          escalation =>
+            escalation.story_id === storyId &&
+            (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
+              escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
+        ) ??
+        null);
 
   const interventionReason = transientIntervention?.reason || persistedIntervention?.reason || null;
 
@@ -1213,10 +1212,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
               completionAssessment.reason
             );
             actionNotes.push('classifier_timeout_escalation');
-            verboseLogCtx(
-              ctx,
-              `Agent ${session.name}: action=classifier_timeout_escalation`
-            );
+            verboseLogCtx(ctx, `Agent ${session.name}: action=classifier_timeout_escalation`);
             continue;
           }
           clearHumanIntervention(session.name);
@@ -1402,9 +1398,7 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
     for (const qa of qaSessions) {
       await sendToTmuxSession(
         qa.name,
-        withManagerNudgeEnvelope(
-          `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
-        )
+        withManagerNudgeEnvelope(`# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`)
       );
     }
   }
