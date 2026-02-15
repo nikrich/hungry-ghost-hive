@@ -59,7 +59,11 @@ const RATE_LIMIT_RETRY_PATTERNS = [
   /backoff/i,
 ];
 const INTERACTIVE_PROMPT_LINE_PATTERN = /^\s*(?:›|>)\s+\S.+$/m;
-const INTERACTIVE_SHORTCUT_HINT_PATTERN = /\?\s*for shortcuts/i;
+const INTERACTIVE_PROMPT_UI_SIGNAL_PATTERNS = [
+  /\?\s*for shortcuts/i,
+  /\bcontext left\b/i,
+  /\[pasted content\s+\d+\s+chars\]/i,
+];
 const RATE_LIMIT_WINDOW_LINES = 120;
 const INTERACTIVE_PROMPT_WINDOW_LINES = 80;
 
@@ -86,9 +90,12 @@ export function isRateLimitPrompt(output: string): boolean {
 
 export function isInteractiveInputPrompt(output: string): boolean {
   const recentOutput = getRecentPaneOutput(output, INTERACTIVE_PROMPT_WINDOW_LINES);
+  const hasUiSignal = INTERACTIVE_PROMPT_UI_SIGNAL_PATTERNS.some(pattern =>
+    pattern.test(recentOutput)
+  );
   return (
     INTERACTIVE_PROMPT_LINE_PATTERN.test(recentOutput) &&
-    INTERACTIVE_SHORTCUT_HINT_PATTERN.test(recentOutput)
+    hasUiSignal
   );
 }
 

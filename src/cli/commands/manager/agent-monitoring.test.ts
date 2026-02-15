@@ -12,6 +12,8 @@ const ANTHROPIC_RATE_LIMIT =
 const GEMINI_RATE_LIMIT =
   'RESOURCE_EXHAUSTED: Quota exceeded for quota metric GenerateContent requests per minute.';
 const INTERACTIVE_PROMPT = '› Improve documentation in @filename\n\n  ? for shortcuts';
+const INTERACTIVE_PROMPT_WITH_PASTE =
+  '› [Pasted Content 1203 chars]\n\n  16% context left';
 
 describe('detectAgentState interruption fallback', () => {
   it('treats interruption banner as blocked for codex sessions', () => {
@@ -99,6 +101,14 @@ describe('detectAgentState interruption fallback', () => {
     const result = detectAgentState(output, 'codex');
 
     expect(result.state).toBe(AgentState.ASKING_QUESTION);
+    expect(result.needsHuman).toBe(true);
+  });
+
+  it('detects interactive prompt with pasted-content and context-left ui', () => {
+    const result = detectAgentState(INTERACTIVE_PROMPT_WITH_PASTE, 'codex');
+
+    expect(result.state).toBe(AgentState.ASKING_QUESTION);
+    expect(result.isWaiting).toBe(true);
     expect(result.needsHuman).toBe(true);
   });
 });
