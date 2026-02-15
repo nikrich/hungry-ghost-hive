@@ -206,8 +206,6 @@ async function runCodexClassifier(
         '--skip-git-repo-check',
         '--sandbox',
         'read-only',
-        '--ask-for-approval',
-        'never',
         '--ephemeral',
         '--model',
         model,

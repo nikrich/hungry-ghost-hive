@@ -214,6 +214,12 @@ function markFullAiDetectionRun(sessionName: string, nowMs: number): void {
   tracking.lastAiAssessmentMs = nowMs;
 }
 
+function getSessionStaticUnchangedForMs(sessionName: string, nowMs: number): number {
+  const tracking = screenStaticBySession.get(sessionName);
+  if (!tracking) return 0;
+  return Math.max(0, nowMs - tracking.unchangedSinceMs);
+}
+
 export const managerCommand = new Command('manager').description(
   'Micromanager daemon that keeps agents productive'
 );
@@ -1414,35 +1420,43 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       continue;
     }
 
-    const completionAssessment = await assessCompletionFromOutput(
-      ctx.config,
-      agentSession.name,
-      story.id,
-      output
-    );
-    const aiSaysDone =
-      completionAssessment.done &&
-      completionAssessment.confidence >= DONE_INFERENCE_CONFIDENCE_THRESHOLD;
-    verboseLogCtx(
-      ctx,
-      `nudgeStuckStories: story=${story.id} doneInference done=${completionAssessment.done}, confidence=${completionAssessment.confidence.toFixed(2)}, aiSaysDone=${aiSaysDone}, reason=${completionAssessment.reason}`
-    );
-
-    if (aiSaysDone) {
-      const progressed = await autoProgressDoneStory(
+    const sessionUnchangedForMs = getSessionStaticUnchangedForMs(agentSession.name, now);
+    if (sessionUnchangedForMs < staticInactivityThresholdMs) {
+      verboseLogCtx(
         ctx,
-        story,
-        agent,
-        agentSession.name,
-        completionAssessment.reason,
-        completionAssessment.confidence
+        `nudgeStuckStories: story=${story.id} skip=done_inference_static_window remainingMs=${staticInactivityThresholdMs - sessionUnchangedForMs}`
       );
-      if (progressed) {
-        ctx.counters.autoProgressed++;
-        verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} action=auto_progressed`);
-        continue;
+    } else {
+      const completionAssessment = await assessCompletionFromOutput(
+        ctx.config,
+        agentSession.name,
+        story.id,
+        output
+      );
+      const aiSaysDone =
+        completionAssessment.done &&
+        completionAssessment.confidence >= DONE_INFERENCE_CONFIDENCE_THRESHOLD;
+      verboseLogCtx(
+        ctx,
+        `nudgeStuckStories: story=${story.id} doneInference done=${completionAssessment.done}, confidence=${completionAssessment.confidence.toFixed(2)}, aiSaysDone=${aiSaysDone}, reason=${completionAssessment.reason}`
+      );
+
+      if (aiSaysDone) {
+        const progressed = await autoProgressDoneStory(
+          ctx,
+          story,
+          agent,
+          agentSession.name,
+          completionAssessment.reason,
+          completionAssessment.confidence
+        );
+        if (progressed) {
+          ctx.counters.autoProgressed++;
+          verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} action=auto_progressed`);
+          continue;
+        }
+        verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} auto_progress_failed`);
       }
-      verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} auto_progress_failed`);
     }
 
     if (stateResult.state === AgentState.WORK_COMPLETE) {
