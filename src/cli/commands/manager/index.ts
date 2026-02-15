@@ -61,6 +61,7 @@ import {
   handlePermissionPrompt,
   handlePlanApproval,
   nudgeAgent,
+  withManagerNudgeEnvelope,
   updateAgentStateTracking,
 } from './agent-monitoring.js';
 import { assessCompletionFromOutput } from './done-intelligence.js';
@@ -71,11 +72,16 @@ import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
 import { findStaleSessionEscalations } from './stale-escalations.js';
 import type { ManagerCheckContext } from './types.js';
-import { TMUX_CAPTURE_LINES, TMUX_CAPTURE_LINES_SHORT } from './types.js';
+import {
+  MANAGER_NUDGE_END_MARKER,
+  MANAGER_NUDGE_START_MARKER,
+  TMUX_CAPTURE_LINES,
+  TMUX_CAPTURE_LINES_SHORT,
+} from './types.js';
 
 const DONE_INFERENCE_CONFIDENCE_THRESHOLD = 0.82;
-const SCREEN_STATIC_STUCK_THRESHOLD_MS = 10 * 60 * 1000;
 const SCREEN_STATIC_AI_RECHECK_MS = 5 * 60 * 1000;
+const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
 
 interface ScreenStaticTracking {
   fingerprint: string;
@@ -126,12 +132,46 @@ function buildOutputFingerprint(output: string): string {
   return createHash('sha256').update(output).digest('hex');
 }
 
+function stripManagerNudgeBlocks(output: string): string {
+  const lines = output.split('\n');
+  const filtered: string[] = [];
+  let inManagerBlock = false;
+
+  for (const line of lines) {
+    const normalized = line.replace(/^\s*(?:›|>)\s*/, '').trim();
+
+    if (normalized.includes(MANAGER_NUDGE_START_MARKER)) {
+      inManagerBlock = true;
+      continue;
+    }
+    if (normalized.includes(MANAGER_NUDGE_END_MARKER)) {
+      inManagerBlock = false;
+      continue;
+    }
+    if (inManagerBlock) {
+      continue;
+    }
+    filtered.push(line);
+  }
+
+  return filtered.join('\n');
+}
+
+function getScreenStaticInactivityThresholdMs(config?: HiveConfig): number {
+  return Math.max(
+    1,
+    config?.manager.screen_static_inactivity_threshold_ms ??
+      DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS
+  );
+}
+
 function updateScreenStaticTracking(
   sessionName: string,
   output: string,
-  nowMs: number
+  nowMs: number,
+  staticInactivityThresholdMs: number
 ): ScreenStaticStatus {
-  const fingerprint = buildOutputFingerprint(output);
+  const fingerprint = buildOutputFingerprint(stripManagerNudgeBlocks(output));
   const existing = screenStaticBySession.get(sessionName);
 
   let tracking: ScreenStaticTracking;
@@ -149,13 +189,13 @@ function updateScreenStaticTracking(
   }
 
   const unchangedForMs = nowMs - tracking.unchangedSinceMs;
-  const stuckDetectionInMs = Math.max(0, SCREEN_STATIC_STUCK_THRESHOLD_MS - unchangedForMs);
+  const stuckDetectionInMs = Math.max(0, staticInactivityThresholdMs - unchangedForMs);
   const fullAiDetectionInMs =
-    unchangedForMs < SCREEN_STATIC_STUCK_THRESHOLD_MS
+    unchangedForMs < staticInactivityThresholdMs
       ? stuckDetectionInMs
       : Math.max(0, SCREEN_STATIC_AI_RECHECK_MS - (nowMs - tracking.lastAiAssessmentMs));
   const shouldRunFullAiDetection =
-    unchangedForMs >= SCREEN_STATIC_STUCK_THRESHOLD_MS &&
+    unchangedForMs >= staticInactivityThresholdMs &&
     (tracking.lastAiAssessmentMs === 0 ||
       nowMs - tracking.lastAiAssessmentMs >= SCREEN_STATIC_AI_RECHECK_MS);
 
@@ -869,7 +909,12 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 
     const stateResult = detectAgentState(output, agentCliTool);
     const now = Date.now();
-    const staticStatus = updateScreenStaticTracking(session.name, output, now);
+    const staticStatus = updateScreenStaticTracking(
+      session.name,
+      output,
+      now,
+      getScreenStaticInactivityThresholdMs(ctx.config)
+    );
     verboseLogCtx(
       ctx,
       `Agent ${session.name}: state=${stateResult.state}, waiting=${stateResult.isWaiting}, needsHuman=${stateResult.needsHuman}, reason=${stateResult.reason}`
@@ -963,12 +1008,14 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
             const shortReason = completionAssessment.reason.replace(/\s+/g, ' ').trim();
             await sendToTmuxSession(
               session.name,
-              `# STALLED OUTPUT DETECTED: your terminal output has not changed for ${formatDuration(staticStatus.unchangedForMs)}.
+              withManagerNudgeEnvelope(
+                `# STALLED OUTPUT DETECTED: your terminal output has not changed for ${formatDuration(staticStatus.unchangedForMs)}.
 # AI assessment: ${shortReason}
 # Stop repeating status updates. Execute the next concrete step now (tests, then PR submit if done).
 # If complete, run:
 #   hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${storyId} --from ${session.name}
 #   hive my-stories complete ${storyId}`
+              )
             );
             await sendEnterToTmuxSession(session.name);
             ctx.counters.nudged++;
@@ -1077,13 +1124,15 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
     const githubLine = nextPR.github_pr_url ? `\n# GitHub: ${nextPR.github_pr_url}` : '';
     await sendToTmuxSession(
       qa.name,
-      `# You are assigned PR review ${nextPR.id} (${nextPR.story_id || 'no-story'}).${githubLine}
+      withManagerNudgeEnvelope(
+        `# You are assigned PR review ${nextPR.id} (${nextPR.story_id || 'no-story'}).${githubLine}
 # Execute now:
 #   hive pr show ${nextPR.id}
 #   hive pr approve ${nextPR.id}
 # (If manual merge is required in this repo, use --no-merge.)
 # or reject:
 #   hive pr reject ${nextPR.id} -r "reason"`
+      )
     );
   }
 
@@ -1094,7 +1143,9 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
     for (const qa of qaSessions) {
       await sendToTmuxSession(
         qa.name,
-        `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
+        withManagerNudgeEnvelope(
+          `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
+        )
       );
     }
   }
@@ -1131,12 +1182,14 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
         );
         await sendToTmuxSession(
           devSession.name,
-          `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
+          withManagerNudgeEnvelope(
+            `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
 # Story: ${pr.story_id || 'Unknown'}
 # Reason: ${pr.review_notes || 'See review comments'}
 #
 # You MUST fix this issue before doing anything else.
 # Fix the issues and resubmit: hive pr submit -b ${pr.branch_name} -s ${pr.story_id || 'STORY-ID'} --from ${devSession.name}`
+          )
         );
         await sendEnterToTmuxSession(devSession.name);
         rejectionNotified++;
@@ -1198,10 +1251,12 @@ async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
       );
       await sendToTmuxSession(
         agentSession.name,
-        `# REMINDER: Story ${story.id} failed QA review!
+        withManagerNudgeEnvelope(
+          `# REMINDER: Story ${story.id} failed QA review!
 # You must fix the issues and resubmit the PR.
 # Check the QA feedback and address all concerns.
 hive pr queue`
+        )
       );
       await sendEnterToTmuxSession(agentSession.name);
     } else {
@@ -1273,6 +1328,11 @@ async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext): Promi
 
 async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
   const stuckThresholdMs = Math.max(1, ctx.config.manager.stuck_threshold_ms);
+  const staticInactivityThresholdMs = getScreenStaticInactivityThresholdMs(ctx.config);
+  const waitingNudgeCooldownMs = Math.max(
+    ctx.config.manager.nudge_cooldown_ms,
+    staticInactivityThresholdMs
+  );
   const staleUpdatedAt = new Date(Date.now() - stuckThresholdMs).toISOString();
   const stuckStories = queryAll<StoryRow>(
     ctx.db.db,
@@ -1327,10 +1387,10 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       );
       continue;
     }
-    if (trackedState && now - trackedState.lastNudgeTime < ctx.config.manager.nudge_cooldown_ms) {
+    if (trackedState && now - trackedState.lastNudgeTime < waitingNudgeCooldownMs) {
       verboseLogCtx(
         ctx,
-        `nudgeStuckStories: story=${story.id} skip=nudge_cooldown remainingMs=${ctx.config.manager.nudge_cooldown_ms - (now - trackedState.lastNudgeTime)}`
+        `nudgeStuckStories: story=${story.id} skip=nudge_to_ai_window remainingMs=${waitingNudgeCooldownMs - (now - trackedState.lastNudgeTime)}`
       );
       continue;
     }
@@ -1392,11 +1452,13 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       );
       await sendToTmuxSession(
         agentSession.name,
-        `# MANDATORY COMPLETION SIGNAL: execute now for ${story.id}
+        withManagerNudgeEnvelope(
+          `# MANDATORY COMPLETION SIGNAL: execute now for ${story.id}
 hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${story.id} --from ${agentSession.name}
 hive my-stories complete ${story.id}
 hive progress ${story.id} -m "PR submitted to merge queue" --from ${agentSession.name} --done
 # Do not stop at a summary. Completion requires the commands above.`
+        )
       );
       await sendEnterToTmuxSession(agentSession.name);
       ctx.counters.nudged++;
@@ -1418,10 +1480,12 @@ hive progress ${story.id} -m "PR submitted to merge queue" --from ${agentSession
     );
     await sendToTmuxSession(
       agentSession.name,
-      `# REMINDER: Story ${story.id} has been in progress for a while.
+      withManagerNudgeEnvelope(
+        `# REMINDER: Story ${story.id} has been in progress for a while.
 # If stuck, escalate to your Senior or Tech Lead.
 # If done, submit your PR: hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${story.id} --from ${agentSession.name}
 # Then mark complete: hive my-stories complete ${story.id}`
+      )
     );
     await sendEnterToTmuxSession(agentSession.name);
     ctx.counters.nudged++;
@@ -1473,7 +1537,9 @@ async function autoProgressDoneStory(
     }
     await sendToTmuxSession(
       sessionName,
-      `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), detected existing PR, and moved story to PR-submitted state.`
+      withManagerNudgeEnvelope(
+        `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), detected existing PR, and moved story to PR-submitted state.`
+      )
     );
     await sendEnterToTmuxSession(sessionName);
     verboseLogCtx(ctx, `autoProgressDoneStory: story=${story.id} action=existing_pr_progressed`);
@@ -1522,7 +1588,9 @@ async function autoProgressDoneStory(
 
   await sendToTmuxSession(
     sessionName,
-    `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), auto-submitted branch ${branch} to merge queue.`
+    withManagerNudgeEnvelope(
+      `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), auto-submitted branch ${branch} to merge queue.`
+    )
   );
   await sendEnterToTmuxSession(sessionName);
   return true;
@@ -1588,7 +1656,9 @@ async function notifyUnassignedStories(ctx: ManagerCheckContext): Promise<void> 
       );
       await sendToTmuxSession(
         senior.name,
-        `# ${plannedStories.length} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
+        withManagerNudgeEnvelope(
+          `# ${plannedStories.length} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
+        )
       );
     } else {
       verboseLogCtx(

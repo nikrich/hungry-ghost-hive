@@ -21,6 +21,7 @@ import {
   isRateLimitPrompt,
   nudgeAgent,
   sendToTmuxSession,
+  withManagerNudgeEnvelope,
   type CLITool,
 } from './agent-monitoring.js';
 import type { ManagerCheckContext } from './types.js';
@@ -30,6 +31,7 @@ const INTERRUPTION_FIRST_RECOVERY_COMMAND = 'continue';
 const INTERRUPTION_HARD_RESET_ATTEMPTS = 3;
 const RATE_LIMIT_INITIAL_BACKOFF_MS = 90000;
 const RATE_LIMIT_MAX_BACKOFF_MS = 300000;
+const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
 const interruptionRecoveryAttempts = new Map<string, number>();
 const rateLimitRecoveryAttempts = new Map<string, number>();
 const INTERRUPTION_PROMPT_PATTERN =
@@ -169,7 +171,9 @@ export async function handleEscalationAndNudge(
 
     await sendToTmuxSession(
       sessionName,
-      buildRateLimitRecoveryPrompt(sessionName, backoffMs, agent?.current_story_id)
+      withManagerNudgeEnvelope(
+        buildRateLimitRecoveryPrompt(sessionName, backoffMs, agent?.current_story_id)
+      )
     );
     await sendEnterToTmuxSession(sessionName);
     rateLimitRecoveryAttempts.set(sessionName, attempts + 1);
@@ -255,7 +259,7 @@ export async function handleEscalationAndNudge(
       attempts === 0
         ? INTERRUPTION_FIRST_RECOVERY_COMMAND
         : buildInterruptionRecoveryPrompt(sessionName, agent?.current_story_id);
-    await sendToTmuxSession(sessionName, prompt);
+    await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(prompt));
     await sendEnterToTmuxSession(sessionName);
     interruptionRecoveryAttempts.set(sessionName, attempts + 1);
     ctx.counters.nudged++;
@@ -339,7 +343,7 @@ export async function handleEscalationAndNudge(
     ctx.escalatedSessions.add(sessionName);
 
     const reminder = buildAutoRecoveryReminder(sessionName, agentCliTool);
-    await sendToTmuxSession(sessionName, reminder);
+    await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(reminder));
 
     console.log(chalk.red(`  ESCALATION: ${sessionName} needs human input`));
     verboseLog(ctx, `escalationCheck: ${sessionName} action=create_escalation`);
@@ -380,10 +384,19 @@ export async function handleEscalationAndNudge(
     if (currentTrackedState) {
       const timeSinceStateChange = now - currentTrackedState.lastStateChangeTime;
       const timeSinceLastNudge = now - currentTrackedState.lastNudgeTime;
+      const screenStaticThresholdMs = Math.max(
+        1,
+        ctx.config.manager.screen_static_inactivity_threshold_ms ??
+          DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS
+      );
+      const waitingNudgeCooldownMs = Math.max(
+        ctx.config.manager.nudge_cooldown_ms,
+        screenStaticThresholdMs
+      );
 
       if (
         timeSinceStateChange > ctx.config.manager.stuck_threshold_ms &&
-        timeSinceLastNudge > ctx.config.manager.nudge_cooldown_ms
+        timeSinceLastNudge > waitingNudgeCooldownMs
       ) {
         const recheckOutput = await captureTmuxPane(sessionName, TMUX_CAPTURE_LINES);
         const recheckState = detectAgentState(recheckOutput, agentCliTool);

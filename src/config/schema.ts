@@ -195,6 +195,8 @@ const ManagerConfigSchema = z.object({
   slow_poll_interval: z.number().int().positive().default(60000),
   stuck_threshold_ms: z.number().int().positive().default(120000),
   nudge_cooldown_ms: z.number().int().positive().default(300000),
+  // Static-screen inactivity window before full AI stuck/done assessment
+  screen_static_inactivity_threshold_ms: z.number().int().positive().default(600000),
   lock_stale_ms: z.number().int().positive().default(120000),
   // Shell command timeouts to prevent manager hangs
   git_timeout_ms: z.number().int().positive().default(30000), // 30s for git operations
@@ -441,6 +443,8 @@ manager:
   stuck_threshold_ms: 120000
   # Cooldown period before nudging the same agent again (ms)
   nudge_cooldown_ms: 300000
+  # Static inactivity window before full AI analysis (ms, default 10 minutes)
+  screen_static_inactivity_threshold_ms: 600000
   # Time before manager lock is considered stale (ms)
   lock_stale_ms: 120000
   # Timeout for git operations to prevent manager hangs (ms)

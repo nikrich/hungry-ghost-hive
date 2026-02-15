@@ -20,7 +20,13 @@ import {
   type CLITool,
 } from '../../../utils/cli-commands.js';
 import type { AgentStateTracking, ManagerCheckContext, MessageRow } from './types.js';
-import { BYPASS_MODE_MAX_RETRIES, MESSAGE_FORWARD_DELAY_MS, POST_NUDGE_DELAY_MS } from './types.js';
+import {
+  BYPASS_MODE_MAX_RETRIES,
+  MANAGER_NUDGE_END_MARKER,
+  MANAGER_NUDGE_START_MARKER,
+  MESSAGE_FORWARD_DELAY_MS,
+  POST_NUDGE_DELAY_MS,
+} from './types.js';
 
 // In-memory state tracking per agent session
 export const agentStates = new Map<string, AgentStateTracking>();
@@ -276,6 +282,12 @@ export function getAgentType(
   return 'unknown';
 }
 
+export function withManagerNudgeEnvelope(message: string): string {
+  return `# ${MANAGER_NUDGE_START_MARKER}
+${message}
+# ${MANAGER_NUDGE_END_MARKER}`;
+}
+
 export async function nudgeAgent(
   _root: string,
   sessionName: string,
@@ -285,7 +297,7 @@ export async function nudgeAgent(
   agentCliTool?: CLITool
 ): Promise<void> {
   if (customMessage) {
-    await sendToTmuxSession(sessionName, customMessage);
+    await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(customMessage));
     return;
   }
 
@@ -323,7 +335,7 @@ hive status`;
     nudge = `# Manager detected: ${reason}\n${nudge}`;
   }
 
-  await sendToTmuxSession(sessionName, nudge);
+  await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(nudge));
 
   // Also send Enter to ensure prompt is activated
   await new Promise(resolve => setTimeout(resolve, POST_NUDGE_DELAY_MS));
