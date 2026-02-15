@@ -109,4 +109,16 @@ function validateConfigModelRuntimeCompatibility(config: HiveConfig): void {
       throw new ConfigError(`Invalid configuration:\n  - models.${agentType}: ${message}`);
     }
   }
+
+  try {
+    validateModelCliCompatibility(
+      config.manager.completion_classifier.model,
+      config.manager.completion_classifier.cli_tool
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ConfigError(
+      `Invalid configuration:\n  - manager.completion_classifier: ${message}`
+    );
+  }
 }

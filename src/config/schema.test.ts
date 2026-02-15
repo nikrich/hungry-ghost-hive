@@ -77,6 +77,7 @@ describe('HiveConfigSchema', () => {
       expect(result.data.cluster.enabled).toBe(false);
       expect(result.data.cluster.node_id).toBe('node-local');
       expect(result.data.cluster.listen_host).toBe('127.0.0.1');
+      expect(result.data.manager.completion_classifier.cli_tool).toBe('codex');
       expect(result.data.manager.completion_classifier.model).toBe('gpt-5.2-codex');
     }
   });

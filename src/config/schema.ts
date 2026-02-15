@@ -191,10 +191,13 @@ const AgentsConfigSchema = z.object({
 
 // Manager daemon configuration
 const ManagerCompletionClassifierConfigSchema = z.object({
-  provider: z.enum(['anthropic', 'openai']).default('openai'),
+  cli_tool: z.enum(['claude', 'codex', 'gemini']).default('codex'),
   model: z.string().default('gpt-5.2-codex'),
-  max_tokens: z.number().int().positive().default(250),
-  temperature: z.number().min(0).max(2).default(0),
+  timeout_ms: z.number().int().positive().default(12000),
+  // Backward-compatible deprecated fields (ignored by manager classifier path).
+  provider: z.enum(['anthropic', 'openai']).optional(),
+  max_tokens: z.number().int().positive().optional(),
+  temperature: z.number().min(0).max(2).optional(),
 });
 
 const ManagerConfigSchema = z.object({
@@ -456,10 +459,9 @@ manager:
   screen_static_inactivity_threshold_ms: 600000
   # AI semantic classifier model used by manager for done/stuck inference
   completion_classifier:
-    provider: openai
+    cli_tool: codex
     model: gpt-5.2-codex
-    max_tokens: 250
-    temperature: 0
+    timeout_ms: 12000
   # Time before manager lock is considered stale (ms)
   lock_stale_ms: 120000
   # Timeout for git operations to prevent manager hangs (ms)

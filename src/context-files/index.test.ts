@@ -190,10 +190,9 @@ describe('context-files module', () => {
         nudge_cooldown_ms: 300000,
         screen_static_inactivity_threshold_ms: 600000,
         completion_classifier: {
-          provider: 'openai',
+          cli_tool: 'codex',
           model: 'gpt-5.2-codex',
-          max_tokens: 250,
-          temperature: 0,
+          timeout_ms: 12000,
         },
         lock_stale_ms: 120000,
         git_timeout_ms: 30000,
