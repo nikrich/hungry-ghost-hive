@@ -1,7 +1,11 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { assessCompletionFromOutput, clearCompletionAssessmentCache, isCompletionCandidateOutput } from './done-intelligence.js';
+import {
+  assessCompletionFromOutput,
+  clearCompletionAssessmentCache,
+  isCompletionCandidateOutput,
+} from './done-intelligence.js';
 
 const COMPLETE_STYLE_OUTPUT = `• Suppress Operator
 

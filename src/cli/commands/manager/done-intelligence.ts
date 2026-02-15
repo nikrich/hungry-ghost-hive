@@ -53,10 +53,7 @@ interface AssessmentCacheEntry {
 const completionAssessmentCache = new Map<string, AssessmentCacheEntry>();
 
 function getRecentOutput(output: string): string {
-  return output
-    .split('\n')
-    .slice(-COMPLETION_ANALYSIS_WINDOW_LINES)
-    .join('\n');
+  return output.split('\n').slice(-COMPLETION_ANALYSIS_WINDOW_LINES).join('\n');
 }
 
 function buildFingerprint(text: string): string {
@@ -68,14 +65,18 @@ export function isCompletionCandidateOutput(output: string): boolean {
   const hasCandidateSignal = COMPLETION_CANDIDATE_PATTERNS.some(pattern => pattern.test(recent));
   if (!hasCandidateSignal) return false;
 
-  const hasStrongNonCompletionSignal = NON_COMPLETION_PATTERNS.some(pattern => pattern.test(recent));
+  const hasStrongNonCompletionSignal = NON_COMPLETION_PATTERNS.some(pattern =>
+    pattern.test(recent)
+  );
   return !hasStrongNonCompletionSignal;
 }
 
 function assessCompletionHeuristically(output: string): CompletionAssessment {
   const recent = getRecentOutput(output);
   const hasCandidateSignal = COMPLETION_CANDIDATE_PATTERNS.some(pattern => pattern.test(recent));
-  const hasStrongNonCompletionSignal = NON_COMPLETION_PATTERNS.some(pattern => pattern.test(recent));
+  const hasStrongNonCompletionSignal = NON_COMPLETION_PATTERNS.some(pattern =>
+    pattern.test(recent)
+  );
 
   // Strong signal: implementation appears done locally but agent is looping on "pending PR/tests".
   const doneLocallyPendingSubmit =

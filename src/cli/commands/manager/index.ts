@@ -63,8 +63,8 @@ import {
   nudgeAgent,
   updateAgentStateTracking,
 } from './agent-monitoring.js';
-import { handleEscalationAndNudge } from './escalation-handler.js';
 import { assessCompletionFromOutput } from './done-intelligence.js';
+import { handleEscalationAndNudge } from './escalation-handler.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
 import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
 import { findSessionForAgent } from './session-resolution.js';
@@ -156,7 +156,8 @@ function updateScreenStaticTracking(
       : Math.max(0, SCREEN_STATIC_AI_RECHECK_MS - (nowMs - tracking.lastAiAssessmentMs));
   const shouldRunFullAiDetection =
     unchangedForMs >= SCREEN_STATIC_STUCK_THRESHOLD_MS &&
-    (tracking.lastAiAssessmentMs === 0 || nowMs - tracking.lastAiAssessmentMs >= SCREEN_STATIC_AI_RECHECK_MS);
+    (tracking.lastAiAssessmentMs === 0 ||
+      nowMs - tracking.lastAiAssessmentMs >= SCREEN_STATIC_AI_RECHECK_MS);
 
   return {
     changed,
@@ -1514,7 +1515,10 @@ async function autoProgressDoneStory(
   await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'pr_submitted');
   await ctx.scheduler.checkMergeQueue();
   ctx.db.save();
-  verboseLogCtx(ctx, `autoProgressDoneStory: story=${story.id} action=auto_submitted branch=${branch}`);
+  verboseLogCtx(
+    ctx,
+    `autoProgressDoneStory: story=${story.id} action=auto_submitted branch=${branch}`
+  );
 
   await sendToTmuxSession(
     sessionName,
