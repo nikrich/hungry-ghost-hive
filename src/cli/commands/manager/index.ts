@@ -2,6 +2,7 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
+import { createHash } from 'crypto';
 import { execa } from 'execa';
 import { join } from 'path';
 import { ClusterRuntime, fetchLocalClusterStatus } from '../../../cluster/runtime.js';
@@ -30,7 +31,7 @@ import {
   getPullRequestsByStatus,
   updatePullRequest,
 } from '../../../db/queries/pull-requests.js';
-import { getStoriesByStatus, updateStory } from '../../../db/queries/stories.js';
+import { getStoriesByStatus, getStoryById, updateStory } from '../../../db/queries/stories.js';
 import { Scheduler } from '../../../orchestrator/scheduler.js';
 import { AgentState } from '../../../state-detectors/types.js';
 import {
@@ -73,6 +74,24 @@ import type { ManagerCheckContext } from './types.js';
 import { TMUX_CAPTURE_LINES, TMUX_CAPTURE_LINES_SHORT } from './types.js';
 
 const DONE_INFERENCE_CONFIDENCE_THRESHOLD = 0.82;
+const SCREEN_STATIC_STUCK_THRESHOLD_MS = 10 * 60 * 1000;
+const SCREEN_STATIC_AI_RECHECK_MS = 5 * 60 * 1000;
+
+interface ScreenStaticTracking {
+  fingerprint: string;
+  unchangedSinceMs: number;
+  lastAiAssessmentMs: number;
+}
+
+interface ScreenStaticStatus {
+  changed: boolean;
+  unchangedForMs: number;
+  stuckDetectionInMs: number;
+  fullAiDetectionInMs: number;
+  shouldRunFullAiDetection: boolean;
+}
+
+const screenStaticBySession = new Map<string, ScreenStaticTracking>();
 
 function verboseLog(verbose: boolean, message: string): void {
   if (!verbose) return;
@@ -92,6 +111,66 @@ function summarizeOutputForVerbose(output: string): string {
     .join(' | ');
   if (compact.length <= 180) return compact;
   return `${compact.slice(0, 177)}...`;
+}
+
+function formatDuration(ms: number): string {
+  if (ms <= 0) return 'now';
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  return `${minutes}m ${seconds}s`;
+}
+
+function buildOutputFingerprint(output: string): string {
+  return createHash('sha256').update(output).digest('hex');
+}
+
+function updateScreenStaticTracking(
+  sessionName: string,
+  output: string,
+  nowMs: number
+): ScreenStaticStatus {
+  const fingerprint = buildOutputFingerprint(output);
+  const existing = screenStaticBySession.get(sessionName);
+
+  let tracking: ScreenStaticTracking;
+  let changed = false;
+  if (!existing || existing.fingerprint !== fingerprint) {
+    changed = true;
+    tracking = {
+      fingerprint,
+      unchangedSinceMs: nowMs,
+      lastAiAssessmentMs: 0,
+    };
+    screenStaticBySession.set(sessionName, tracking);
+  } else {
+    tracking = existing;
+  }
+
+  const unchangedForMs = nowMs - tracking.unchangedSinceMs;
+  const stuckDetectionInMs = Math.max(0, SCREEN_STATIC_STUCK_THRESHOLD_MS - unchangedForMs);
+  const fullAiDetectionInMs =
+    unchangedForMs < SCREEN_STATIC_STUCK_THRESHOLD_MS
+      ? stuckDetectionInMs
+      : Math.max(0, SCREEN_STATIC_AI_RECHECK_MS - (nowMs - tracking.lastAiAssessmentMs));
+  const shouldRunFullAiDetection =
+    unchangedForMs >= SCREEN_STATIC_STUCK_THRESHOLD_MS &&
+    (tracking.lastAiAssessmentMs === 0 || nowMs - tracking.lastAiAssessmentMs >= SCREEN_STATIC_AI_RECHECK_MS);
+
+  return {
+    changed,
+    unchangedForMs,
+    stuckDetectionInMs,
+    fullAiDetectionInMs,
+    shouldRunFullAiDetection,
+  };
+}
+
+function markFullAiDetectionRun(sessionName: string, nowMs: number): void {
+  const tracking = screenStaticBySession.get(sessionName);
+  if (!tracking) return;
+  tracking.lastAiAssessmentMs = nowMs;
 }
 
 export const managerCommand = new Command('manager').description(
@@ -749,6 +828,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
   // Batch fetch pending messages and group by recipient
   const allPendingMessages = getAllPendingMessages(ctx.db.db);
   const messagesBySessionName = new Map<string, MessageRow[]>();
+  const activeSessionNames = new Set<string>();
 
   for (const msg of allPendingMessages) {
     if (!messagesBySessionName.has(msg.to_session)) {
@@ -759,6 +839,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 
   for (const session of ctx.hiveSessions) {
     if (session.name === 'hive-manager') continue;
+    activeSessionNames.add(session.name);
 
     const agent = ctx.agentsBySessionName.get(session.name);
     const agentCliTool = (agent?.cli_tool || 'claude') as CLITool;
@@ -787,9 +868,14 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 
     const stateResult = detectAgentState(output, agentCliTool);
     const now = Date.now();
+    const staticStatus = updateScreenStaticTracking(session.name, output, now);
     verboseLogCtx(
       ctx,
       `Agent ${session.name}: state=${stateResult.state}, waiting=${stateResult.isWaiting}, needsHuman=${stateResult.needsHuman}, reason=${stateResult.reason}`
+    );
+    verboseLogCtx(
+      ctx,
+      `Agent ${session.name}: screen=${staticStatus.changed ? 'changed' : 'unchanged'} (${formatDuration(staticStatus.unchangedForMs)}), stuck-check=${formatDuration(staticStatus.stuckDetectionInMs)}, full-ai=${formatDuration(staticStatus.fullAiDetectionInMs)}`
     );
 
     updateAgentStateTracking(session.name, stateResult, now);
@@ -818,10 +904,117 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
     if (ctx.counters.nudged > beforeNudged) actionNotes.push('nudged');
     if (ctx.counters.escalationsCreated > beforeCreated) actionNotes.push('escalation_created');
     if (ctx.counters.escalationsResolved > beforeResolved) actionNotes.push('escalation_resolved');
+
+    if (
+      actionNotes.length === 0 &&
+      staticStatus.shouldRunFullAiDetection &&
+      stateResult.isWaiting &&
+      !stateResult.needsHuman
+    ) {
+      markFullAiDetectionRun(session.name, now);
+      const storyId = agent?.current_story_id || null;
+      if (!storyId) {
+        verboseLogCtx(ctx, `Agent ${session.name}: full-ai skipped (no current story)`);
+      } else {
+        const story = getStoryById(ctx.db.db, storyId);
+        if (!story || ['merged', 'completed'].includes(story.status)) {
+          verboseLogCtx(
+            ctx,
+            `Agent ${session.name}: full-ai skipped (story unavailable or closed: ${storyId})`
+          );
+        } else {
+          const completionAssessment = await assessCompletionFromOutput(
+            ctx.config,
+            session.name,
+            storyId,
+            output
+          );
+          verboseLogCtx(
+            ctx,
+            `Agent ${session.name}: full-ai result done=${completionAssessment.done}, confidence=${completionAssessment.confidence.toFixed(2)}, reason=${completionAssessment.reason}`
+          );
+
+          const aiSaysDone =
+            completionAssessment.done &&
+            completionAssessment.confidence >= DONE_INFERENCE_CONFIDENCE_THRESHOLD;
+
+          if (aiSaysDone) {
+            if (!agent) {
+              verboseLogCtx(
+                ctx,
+                `Agent ${session.name}: full-ai done=true but auto-progress skipped (missing agent row)`
+              );
+            } else {
+              const progressed = await autoProgressDoneStory(
+                ctx,
+                story,
+                agent,
+                session.name,
+                completionAssessment.reason,
+                completionAssessment.confidence
+              );
+              if (progressed) {
+                ctx.counters.autoProgressed++;
+                actionNotes.push('ai_auto_progressed');
+              }
+            }
+          } else {
+            const shortReason = completionAssessment.reason.replace(/\s+/g, ' ').trim();
+            await sendToTmuxSession(
+              session.name,
+              `# STALLED OUTPUT DETECTED: your terminal output has not changed for ${formatDuration(staticStatus.unchangedForMs)}.
+# AI assessment: ${shortReason}
+# Stop repeating status updates. Execute the next concrete step now (tests, then PR submit if done).
+# If complete, run:
+#   hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${storyId} --from ${session.name}
+#   hive my-stories complete ${storyId}`
+            );
+            await sendEnterToTmuxSession(session.name);
+            ctx.counters.nudged++;
+            actionNotes.push('ai_stall_nudge');
+            const tracked = agentStates.get(session.name);
+            if (tracked) {
+              tracked.lastNudgeTime = now;
+            } else {
+              agentStates.set(session.name, {
+                lastState: stateResult.state,
+                lastStateChangeTime: now,
+                lastNudgeTime: now,
+              });
+            }
+            createLog(ctx.db.db, {
+              agentId: 'manager',
+              storyId,
+              eventType: 'STORY_PROGRESS_UPDATE',
+              message: `AI stall analysis nudge for ${session.name}: ${shortReason}`,
+              metadata: {
+                session_name: session.name,
+                unchanged_ms: staticStatus.unchangedForMs,
+                ai_done: completionAssessment.done,
+                ai_confidence: completionAssessment.confidence,
+              },
+            });
+            ctx.db.save();
+          }
+        }
+      }
+    } else if (staticStatus.shouldRunFullAiDetection && actionNotes.length > 0) {
+      verboseLogCtx(
+        ctx,
+        `Agent ${session.name}: full-ai deferred (manager already took action=${actionNotes.join('+')})`
+      );
+    }
+
     verboseLogCtx(
       ctx,
       `Agent ${session.name}: action=${actionNotes.length > 0 ? actionNotes.join('+') : 'none'}`
     );
+  }
+
+  for (const sessionName of Array.from(screenStaticBySession.keys())) {
+    if (!activeSessionNames.has(sessionName)) {
+      screenStaticBySession.delete(sessionName);
+    }
   }
 }
 
