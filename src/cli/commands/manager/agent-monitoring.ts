@@ -93,10 +93,7 @@ export function isInteractiveInputPrompt(output: string): boolean {
   const hasUiSignal = INTERACTIVE_PROMPT_UI_SIGNAL_PATTERNS.some(pattern =>
     pattern.test(recentOutput)
   );
-  return (
-    INTERACTIVE_PROMPT_LINE_PATTERN.test(recentOutput) &&
-    hasUiSignal
-  );
+  return INTERACTIVE_PROMPT_LINE_PATTERN.test(recentOutput) && hasUiSignal;
 }
 
 export function detectAgentState(output: string, cliTool: CLITool): StateDetectionResult {

@@ -12,8 +12,7 @@ const ANTHROPIC_RATE_LIMIT =
 const GEMINI_RATE_LIMIT =
   'RESOURCE_EXHAUSTED: Quota exceeded for quota metric GenerateContent requests per minute.';
 const INTERACTIVE_PROMPT = '› Improve documentation in @filename\n\n  ? for shortcuts';
-const INTERACTIVE_PROMPT_WITH_PASTE =
-  '› [Pasted Content 1203 chars]\n\n  16% context left';
+const INTERACTIVE_PROMPT_WITH_PASTE = '› [Pasted Content 1203 chars]\n\n  16% context left';
 
 describe('detectAgentState interruption fallback', () => {
   it('treats interruption banner as blocked for codex sessions', () => {
