@@ -17,6 +17,10 @@ const COMPLETION_CANDIDATE_PATTERNS = [
   /ready for review/i,
   /summary/i,
   /pull request|pr submitted/i,
+  /all requested code changes.*(?:done|complete|finished)/i,
+  /(?:implementation|templates?|tests?).*(?:done|complete|finished).*(?:locally)?/i,
+  /pending.*(?:pr submission|submit(?:ting)? (?:a )?pr)/i,
+  /(?:story|task).*(?:still|remains)\s+in[_ -]?progress.*(?:done|complete|ready)/i,
 ];
 
 const NON_COMPLETION_PATTERNS = [
@@ -24,6 +28,11 @@ const NON_COMPLETION_PATTERNS = [
   /need help/i,
   /blocked/i,
   /awaiting/i,
+  /cannot proceed/i,
+  /no other work can proceed/i,
+  /missing .*proto/i,
+  /waiting for .*files?/i,
+  /needs? .*restored/i,
   /\b(?:choose|select|approve|deny)\b/i,
   /\?\s*$/,
 ];
@@ -61,6 +70,53 @@ export function isCompletionCandidateOutput(output: string): boolean {
 
   const hasStrongNonCompletionSignal = NON_COMPLETION_PATTERNS.some(pattern => pattern.test(recent));
   return !hasStrongNonCompletionSignal;
+}
+
+function assessCompletionHeuristically(output: string): CompletionAssessment {
+  const recent = getRecentOutput(output);
+  const hasCandidateSignal = COMPLETION_CANDIDATE_PATTERNS.some(pattern => pattern.test(recent));
+  const hasStrongNonCompletionSignal = NON_COMPLETION_PATTERNS.some(pattern => pattern.test(recent));
+
+  // Strong signal: implementation appears done locally but agent is looping on "pending PR/tests".
+  const doneLocallyPendingSubmit =
+    /(?:implementation|code changes|requested changes).*(?:done|complete|finished)/i.test(recent) &&
+    /pending.*(?:pr submission|submit(?:ting)? (?:a )?pr)|next.*(?:hive pr submit|mark .*complete)/i.test(
+      recent
+    );
+
+  if (doneLocallyPendingSubmit && !hasStrongNonCompletionSignal) {
+    return {
+      done: true,
+      confidence: 0.84,
+      reason: 'Heuristic: implementation appears complete and stalled at PR-submission workflow',
+      usedAi: false,
+    };
+  }
+
+  if (hasStrongNonCompletionSignal && !hasCandidateSignal) {
+    return {
+      done: false,
+      confidence: 0,
+      reason: 'Heuristic: blocked/incomplete signals detected',
+      usedAi: false,
+    };
+  }
+
+  if (!hasCandidateSignal) {
+    return {
+      done: false,
+      confidence: 0,
+      reason: 'No completion-candidate signals in output',
+      usedAi: false,
+    };
+  }
+
+  return {
+    done: false,
+    confidence: 0.35,
+    reason: 'Heuristic: candidate signals found; awaiting AI semantic classification',
+    usedAi: false,
+  };
 }
 
 function normalizeConfidence(value: unknown): number {
@@ -135,14 +191,7 @@ export async function assessCompletionFromOutput(
   output: string
 ): Promise<CompletionAssessment> {
   const recentOutput = getRecentOutput(output);
-  if (!isCompletionCandidateOutput(recentOutput)) {
-    return {
-      done: false,
-      confidence: 0,
-      reason: 'No completion-candidate signals in output',
-      usedAi: false,
-    };
-  }
+  const heuristicAssessment = assessCompletionHeuristically(recentOutput);
 
   const cacheKey = `${sessionName}:${storyId}`;
   const nowMs = Date.now();
@@ -185,12 +234,21 @@ export async function assessCompletionFromOutput(
     return assessment;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return {
-      done: false,
-      confidence: 0,
-      reason: `AI classifier unavailable: ${message}`,
-      usedAi: true,
+    // Fall back to heuristic classification when AI provider is unavailable.
+    // This keeps manager progression functional even if provider credentials are missing.
+    const fallbackAssessment: CompletionAssessment = {
+      ...heuristicAssessment,
+      reason: heuristicAssessment.done
+        ? `${heuristicAssessment.reason}; AI classifier unavailable: ${message}`
+        : `AI classifier unavailable: ${message}`,
+      usedAi: false,
     };
+    completionAssessmentCache.set(cacheKey, {
+      fingerprint,
+      assessment: fallbackAssessment,
+      expiresAtMs: nowMs + COMPLETION_AI_CACHE_MS,
+    });
+    return fallbackAssessment;
   }
 }
 
