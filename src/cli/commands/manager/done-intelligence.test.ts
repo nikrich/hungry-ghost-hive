@@ -25,13 +25,11 @@ Next required steps: run tests, submit PR via hive pr submit, and mark story com
 const BLOCKED_OUTPUT = `No other work can proceed until missing proto files are restored.
 Story remains IN_PROGRESS and blocked.`;
 
-const mockComplete = vi.fn();
-
-vi.mock('../../../llm/index.js', () => ({
-  createProvider: vi.fn(() => ({
-    name: 'mock',
-    complete: mockComplete,
-  })),
+const { mockExeca } = vi.hoisted(() => ({
+  mockExeca: vi.fn(),
+}));
+vi.mock('execa', () => ({
+  execa: mockExeca,
 }));
 
 const mockConfig = {
@@ -45,12 +43,19 @@ const mockConfig = {
       safety_mode: 'unsafe',
     },
   },
+  manager: {
+    completion_classifier: {
+      cli_tool: 'claude',
+      model: 'gpt-5.2-codex',
+      timeout_ms: 12000,
+    },
+  },
 } as any;
 
 describe('done intelligence', () => {
   beforeEach(() => {
     clearCompletionAssessmentCache();
-    mockComplete.mockReset();
+    mockExeca.mockReset();
   });
 
   it('detects completion-candidate output heuristically', () => {
@@ -58,11 +63,9 @@ describe('done intelligence', () => {
     expect(isCompletionCandidateOutput(IN_PROGRESS_OUTPUT)).toBe(false);
   });
 
-  it('uses AI classifier and parses JSON response', async () => {
-    mockComplete.mockResolvedValue({
-      content: '{"done":true,"confidence":0.93,"reason":"Final implementation summary detected"}',
-      stopReason: 'end_turn',
-      usage: { inputTokens: 1, outputTokens: 1 },
+  it('uses local CLI classifier and parses JSON response', async () => {
+    mockExeca.mockResolvedValue({
+      stdout: '{"done":true,"confidence":0.93,"reason":"Final implementation summary detected"}',
     });
 
     const result = await assessCompletionFromOutput(
@@ -77,11 +80,9 @@ describe('done intelligence', () => {
     expect(result.usedAi).toBe(true);
   });
 
-  it('caches same output fingerprint to avoid repeated AI calls', async () => {
-    mockComplete.mockResolvedValue({
-      content: '{"done":true,"confidence":0.9,"reason":"done"}',
-      stopReason: 'end_turn',
-      usage: { inputTokens: 1, outputTokens: 1 },
+  it('caches same output fingerprint to avoid repeated classifier calls', async () => {
+    mockExeca.mockResolvedValue({
+      stdout: '{"done":true,"confidence":0.9,"reason":"done"}',
     });
 
     const args = [mockConfig, 'hive-junior-team-1', 'STORY-555', COMPLETE_STYLE_OUTPUT] as const;
@@ -90,11 +91,11 @@ describe('done intelligence', () => {
 
     expect(first.done).toBe(true);
     expect(second.done).toBe(true);
-    expect(mockComplete).toHaveBeenCalledTimes(1);
+    expect(mockExeca).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to heuristic done classification when AI is unavailable', async () => {
-    mockComplete.mockRejectedValue(new Error('OPENAI_API_KEY missing'));
+  it('falls back to heuristic done classification when local classifier is unavailable', async () => {
+    mockExeca.mockRejectedValue(new Error('claude CLI unavailable'));
 
     const result = await assessCompletionFromOutput(
       mockConfig,
@@ -106,12 +107,12 @@ describe('done intelligence', () => {
     expect(result.done).toBe(true);
     expect(result.confidence).toBeGreaterThanOrEqual(0.82);
     expect(result.reason).toContain('Heuristic: implementation appears complete');
-    expect(result.reason).toContain('AI classifier unavailable');
+    expect(result.reason).toContain('local classifier unavailable');
     expect(result.usedAi).toBe(false);
   });
 
-  it('does not mark blocked outputs as done when AI is unavailable', async () => {
-    mockComplete.mockRejectedValue(new Error('OPENAI_API_KEY missing'));
+  it('does not mark blocked outputs as done when local classifier is unavailable', async () => {
+    mockExeca.mockRejectedValue(new Error('claude CLI unavailable'));
 
     const result = await assessCompletionFromOutput(
       mockConfig,
@@ -122,6 +123,6 @@ describe('done intelligence', () => {
 
     expect(result.done).toBe(false);
     expect(result.confidence).toBe(0);
-    expect(result.reason).toContain('AI classifier unavailable');
+    expect(result.reason).toContain('Local classifier unavailable');
   });
 });

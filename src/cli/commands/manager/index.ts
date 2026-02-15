@@ -16,7 +16,12 @@ import type { StoryRow } from '../../../db/client.js';
 import { queryAll, withTransaction } from '../../../db/client.js';
 import { acquireLock } from '../../../db/lock.js';
 import { getAgentById, getAllAgents } from '../../../db/queries/agents.js';
-import { getPendingEscalations, updateEscalation } from '../../../db/queries/escalations.js';
+import {
+  createEscalation,
+  getActiveEscalationsForAgent,
+  getPendingEscalations,
+  updateEscalation,
+} from '../../../db/queries/escalations.js';
 import { createLog } from '../../../db/queries/logs.js';
 import {
   getAllPendingMessages,
@@ -62,6 +67,7 @@ import {
   handlePlanApproval,
   nudgeAgent,
   updateAgentStateTracking,
+  withManagerNudgeEnvelope,
 } from './agent-monitoring.js';
 import { assessCompletionFromOutput } from './done-intelligence.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
@@ -71,11 +77,25 @@ import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
 import { findStaleSessionEscalations } from './stale-escalations.js';
 import type { ManagerCheckContext } from './types.js';
-import { TMUX_CAPTURE_LINES, TMUX_CAPTURE_LINES_SHORT } from './types.js';
+import {
+  MANAGER_NUDGE_END_MARKER,
+  MANAGER_NUDGE_START_MARKER,
+  TMUX_CAPTURE_LINES,
+  TMUX_CAPTURE_LINES_SHORT,
+} from './types.js';
 
 const DONE_INFERENCE_CONFIDENCE_THRESHOLD = 0.82;
-const SCREEN_STATIC_STUCK_THRESHOLD_MS = 10 * 60 * 1000;
 const SCREEN_STATIC_AI_RECHECK_MS = 5 * 60 * 1000;
+const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
+const DEFAULT_MAX_STUCK_NUDGES_PER_STORY = 1;
+const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
+const AI_DONE_FALSE_REASON_PREFIX = 'AI done=false escalation';
+
+interface ClassifierTimeoutIntervention {
+  storyId: string;
+  reason: string;
+  createdAtMs: number;
+}
 
 interface ScreenStaticTracking {
   fingerprint: string;
@@ -92,6 +112,8 @@ interface ScreenStaticStatus {
 }
 
 const screenStaticBySession = new Map<string, ScreenStaticTracking>();
+const classifierTimeoutInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
+const aiDoneFalseInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
 
 function verboseLog(verbose: boolean, message: string): void {
   if (!verbose) return;
@@ -126,12 +148,222 @@ function buildOutputFingerprint(output: string): string {
   return createHash('sha256').update(output).digest('hex');
 }
 
+function stripManagerNudgeBlocks(output: string): string {
+  const lines = output.split('\n');
+  const filtered: string[] = [];
+  let inManagerBlock = false;
+
+  for (const line of lines) {
+    const normalized = line.replace(/^\s*(?:›|>)\s*/, '').trim();
+
+    if (normalized.includes(MANAGER_NUDGE_START_MARKER)) {
+      inManagerBlock = true;
+      continue;
+    }
+    if (normalized.includes(MANAGER_NUDGE_END_MARKER)) {
+      inManagerBlock = false;
+      continue;
+    }
+    if (inManagerBlock) {
+      continue;
+    }
+    filtered.push(line);
+  }
+
+  return filtered.join('\n');
+}
+
+function getScreenStaticInactivityThresholdMs(config?: HiveConfig): number {
+  return Math.max(
+    1,
+    config?.manager.screen_static_inactivity_threshold_ms ??
+      DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS
+  );
+}
+
+function getMaxStuckNudgesPerStory(config?: HiveConfig): number {
+  return Math.max(
+    0,
+    config?.manager.max_stuck_nudges_per_story ?? DEFAULT_MAX_STUCK_NUDGES_PER_STORY
+  );
+}
+
+function isClassifierTimeoutReason(reason: string): boolean {
+  return /local classifier unavailable:.*timed out|command timed out/i.test(reason);
+}
+
+function formatClassifierTimeoutEscalationReason(storyId: string, reason: string): string {
+  const singleLine = reason.replace(/\s+/g, ' ').trim();
+  const shortReason = singleLine.length > 240 ? `${singleLine.slice(0, 237)}...` : singleLine;
+  return `${CLASSIFIER_TIMEOUT_REASON_PREFIX}: manager completion classifier timed out for ${storyId}. Manual human intervention required. Detail: ${shortReason}`;
+}
+
+function applyHumanInterventionStateOverride(
+  ctx: ManagerCheckContext,
+  sessionName: string,
+  storyId: string | null,
+  stateResult: ReturnType<typeof detectAgentState>
+): ReturnType<typeof detectAgentState> {
+  const timeoutIntervention = classifierTimeoutInterventionsBySession.get(sessionName);
+  if (timeoutIntervention && (!storyId || storyId !== timeoutIntervention.storyId)) {
+    classifierTimeoutInterventionsBySession.delete(sessionName);
+  }
+  const doneFalseIntervention = aiDoneFalseInterventionsBySession.get(sessionName);
+  if (doneFalseIntervention && (!storyId || storyId !== doneFalseIntervention.storyId)) {
+    aiDoneFalseInterventionsBySession.delete(sessionName);
+  }
+
+  const transientIntervention =
+    [timeoutIntervention, doneFalseIntervention]
+      .filter((candidate): candidate is ClassifierTimeoutIntervention =>
+        Boolean(candidate && storyId && candidate.storyId === storyId)
+      )
+      .sort((a, b) => b.createdAtMs - a.createdAtMs)[0] ?? null;
+
+  const persistedIntervention =
+    storyId === null
+      ? null
+      : (getActiveEscalationsForAgent(ctx.db.db, sessionName).find(
+          escalation =>
+            escalation.story_id === storyId &&
+            (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
+              escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
+        ) ??
+        getPendingEscalations(ctx.db.db).find(
+          escalation =>
+            escalation.story_id === storyId &&
+            (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
+              escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
+        ) ??
+        null);
+
+  const interventionReason = transientIntervention?.reason || persistedIntervention?.reason || null;
+
+  if (!interventionReason) {
+    return stateResult;
+  }
+
+  return {
+    ...stateResult,
+    state: AgentState.ASKING_QUESTION,
+    needsHuman: true,
+    isWaiting: true,
+    reason: `Manual intervention required: ${interventionReason}`,
+  };
+}
+
+function clearHumanIntervention(sessionName: string): void {
+  classifierTimeoutInterventionsBySession.delete(sessionName);
+  aiDoneFalseInterventionsBySession.delete(sessionName);
+}
+
+async function markClassifierTimeoutForHumanIntervention(
+  ctx: ManagerCheckContext,
+  sessionName: string,
+  storyId: string,
+  reason: string
+): Promise<void> {
+  const escalationReason = formatClassifierTimeoutEscalationReason(storyId, reason);
+  classifierTimeoutInterventionsBySession.set(sessionName, {
+    storyId,
+    reason: escalationReason,
+    createdAtMs: Date.now(),
+  });
+
+  const activeTimeoutEscalation = getActiveEscalationsForAgent(ctx.db.db, sessionName).some(
+    escalation => escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX)
+  );
+  if (!activeTimeoutEscalation) {
+    const escalation = createEscalation(ctx.db.db, {
+      storyId,
+      fromAgentId: sessionName,
+      toAgentId: null,
+      reason: escalationReason,
+    });
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId,
+      eventType: 'ESCALATION_CREATED',
+      status: 'error',
+      message: `${sessionName} requires human intervention: completion classifier timed out`,
+      metadata: {
+        escalation_id: escalation.id,
+        session_name: sessionName,
+        escalation_type: 'classifier_timeout',
+      },
+    });
+    ctx.db.save();
+    ctx.counters.escalationsCreated++;
+    ctx.escalatedSessions.add(sessionName);
+  }
+
+  const tracked = agentStates.get(sessionName);
+  if (tracked) {
+    tracked.lastState = AgentState.ASKING_QUESTION;
+    tracked.lastStateChangeTime = Date.now();
+  }
+}
+
+function formatDoneFalseEscalationReason(storyId: string, reason: string): string {
+  const singleLine = reason.replace(/\s+/g, ' ').trim();
+  const shortReason = singleLine.length > 240 ? `${singleLine.slice(0, 237)}...` : singleLine;
+  return `${AI_DONE_FALSE_REASON_PREFIX}: manager AI assessment returned done=false for ${storyId} after nudge limit reached. Manual human intervention required. Detail: ${shortReason}`;
+}
+
+async function markDoneFalseForHumanIntervention(
+  ctx: ManagerCheckContext,
+  sessionName: string,
+  storyId: string,
+  reason: string
+): Promise<void> {
+  const escalationReason = formatDoneFalseEscalationReason(storyId, reason);
+  aiDoneFalseInterventionsBySession.set(sessionName, {
+    storyId,
+    reason: escalationReason,
+    createdAtMs: Date.now(),
+  });
+
+  const hasActiveEscalation = getActiveEscalationsForAgent(ctx.db.db, sessionName).some(
+    escalation => escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX)
+  );
+  if (!hasActiveEscalation) {
+    const escalation = createEscalation(ctx.db.db, {
+      storyId,
+      fromAgentId: sessionName,
+      toAgentId: null,
+      reason: escalationReason,
+    });
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId,
+      eventType: 'ESCALATION_CREATED',
+      status: 'error',
+      message: `${sessionName} requires human intervention: AI assessment reports blocked/incomplete after nudge limit`,
+      metadata: {
+        escalation_id: escalation.id,
+        session_name: sessionName,
+        escalation_type: 'ai_done_false',
+      },
+    });
+    ctx.db.save();
+    ctx.counters.escalationsCreated++;
+    ctx.escalatedSessions.add(sessionName);
+  }
+
+  const tracked = agentStates.get(sessionName);
+  if (tracked) {
+    tracked.lastState = AgentState.ASKING_QUESTION;
+    tracked.lastStateChangeTime = Date.now();
+  }
+}
+
 function updateScreenStaticTracking(
   sessionName: string,
   output: string,
-  nowMs: number
+  nowMs: number,
+  staticInactivityThresholdMs: number
 ): ScreenStaticStatus {
-  const fingerprint = buildOutputFingerprint(output);
+  const fingerprint = buildOutputFingerprint(stripManagerNudgeBlocks(output));
   const existing = screenStaticBySession.get(sessionName);
 
   let tracking: ScreenStaticTracking;
@@ -149,13 +381,13 @@ function updateScreenStaticTracking(
   }
 
   const unchangedForMs = nowMs - tracking.unchangedSinceMs;
-  const stuckDetectionInMs = Math.max(0, SCREEN_STATIC_STUCK_THRESHOLD_MS - unchangedForMs);
+  const stuckDetectionInMs = Math.max(0, staticInactivityThresholdMs - unchangedForMs);
   const fullAiDetectionInMs =
-    unchangedForMs < SCREEN_STATIC_STUCK_THRESHOLD_MS
+    unchangedForMs < staticInactivityThresholdMs
       ? stuckDetectionInMs
       : Math.max(0, SCREEN_STATIC_AI_RECHECK_MS - (nowMs - tracking.lastAiAssessmentMs));
   const shouldRunFullAiDetection =
-    unchangedForMs >= SCREEN_STATIC_STUCK_THRESHOLD_MS &&
+    unchangedForMs >= staticInactivityThresholdMs &&
     (tracking.lastAiAssessmentMs === 0 ||
       nowMs - tracking.lastAiAssessmentMs >= SCREEN_STATIC_AI_RECHECK_MS);
 
@@ -172,6 +404,12 @@ function markFullAiDetectionRun(sessionName: string, nowMs: number): void {
   const tracking = screenStaticBySession.get(sessionName);
   if (!tracking) return;
   tracking.lastAiAssessmentMs = nowMs;
+}
+
+function getSessionStaticUnchangedForMs(sessionName: string, nowMs: number): number {
+  const tracking = screenStaticBySession.get(sessionName);
+  if (!tracking) return 0;
+  return Math.max(0, nowMs - tracking.unchangedSinceMs);
 }
 
 export const managerCommand = new Command('manager').description(
@@ -236,6 +474,31 @@ managerCommand
       );
     }
 
+    const verbose = options.verbose === true;
+    let checkInProgress = false;
+    let checkQueued = false;
+
+    const runCheck = async (): Promise<void> => {
+      if (checkInProgress) {
+        checkQueued = true;
+        verboseLog(verbose, 'managerCheck: skip=already_running queued=true');
+        return;
+      }
+
+      checkInProgress = true;
+      try {
+        await managerCheck(root, config, clusterRuntime, verbose);
+      } catch (err) {
+        console.error(chalk.red('Manager error:'), err);
+      } finally {
+        checkInProgress = false;
+        if (checkQueued) {
+          checkQueued = false;
+          void runCheck();
+        }
+      }
+    };
+
     // Support two modes: legacy single-interval and new two-tier polling
     const useTwoTier = options.interval === '60' && config.manager;
 
@@ -247,18 +510,12 @@ managerCommand
       console.log(chalk.cyan(`Manager started (polling every ${slowInterval / 1000}s)`));
       console.log(chalk.gray('Press Ctrl+C to stop\n'));
 
-      const runCheck = async () => {
-        try {
-          await managerCheck(root, config, clusterRuntime, options.verbose === true);
-        } catch (err) {
-          console.error(chalk.red('Manager error:'), err);
-        }
-      };
-
       await runCheck();
 
       if (!options.once) {
-        setInterval(runCheck, slowInterval);
+        setInterval(() => {
+          void runCheck();
+        }, slowInterval);
       } else if (releaseLock) {
         await releaseLock();
         if (clusterRuntime) {
@@ -274,18 +531,12 @@ managerCommand
       console.log(chalk.cyan(`Manager started (checking every ${interval / 1000}s)`));
       console.log(chalk.gray('Press Ctrl+C to stop\n'));
 
-      const runCheck = async () => {
-        try {
-          await managerCheck(root, config, clusterRuntime, options.verbose === true);
-        } catch (err) {
-          console.error(chalk.red('Manager error:'), err);
-        }
-      };
-
       await runCheck();
 
       if (!options.once) {
-        setInterval(runCheck, interval);
+        setInterval(() => {
+          void runCheck();
+        }, interval);
       } else if (releaseLock) {
         await releaseLock();
         if (clusterRuntime) {
@@ -830,6 +1081,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
   const allPendingMessages = getAllPendingMessages(ctx.db.db);
   const messagesBySessionName = new Map<string, MessageRow[]>();
   const activeSessionNames = new Set<string>();
+  const maxStuckNudgesPerStory = getMaxStuckNudgesPerStory(ctx.config);
 
   for (const msg of allPendingMessages) {
     if (!messagesBySessionName.has(msg.to_session)) {
@@ -867,9 +1119,20 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 
     await enforceBypassMode(session.name, output, agentCliTool, safetyMode);
 
-    const stateResult = detectAgentState(output, agentCliTool);
+    let stateResult = detectAgentState(output, agentCliTool);
     const now = Date.now();
-    const staticStatus = updateScreenStaticTracking(session.name, output, now);
+    stateResult = applyHumanInterventionStateOverride(
+      ctx,
+      session.name,
+      agent?.current_story_id || null,
+      stateResult
+    );
+    const staticStatus = updateScreenStaticTracking(
+      session.name,
+      output,
+      now,
+      getScreenStaticInactivityThresholdMs(ctx.config)
+    );
     verboseLogCtx(
       ctx,
       `Agent ${session.name}: state=${stateResult.state}, waiting=${stateResult.isWaiting}, needsHuman=${stateResult.needsHuman}, reason=${stateResult.reason}`
@@ -880,6 +1143,13 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
     );
 
     updateAgentStateTracking(session.name, stateResult, now);
+    if (!stateResult.isWaiting) {
+      const tracked = agentStates.get(session.name);
+      if (tracked && (tracked.storyStuckNudgeCount || 0) > 0) {
+        tracked.storyStuckNudgeCount = 0;
+      }
+      clearHumanIntervention(session.name);
+    }
 
     const handled = await handlePermissionPrompt(ctx, session.name, stateResult, safetyMode);
     if (handled) {
@@ -934,6 +1204,18 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
             ctx,
             `Agent ${session.name}: full-ai result done=${completionAssessment.done}, confidence=${completionAssessment.confidence.toFixed(2)}, reason=${completionAssessment.reason}`
           );
+          if (isClassifierTimeoutReason(completionAssessment.reason)) {
+            await markClassifierTimeoutForHumanIntervention(
+              ctx,
+              session.name,
+              storyId,
+              completionAssessment.reason
+            );
+            actionNotes.push('classifier_timeout_escalation');
+            verboseLogCtx(ctx, `Agent ${session.name}: action=classifier_timeout_escalation`);
+            continue;
+          }
+          clearHumanIntervention(session.name);
 
           const aiSaysDone =
             completionAssessment.done &&
@@ -960,27 +1242,47 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
               }
             }
           } else {
+            const tracked = agentStates.get(session.name);
+            const stuckNudgesSent = tracked?.storyStuckNudgeCount || 0;
+            if (stuckNudgesSent >= maxStuckNudgesPerStory) {
+              await markDoneFalseForHumanIntervention(
+                ctx,
+                session.name,
+                storyId,
+                completionAssessment.reason
+              );
+              verboseLogCtx(
+                ctx,
+                `Agent ${session.name}: full-ai nudge skipped (stuck nudge limit reached: ${stuckNudgesSent}/${maxStuckNudgesPerStory})`
+              );
+              actionNotes.push('done_false_escalation');
+              verboseLogCtx(ctx, `Agent ${session.name}: action=done_false_escalation`);
+              continue;
+            }
             const shortReason = completionAssessment.reason.replace(/\s+/g, ' ').trim();
             await sendToTmuxSession(
               session.name,
-              `# STALLED OUTPUT DETECTED: your terminal output has not changed for ${formatDuration(staticStatus.unchangedForMs)}.
+              withManagerNudgeEnvelope(
+                `# STALLED OUTPUT DETECTED: your terminal output has not changed for ${formatDuration(staticStatus.unchangedForMs)}.
 # AI assessment: ${shortReason}
 # Stop repeating status updates. Execute the next concrete step now (tests, then PR submit if done).
 # If complete, run:
 #   hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${storyId} --from ${session.name}
 #   hive my-stories complete ${storyId}`
+              )
             );
             await sendEnterToTmuxSession(session.name);
             ctx.counters.nudged++;
             actionNotes.push('ai_stall_nudge');
-            const tracked = agentStates.get(session.name);
             if (tracked) {
               tracked.lastNudgeTime = now;
+              tracked.storyStuckNudgeCount = (tracked.storyStuckNudgeCount || 0) + 1;
             } else {
               agentStates.set(session.name, {
                 lastState: stateResult.state,
                 lastStateChangeTime: now,
                 lastNudgeTime: now,
+                storyStuckNudgeCount: 1,
               });
             }
             createLog(ctx.db.db, {
@@ -1077,13 +1379,15 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
     const githubLine = nextPR.github_pr_url ? `\n# GitHub: ${nextPR.github_pr_url}` : '';
     await sendToTmuxSession(
       qa.name,
-      `# You are assigned PR review ${nextPR.id} (${nextPR.story_id || 'no-story'}).${githubLine}
+      withManagerNudgeEnvelope(
+        `# You are assigned PR review ${nextPR.id} (${nextPR.story_id || 'no-story'}).${githubLine}
 # Execute now:
 #   hive pr show ${nextPR.id}
 #   hive pr approve ${nextPR.id}
 # (If manual merge is required in this repo, use --no-merge.)
 # or reject:
 #   hive pr reject ${nextPR.id} -r "reason"`
+      )
     );
   }
 
@@ -1094,7 +1398,7 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
     for (const qa of qaSessions) {
       await sendToTmuxSession(
         qa.name,
-        `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
+        withManagerNudgeEnvelope(`# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`)
       );
     }
   }
@@ -1131,12 +1435,14 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
         );
         await sendToTmuxSession(
           devSession.name,
-          `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
+          withManagerNudgeEnvelope(
+            `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
 # Story: ${pr.story_id || 'Unknown'}
 # Reason: ${pr.review_notes || 'See review comments'}
 #
 # You MUST fix this issue before doing anything else.
 # Fix the issues and resubmit: hive pr submit -b ${pr.branch_name} -s ${pr.story_id || 'STORY-ID'} --from ${devSession.name}`
+          )
         );
         await sendEnterToTmuxSession(devSession.name);
         rejectionNotified++;
@@ -1198,10 +1504,12 @@ async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
       );
       await sendToTmuxSession(
         agentSession.name,
-        `# REMINDER: Story ${story.id} failed QA review!
+        withManagerNudgeEnvelope(
+          `# REMINDER: Story ${story.id} failed QA review!
 # You must fix the issues and resubmit the PR.
 # Check the QA feedback and address all concerns.
 hive pr queue`
+        )
       );
       await sendEnterToTmuxSession(agentSession.name);
     } else {
@@ -1273,6 +1581,12 @@ async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext): Promi
 
 async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
   const stuckThresholdMs = Math.max(1, ctx.config.manager.stuck_threshold_ms);
+  const staticInactivityThresholdMs = getScreenStaticInactivityThresholdMs(ctx.config);
+  const maxStuckNudgesPerStory = getMaxStuckNudgesPerStory(ctx.config);
+  const waitingNudgeCooldownMs = Math.max(
+    ctx.config.manager.nudge_cooldown_ms,
+    staticInactivityThresholdMs
+  );
   const staleUpdatedAt = new Date(Date.now() - stuckThresholdMs).toISOString();
   const stuckStories = queryAll<StoryRow>(
     ctx.db.db,
@@ -1327,10 +1641,10 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       );
       continue;
     }
-    if (trackedState && now - trackedState.lastNudgeTime < ctx.config.manager.nudge_cooldown_ms) {
+    if (trackedState && now - trackedState.lastNudgeTime < waitingNudgeCooldownMs) {
       verboseLogCtx(
         ctx,
-        `nudgeStuckStories: story=${story.id} skip=nudge_cooldown remainingMs=${ctx.config.manager.nudge_cooldown_ms - (now - trackedState.lastNudgeTime)}`
+        `nudgeStuckStories: story=${story.id} skip=nudge_to_ai_window remainingMs=${waitingNudgeCooldownMs - (now - trackedState.lastNudgeTime)}`
       );
       continue;
     }
@@ -1347,6 +1661,10 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       continue;
     }
     if (!stateResult.isWaiting || stateResult.state === AgentState.THINKING) {
+      if (trackedState && (trackedState.storyStuckNudgeCount || 0) > 0) {
+        trackedState.storyStuckNudgeCount = 0;
+      }
+      clearHumanIntervention(agentSession.name);
       verboseLogCtx(
         ctx,
         `nudgeStuckStories: story=${story.id} skip=not_waiting_or_thinking state=${stateResult.state}`
@@ -1354,35 +1672,81 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       continue;
     }
 
-    const completionAssessment = await assessCompletionFromOutput(
-      ctx.config,
-      agentSession.name,
-      story.id,
-      output
-    );
-    const aiSaysDone =
-      completionAssessment.done &&
-      completionAssessment.confidence >= DONE_INFERENCE_CONFIDENCE_THRESHOLD;
-    verboseLogCtx(
-      ctx,
-      `nudgeStuckStories: story=${story.id} doneInference done=${completionAssessment.done}, confidence=${completionAssessment.confidence.toFixed(2)}, aiSaysDone=${aiSaysDone}, reason=${completionAssessment.reason}`
-    );
-
-    if (aiSaysDone) {
-      const progressed = await autoProgressDoneStory(
+    const sessionUnchangedForMs = getSessionStaticUnchangedForMs(agentSession.name, now);
+    if (sessionUnchangedForMs < staticInactivityThresholdMs) {
+      verboseLogCtx(
         ctx,
-        story,
-        agent,
-        agentSession.name,
-        completionAssessment.reason,
-        completionAssessment.confidence
+        `nudgeStuckStories: story=${story.id} skip=done_inference_static_window remainingMs=${staticInactivityThresholdMs - sessionUnchangedForMs}`
       );
-      if (progressed) {
-        ctx.counters.autoProgressed++;
-        verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} action=auto_progressed`);
+    } else {
+      const completionAssessment = await assessCompletionFromOutput(
+        ctx.config,
+        agentSession.name,
+        story.id,
+        output
+      );
+      const aiSaysDone =
+        completionAssessment.done &&
+        completionAssessment.confidence >= DONE_INFERENCE_CONFIDENCE_THRESHOLD;
+      verboseLogCtx(
+        ctx,
+        `nudgeStuckStories: story=${story.id} doneInference done=${completionAssessment.done}, confidence=${completionAssessment.confidence.toFixed(2)}, aiSaysDone=${aiSaysDone}, reason=${completionAssessment.reason}`
+      );
+      if (isClassifierTimeoutReason(completionAssessment.reason)) {
+        await markClassifierTimeoutForHumanIntervention(
+          ctx,
+          agentSession.name,
+          story.id,
+          completionAssessment.reason
+        );
+        verboseLogCtx(
+          ctx,
+          `nudgeStuckStories: story=${story.id} action=classifier_timeout_escalation session=${agentSession.name}`
+        );
         continue;
       }
-      verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} auto_progress_failed`);
+      clearHumanIntervention(agentSession.name);
+
+      if (aiSaysDone) {
+        const progressed = await autoProgressDoneStory(
+          ctx,
+          story,
+          agent,
+          agentSession.name,
+          completionAssessment.reason,
+          completionAssessment.confidence
+        );
+        if (progressed) {
+          ctx.counters.autoProgressed++;
+          verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} action=auto_progressed`);
+          continue;
+        }
+        verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} auto_progress_failed`);
+      } else {
+        const stuckNudgesSent = trackedState?.storyStuckNudgeCount || 0;
+        if (stuckNudgesSent >= maxStuckNudgesPerStory) {
+          await markDoneFalseForHumanIntervention(
+            ctx,
+            agentSession.name,
+            story.id,
+            completionAssessment.reason
+          );
+          verboseLogCtx(
+            ctx,
+            `nudgeStuckStories: story=${story.id} action=done_false_escalation session=${agentSession.name}`
+          );
+          continue;
+        }
+      }
+    }
+
+    const stuckNudgesSent = trackedState?.storyStuckNudgeCount || 0;
+    if (stuckNudgesSent >= maxStuckNudgesPerStory) {
+      verboseLogCtx(
+        ctx,
+        `nudgeStuckStories: story=${story.id} skip=stuck_nudge_limit reached=${stuckNudgesSent}/${maxStuckNudgesPerStory}`
+      );
+      continue;
     }
 
     if (stateResult.state === AgentState.WORK_COMPLETE) {
@@ -1392,21 +1756,25 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       );
       await sendToTmuxSession(
         agentSession.name,
-        `# MANDATORY COMPLETION SIGNAL: execute now for ${story.id}
+        withManagerNudgeEnvelope(
+          `# MANDATORY COMPLETION SIGNAL: execute now for ${story.id}
 hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${story.id} --from ${agentSession.name}
 hive my-stories complete ${story.id}
 hive progress ${story.id} -m "PR submitted to merge queue" --from ${agentSession.name} --done
 # Do not stop at a summary. Completion requires the commands above.`
+        )
       );
       await sendEnterToTmuxSession(agentSession.name);
       ctx.counters.nudged++;
       if (trackedState) {
         trackedState.lastNudgeTime = now;
+        trackedState.storyStuckNudgeCount = (trackedState.storyStuckNudgeCount || 0) + 1;
       } else {
         agentStates.set(agentSession.name, {
           lastState: stateResult.state,
           lastStateChangeTime: now,
           lastNudgeTime: now,
+          storyStuckNudgeCount: 1,
         });
       }
       continue;
@@ -1418,20 +1786,24 @@ hive progress ${story.id} -m "PR submitted to merge queue" --from ${agentSession
     );
     await sendToTmuxSession(
       agentSession.name,
-      `# REMINDER: Story ${story.id} has been in progress for a while.
+      withManagerNudgeEnvelope(
+        `# REMINDER: Story ${story.id} has been in progress for a while.
 # If stuck, escalate to your Senior or Tech Lead.
 # If done, submit your PR: hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${story.id} --from ${agentSession.name}
 # Then mark complete: hive my-stories complete ${story.id}`
+      )
     );
     await sendEnterToTmuxSession(agentSession.name);
     ctx.counters.nudged++;
     if (trackedState) {
       trackedState.lastNudgeTime = now;
+      trackedState.storyStuckNudgeCount = (trackedState.storyStuckNudgeCount || 0) + 1;
     } else {
       agentStates.set(agentSession.name, {
         lastState: stateResult.state,
         lastStateChangeTime: now,
         lastNudgeTime: now,
+        storyStuckNudgeCount: 1,
       });
     }
   }
@@ -1473,7 +1845,9 @@ async function autoProgressDoneStory(
     }
     await sendToTmuxSession(
       sessionName,
-      `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), detected existing PR, and moved story to PR-submitted state.`
+      withManagerNudgeEnvelope(
+        `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), detected existing PR, and moved story to PR-submitted state.`
+      )
     );
     await sendEnterToTmuxSession(sessionName);
     verboseLogCtx(ctx, `autoProgressDoneStory: story=${story.id} action=existing_pr_progressed`);
@@ -1522,7 +1896,9 @@ async function autoProgressDoneStory(
 
   await sendToTmuxSession(
     sessionName,
-    `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), auto-submitted branch ${branch} to merge queue.`
+    withManagerNudgeEnvelope(
+      `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), auto-submitted branch ${branch} to merge queue.`
+    )
   );
   await sendEnterToTmuxSession(sessionName);
   return true;
@@ -1588,7 +1964,9 @@ async function notifyUnassignedStories(ctx: ManagerCheckContext): Promise<void> 
       );
       await sendToTmuxSession(
         senior.name,
-        `# ${plannedStories.length} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
+        withManagerNudgeEnvelope(
+          `# ${plannedStories.length} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
+        )
       );
     } else {
       verboseLogCtx(

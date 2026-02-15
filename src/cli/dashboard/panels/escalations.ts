@@ -53,48 +53,52 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Wi
     if (selectedIndex >= 0 && selectedIndex < currentEscalations.length) {
       const escalation = currentEscalations[selectedIndex];
 
-      // Temporarily leave blessed to handle escalation
-      screen.destroy();
+      // Temporarily suspend blessed while handling escalation.
+      const resumeScreen = screen.program.pause();
 
-      // Show escalation details and prompt for resolution
-      console.log('\n');
-      console.log('═'.repeat(60));
-      console.log(`  ESCALATION: ${escalation.id}`);
-      console.log('═'.repeat(60));
-      console.log(`  From:    ${escalation.from_agent_id || '-'}`);
-      console.log(`  To:      ${escalation.to_agent_id || 'HUMAN'}`);
-      console.log(`  Story:   ${escalation.story_id || '-'}`);
-      console.log(`  Status:  ${escalation.status}`);
-      console.log(`  Created: ${escalation.created_at}`);
-      console.log('─'.repeat(60));
-      console.log('  Reason:');
-      console.log(`  ${escalation.reason}`);
-      console.log('─'.repeat(60));
+      try {
+        // Show escalation details and prompt for resolution
+        console.log('\n');
+        console.log('═'.repeat(60));
+        console.log(`  ESCALATION: ${escalation.id}`);
+        console.log('═'.repeat(60));
+        console.log(`  From:    ${escalation.from_agent_id || '-'}`);
+        console.log(`  To:      ${escalation.to_agent_id || 'HUMAN'}`);
+        console.log(`  Story:   ${escalation.story_id || '-'}`);
+        console.log(`  Status:  ${escalation.status}`);
+        console.log(`  Created: ${escalation.created_at}`);
+        console.log('─'.repeat(60));
+        console.log('  Reason:');
+        console.log(`  ${escalation.reason}`);
+        console.log('─'.repeat(60));
 
-      if (escalation.from_agent_id) {
-        console.log(`\n  To attach to the agent's session:`);
-        console.log(`    tmux attach -t ${escalation.from_agent_id}`);
+        if (escalation.from_agent_id) {
+          console.log(`\n  To attach to the agent's session:`);
+          console.log(`    tmux attach -t ${escalation.from_agent_id}`);
+        }
+        console.log(`\n  To resolve this escalation:`);
+        console.log(`    hive escalations resolve ${escalation.id} -m "your guidance here"`);
+        console.log(`\n  To acknowledge (mark as being worked on):`);
+        console.log(`    hive escalations acknowledge ${escalation.id}`);
+        console.log('\n');
+
+        // Attach to the agent's session if available
+        if (escalation.from_agent_id) {
+          console.log('Attaching to agent session... (Ctrl+B, D to detach)\n');
+          spawnSync('tmux', ['attach', '-t', escalation.from_agent_id], {
+            stdio: 'inherit',
+          });
+        }
+      } finally {
+        // Restore dashboard in the same process (do not spawn nested dashboards).
+        resumeScreen();
+        void updateEscalationsPanel(list, db).catch(err =>
+          console.error('Failed to update escalations panel:', err)
+        );
+        screen.render();
       }
-      console.log(`\n  To resolve this escalation:`);
-      console.log(`    hive escalations resolve ${escalation.id} -m "your guidance here"`);
-      console.log(`\n  To acknowledge (mark as being worked on):`);
-      console.log(`    hive escalations acknowledge ${escalation.id}`);
-      console.log('\n');
 
-      // Attach to the agent's session if available
-      if (escalation.from_agent_id) {
-        console.log('Attaching to agent session... (Ctrl+B, D to detach)\n');
-        spawnSync('tmux', ['attach', '-t', escalation.from_agent_id], {
-          stdio: 'inherit',
-        });
-      }
-
-      // Restart dashboard when done
-      console.log('\nReturning to dashboard...');
-      spawnSync('hive', ['dashboard'], {
-        stdio: 'inherit',
-      });
-      process.exit(0);
+      return;
     }
   });
 

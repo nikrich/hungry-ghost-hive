@@ -190,11 +190,27 @@ const AgentsConfigSchema = z.object({
 });
 
 // Manager daemon configuration
+const ManagerCompletionClassifierConfigSchema = z.object({
+  cli_tool: z.enum(['claude', 'codex', 'gemini']).default('codex'),
+  model: z.string().default('gpt-5.2-codex'),
+  timeout_ms: z.number().int().positive().default(300000),
+  // Backward-compatible deprecated fields (ignored by manager classifier path).
+  provider: z.enum(['anthropic', 'openai']).optional(),
+  max_tokens: z.number().int().positive().optional(),
+  temperature: z.number().min(0).max(2).optional(),
+});
+
 const ManagerConfigSchema = z.object({
   fast_poll_interval: z.number().int().positive().default(15000),
   slow_poll_interval: z.number().int().positive().default(60000),
   stuck_threshold_ms: z.number().int().positive().default(120000),
   nudge_cooldown_ms: z.number().int().positive().default(300000),
+  // Maximum number of stuck nudges to send per stalled story/session window.
+  max_stuck_nudges_per_story: z.number().int().nonnegative().default(1),
+  // Static-screen inactivity window before full AI stuck/done assessment
+  screen_static_inactivity_threshold_ms: z.number().int().positive().default(600000),
+  // AI model used by manager semantic done/stuck classifier
+  completion_classifier: ManagerCompletionClassifierConfigSchema.default({}),
   lock_stale_ms: z.number().int().positive().default(120000),
   // Shell command timeouts to prevent manager hangs
   git_timeout_ms: z.number().int().positive().default(30000), // 30s for git operations
@@ -441,6 +457,15 @@ manager:
   stuck_threshold_ms: 120000
   # Cooldown period before nudging the same agent again (ms)
   nudge_cooldown_ms: 300000
+  # Max stuck nudges per stalled story/session window (0 disables stuck nudges)
+  max_stuck_nudges_per_story: 1
+  # Static inactivity window before full AI analysis (ms, default 10 minutes)
+  screen_static_inactivity_threshold_ms: 600000
+  # AI semantic classifier model used by manager for done/stuck inference
+  completion_classifier:
+    cli_tool: codex
+    model: gpt-5.2-codex
+    timeout_ms: 300000
   # Time before manager lock is considered stale (ms)
   lock_stale_ms: 120000
   # Timeout for git operations to prevent manager hangs (ms)

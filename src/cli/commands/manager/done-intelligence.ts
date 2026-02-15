@@ -1,12 +1,14 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { createHash } from 'crypto';
+import { execa } from 'execa';
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import type { HiveConfig } from '../../../config/schema.js';
-import { createProvider } from '../../../llm/index.js';
-import type { LLMProvider } from '../../../llm/provider.js';
+import type { CLITool } from '../../../utils/cli-commands.js';
 
 const COMPLETION_ANALYSIS_WINDOW_LINES = 180;
-const COMPLETION_AI_TIMEOUT_MS = 12000;
 const COMPLETION_AI_CACHE_MS = 5 * 60 * 1000;
 
 const COMPLETION_CANDIDATE_PATTERNS = [
@@ -175,14 +177,115 @@ function buildCompletionClassifierPrompt(
   };
 }
 
-function createCompletionClassifier(config: HiveConfig): LLMProvider {
-  const modelConfig = config.models.tech_lead;
-  return createProvider({
-    provider: modelConfig.provider,
-    model: modelConfig.model,
-    maxTokens: 250,
-    temperature: 0,
-  });
+const COMPLETION_RESULT_SCHEMA = {
+  type: 'object',
+  properties: {
+    done: { type: 'boolean' },
+    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    reason: { type: 'string' },
+  },
+  required: ['done', 'confidence', 'reason'],
+  additionalProperties: false,
+} as const;
+
+async function runCodexClassifier(
+  model: string,
+  prompt: string,
+  timeoutMs: number
+): Promise<string> {
+  const workDir = await mkdtemp(join(tmpdir(), 'hive-manager-classifier-'));
+  const schemaPath = join(workDir, 'completion-schema.json');
+  const outputPath = join(workDir, 'completion-output.json');
+  await writeFile(schemaPath, JSON.stringify(COMPLETION_RESULT_SCHEMA), 'utf-8');
+
+  try {
+    await execa(
+      'codex',
+      [
+        'exec',
+        '--skip-git-repo-check',
+        '--sandbox',
+        'read-only',
+        '--ephemeral',
+        '--model',
+        model,
+        '--output-schema',
+        schemaPath,
+        '--output-last-message',
+        outputPath,
+        '-',
+      ],
+      {
+        input: prompt,
+        timeout: timeoutMs,
+      }
+    );
+
+    return await readFile(outputPath, 'utf-8');
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+}
+
+async function runClaudeClassifier(
+  model: string,
+  prompt: string,
+  timeoutMs: number
+): Promise<string> {
+  const result = await execa(
+    'claude',
+    [
+      '--print',
+      '--model',
+      model,
+      '--tools',
+      '',
+      '--output-format',
+      'text',
+      '--json-schema',
+      JSON.stringify(COMPLETION_RESULT_SCHEMA),
+      prompt,
+    ],
+    {
+      timeout: timeoutMs,
+    }
+  );
+
+  return result.stdout;
+}
+
+async function runGeminiClassifier(
+  model: string,
+  prompt: string,
+  timeoutMs: number
+): Promise<string> {
+  const result = await execa(
+    'gemini',
+    ['--model', model, '--output-format', 'json', '--sandbox', 'false', prompt],
+    {
+      timeout: timeoutMs,
+    }
+  );
+
+  return result.stdout;
+}
+
+async function runLocalCompletionClassifier(config: HiveConfig, prompt: string): Promise<string> {
+  const classifierConfig = config.manager.completion_classifier;
+  const cliTool = classifierConfig.cli_tool as CLITool;
+  const model = classifierConfig.model;
+  const timeoutMs = classifierConfig.timeout_ms;
+
+  switch (cliTool) {
+    case 'codex':
+      return runCodexClassifier(model, prompt, timeoutMs);
+    case 'claude':
+      return runClaudeClassifier(model, prompt, timeoutMs);
+    case 'gemini':
+      return runGeminiClassifier(model, prompt, timeoutMs);
+    default:
+      return runCodexClassifier(model, prompt, timeoutMs);
+  }
 }
 
 export async function assessCompletionFromOutput(
@@ -203,27 +306,19 @@ export async function assessCompletionFromOutput(
   }
 
   try {
-    const provider = createCompletionClassifier(config);
     const prompt = buildCompletionClassifierPrompt(sessionName, storyId, recentOutput);
-    const response = await provider.complete(
-      [
-        { role: 'system', content: prompt.system },
-        { role: 'user', content: prompt.user },
-      ],
-      {
-        maxTokens: 250,
-        temperature: 0,
-        timeoutMs: COMPLETION_AI_TIMEOUT_MS,
-      }
+    const responseContent = await runLocalCompletionClassifier(
+      config,
+      `${prompt.system}\n\n${prompt.user}`
     );
 
-    const parsed = parseAssessmentJson(response.content);
+    const parsed = parseAssessmentJson(responseContent);
     const assessment: CompletionAssessment =
       parsed ||
       ({
         done: false,
         confidence: 0,
-        reason: 'Could not parse AI classifier response as JSON',
+        reason: 'Could not parse local CLI classifier response as JSON',
         usedAi: true,
       } satisfies CompletionAssessment);
 
@@ -235,13 +330,12 @@ export async function assessCompletionFromOutput(
     return assessment;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    // Fall back to heuristic classification when AI provider is unavailable.
-    // This keeps manager progression functional even if provider credentials are missing.
+    // Fall back to heuristic classification when local CLI classifier is unavailable.
     const fallbackAssessment: CompletionAssessment = {
       ...heuristicAssessment,
       reason: heuristicAssessment.done
-        ? `${heuristicAssessment.reason}; AI classifier unavailable: ${message}`
-        : `AI classifier unavailable: ${message}`,
+        ? `${heuristicAssessment.reason}; local classifier unavailable: ${message}`
+        : `Local classifier unavailable: ${message}`,
       usedAi: false,
     };
     completionAssessmentCache.set(cacheKey, {
