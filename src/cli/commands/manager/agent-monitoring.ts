@@ -219,6 +219,8 @@ export function updateAgentStateTracking(
       lastState: stateResult.state,
       lastStateChangeTime: now,
       lastNudgeTime: 0,
+      storyStuckNudgeCount: 0,
+      lastEscalationNudgeTime: 0,
     });
   } else if (trackedState.lastState !== stateResult.state) {
     trackedState.lastState = stateResult.state;

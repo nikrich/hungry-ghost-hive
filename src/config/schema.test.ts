@@ -77,9 +77,20 @@ describe('HiveConfigSchema', () => {
       expect(result.data.cluster.enabled).toBe(false);
       expect(result.data.cluster.node_id).toBe('node-local');
       expect(result.data.cluster.listen_host).toBe('127.0.0.1');
+      expect(result.data.manager.max_stuck_nudges_per_story).toBe(1);
       expect(result.data.manager.completion_classifier.cli_tool).toBe('codex');
       expect(result.data.manager.completion_classifier.model).toBe('gpt-5.2-codex');
+      expect(result.data.manager.completion_classifier.timeout_ms).toBe(300000);
     }
+  });
+
+  it('should accept configurable max stuck nudges per story', () => {
+    const config = HiveConfigSchema.parse({
+      manager: {
+        max_stuck_nudges_per_story: 3,
+      },
+    });
+    expect(config.manager.max_stuck_nudges_per_story).toBe(3);
   });
 
   it('should reject invalid scaling values', () => {

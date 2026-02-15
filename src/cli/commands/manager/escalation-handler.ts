@@ -14,24 +14,19 @@ import {
   AgentState,
   agentStates,
   buildAutoRecoveryReminder,
-  captureTmuxPane,
   describeAgentState,
-  detectAgentState,
-  getAgentType,
   isRateLimitPrompt,
-  nudgeAgent,
   sendToTmuxSession,
   withManagerNudgeEnvelope,
   type CLITool,
 } from './agent-monitoring.js';
 import type { ManagerCheckContext } from './types.js';
-import { RECENT_ESCALATION_LOOKBACK_MINUTES, TMUX_CAPTURE_LINES } from './types.js';
+import { RECENT_ESCALATION_LOOKBACK_MINUTES } from './types.js';
 
 const INTERRUPTION_FIRST_RECOVERY_COMMAND = 'continue';
 const INTERRUPTION_HARD_RESET_ATTEMPTS = 3;
 const RATE_LIMIT_INITIAL_BACKOFF_MS = 90000;
 const RATE_LIMIT_MAX_BACKOFF_MS = 300000;
-const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
 const interruptionRecoveryAttempts = new Map<string, number>();
 const rateLimitRecoveryAttempts = new Map<string, number>();
 const INTERRUPTION_PROMPT_PATTERN =
@@ -140,6 +135,9 @@ export async function handleEscalationAndNudge(
   now: number
 ): Promise<void> {
   const currentTrackedState = agentStates.get(sessionName);
+  const lastEscalationNudgeTime = currentTrackedState
+    ? (currentTrackedState.lastEscalationNudgeTime ?? currentTrackedState.lastNudgeTime)
+    : 0;
   const interrupted =
     stateResult.state === AgentState.USER_DECLINED && isInterruptionPrompt(output);
   const rateLimited = isRateLimitPrompt(output);
@@ -159,7 +157,7 @@ export async function handleEscalationAndNudge(
     const attempts = rateLimitRecoveryAttempts.get(sessionName) || 0;
     const backoffMs = getRateLimitBackoffMs(attempts);
     const timeSinceLastNudge = currentTrackedState
-      ? now - currentTrackedState.lastNudgeTime
+      ? now - lastEscalationNudgeTime
       : Infinity;
     if (timeSinceLastNudge <= backoffMs) {
       verboseLog(
@@ -180,12 +178,14 @@ export async function handleEscalationAndNudge(
     ctx.counters.nudged++;
 
     if (currentTrackedState) {
-      currentTrackedState.lastNudgeTime = now;
+      currentTrackedState.lastEscalationNudgeTime = now;
     } else {
       agentStates.set(sessionName, {
         lastState: stateResult.state,
         lastStateChangeTime: now,
-        lastNudgeTime: now,
+        lastNudgeTime: 0,
+        storyStuckNudgeCount: 0,
+        lastEscalationNudgeTime: now,
       });
     }
 
@@ -219,7 +219,7 @@ export async function handleEscalationAndNudge(
   // Try "continue" first, then stronger prompt, then recycle the session.
   if (interrupted) {
     const timeSinceLastNudge = currentTrackedState
-      ? now - currentTrackedState.lastNudgeTime
+      ? now - lastEscalationNudgeTime
       : Infinity;
     if (timeSinceLastNudge <= ctx.config.manager.nudge_cooldown_ms) {
       verboseLog(
@@ -265,12 +265,14 @@ export async function handleEscalationAndNudge(
     ctx.counters.nudged++;
 
     if (currentTrackedState) {
-      currentTrackedState.lastNudgeTime = now;
+      currentTrackedState.lastEscalationNudgeTime = now;
     } else {
       agentStates.set(sessionName, {
         lastState: stateResult.state,
         lastStateChangeTime: now,
-        lastNudgeTime: now,
+        lastNudgeTime: 0,
+        storyStuckNudgeCount: 0,
+        lastEscalationNudgeTime: now,
       });
     }
 
@@ -380,53 +382,8 @@ export async function handleEscalationAndNudge(
       );
     }
   } else if (waitingInfo.isWaiting && stateResult.state !== AgentState.THINKING) {
-    // Agent idle/waiting - check if we should nudge
-    if (currentTrackedState) {
-      const timeSinceStateChange = now - currentTrackedState.lastStateChangeTime;
-      const timeSinceLastNudge = now - currentTrackedState.lastNudgeTime;
-      const screenStaticThresholdMs = Math.max(
-        1,
-        ctx.config.manager.screen_static_inactivity_threshold_ms ??
-          DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS
-      );
-      const waitingNudgeCooldownMs = Math.max(
-        ctx.config.manager.nudge_cooldown_ms,
-        screenStaticThresholdMs
-      );
-
-      if (
-        timeSinceStateChange > ctx.config.manager.stuck_threshold_ms &&
-        timeSinceLastNudge > waitingNudgeCooldownMs
-      ) {
-        const recheckOutput = await captureTmuxPane(sessionName, TMUX_CAPTURE_LINES);
-        const recheckState = detectAgentState(recheckOutput, agentCliTool);
-
-        if (
-          recheckState.isWaiting &&
-          !recheckState.needsHuman &&
-          recheckState.state !== AgentState.THINKING
-        ) {
-          const agentType = getAgentType(sessionName);
-          await nudgeAgent(
-            ctx.root,
-            sessionName,
-            undefined,
-            agentType,
-            waitingInfo.reason,
-            agentCliTool
-          );
-          currentTrackedState.lastNudgeTime = now;
-          ctx.counters.nudged++;
-          verboseLog(ctx, `escalationCheck: ${sessionName} action=nudge_stuck_waiting`);
-        } else {
-          verboseLog(
-            ctx,
-            `escalationCheck: ${sessionName} recheck skip waiting=${recheckState.isWaiting} needsHuman=${recheckState.needsHuman} state=${recheckState.state}`
-          );
-        }
-      }
-    } else {
-      verboseLog(ctx, `escalationCheck: ${sessionName} skip=no_tracked_state`);
-    }
+    // Do not send generic idle nudges from escalation logic.
+    // Stuck-story nudges and AI checks are handled in nudgeStuckStories.
+    verboseLog(ctx, `escalationCheck: ${sessionName} skip=idle_waiting_no_escalation_nudge`);
   }
 }

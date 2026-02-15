@@ -36,7 +36,12 @@ export const MANAGER_NUDGE_END_MARKER = '[HIVE_MANAGER_NUDGE_END]';
 export interface AgentStateTracking {
   lastState: import('../../../state-detectors/types.js').AgentState;
   lastStateChangeTime: number;
+  /** Cooldown timestamp for story-progress nudges and AI stuck checks. */
   lastNudgeTime: number;
+  /** Number of stuck-story nudges sent in the current stalled window. */
+  storyStuckNudgeCount?: number;
+  /** Cooldown timestamp for escalation/recovery nudges (separate from story nudges). */
+  lastEscalationNudgeTime?: number;
 }
 
 export interface PlanningHandoffTracking {
