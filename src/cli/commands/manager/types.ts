@@ -44,6 +44,7 @@ export interface PlanningHandoffTracking {
 // Shared context passed between helper functions during a manager check cycle
 export interface ManagerCheckContext {
   root: string;
+  verbose: boolean;
   config: HiveConfig;
   paths: ReturnType<typeof getHivePaths>;
   db: DatabaseClient;

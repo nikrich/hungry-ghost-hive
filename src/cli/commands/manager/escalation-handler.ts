@@ -39,6 +39,11 @@ function isInterruptionPrompt(output: string): boolean {
   return INTERRUPTION_PROMPT_PATTERN.test(output);
 }
 
+function verboseLog(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string): void {
+  if (!ctx.verbose) return;
+  console.log(chalk.gray(`  [verbose] ${message}`));
+}
+
 function getCodexPermissionActionHint(output: string): string | null {
   if (!/Yes,\s*and don't ask again/i.test(output)) {
     return null;
@@ -136,6 +141,10 @@ export async function handleEscalationAndNudge(
   const interrupted =
     stateResult.state === AgentState.USER_DECLINED && isInterruptionPrompt(output);
   const rateLimited = isRateLimitPrompt(output);
+  verboseLog(
+    ctx,
+    `escalationCheck: ${sessionName} state=${stateResult.state}, waiting=${stateResult.isWaiting}, needsHuman=${stateResult.needsHuman}, interrupted=${interrupted}, rateLimited=${rateLimited}`
+  );
 
   if (!interrupted) {
     interruptionRecoveryAttempts.delete(sessionName);
@@ -151,6 +160,10 @@ export async function handleEscalationAndNudge(
       ? now - currentTrackedState.lastNudgeTime
       : Infinity;
     if (timeSinceLastNudge <= backoffMs) {
+      verboseLog(
+        ctx,
+        `escalationCheck: ${sessionName} rate-limit backoff active (${Math.round(timeSinceLastNudge / 1000)}s elapsed < ${Math.round(backoffMs / 1000)}s required)`
+      );
       return;
     }
 
@@ -191,6 +204,10 @@ export async function handleEscalationAndNudge(
         `  AUTO-BACKOFF: ${sessionName} hit rate limit, requested ${Math.round(backoffMs / 1000)}s pause`
       )
     );
+    verboseLog(
+      ctx,
+      `escalationCheck: ${sessionName} action=rate_limit_backoff attempt=${attempts + 1}`
+    );
     return;
   }
 
@@ -201,6 +218,10 @@ export async function handleEscalationAndNudge(
       ? now - currentTrackedState.lastNudgeTime
       : Infinity;
     if (timeSinceLastNudge <= ctx.config.manager.nudge_cooldown_ms) {
+      verboseLog(
+        ctx,
+        `escalationCheck: ${sessionName} interruption cooldown active (${Math.round(timeSinceLastNudge / 1000)}s)`
+      );
       return;
     }
 
@@ -226,6 +247,7 @@ export async function handleEscalationAndNudge(
           `  AUTO-RESTART: ${sessionName} remained interrupted after ${attempts} attempts`
         )
       );
+      verboseLog(ctx, `escalationCheck: ${sessionName} action=restart_after_interruption`);
       return;
     }
 
@@ -261,6 +283,10 @@ export async function handleEscalationAndNudge(
       },
     });
     ctx.db.save();
+    verboseLog(
+      ctx,
+      `escalationCheck: ${sessionName} action=interruption_recovery_prompt attempt=${attempts + 1}`
+    );
 
     return;
   }
@@ -277,6 +303,7 @@ export async function handleEscalationAndNudge(
     ctx.escalatedSessions.has(sessionName) ||
     getRecentEscalationsForAgent(ctx.db.db, sessionName, RECENT_ESCALATION_LOOKBACK_MINUTES)
       .length > 0;
+  verboseLog(ctx, `escalationCheck: ${sessionName} hasRecentEscalation=${hasRecentEscalation}`);
 
   if (waitingInfo.needsHuman && !hasRecentEscalation) {
     // Create escalation for human attention
@@ -315,6 +342,7 @@ export async function handleEscalationAndNudge(
     await sendToTmuxSession(sessionName, reminder);
 
     console.log(chalk.red(`  ESCALATION: ${sessionName} needs human input`));
+    verboseLog(ctx, `escalationCheck: ${sessionName} action=create_escalation`);
   } else if (!waitingInfo.isWaiting && !waitingInfo.needsHuman) {
     interruptionRecoveryAttempts.delete(sessionName);
     // Agent recovered - auto-resolve active escalations
@@ -341,6 +369,10 @@ export async function handleEscalationAndNudge(
         chalk.green(
           `  AUTO-RESOLVED: ${sessionName} recovered, resolved ${activeEscalations.length} escalation(s)`
         )
+      );
+      verboseLog(
+        ctx,
+        `escalationCheck: ${sessionName} action=resolve_escalations count=${activeEscalations.length}`
       );
     }
   } else if (waitingInfo.isWaiting && stateResult.state !== AgentState.THINKING) {
@@ -372,8 +404,16 @@ export async function handleEscalationAndNudge(
           );
           currentTrackedState.lastNudgeTime = now;
           ctx.counters.nudged++;
+          verboseLog(ctx, `escalationCheck: ${sessionName} action=nudge_stuck_waiting`);
+        } else {
+          verboseLog(
+            ctx,
+            `escalationCheck: ${sessionName} recheck skip waiting=${recheckState.isWaiting} needsHuman=${recheckState.needsHuman} state=${recheckState.state}`
+          );
         }
       }
+    } else {
+      verboseLog(ctx, `escalationCheck: ${sessionName} skip=no_tracked_state`);
     }
   }
 }
