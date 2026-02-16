@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.34.1...hungry-ghost-hive-v0.35.0) (2026-02-16)
+
+
+### Features
+
+* add feature branch lifecycle management ([#408](https://github.com/nikrich/hungry-ghost-hive/issues/408)) ([cb5d7cc](https://github.com/nikrich/hungry-ghost-hive/commit/cb5d7ccc51182e7beb8dcc346afde284e6510cb3))
+
 ## [0.34.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.34.0...hungry-ghost-hive-v0.34.1) (2026-02-16)
 
 
