@@ -54,6 +54,7 @@ import {
 } from './feature-branch.js';
 import { detectAndRecoverOrphanedStories } from './orphan-recovery.js';
 import {
+  generateFeatureTestPrompt,
   generateIntermediatePrompt,
   generateJuniorPrompt,
   generateQAPrompt,
@@ -785,11 +786,16 @@ export class Scheduler {
    * Handles spawning of all agent types (senior, intermediate, junior, qa)
    */
   private async spawnAgent(
-    type: 'senior' | 'intermediate' | 'junior' | 'qa',
+    type: 'senior' | 'intermediate' | 'junior' | 'qa' | 'feature_test',
     teamId: string,
     teamName: string,
     repoPath: string,
-    index?: number
+    index?: number,
+    featureTestContext?: {
+      featureBranch: string;
+      requirementId: string;
+      e2eTestsPath: string;
+    }
   ): Promise<AgentRow> {
     const sessionName = generateSessionName(type, teamName, index);
 
@@ -895,6 +901,16 @@ export class Scheduler {
           sessionName,
           targetBranch
         );
+      } else if (type === 'feature_test' && featureTestContext) {
+        prompt = generateFeatureTestPrompt(
+          teamName,
+          team?.repo_url || '',
+          worktreePath,
+          sessionName,
+          featureTestContext.featureBranch,
+          featureTestContext.requirementId,
+          featureTestContext.e2eTestsPath
+        );
       } else {
         prompt = generateQAPrompt(
           teamName,
@@ -963,6 +979,31 @@ export class Scheduler {
     index: number = 1
   ): Promise<AgentRow> {
     return this.spawnAgent('qa', teamId, teamName, repoPath, index);
+  }
+
+  /**
+   * Spawn a feature_test agent for running E2E tests against a feature branch.
+   * This method is public because it is called from external orchestration logic
+   * (e.g., the manager daemon when all stories are merged).
+   */
+  async spawnFeatureTest(
+    teamId: string,
+    teamName: string,
+    repoPath: string,
+    featureTestContext: {
+      featureBranch: string;
+      requirementId: string;
+      e2eTestsPath: string;
+    }
+  ): Promise<AgentRow> {
+    return this.spawnAgent(
+      'feature_test',
+      teamId,
+      teamName,
+      repoPath,
+      undefined,
+      featureTestContext
+    );
   }
 
   private async spawnSenior(

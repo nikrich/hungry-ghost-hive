@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { StoryRow } from '../db/client.js';
 import {
   formatSeniorSessionName,
+  generateFeatureTestPrompt,
   generateIntermediatePrompt,
   generateJuniorPrompt,
   generateQAPrompt,
@@ -419,6 +420,160 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('Code quality');
       expect(prompt).toContain('Functionality');
       expect(prompt).toContain('Story requirements');
+    });
+  });
+
+  describe('generateFeatureTestPrompt', () => {
+    const sessionName = 'hive-feature_test-testteam';
+    const featureBranch = 'feature/REQ-ABC123';
+    const requirementId = 'REQ-ABC123';
+    const e2eTestsPath = './e2e';
+
+    it('should generate prompt with correct agent role', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        featureBranch,
+        requirementId,
+        e2eTestsPath
+      );
+
+      expect(prompt).toContain(`You are a Feature Test Agent on Team ${teamName}`);
+    });
+
+    it('should include session name', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        featureBranch,
+        requirementId,
+        e2eTestsPath
+      );
+
+      expect(prompt).toContain(`Your tmux session: ${sessionName}`);
+    });
+
+    it('should include repository information', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        featureBranch,
+        requirementId,
+        e2eTestsPath
+      );
+
+      expect(prompt).toContain(`Local path: ${repoPath}`);
+      expect(prompt).toContain(`Remote: ${repoUrl}`);
+    });
+
+    it('should include feature branch and requirement info', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        featureBranch,
+        requirementId,
+        e2eTestsPath
+      );
+
+      expect(prompt).toContain(featureBranch);
+      expect(prompt).toContain(requirementId);
+    });
+
+    it('should include E2E test path', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        featureBranch,
+        requirementId,
+        e2eTestsPath
+      );
+
+      expect(prompt).toContain(e2eTestsPath);
+    });
+
+    it('should include instructions to read TESTING.md', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        featureBranch,
+        requirementId,
+        e2eTestsPath
+      );
+
+      expect(prompt).toContain('TESTING.md');
+      expect(prompt).toContain(`${e2eTestsPath}/TESTING.md`);
+    });
+
+    it('should include checkout instructions for the feature branch', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        featureBranch,
+        requirementId,
+        e2eTestsPath
+      );
+
+      expect(prompt).toContain(`git checkout ${featureBranch}`);
+      expect(prompt).toContain(`git fetch origin ${featureBranch}`);
+    });
+
+    it('should include result reporting instructions', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        featureBranch,
+        requirementId,
+        e2eTestsPath
+      );
+
+      expect(prompt).toContain('E2E tests PASSED');
+      expect(prompt).toContain('E2E tests FAILED');
+      expect(prompt).toContain('hive progress');
+    });
+
+    it('should include instructions not to modify code', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        featureBranch,
+        requirementId,
+        e2eTestsPath
+      );
+
+      expect(prompt).toContain('Do NOT modify the test code or application code');
+    });
+
+    it('should include communication instructions for tech lead', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        featureBranch,
+        requirementId,
+        e2eTestsPath
+      );
+
+      expect(prompt).toContain('hive msg send hive-tech-lead');
+      expect(prompt).toContain(`hive msg outbox ${sessionName}`);
     });
   });
 

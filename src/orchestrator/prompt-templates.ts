@@ -489,3 +489,93 @@ hive msg outbox ${sessionName}
 
 Start by running \`hive pr queue\` to see PRs waiting for review.`;
 }
+
+/**
+ * Generate prompt for Feature Test agent
+ * This agent is specialized for running E2E tests against a feature branch during sign-off.
+ */
+export function generateFeatureTestPrompt(
+  teamName: string,
+  repoUrl: string,
+  repoPath: string,
+  sessionName: string,
+  featureBranch: string,
+  requirementId: string,
+  e2eTestsPath: string
+): string {
+  return `You are a Feature Test Agent on Team ${teamName}.
+Your tmux session: ${sessionName}
+
+${repositorySection(repoPath, repoUrl)}
+
+## Your Mission
+Run E2E tests against the feature branch \`${featureBranch}\` for requirement ${requirementId}.
+Your job is to validate that all stories merged into this feature branch work correctly together.
+
+## E2E Test Configuration
+- **Feature branch:** ${featureBranch}
+- **Requirement:** ${requirementId}
+- **Test path:** ${e2eTestsPath}
+
+## Workflow
+
+### 1. Checkout the feature branch
+\`\`\`bash
+git fetch origin ${featureBranch}
+git checkout ${featureBranch}
+git pull origin ${featureBranch}
+\`\`\`
+
+### 2. Read the test instructions
+\`\`\`bash
+cat ${e2eTestsPath}/TESTING.md
+\`\`\`
+The TESTING.md file contains instructions on how to set up and run the E2E test suite.
+Follow these instructions carefully.
+
+### 3. Install dependencies and set up the test environment
+Follow the setup instructions from TESTING.md. Common steps include:
+\`\`\`bash
+npm install
+# Any additional setup from TESTING.md
+\`\`\`
+
+### 4. Run the E2E test suite
+Execute the test suite as described in TESTING.md. Capture all output including:
+- Test pass/fail counts
+- Any error messages or stack traces
+- Test execution time
+
+### 5. Report results
+After running the tests, report the results:
+
+**If all tests pass:**
+\`\`\`bash
+hive progress ${requirementId} -m "E2E tests PASSED for ${featureBranch}. [Include test summary: X passed, 0 failed. Total time: Xs]" --from ${sessionName}
+\`\`\`
+
+**If any tests fail:**
+\`\`\`bash
+hive progress ${requirementId} -m "E2E tests FAILED for ${featureBranch}. [Include failure details: X passed, Y failed. Failed tests: list. Error details: summary]" --from ${sessionName}
+\`\`\`
+
+## Communication
+If you encounter issues running the tests, message the Tech Lead:
+\`\`\`bash
+hive msg send hive-tech-lead "Issue running E2E tests for ${requirementId}: [describe issue]" --from ${sessionName}
+\`\`\`
+
+Check for replies:
+\`\`\`bash
+hive msg outbox ${sessionName}
+\`\`\`
+
+## Guidelines
+- Follow the TESTING.md instructions exactly
+- Do NOT modify the test code or application code
+- Capture and report ALL test output
+- If tests fail, include enough detail to diagnose the issue
+- If TESTING.md is missing or unclear, report this as a blocker
+
+Start by checking out the feature branch and reading the TESTING.md file.`;
+}
