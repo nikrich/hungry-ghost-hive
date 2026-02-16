@@ -67,7 +67,9 @@ export type EventType =
   | 'FEATURE_BRANCH_CREATED'
   | 'FEATURE_BRANCH_FAILED'
   | 'FEATURE_TEST_SPAWNED'
-  | 'FEATURE_SIGN_OFF_TRIGGERED';
+  | 'FEATURE_SIGN_OFF_TRIGGERED'
+  | 'FEATURE_SIGN_OFF_PASSED'
+  | 'FEATURE_SIGN_OFF_FAILED';
 
 export interface CreateLogInput {
   agentId: string;

@@ -80,6 +80,7 @@ import {
 import { assessCompletionFromOutput } from './done-intelligence.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
 import { checkFeatureSignOff } from './feature-sign-off.js';
+import { checkFeatureTestResult } from './feature-test-result.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
 import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
 import { findSessionForAgent } from './session-resolution.js';
@@ -825,6 +826,8 @@ async function managerCheck(
     await spinDownMergedAgents(ctx);
     verboseLogCtx(ctx, 'Step: check feature sign-off readiness');
     await checkFeatureSignOff(ctx);
+    verboseLogCtx(ctx, 'Step: check feature test results');
+    await checkFeatureTestResult(ctx);
     verboseLogCtx(ctx, 'Step: spin down idle agents');
     await spinDownIdleAgents(ctx);
     verboseLogCtx(ctx, 'Step: evaluate stuck stories');
