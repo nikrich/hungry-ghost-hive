@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.37.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.36.0...hungry-ghost-hive-v0.37.0) (2026-02-16)
+
+
+### Features
+
+* add automatic feature sign-off trigger when all stories merged ([#413](https://github.com/nikrich/hungry-ghost-hive/issues/413)) ([cb86f8e](https://github.com/nikrich/hungry-ghost-hive/commit/cb86f8ebc31dc6b65d4b86e66ae1ad0e68c4a7e2))
+* add Jira epic sign-off report posting ([#415](https://github.com/nikrich/hungry-ghost-hive/issues/415)) ([9176eec](https://github.com/nikrich/hungry-ghost-hive/commit/9176eec2465e4e0ec93eb44b99a7118fe38cd172))
+
 ## [0.36.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.35.0...hungry-ghost-hive-v0.36.0) (2026-02-16)
 
 
