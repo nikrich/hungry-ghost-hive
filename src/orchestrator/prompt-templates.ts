@@ -50,7 +50,8 @@ export function generateSeniorPrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  stories: StoryRow[]
+  stories: StoryRow[],
+  targetBranch: string = 'main'
 ): string {
   const storyList = stories
     .map(s => {
@@ -107,7 +108,7 @@ hive pr submit -b feature/<story-id>-<description> -s <story-id> --from ${sessio
 
 ## Submitting PRs
 Before submitting your PR to the merge queue, always verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/${targetBranch}\`
 2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
 3. **All tests pass locally** - Run \`npm test\` before submitting
 
@@ -153,7 +154,7 @@ Include affected files and rationale in the description. Refactor stories are sc
 You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
 \`\`\`bash
 # After creating your feature branch
-hive progress <story-id> -m "Branch created off origin/main. Starting with codebase exploration." --from ${sessionName}
+hive progress <story-id> -m "Branch created off origin/${targetBranch}. Starting with codebase exploration." --from ${sessionName}
 
 # After exploring the codebase — explain what you found
 hive progress <story-id> -m "Explored codebase: found X in file Y. Will modify Z because [reason]. Alternative approach considered: [what], rejected because [why]." --from ${sessionName}
@@ -212,7 +213,8 @@ export function generateIntermediatePrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  sessionName: string
+  sessionName: string,
+  targetBranch: string = 'main'
 ): string {
   const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 
@@ -257,7 +259,7 @@ hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 
 ## Submitting PRs
 Before submitting your PR to the merge queue, always verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/${targetBranch}\`
 2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
 3. **All tests pass locally** - Run \`npm test\` before submitting
 
@@ -299,7 +301,7 @@ Include affected files and rationale in the description. Refactor stories are sc
 You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
 \`\`\`bash
 # After creating your feature branch
-hive progress <story-id> -m "Branch created off origin/main. Starting with codebase exploration." --from ${sessionName}
+hive progress <story-id> -m "Branch created off origin/${targetBranch}. Starting with codebase exploration." --from ${sessionName}
 
 # After exploring the codebase — explain what you found
 hive progress <story-id> -m "Explored codebase: found X in file Y. Will modify Z because [reason]. Alternative approach considered: [what], rejected because [why]." --from ${sessionName}
@@ -358,7 +360,8 @@ export function generateJuniorPrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  sessionName: string
+  sessionName: string,
+  targetBranch: string = 'main'
 ): string {
   const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 
@@ -403,7 +406,7 @@ hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 
 ## Submitting PRs
 Before submitting your PR to the merge queue, always verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/${targetBranch}\`
 2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
 3. **All tests pass locally** - Run \`npm test\` before submitting
 
@@ -445,7 +448,7 @@ Include affected files and rationale in the description. Refactor stories are sc
 You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
 \`\`\`bash
 # After creating your feature branch
-hive progress <story-id> -m "Branch created off origin/main. Starting with codebase exploration." --from ${sessionName}
+hive progress <story-id> -m "Branch created off origin/${targetBranch}. Starting with codebase exploration." --from ${sessionName}
 
 # After exploring the codebase — explain what you found
 hive progress <story-id> -m "Explored codebase: found X in file Y. Will modify Z because [reason]. Alternative approach considered: [what], rejected because [why]." --from ${sessionName}
@@ -504,7 +507,8 @@ export function generateQAPrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  sessionName: string
+  sessionName: string,
+  targetBranch: string = 'main'
 ): string {
   return `You are a QA Engineer on Team ${teamName}.
 Your tmux session: ${sessionName}
@@ -559,7 +563,7 @@ hive msg send <developer-session> "Your PR was rejected: <reason>" --from ${sess
 
 ## Review Checklist
 For each PR, verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/${targetBranch}\`
 2. **Tests pass** - Run the project's test suite
 3. **Code quality** - Check for code standards, no obvious bugs
 4. **Functionality** - Test that the changes work as expected
