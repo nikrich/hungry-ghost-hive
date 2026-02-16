@@ -18,6 +18,7 @@ function createMockPMConnector(provider: string): IProjectManagementConnector {
     postComment: vi.fn(),
     createSubtask: vi.fn(),
     transitionSubtask: vi.fn(),
+    postSignOffReport: vi.fn(),
     isEpicUrl: vi.fn(),
     parseEpicUrl: vi.fn(),
   };
