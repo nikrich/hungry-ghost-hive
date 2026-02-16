@@ -219,3 +219,21 @@ export interface SearchIssuesOptions {
   maxResults?: number;
   fields?: string[];
 }
+
+// ── Sign-Off Report ──────────────────────────────────────────────────────
+
+/** Provider-agnostic sign-off report data */
+export interface ConnectorSignOffReportData {
+  requirementId: string;
+  requirementTitle: string;
+  featureBranch: string;
+  passed: boolean;
+  totalTests: number;
+  passedTests: number;
+  failedTests: number;
+  duration?: string;
+  failedTestNames?: string[];
+  errorSummary?: string;
+  storiesMerged: number;
+  teamNames: string[];
+}

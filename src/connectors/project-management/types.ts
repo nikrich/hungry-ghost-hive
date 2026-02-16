@@ -7,6 +7,7 @@ import type {
   ConnectorIssue,
   ConnectorLifecycleEvent,
   ConnectorParsedEpicUrl,
+  ConnectorSignOffReportData,
   ConnectorSubtaskResult,
   CreateEpicOptions,
   CreateStoryOptions,
@@ -107,6 +108,14 @@ export interface IProjectManagementConnector {
    * @returns true if the transition was applied, false if skipped
    */
   transitionSubtask(subtaskKey: string, targetStatus: string): Promise<boolean>;
+
+  /**
+   * Post a feature sign-off report as a comment on an epic.
+   * @param epicKey - Epic issue key to comment on
+   * @param data - Sign-off report data
+   * @returns true if successful, false otherwise
+   */
+  postSignOffReport(epicKey: string, data: ConnectorSignOffReportData): Promise<boolean>;
 
   /**
    * Check whether a string looks like an epic URL for this provider.
