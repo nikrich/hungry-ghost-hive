@@ -5,6 +5,7 @@ import { Command } from 'commander';
 import { createHash } from 'crypto';
 import { execa } from 'execa';
 import { join } from 'path';
+import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../../../cli-runtimes/index.js';
 import { ClusterRuntime, fetchLocalClusterStatus } from '../../../cluster/runtime.js';
 import { loadConfig } from '../../../config/loader.js';
 import type { HiveConfig } from '../../../config/schema.js';
@@ -15,7 +16,12 @@ import {
 import type { StoryRow } from '../../../db/client.js';
 import { queryAll, withTransaction } from '../../../db/client.js';
 import { acquireLock } from '../../../db/lock.js';
-import { getAgentById, getAllAgents, getAgentsByType, updateAgent } from '../../../db/queries/agents.js';
+import {
+  getAgentById,
+  getAgentsByType,
+  getAllAgents,
+  updateAgent,
+} from '../../../db/queries/agents.js';
 import {
   createEscalation,
   getActiveEscalationsForAgent,
@@ -52,14 +58,13 @@ import {
 } from '../../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../../utils/auto-merge.js';
 import type { CLITool } from '../../../utils/cli-commands.js';
+import { findHiveRoot as findHiveRootFromDir, getHivePaths } from '../../../utils/paths.js';
 import {
   closeStaleGitHubPRs,
   syncAllTeamOpenPRs,
   syncMergedPRsFromGitHub,
 } from '../../../utils/pr-sync.js';
-import { findHiveRoot as findHiveRootFromDir, getHivePaths } from '../../../utils/paths.js';
 import { withHiveContext, withHiveRoot } from '../../../utils/with-hive-context.js';
-import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../../../cli-runtimes/index.js';
 import {
   agentStates,
   detectAgentState,
