@@ -4,7 +4,7 @@ import { join } from 'path';
 import initSqlJs from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseCorruptionError } from '../errors/index.js';
-import { createDatabase } from './client.js';
+import { createDatabase, withTransaction, withTransactionAndSave } from './client.js';
 
 /**
  * Helper to create a valid SQLite database buffer with the core schema
@@ -360,6 +360,150 @@ describe('createDatabase', () => {
       expect(afterLoadContent).toEqual(originalContent);
 
       client.close();
+    });
+  });
+
+  describe('withTransaction saveFn', () => {
+    it('should call saveFn after successful commit', async () => {
+      const dbPath = join(tempDir, 'txn-save.db');
+      const client = await createDatabase(dbPath);
+      let saveCalled = false;
+
+      await withTransaction(
+        client.db,
+        () => {
+          client.db.run('CREATE TABLE IF NOT EXISTS test_txn (val TEXT)');
+          client.db.run("INSERT INTO test_txn VALUES ('hello')");
+        },
+        () => {
+          saveCalled = true;
+        }
+      );
+
+      expect(saveCalled).toBe(true);
+
+      // Verify data was written
+      const result = client.db.exec('SELECT val FROM test_txn');
+      expect(result[0].values[0][0]).toBe('hello');
+
+      client.close();
+    });
+
+    it('should NOT call saveFn on transaction rollback', async () => {
+      const dbPath = join(tempDir, 'txn-no-save.db');
+      const client = await createDatabase(dbPath);
+      let saveCalled = false;
+
+      await expect(
+        withTransaction(
+          client.db,
+          () => {
+            client.db.run('CREATE TABLE IF NOT EXISTS test_txn2 (val TEXT)');
+            throw new Error('deliberate failure');
+          },
+          () => {
+            saveCalled = true;
+          }
+        )
+      ).rejects.toThrow('deliberate failure');
+
+      expect(saveCalled).toBe(false);
+
+      client.close();
+    });
+
+    it('should work without saveFn (backward compatible)', async () => {
+      const dbPath = join(tempDir, 'txn-no-savefn.db');
+      const client = await createDatabase(dbPath);
+
+      await withTransaction(client.db, () => {
+        client.db.run('CREATE TABLE IF NOT EXISTS test_txn3 (val TEXT)');
+        client.db.run("INSERT INTO test_txn3 VALUES ('compat')");
+      });
+
+      const result = client.db.exec('SELECT val FROM test_txn3');
+      expect(result[0].values[0][0]).toBe('compat');
+
+      client.close();
+    });
+
+    it('should persist to disk when saveFn calls db.save()', async () => {
+      const dbPath = join(tempDir, 'txn-persist.db');
+      const client = await createDatabase(dbPath);
+      client.save(); // Initial save to create file
+
+      await withTransaction(
+        client.db,
+        () => {
+          client.db.run('CREATE TABLE IF NOT EXISTS persist_test (val TEXT)');
+          client.db.run("INSERT INTO persist_test VALUES ('persisted')");
+        },
+        () => client.save()
+      );
+
+      // Reload database from disk to verify persistence
+      const client2 = await createDatabase(dbPath);
+      const result = client2.db.exec('SELECT val FROM persist_test');
+      expect(result[0].values[0][0]).toBe('persisted');
+
+      client.close();
+      client2.close();
+    });
+  });
+
+  describe('withTransactionAndSave', () => {
+    it('should auto-persist via saveFn after commit', async () => {
+      const dbPath = join(tempDir, 'txn-and-save.db');
+      const client = await createDatabase(dbPath);
+      client.save(); // Initial save to create file
+
+      await withTransactionAndSave(
+        client.db,
+        () => client.save(),
+        () => {
+          client.db.run('CREATE TABLE IF NOT EXISTS auto_save_test (val TEXT)');
+          client.db.run("INSERT INTO auto_save_test VALUES ('auto')");
+        }
+      );
+
+      // Reload from disk to verify
+      const client2 = await createDatabase(dbPath);
+      const result = client2.db.exec('SELECT val FROM auto_save_test');
+      expect(result[0].values[0][0]).toBe('auto');
+
+      client.close();
+      client2.close();
+    });
+
+    it('should NOT persist on failure', async () => {
+      const dbPath = join(tempDir, 'txn-and-save-fail.db');
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // Insert initial data
+      client.db.run('CREATE TABLE IF NOT EXISTS fail_test (val TEXT)');
+      client.db.run("INSERT INTO fail_test VALUES ('before')");
+      client.save();
+
+      await expect(
+        withTransactionAndSave(
+          client.db,
+          () => client.save(),
+          () => {
+            client.db.run("INSERT INTO fail_test VALUES ('should_not_persist')");
+            throw new Error('deliberate failure');
+          }
+        )
+      ).rejects.toThrow('deliberate failure');
+
+      // Reload from disk - only 'before' should exist
+      const client2 = await createDatabase(dbPath);
+      const result = client2.db.exec('SELECT val FROM fail_test');
+      expect(result[0].values.length).toBe(1);
+      expect(result[0].values[0][0]).toBe('before');
+
+      client.close();
+      client2.close();
     });
   });
 });
