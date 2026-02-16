@@ -45,9 +45,10 @@ export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | 
   // Acquire database lock to prevent concurrent access and race conditions
   // This ensures that only one process can read/write the database at a time
   let releaseLock: (() => Promise<void>) | null = null;
+  const lockAcquiredAt = Date.now();
   try {
     releaseLock = await acquireLock(dbLockPath, {
-      stale: 30000, // 30s stale timeout
+      stale: 120000, // 120s stale timeout (increased from 30s to accommodate manager check)
       retries: {
         retries: 20, // More retries for DB lock contention
         minTimeout: 50,
@@ -65,6 +66,26 @@ export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | 
   try {
     return await fn({ root, paths, db });
   } finally {
+    const lockHeldDurationMs = Date.now() - lockAcquiredAt;
+    const lockHeldDurationSec = (lockHeldDurationMs / 1000).toFixed(2);
+
+    // Log lock hold duration for telemetry
+    if (lockHeldDurationMs > 90000) {
+      // Warn if held for more than 90s (75% of stale timeout)
+      console.warn(
+        chalk.yellow(
+          `[TELEMETRY] DB lock held for ${lockHeldDurationSec}s (exceeds 90s warning threshold)`
+        )
+      );
+    } else if (lockHeldDurationMs > 60000) {
+      // Info if held for more than 60s
+      console.log(
+        chalk.gray(
+          `[TELEMETRY] DB lock held for ${lockHeldDurationSec}s (exceeds 60s info threshold)`
+        )
+      );
+    }
+
     db.close();
     if (releaseLock) {
       await releaseLock();
