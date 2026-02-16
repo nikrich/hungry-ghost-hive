@@ -75,11 +75,12 @@ function prSubmissionSection(sessionName: string, targetBranch: string): string 
   return `## Submitting PRs
 Before submitting your PR to the merge queue, always verify:
 1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/${targetBranch}\`
-2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
-3. **All tests pass locally** - Run \`npm test\` before submitting
+2. **All tests pass locally** - Run \`npm test\` before submitting
+3. **CI checks are passing** - You MUST wait for CI to pass before submitting (see below)
 
-After verifying these checks, create and submit your PR:
+### Step-by-step PR submission:
 \`\`\`bash
+# 1. Create the PR on GitHub
 gh pr create --title "<type>: <description>" --body "..." --base ${targetBranch}
 # IMPORTANT: PR titles MUST follow conventional commit format!
 # Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
@@ -87,8 +88,21 @@ gh pr create --title "<type>: <description>" --body "..." --base ${targetBranch}
 #           "fix: resolve merge conflict in story assignment"
 #           "refactor: extract prompt templates into separate module"
 # Include the story ID in the PR body, NOT the title.
+
+# 2. MANDATORY: Wait for CI to pass before proceeding!
+gh pr checks <pr-number> --watch --interval 30
+# This will block until all CI checks complete.
+# If any check FAILS: fix the issue, push again, and re-run this command.
+# Do NOT proceed to step 3 until all checks show ✓ pass.
+
+# 3. Only after CI passes, submit to the Hive merge queue:
 hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
-\`\`\``;
+\`\`\`
+
+### CRITICAL: Do NOT skip the CI wait step!
+- Never run \`hive pr submit\` before CI checks have passed
+- If \`gh pr checks --watch\` shows a failure, fix the code, push, and wait again
+- If CI is stuck for more than 10 minutes, message the Tech Lead`;
 }
 
 function refactoringSection(sessionName: string): string {

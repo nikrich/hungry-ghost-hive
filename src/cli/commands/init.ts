@@ -18,6 +18,7 @@ export const initCommand = new Command('init')
   .option('--project-management <tool>', 'Project management tool (none, jira)')
   .option('--autonomy <level>', 'Agent autonomy level (full, partial)')
   .option('--jira-project <key>', 'Jira project key (for non-interactive mode)')
+  .option('--e2e-test-path <path>', 'Path to E2E tests directory')
   .action(
     async (options: {
       force?: boolean;
@@ -26,6 +27,7 @@ export const initCommand = new Command('init')
       projectManagement?: string;
       autonomy?: string;
       jiraProject?: string;
+      e2eTestPath?: string;
     }) => {
       const rootDir = process.cwd();
       const paths = getHivePaths(rootDir);
@@ -72,11 +74,15 @@ export const initCommand = new Command('init')
           projectManagement: options.projectManagement,
           autonomy: options.autonomy,
           jiraProject: options.jiraProject,
+          e2eTestPath: options.e2eTestPath,
         });
 
         // Update config with wizard selections
         const config = loadConfig(paths.hiveDir);
         config.integrations = wizardResult.integrations;
+        if (wizardResult.e2e_tests) {
+          config.e2e_tests = wizardResult.e2e_tests;
+        }
         saveConfig(paths.hiveDir, config);
 
         console.log();
