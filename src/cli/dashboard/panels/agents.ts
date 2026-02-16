@@ -6,12 +6,7 @@ import { appendFileSync } from 'fs';
 import type { Database } from 'sql.js';
 import { loadConfig } from '../../../config/loader.js';
 import type { ModelsConfig } from '../../../config/schema.js';
-import {
-  getActiveAgents,
-  getAllAgents,
-  updateAgent,
-  type AgentRow,
-} from '../../../db/queries/agents.js';
+import { getActiveAgents, type AgentRow } from '../../../db/queries/agents.js';
 import { getTeamById } from '../../../db/queries/teams.js';
 import { getHiveSessions } from '../../../tmux/manager.js';
 import { findHiveRoot, getHivePaths } from '../../../utils/paths.js';
@@ -73,10 +68,11 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
           });
         } finally {
           // Restore dashboard in the same process (do not spawn nested dashboards).
+          // Do NOT call updateAgentsPanel here — the `db` reference captured in this
+          // closure may be stale (closed by the refresh timer while spawnSync blocked
+          // the event loop). The next scheduled refresh cycle will update all panels
+          // with the current database connection.
           resumeScreen();
-          void updateAgentsPanel(list, db).catch(err =>
-            debugLog(`Failed to refresh agents panel after tmux detach: ${err}`)
-          );
           screen.render();
         }
 
@@ -99,9 +95,6 @@ interface DisplayAgent extends AgentRow {
 export async function updateAgentsPanel(list: Widgets.ListElement, db: Database): Promise<void> {
   // Preserve current selection before updating
   const currentSelection = (list as unknown as { selected: number }).selected;
-
-  // Sync agent status with actual tmux sessions before reading from DB
-  await syncAgentStatusWithTmux(db);
 
   const agents = getActiveAgents(db);
   debugLog(
@@ -211,40 +204,6 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
     const restoredIndex = Math.max(1, Math.min(currentSelection, maxIndex));
     list.select(restoredIndex);
     debugLog(`Restored selection to ${restoredIndex}`);
-  }
-}
-
-/**
- * Sync agent status in DB with actual tmux sessions.
- * If an agent has a tmux_session that no longer exists, mark it as terminated.
- */
-async function syncAgentStatusWithTmux(db: Database): Promise<void> {
-  try {
-    // Get all agents (including terminated ones, to check if they need updating)
-    const allAgents = getAllAgents(db);
-
-    // Get currently running tmux sessions
-    const hiveSessions = await getHiveSessions();
-    const runningSessionNames = new Set(hiveSessions.map(s => s.name));
-
-    debugLog(`syncAgentStatusWithTmux: found ${runningSessionNames.size} running sessions`);
-
-    // Check each agent's tmux session
-    for (const agent of allAgents) {
-      if (agent.tmux_session && agent.status !== 'terminated') {
-        const sessionExists = runningSessionNames.has(agent.tmux_session);
-
-        if (!sessionExists) {
-          // Tmux session no longer exists but agent is not marked as terminated
-          debugLog(
-            `Agent ${agent.id} tmux session ${agent.tmux_session} not found, marking as terminated`
-          );
-          updateAgent(db, agent.id, { status: 'terminated' });
-        }
-      }
-    }
-  } catch (err) {
-    debugLog(`syncAgentStatusWithTmux error: ${err}`);
   }
 }
 
