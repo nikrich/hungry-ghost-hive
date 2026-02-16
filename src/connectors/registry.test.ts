@@ -34,6 +34,7 @@ function createMockProjectManagement(provider = 'jira'): IProjectManagementConne
     postComment: vi.fn(),
     createSubtask: vi.fn(),
     transitionSubtask: vi.fn(),
+    postSignOffReport: vi.fn(),
     isEpicUrl: vi.fn(),
     parseEpicUrl: vi.fn(),
   };

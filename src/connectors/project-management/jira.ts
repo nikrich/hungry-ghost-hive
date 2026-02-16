@@ -14,6 +14,7 @@ import type {
   ConnectorIssue,
   ConnectorLifecycleEvent,
   ConnectorParsedEpicUrl,
+  ConnectorSignOffReportData,
   ConnectorSubtaskResult,
   CreateEpicOptions,
   CreateStoryOptions,
@@ -246,6 +247,13 @@ export class JiraProjectManagementConnector implements IProjectManagementConnect
     const result = await jiraCreateSubtask(client, options);
     if (!result) return null;
     return { key: result.key, id: result.id };
+  }
+
+  async postSignOffReport(epicKey: string, data: ConnectorSignOffReportData): Promise<boolean> {
+    const { postSignOffReport: jiraPostSignOffReport } =
+      await import('../../integrations/jira/sign-off-report.js');
+    const client = await this.getClient();
+    return jiraPostSignOffReport(client, epicKey, data);
   }
 
   async transitionSubtask(subtaskKey: string, targetStatus: string): Promise<boolean> {
