@@ -3,11 +3,11 @@
 import chalk from 'chalk';
 import { execSync } from 'child_process';
 import { join } from 'path';
+import { queryAll, type AgentLogRow, type AgentRow } from '../../../db/client.js';
+import { getAgentsByType } from '../../../db/queries/agents.js';
 import { createLog } from '../../../db/queries/logs.js';
 import { getRequirementById, updateRequirement } from '../../../db/queries/requirements.js';
 import { getAllTeams } from '../../../db/queries/teams.js';
-import { getAgentsByType } from '../../../db/queries/agents.js';
-import { queryAll, type AgentRow, type AgentLogRow } from '../../../db/client.js';
 import type { ManagerCheckContext } from './types.js';
 
 function verboseLogCtx(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string): void {
