@@ -6,7 +6,15 @@ import { queryAll, queryOne, run, type RequirementRow } from '../client.js';
 
 export type { RequirementRow };
 
-export type RequirementStatus = 'pending' | 'planning' | 'planned' | 'in_progress' | 'completed' | 'sign_off' | 'sign_off_failed' | 'sign_off_passed';
+export type RequirementStatus =
+  | 'pending'
+  | 'planning'
+  | 'planned'
+  | 'in_progress'
+  | 'completed'
+  | 'sign_off'
+  | 'sign_off_failed'
+  | 'sign_off_passed';
 
 export interface CreateRequirementInput {
   title: string;

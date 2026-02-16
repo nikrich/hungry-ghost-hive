@@ -790,7 +790,15 @@ export interface RequirementRow {
   title: string;
   description: string;
   submitted_by: string;
-  status: 'pending' | 'planning' | 'planned' | 'in_progress' | 'completed' | 'sign_off' | 'sign_off_failed' | 'sign_off_passed';
+  status:
+    | 'pending'
+    | 'planning'
+    | 'planned'
+    | 'in_progress'
+    | 'completed'
+    | 'sign_off'
+    | 'sign_off_failed'
+    | 'sign_off_passed';
   godmode: number;
   target_branch: string;
   feature_branch: string | null;
