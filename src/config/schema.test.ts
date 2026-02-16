@@ -478,6 +478,49 @@ describe('HiveConfigSchema', () => {
     expect(config.integrations.autonomy.level).toBe('full');
   });
 
+  it('should accept valid e2e_tests configuration', () => {
+    const config = {
+      e2e_tests: {
+        path: './e2e',
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.e2e_tests?.path).toBe('./e2e');
+    }
+  });
+
+  it('should accept config without e2e_tests (optional)', () => {
+    const config = {};
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.e2e_tests).toBeUndefined();
+    }
+  });
+
+  it('should reject e2e_tests with empty path', () => {
+    const config = {
+      e2e_tests: {
+        path: '',
+      },
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject e2e_tests without path', () => {
+    const config = {
+      e2e_tests: {},
+    };
+
+    const result = HiveConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+  });
+
   it('should accept complete integrations config with all sections', () => {
     const config = {
       integrations: {

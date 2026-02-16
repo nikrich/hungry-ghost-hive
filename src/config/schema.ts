@@ -226,6 +226,12 @@ function isLoopbackHost(host: string): boolean {
   );
 }
 
+// E2E testing configuration
+const E2ETestsConfigSchema = z.object({
+  // Path to the E2E tests directory (relative to repo root or absolute)
+  path: z.string().min(1),
+});
+
 // Distributed cluster configuration (feature-flagged)
 const ClusterConfigSchema = z
   .object({
@@ -280,6 +286,7 @@ export const HiveConfigSchema = z.object({
   manager: ManagerConfigSchema.default({}),
   logging: LoggingConfigSchema.default({}),
   cluster: ClusterConfigSchema.default({}),
+  e2e_tests: E2ETestsConfigSchema.optional(),
 });
 
 // Export types
@@ -298,6 +305,7 @@ export type ManagerConfig = z.infer<typeof ManagerConfigSchema>;
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
 export type ClusterPeerConfig = z.infer<typeof ClusterPeerSchema>;
 export type ClusterConfig = z.infer<typeof ClusterConfigSchema>;
+export type E2ETestsConfig = z.infer<typeof E2ETestsConfigSchema>;
 export type HiveConfig = z.infer<typeof HiveConfigSchema>;
 
 // Default configuration
@@ -455,6 +463,12 @@ logging:
   level: info
   # Retain logs for N days
   retention_days: 30
+
+# E2E testing configuration (optional)
+# Configure a path to your E2E tests directory. A TESTING.md file at the
+# path root provides AI agents with instructions on how to execute the tests.
+# e2e_tests:
+#   path: ./e2e
 
 # Distributed cluster mode (disabled by default)
 cluster:

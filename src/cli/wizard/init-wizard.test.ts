@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@inquirer/prompts', () => ({
   select: vi.fn(),
   input: vi.fn(),
+  confirm: vi.fn(),
 }));
 
 vi.mock('../../auth/jira-oauth.js', () => ({
@@ -39,7 +40,7 @@ vi.mock('../../connectors/registry.js', () => ({
   },
 }));
 
-import { input, select } from '@inquirer/prompts';
+import { confirm, input, select } from '@inquirer/prompts';
 import { startJiraOAuthFlow } from '../../auth/jira-oauth.js';
 import { registry } from '../../connectors/registry.js';
 import { runInitWizard } from './init-wizard.js';
@@ -123,15 +124,17 @@ describe('Init Wizard', () => {
   });
 
   describe('interactive mode', () => {
-    it('should prompt for all three selections', async () => {
+    it('should prompt for all selections including E2E', async () => {
       const mockSelect = vi.mocked(select);
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+      vi.mocked(confirm).mockResolvedValueOnce(false);
 
       const result = await runInitWizard();
 
       expect(mockSelect).toHaveBeenCalledTimes(3);
+      expect(confirm).toHaveBeenCalledTimes(1);
       expect(result).toEqual({
         integrations: {
           source_control: { provider: 'github' },
@@ -141,11 +144,37 @@ describe('Init Wizard', () => {
       });
     });
 
+    it('should include e2e_tests when user opts in', async () => {
+      const mockSelect = vi.mocked(select);
+      mockSelect.mockResolvedValueOnce('github');
+      mockSelect.mockResolvedValueOnce('none');
+      mockSelect.mockResolvedValueOnce('full');
+      vi.mocked(confirm).mockResolvedValueOnce(true);
+      vi.mocked(input).mockResolvedValueOnce('./e2e');
+
+      const result = await runInitWizard();
+
+      expect(result.e2e_tests).toEqual({ path: './e2e' });
+    });
+
+    it('should not include e2e_tests when user declines', async () => {
+      const mockSelect = vi.mocked(select);
+      mockSelect.mockResolvedValueOnce('github');
+      mockSelect.mockResolvedValueOnce('none');
+      mockSelect.mockResolvedValueOnce('full');
+      vi.mocked(confirm).mockResolvedValueOnce(false);
+
+      const result = await runInitWizard();
+
+      expect(result.e2e_tests).toBeUndefined();
+    });
+
     it('should pass through user selections', async () => {
       const mockSelect = vi.mocked(select);
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('jira');
       mockSelect.mockResolvedValueOnce('partial');
+      vi.mocked(confirm).mockResolvedValueOnce(false);
 
       const mockInput = vi.mocked(input);
       mockInput.mockResolvedValueOnce('test-client-id');
@@ -180,6 +209,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+      vi.mocked(confirm).mockResolvedValueOnce(false);
 
       // Mock registry to return available providers
       vi.mocked(registry.listSourceControlProviders).mockReturnValueOnce(['github']);
@@ -196,6 +226,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+      vi.mocked(confirm).mockResolvedValueOnce(false);
 
       // Mock registry to return available providers
       vi.mocked(registry.listProjectManagementProviders).mockReturnValueOnce(['jira']);
@@ -215,6 +246,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+      vi.mocked(confirm).mockResolvedValueOnce(false);
 
       await runInitWizard();
 
@@ -226,6 +258,23 @@ describe('Init Wizard', () => {
       expect(thirdCall.choices).toHaveLength(2);
       expect(thirdCall.choices[0].value).toBe('full');
       expect(thirdCall.choices[1].value).toBe('partial');
+    });
+  });
+
+  describe('e2e_tests non-interactive', () => {
+    it('should include e2e_tests when e2eTestPath is provided', async () => {
+      const result = await runInitWizard({
+        nonInteractive: true,
+        e2eTestPath: './tests/e2e',
+      });
+
+      expect(result.e2e_tests).toEqual({ path: './tests/e2e' });
+    });
+
+    it('should not include e2e_tests when e2eTestPath is not provided', async () => {
+      const result = await runInitWizard({ nonInteractive: true });
+
+      expect(result.e2e_tests).toBeUndefined();
     });
   });
 });
