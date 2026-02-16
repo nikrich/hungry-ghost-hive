@@ -63,20 +63,24 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
       const agent = currentAgents[agentIndex];
       debugLog(`Selected agent: ${agent.id}, tmux: ${agent.tmux_session}`);
       if (agent.tmux_session) {
-        // Temporarily leave blessed to attach to tmux
-        screen.destroy();
+        // Temporarily suspend blessed while attached to tmux.
+        const resumeScreen = screen.program.pause();
 
-        // Attach to the tmux session (blocks until user detaches with Ctrl+B, D)
-        spawnSync('tmux', ['attach', '-t', agent.tmux_session], {
-          stdio: 'inherit',
-        });
+        try {
+          // Attach to the tmux session (blocks until user detaches with Ctrl+B, D)
+          spawnSync('tmux', ['attach', '-t', agent.tmux_session], {
+            stdio: 'inherit',
+          });
+        } finally {
+          // Restore dashboard in the same process (do not spawn nested dashboards).
+          resumeScreen();
+          void updateAgentsPanel(list, db).catch(err =>
+            debugLog(`Failed to refresh agents panel after tmux detach: ${err}`)
+          );
+          screen.render();
+        }
 
-        // When user detaches, restart the dashboard
-        console.log('\nReturning to dashboard...');
-        spawnSync('hive', ['dashboard'], {
-          stdio: 'inherit',
-        });
-        process.exit(0);
+        return;
       }
     }
   });

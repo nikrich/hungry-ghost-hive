@@ -20,7 +20,13 @@ import {
   type CLITool,
 } from '../../../utils/cli-commands.js';
 import type { AgentStateTracking, ManagerCheckContext, MessageRow } from './types.js';
-import { BYPASS_MODE_MAX_RETRIES, MESSAGE_FORWARD_DELAY_MS, POST_NUDGE_DELAY_MS } from './types.js';
+import {
+  BYPASS_MODE_MAX_RETRIES,
+  MANAGER_NUDGE_END_MARKER,
+  MANAGER_NUDGE_START_MARKER,
+  MESSAGE_FORWARD_DELAY_MS,
+  POST_NUDGE_DELAY_MS,
+} from './types.js';
 
 // In-memory state tracking per agent session
 export const agentStates = new Map<string, AgentStateTracking>();
@@ -31,7 +37,135 @@ export const stateDetectors: Record<CLITool, ReturnType<typeof getStateDetector>
   gemini: getStateDetector('gemini'),
 };
 
+const INTERRUPTION_PROMPT_PATTERN =
+  /conversation interrupted|tell the model what to do differently|hit [`'"]?\/feedback[`'"]? to report the issue/i;
+const RATE_LIMIT_HARD_PATTERNS = [
+  /too many requests/i,
+  /rate_limit_error/i,
+  /resource[_\s-]?exhausted/i,
+  /request(?:\s+has\s+been)?\s+throttled/i,
+  /rate[\s_-]?limit(?:\s+reached|\s+exceeded)/i,
+  /(?:status|error|code)\s*[:=]?\s*429\b/i,
+  /\b429\b.*(?:too many requests|rate[\s_-]?limit|throttl|quota|retry)/i,
+];
+const RATE_LIMIT_CONTEXT_PATTERNS = [
+  /\b429\b/i,
+  /rate[\s_-]?limit/i,
+  /quota/i,
+  /resource[_\s-]?exhausted/i,
+  /throttl/i,
+  /requests?\s+per\s+(?:min|minute)/i,
+  /tokens?\s+per\s+(?:min|minute)/i,
+  /\b(?:rpm|tpm)\b/i,
+];
+const RATE_LIMIT_RETRY_PATTERNS = [
+  /retry after/i,
+  /exceeded retry limit/i,
+  /try again/i,
+  /backoff/i,
+];
+const INTERACTIVE_PROMPT_LINE_PATTERN = /^\s*(?:›|>)\s+\S.+$/m;
+const INTERACTIVE_PROMPT_UI_SIGNAL_PATTERNS = [
+  /\?\s*for shortcuts/i,
+  /\bcontext left\b/i,
+  /\[pasted content\s+\d+\s+chars\]/i,
+];
+const INTERACTIVE_PROMPT_HUMAN_NEEDED_PATTERNS = [
+  /\?\s*$/,
+  /\b(?:choose|select|pick)\b/i,
+  /\b(?:confirm|approve|deny)\b/i,
+  /\b(?:yes|no|y\/n)\b/i,
+];
+const RATE_LIMIT_WINDOW_LINES = 120;
+const INTERACTIVE_PROMPT_WINDOW_LINES = 80;
+
+function getRecentPaneOutput(output: string, lineCount: number): string {
+  return output.split('\n').slice(-lineCount).join('\n');
+}
+
+export function isInterruptionPrompt(output: string): boolean {
+  return INTERRUPTION_PROMPT_PATTERN.test(output);
+}
+
+export function isRateLimitPrompt(output: string): boolean {
+  const recentOutput = getRecentPaneOutput(output, RATE_LIMIT_WINDOW_LINES);
+  if (RATE_LIMIT_HARD_PATTERNS.some(pattern => pattern.test(recentOutput))) {
+    return true;
+  }
+
+  const hasRateLimitContext = RATE_LIMIT_CONTEXT_PATTERNS.some(pattern =>
+    pattern.test(recentOutput)
+  );
+  const hasRetrySignal = RATE_LIMIT_RETRY_PATTERNS.some(pattern => pattern.test(recentOutput));
+  return hasRateLimitContext && hasRetrySignal;
+}
+
+export function isInteractiveInputPrompt(output: string): boolean {
+  const recentOutput = getRecentPaneOutput(output, INTERACTIVE_PROMPT_WINDOW_LINES);
+  const hasUiSignal = INTERACTIVE_PROMPT_UI_SIGNAL_PATTERNS.some(pattern =>
+    pattern.test(recentOutput)
+  );
+  return INTERACTIVE_PROMPT_LINE_PATTERN.test(recentOutput) && hasUiSignal;
+}
+
+function getLatestInteractivePromptLine(output: string): string | null {
+  const recentOutput = getRecentPaneOutput(output, INTERACTIVE_PROMPT_WINDOW_LINES);
+  const lines = recentOutput.split('\n').reverse();
+  for (const line of lines) {
+    if (INTERACTIVE_PROMPT_LINE_PATTERN.test(line)) {
+      return line.trim();
+    }
+  }
+  return null;
+}
+
+function interactivePromptNeedsHuman(output: string): boolean {
+  const promptLine = getLatestInteractivePromptLine(output);
+  if (!promptLine) return false;
+  const normalizedPrompt = promptLine.replace(/^\s*(?:›|>)\s*/, '');
+  return INTERACTIVE_PROMPT_HUMAN_NEEDED_PATTERNS.some(pattern => pattern.test(normalizedPrompt));
+}
+
 export function detectAgentState(output: string, cliTool: CLITool): StateDetectionResult {
+  // Interruption banners can coexist with stale "working" text in pane history.
+  // Treat interruption as authoritative blocked state to force escalation.
+  if (isInterruptionPrompt(output)) {
+    return {
+      state: AgentState.USER_DECLINED,
+      confidence: 0.9,
+      reason: `Detected ${cliTool} interruption prompt`,
+      isWaiting: true,
+      needsHuman: true,
+    };
+  }
+
+  // API throttling is recoverable by backing off and retrying.
+  // Keep this ahead of normal detector logic so stale prompts do not trigger escalations.
+  if (isRateLimitPrompt(output)) {
+    return {
+      state: AgentState.USER_DECLINED,
+      confidence: 0.85,
+      reason: `Detected ${cliTool} rate-limit prompt`,
+      isWaiting: true,
+      needsHuman: false,
+    };
+  }
+
+  // Cross-CLI interactive prompts (e.g. "› ...", "? for shortcuts") mean the
+  // agent is waiting at prompt, even if stale pane text contains active words.
+  // Some prompt lines are actual questions/approvals (needsHuman=true), while
+  // others are just ready-for-input idle prompts (needsHuman=false).
+  if (isInteractiveInputPrompt(output)) {
+    const needsHuman = interactivePromptNeedsHuman(output);
+    return {
+      state: needsHuman ? AgentState.ASKING_QUESTION : AgentState.IDLE_AT_PROMPT,
+      confidence: 0.9,
+      reason: `Detected ${cliTool} interactive input prompt (${needsHuman ? 'question' : 'idle'})`,
+      isWaiting: true,
+      needsHuman,
+    };
+  }
+
   return stateDetectors[cliTool].detectState(output);
 }
 
@@ -85,6 +219,8 @@ export function updateAgentStateTracking(
       lastState: stateResult.state,
       lastStateChangeTime: now,
       lastNudgeTime: 0,
+      storyStuckNudgeCount: 0,
+      lastEscalationNudgeTime: 0,
     });
   } else if (trackedState.lastState !== stateResult.state) {
     trackedState.lastState = stateResult.state;
@@ -148,6 +284,12 @@ export function getAgentType(
   return 'unknown';
 }
 
+export function withManagerNudgeEnvelope(message: string): string {
+  return `# ${MANAGER_NUDGE_START_MARKER}
+${message}
+# ${MANAGER_NUDGE_END_MARKER}`;
+}
+
 export async function nudgeAgent(
   _root: string,
   sessionName: string,
@@ -157,7 +299,7 @@ export async function nudgeAgent(
   agentCliTool?: CLITool
 ): Promise<void> {
   if (customMessage) {
-    await sendToTmuxSession(sessionName, customMessage);
+    await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(customMessage));
     return;
   }
 
@@ -195,7 +337,7 @@ hive status`;
     nudge = `# Manager detected: ${reason}\n${nudge}`;
   }
 
-  await sendToTmuxSession(sessionName, nudge);
+  await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(nudge));
 
   // Also send Enter to ensure prompt is activated
   await new Promise(resolve => setTimeout(resolve, POST_NUDGE_DELAY_MS));
@@ -228,5 +370,11 @@ export async function forwardMessages(
   }
 }
 
-export { AgentState, buildAutoRecoveryReminder, captureTmuxPane, sendToTmuxSession };
+export {
+  AgentState,
+  buildAutoRecoveryReminder,
+  captureTmuxPane,
+  sendEnterToTmuxSession,
+  sendToTmuxSession,
+};
 export type { CLITool, StateDetectionResult };

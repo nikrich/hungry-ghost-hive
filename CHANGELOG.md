@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.32.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.31.0...hungry-ghost-hive-v0.32.0) (2026-02-16)
+
+
+### Features
+
+* filter old PRs from merge queue sync ([#398](https://github.com/nikrich/hungry-ghost-hive/issues/398)) ([8b912a4](https://github.com/nikrich/hungry-ghost-hive/commit/8b912a416400b8ef326b599cf72e050ee378365e))
+* propagate target_branch from requirements through scheduler to agent prompts ([#401](https://github.com/nikrich/hungry-ghost-hive/issues/401)) ([925dbcd](https://github.com/nikrich/hungry-ghost-hive/commit/925dbcd4fa42cbb96403c9106389afc43a218fac))
+
+## [0.31.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.5...hungry-ghost-hive-v0.31.0) (2026-02-15)
+
+
+### Features
+
+* surface actionable hints for blocked agent gates ([#382](https://github.com/nikrich/hungry-ghost-hive/issues/382)) ([af0b482](https://github.com/nikrich/hungry-ghost-hive/commit/af0b482ae7ee304eb58ba1d27c1638d5240476d6))
+
+
+### Bug Fixes
+
+* **cli-runtimes:** use danger-full-access for codex unsafe mode ([#380](https://github.com/nikrich/hungry-ghost-hive/issues/380)) ([7a3b77c](https://github.com/nikrich/hungry-ghost-hive/commit/7a3b77cc6ca3ed5a61e8463b68b5d45034ef1a2c))
+* copy SQL migrations to dist during build ([1df2228](https://github.com/nikrich/hungry-ghost-hive/commit/1df2228eaf3874801dbadf7dcee121a0b78b6d54))
+* **dashboard:** avoid sql.js memory churn on refresh ([#381](https://github.com/nikrich/hungry-ghost-hive/issues/381)) ([c0c6d3f](https://github.com/nikrich/hungry-ghost-hive/commit/c0c6d3f83dcc2c091a405c2a920e75e4bb04af90))
+* **logs:** prevent FK crashes for manager/scheduler log actors ([#386](https://github.com/nikrich/hungry-ghost-hive/issues/386)) ([61df38c](https://github.com/nikrich/hungry-ghost-hive/commit/61df38c9749416a53544aca32af4d193f39fec80))
+* **manager:** auto-progress stalled done agents with AI ([#396](https://github.com/nikrich/hungry-ghost-hive/issues/396)) ([f17b879](https://github.com/nikrich/hungry-ghost-hive/commit/f17b879fa7789662e23c38e5124f7ef86cdcb638))
+* **manager:** auto-recover interrupted sessions and reduce nudge spam ([#388](https://github.com/nikrich/hungry-ghost-hive/issues/388)) ([1003310](https://github.com/nikrich/hungry-ghost-hive/commit/1003310ae219cfca454f70616ffdd62372a95adf))
+* **manager:** auto-recycle repeatedly interrupted Codex sessions ([#389](https://github.com/nikrich/hungry-ghost-hive/issues/389)) ([b5d6c1e](https://github.com/nikrich/hungry-ghost-hive/commit/b5d6c1e6c28737e81ae16b566f67a05462af6451))
+* **manager:** auto-resolve stale escalations from dead sessions ([#392](https://github.com/nikrich/hungry-ghost-hive/issues/392)) ([edebba1](https://github.com/nikrich/hungry-ghost-hive/commit/edebba15c33f04fc2174b033864a76ae4e0f55d2))
+* **manager:** auto-resolve stale pending escalations ([#391](https://github.com/nikrich/hungry-ghost-hive/issues/391)) ([9852eee](https://github.com/nikrich/hungry-ghost-hive/commit/9852eee52c27fe4254512448907bf850fe38570c))
+* **manager:** detect cross-cli interactive input prompts ([#394](https://github.com/nikrich/hungry-ghost-hive/issues/394)) ([01f3532](https://github.com/nikrich/hungry-ghost-hive/commit/01f3532bec1811b6cab757b109048dfcdc388b17))
+* **manager:** escalate done-false stuck agents and prevent overlap ([#397](https://github.com/nikrich/hungry-ghost-hive/issues/397)) ([66c98f3](https://github.com/nikrich/hungry-ghost-hive/commit/66c98f3fe52f29fe3e2c8da7db7a7df71ecffe92))
+* **manager:** generic rate-limit recovery and prompt detection ([#395](https://github.com/nikrich/hungry-ghost-hive/issues/395)) ([9bd25d7](https://github.com/nikrich/hungry-ghost-hive/commit/9bd25d792a0e040f3b8e1811ae3dc2e915b57893))
+* **manager:** proactively dispatch queued PR reviews to QA ([#384](https://github.com/nikrich/hungry-ghost-hive/issues/384)) ([8705ae1](https://github.com/nikrich/hungry-ghost-hive/commit/8705ae1c8fd896bc47b208de736d46035d0d41d6))
+* **manager:** proactively recover and route QA review work ([#385](https://github.com/nikrich/hungry-ghost-hive/issues/385)) ([db171a4](https://github.com/nikrich/hungry-ghost-hive/commit/db171a43b6613746f829c843c98c4cf96fe4e8a7))
+* **manager:** recover generically from agent rate limits and stale escalations ([#393](https://github.com/nikrich/hungry-ghost-hive/issues/393)) ([0c8d77c](https://github.com/nikrich/hungry-ghost-hive/commit/0c8d77c9c6dfcbc97949b0d7dfa0e50100154e94))
+* **manager:** recover interrupted sessions and stuck-story nudges ([#387](https://github.com/nikrich/hungry-ghost-hive/issues/387)) ([0c690de](https://github.com/nikrich/hungry-ghost-hive/commit/0c690de0749a349a50bfb2b9b6cec44aad3b3549))
+* **manager:** recover stale unassigned in-progress stories ([#390](https://github.com/nikrich/hungry-ghost-hive/issues/390)) ([b7a6ea8](https://github.com/nikrich/hungry-ghost-hive/commit/b7a6ea8ccf7dfe938e7408d16d0b4895c39c62be))
+* **pr:** honor --no-merge without auto-merging ([#383](https://github.com/nikrich/hungry-ghost-hive/issues/383)) ([b2efe40](https://github.com/nikrich/hungry-ghost-hive/commit/b2efe404eccd854f36241999480b766a2cffb42c))
+
+## [0.30.5](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.4...hungry-ghost-hive-v0.30.5) (2026-02-13)
+
+
+### Code Refactoring
+
+* extract shared prompt sections into reusable helpers ([#377](https://github.com/nikrich/hungry-ghost-hive/issues/377)) ([19c2193](https://github.com/nikrich/hungry-ghost-hive/commit/19c2193c5944231d1343456591e649986b448eba))
+
+## [0.30.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.3...hungry-ghost-hive-v0.30.4) (2026-02-13)
+
+
+### Code Refactoring
+
+* remove Jira-specific naming from provider-agnostic code paths ([#375](https://github.com/nikrich/hungry-ghost-hive/issues/375)) ([1444fad](https://github.com/nikrich/hungry-ghost-hive/commit/1444fad53780c5e24acfd65f4bab251c43579072))
+* unify duplicate auth connector registries ([#374](https://github.com/nikrich/hungry-ghost-hive/issues/374)) ([7e55170](https://github.com/nikrich/hungry-ghost-hive/commit/7e5517006b5046fbbe71140ca1d9b43d0660e552))
+
 ## [0.30.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.2...hungry-ghost-hive-v0.30.3) (2026-02-13)
 
 

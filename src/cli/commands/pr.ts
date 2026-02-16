@@ -25,6 +25,7 @@ import { getTeamById } from '../../db/queries/teams.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
+import { markManualMergeRequired } from '../../utils/manual-merge.js';
 import { getExistingPRIdentifiers, syncOpenGitHubPRs } from '../../utils/pr-sync.js';
 import { extractStoryIdFromBranch, normalizeStoryId } from '../../utils/story-id.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
@@ -379,11 +380,14 @@ prCommand
       }
 
       const newStatus = actuallyMerged ? 'merged' : 'approved';
+      const reviewNotes = !shouldMerge
+        ? markManualMergeRequired(options.notes)
+        : (options.notes ?? null);
 
       updatePullRequest(db.db, prId, {
         status: newStatus,
         reviewedBy: options.from || pr.reviewed_by,
-        reviewNotes: options.notes || null,
+        reviewNotes,
       });
 
       if (storyId && newStatus === 'merged') {
@@ -398,7 +402,7 @@ prCommand
       }
 
       // Immediately attempt to auto-merge approved PRs instead of waiting for manager daemon cycle
-      if (newStatus === 'approved') {
+      if (newStatus === 'approved' && shouldMerge) {
         console.log(chalk.gray('Attempting immediate auto-merge...'));
         const merged = await autoMergeApprovedPRs(root, db);
         if (merged > 0) {

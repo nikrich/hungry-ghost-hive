@@ -1,6 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import type { Command } from 'commander';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getPullRequestById, updatePullRequest } from '../../db/queries/pull-requests.js';
+import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
 
 // Mock dependencies
 vi.mock('../../cluster/runtime.js', () => ({
@@ -85,8 +88,38 @@ vi.mock('../../utils/with-hive-context.js', () => ({
 import { prCommand } from './pr.js';
 
 describe('pr command', () => {
+  const resetCommandOptions = (command: Command): void => {
+    for (const option of command.options) {
+      command.setOptionValue(option.attributeName(), undefined);
+    }
+    for (const child of command.commands) {
+      resetCommandOptions(child);
+    }
+  };
+
+  const run = async (...args: string[]): Promise<void> => {
+    await prCommand.parseAsync(args, { from: 'user' });
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    resetCommandOptions(prCommand);
+
+    vi.mocked(getPullRequestById).mockReturnValue({
+      id: 'pr-1',
+      story_id: 'TEST-1',
+      team_id: 'team-1',
+      branch_name: 'feature/test',
+      github_pr_number: null,
+      github_pr_url: 'https://github.com/test/repo/pull/1',
+      submitted_by: 'hive-intermediate-test',
+      reviewed_by: 'hive-qa-test',
+      status: 'reviewing',
+      review_notes: null,
+      created_at: '2026-02-14T00:00:00.000Z',
+      updated_at: '2026-02-14T00:00:00.000Z',
+      reviewed_at: null,
+    });
   });
 
   describe('command structure', () => {
@@ -205,6 +238,33 @@ describe('pr command', () => {
       const approveCmd = prCommand.commands.find(cmd => cmd.name() === 'approve');
       const noMergeOpt = approveCmd?.options.find(opt => opt.long === '--no-merge');
       expect(noMergeOpt).toBeDefined();
+    });
+
+    it('should not trigger immediate auto-merge when --no-merge is provided', async () => {
+      await run('approve', 'pr-1', '--no-merge');
+
+      expect(updatePullRequest).toHaveBeenCalledWith(
+        expect.anything(),
+        'pr-1',
+        expect.objectContaining({
+          status: 'approved',
+          reviewNotes: '[manual-merge-required]',
+        })
+      );
+      expect(autoMergeApprovedPRs).not.toHaveBeenCalled();
+    });
+
+    it('should trigger immediate auto-merge for approved PRs when merge is enabled', async () => {
+      await run('approve', 'pr-1');
+
+      expect(updatePullRequest).toHaveBeenCalledWith(
+        expect.anything(),
+        'pr-1',
+        expect.objectContaining({
+          status: 'approved',
+        })
+      );
+      expect(autoMergeApprovedPRs).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -28,12 +28,20 @@ export const POST_NUDGE_DELAY_MS = 100;
 export const MESSAGE_FORWARD_DELAY_MS = 100;
 /** Delay before escalating a stalled planning handoff from nudge to automation */
 export const PROACTIVE_HANDOFF_RETRY_DELAY_MS = 60000;
+/** Marker lines used to tag manager-authored nudges in tmux output */
+export const MANAGER_NUDGE_START_MARKER = '[HIVE_MANAGER_NUDGE_START]';
+export const MANAGER_NUDGE_END_MARKER = '[HIVE_MANAGER_NUDGE_END]';
 
 // Agent state tracking for nudge logic
 export interface AgentStateTracking {
   lastState: import('../../../state-detectors/types.js').AgentState;
   lastStateChangeTime: number;
+  /** Cooldown timestamp for story-progress nudges and AI stuck checks. */
   lastNudgeTime: number;
+  /** Number of stuck-story nudges sent in the current stalled window. */
+  storyStuckNudgeCount?: number;
+  /** Cooldown timestamp for escalation/recovery nudges (separate from story nudges). */
+  lastEscalationNudgeTime?: number;
 }
 
 export interface PlanningHandoffTracking {
@@ -44,6 +52,7 @@ export interface PlanningHandoffTracking {
 // Shared context passed between helper functions during a manager check cycle
 export interface ManagerCheckContext {
   root: string;
+  verbose: boolean;
   config: HiveConfig;
   paths: ReturnType<typeof getHivePaths>;
   db: DatabaseClient;
@@ -52,6 +61,7 @@ export interface ManagerCheckContext {
   // Counters accumulated across helpers
   counters: {
     nudged: number;
+    autoProgressed: number;
     messagesForwarded: number;
     escalationsCreated: number;
     escalationsResolved: number;
