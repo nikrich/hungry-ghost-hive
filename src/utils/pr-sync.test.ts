@@ -419,9 +419,6 @@ describe('syncOpenGitHubPRs', () => {
   });
 
   it('should skip PRs older than maxAgeHours', async () => {
-    const recentPRTimestamp = new Date(Date.now() - 1000 * 60 * 60).toISOString(); // 1 hour ago
-    const oldPRTimestamp = new Date(Date.now() - 1000 * 60 * 60 * 24 * 8).toISOString(); // 8 days ago
-
     mockExeca.mockResolvedValue({
       stdout: JSON.stringify([
         {
@@ -429,14 +426,14 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/old-pr',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Old PR',
-          updatedAt: oldPRTimestamp,
+          updatedAt: oldTimestamp,
         },
         {
           number: 11,
           headRefName: 'feature/recent-pr',
           url: 'https://github.com/test/repo/pull/11',
           title: 'Recent PR',
-          updatedAt: recentPRTimestamp,
+          updatedAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -472,8 +469,6 @@ describe('syncOpenGitHubPRs', () => {
   });
 
   it('should log PR_SYNC_SKIPPED events for old PRs', async () => {
-    const oldPRTimestamp = new Date(Date.now() - 1000 * 60 * 60 * 24 * 8).toISOString(); // 8 days ago
-
     mockExeca.mockResolvedValue({
       stdout: JSON.stringify([
         {
@@ -481,7 +476,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/old-pr',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Old PR',
-          updatedAt: oldPRTimestamp,
+          updatedAt: oldTimestamp,
         },
       ]),
     } as any);
