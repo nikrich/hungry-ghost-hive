@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.34.0...hungry-ghost-hive-v0.34.1) (2026-02-16)
+
+
+### Bug Fixes
+
+* **dashboard:** force full screen redraw after tmux detach ([1e9f4f9](https://github.com/nikrich/hungry-ghost-hive/commit/1e9f4f98cf3cca02f7a9020518a7dc87d302a86a))
+
 ## [0.34.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.33.0...hungry-ghost-hive-v0.34.0) (2026-02-16)
 
 
