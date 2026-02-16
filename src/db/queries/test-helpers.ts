@@ -25,7 +25,7 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
 
     CREATE TABLE IF NOT EXISTS agents (
       id TEXT PRIMARY KEY,
-      type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa')),
+      type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa', 'feature_test')),
       team_id TEXT REFERENCES teams(id),
       tmux_session TEXT,
       model TEXT,
@@ -43,9 +43,10 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       title TEXT NOT NULL,
       description TEXT NOT NULL,
       submitted_by TEXT DEFAULT 'human',
-      status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'planning', 'planned', 'in_progress', 'completed')),
+      status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'planning', 'planned', 'in_progress', 'completed', 'sign_off', 'sign_off_failed', 'sign_off_passed')),
       godmode BOOLEAN DEFAULT 0,
       target_branch TEXT DEFAULT 'main',
+      feature_branch TEXT,
       jira_epic_key TEXT,
       jira_epic_id TEXT,
       external_epic_key TEXT,

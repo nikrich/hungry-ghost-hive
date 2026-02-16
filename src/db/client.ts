@@ -553,6 +553,86 @@ function runMigrations(db: SqlJsDatabase): void {
     db.run("INSERT INTO migrations (name) VALUES ('012-sprint-tracking.sql')");
   }
 
+  // Migration 013: Add feature testing support
+  // - Adds feature_branch column to requirements
+  // - Recreates agents table with feature_test in type CHECK constraint
+  // - Recreates requirements table with sign-off statuses in status CHECK constraint
+  const result013 = db.exec(
+    "SELECT name FROM migrations WHERE name = '013-feature-testing-support.sql'"
+  );
+  const migration013Applied = result013.length > 0 && result013[0].values.length > 0;
+
+  if (!migration013Applied) {
+    // 1. Add feature_branch column to requirements
+    const reqColumns013 = db.exec('PRAGMA table_info(requirements)');
+    const hasFeatureBranchColumn =
+      reqColumns013.length > 0 &&
+      reqColumns013[0].values.some((col: unknown[]) => col[1] === 'feature_branch');
+
+    if (!hasFeatureBranchColumn) {
+      const migration013Sql = loadMigration('013-feature-testing-support.sql');
+      db.run(migration013Sql);
+    }
+
+    // 2. Recreate agents table with updated type CHECK constraint (add 'feature_test')
+    db.run('PRAGMA foreign_keys = OFF');
+
+    db.run(`
+      CREATE TABLE agents_new (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa', 'feature_test')),
+        team_id TEXT REFERENCES teams(id),
+        tmux_session TEXT,
+        model TEXT,
+        status TEXT DEFAULT 'idle' CHECK (status IN ('idle', 'working', 'blocked', 'terminated')),
+        current_story_id TEXT,
+        memory_state TEXT,
+        last_seen TIMESTAMP,
+        worktree_path TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    db.run('INSERT INTO agents_new SELECT * FROM agents');
+    db.run('DROP TABLE agents');
+    db.run('ALTER TABLE agents_new RENAME TO agents');
+
+    // Recreate agents indexes
+    db.run('CREATE INDEX IF NOT EXISTS idx_agents_team_id ON agents(team_id)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)');
+
+    // 3. Recreate requirements table with updated status CHECK constraint
+    db.run(`
+      CREATE TABLE requirements_new (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        submitted_by TEXT DEFAULT 'human',
+        status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'planning', 'planned', 'in_progress', 'completed', 'sign_off', 'sign_off_failed', 'sign_off_passed')),
+        godmode BOOLEAN DEFAULT 0,
+        target_branch TEXT DEFAULT 'main',
+        feature_branch TEXT,
+        jira_epic_key TEXT,
+        jira_epic_id TEXT,
+        external_epic_key TEXT,
+        external_epic_id TEXT,
+        external_provider TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    db.run(`
+      INSERT INTO requirements_new (id, title, description, submitted_by, status, godmode, target_branch, feature_branch, jira_epic_key, jira_epic_id, external_epic_key, external_epic_id, external_provider, created_at)
+      SELECT id, title, description, submitted_by, status, godmode, target_branch, feature_branch, jira_epic_key, jira_epic_id, external_epic_key, external_epic_id, external_provider, created_at
+      FROM requirements
+    `);
+    db.run('DROP TABLE requirements');
+    db.run('ALTER TABLE requirements_new RENAME TO requirements');
+
+    db.run('PRAGMA foreign_keys = ON');
+
+    db.run("INSERT INTO migrations (name) VALUES ('013-feature-testing-support.sql')");
+  }
+
   // Migration 007: Backfill story_points from complexity_score
   const result007Backfill = db.exec(
     "SELECT name FROM migrations WHERE name = '007-backfill-story-points.sql'"
@@ -691,7 +771,7 @@ export interface TeamRow {
 
 export interface AgentRow {
   id: string;
-  type: 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa';
+  type: 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa' | 'feature_test';
   team_id: string | null;
   tmux_session: string | null;
   model: string | null;
@@ -710,9 +790,10 @@ export interface RequirementRow {
   title: string;
   description: string;
   submitted_by: string;
-  status: 'pending' | 'planning' | 'planned' | 'in_progress' | 'completed';
+  status: 'pending' | 'planning' | 'planned' | 'in_progress' | 'completed' | 'sign_off' | 'sign_off_failed' | 'sign_off_passed';
   godmode: number;
   target_branch: string;
+  feature_branch: string | null;
   /** @deprecated Use external_epic_key instead */
   jira_epic_key: string | null;
   /** @deprecated Use external_epic_id instead */

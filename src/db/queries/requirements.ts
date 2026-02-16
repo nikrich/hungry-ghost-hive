@@ -6,7 +6,7 @@ import { queryAll, queryOne, run, type RequirementRow } from '../client.js';
 
 export type { RequirementRow };
 
-export type RequirementStatus = 'pending' | 'planning' | 'planned' | 'in_progress' | 'completed';
+export type RequirementStatus = 'pending' | 'planning' | 'planned' | 'in_progress' | 'completed' | 'sign_off' | 'sign_off_failed' | 'sign_off_passed';
 
 export interface CreateRequirementInput {
   title: string;
@@ -14,6 +14,7 @@ export interface CreateRequirementInput {
   submittedBy?: string;
   godmode?: boolean;
   targetBranch?: string;
+  featureBranch?: string;
 }
 
 export interface UpdateRequirementInput {
@@ -29,6 +30,7 @@ export interface UpdateRequirementInput {
   externalEpicKey?: string | null;
   externalEpicId?: string | null;
   externalProvider?: string | null;
+  featureBranch?: string | null;
 }
 
 export function createRequirement(db: Database, input: CreateRequirementInput): RequirementRow {
@@ -38,8 +40,8 @@ export function createRequirement(db: Database, input: CreateRequirementInput): 
   run(
     db,
     `
-    INSERT INTO requirements (id, title, description, submitted_by, godmode, target_branch, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO requirements (id, title, description, submitted_by, godmode, target_branch, feature_branch, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `,
     [
       id,
@@ -48,6 +50,7 @@ export function createRequirement(db: Database, input: CreateRequirementInput): 
       input.submittedBy || 'human',
       input.godmode ? 1 : 0,
       input.targetBranch || 'main',
+      input.featureBranch || null,
       now,
     ]
   );
@@ -132,6 +135,10 @@ export function updateRequirement(
   if (input.externalProvider !== undefined) {
     updates.push('external_provider = ?');
     values.push(input.externalProvider);
+  }
+  if (input.featureBranch !== undefined) {
+    updates.push('feature_branch = ?');
+    values.push(input.featureBranch);
   }
 
   if (updates.length === 0) {

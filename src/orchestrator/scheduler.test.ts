@@ -168,6 +168,7 @@ CREATE TABLE IF NOT EXISTS requirements (
     status TEXT DEFAULT 'pending',
     godmode INTEGER DEFAULT 0,
     target_branch TEXT DEFAULT 'main',
+    feature_branch TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 `;

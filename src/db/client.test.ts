@@ -25,7 +25,7 @@ async function createValidDbBuffer(
     );
     CREATE TABLE IF NOT EXISTS agents (
       id TEXT PRIMARY KEY,
-      type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa')),
+      type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa', 'feature_test')),
       team_id TEXT REFERENCES teams(id), tmux_session TEXT, model TEXT,
       status TEXT DEFAULT 'idle' CHECK (status IN ('idle', 'working', 'blocked', 'terminated')),
       current_story_id TEXT, memory_state TEXT, last_seen TIMESTAMP, worktree_path TEXT,
@@ -34,8 +34,8 @@ async function createValidDbBuffer(
     CREATE TABLE IF NOT EXISTS requirements (
       id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL,
       submitted_by TEXT DEFAULT 'human',
-      status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'planning', 'planned', 'in_progress', 'completed')),
-      godmode BOOLEAN DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'planning', 'planned', 'in_progress', 'completed', 'sign_off', 'sign_off_failed', 'sign_off_passed')),
+      godmode BOOLEAN DEFAULT 0, feature_branch TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS stories (
       id TEXT PRIMARY KEY, requirement_id TEXT REFERENCES requirements(id),
