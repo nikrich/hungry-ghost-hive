@@ -5,10 +5,14 @@ import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { HiveConfig } from '../config/schema.js';
-import { createRequirement, getRequirementById, updateRequirement } from '../db/queries/requirements.js';
+import { getLogsByEventType } from '../db/queries/logs.js';
+import {
+  createRequirement,
+  getRequirementById,
+  updateRequirement,
+} from '../db/queries/requirements.js';
 import { createStory } from '../db/queries/stories.js';
 import { createTeam } from '../db/queries/teams.js';
-import { getLogsByEventType } from '../db/queries/logs.js';
 import {
   createFeatureBranchPR,
   createRequirementFeatureBranch,
@@ -25,7 +29,9 @@ vi.mock('execa', () => ({
 
 // Mock GitHub PR creation
 vi.mock('../git/github.js', () => ({
-  createPullRequest: vi.fn().mockResolvedValue({ number: 42, url: 'https://github.com/test/repo/pull/42' }),
+  createPullRequest: vi
+    .fn()
+    .mockResolvedValue({ number: 42, url: 'https://github.com/test/repo/pull/42' }),
 }));
 
 // Migration SQL to initialize database for tests
@@ -384,11 +390,7 @@ describe('getRequirementsNeedingFeatureBranch', () => {
       requirementId: req.id,
     });
 
-    const result = getRequirementsNeedingFeatureBranch(
-      db,
-      [story.id],
-      mockHiveConfigWithE2E
-    );
+    const result = getRequirementsNeedingFeatureBranch(db, [story.id], mockHiveConfigWithE2E);
 
     expect(result).toEqual([req.id]);
   });
@@ -413,11 +415,7 @@ describe('getRequirementsNeedingFeatureBranch', () => {
       requirementId: req.id,
     });
 
-    const result = getRequirementsNeedingFeatureBranch(
-      db,
-      [story.id],
-      mockHiveConfigWithE2E
-    );
+    const result = getRequirementsNeedingFeatureBranch(db, [story.id], mockHiveConfigWithE2E);
 
     expect(result).toEqual([]);
   });
@@ -442,11 +440,7 @@ describe('getRequirementsNeedingFeatureBranch', () => {
       requirementId: req.id,
     });
 
-    const result = getRequirementsNeedingFeatureBranch(
-      db,
-      [story.id],
-      mockHiveConfigWithoutE2E
-    );
+    const result = getRequirementsNeedingFeatureBranch(db, [story.id], mockHiveConfigWithoutE2E);
 
     expect(result).toEqual([]);
   });
@@ -505,11 +499,7 @@ describe('getRequirementsNeedingFeatureBranch', () => {
       description: 'Test',
     });
 
-    const result = getRequirementsNeedingFeatureBranch(
-      db,
-      [story.id],
-      mockHiveConfigWithE2E
-    );
+    const result = getRequirementsNeedingFeatureBranch(db, [story.id], mockHiveConfigWithE2E);
 
     expect(result).toEqual([]);
   });

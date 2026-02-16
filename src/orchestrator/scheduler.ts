@@ -1066,12 +1066,7 @@ export class Scheduler {
     if (!repoPath) return;
 
     for (const reqId of requirementIds) {
-      const branch = await createRequirementFeatureBranch(
-        this.db,
-        repoPath,
-        reqId,
-        this.saveFn
-      );
+      const branch = await createRequirementFeatureBranch(this.db, repoPath, reqId, this.saveFn);
 
       if (!branch) {
         errors.push(`Failed to create feature branch for requirement ${reqId}`);

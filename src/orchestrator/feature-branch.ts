@@ -3,13 +3,13 @@
 import { execa } from 'execa';
 import type { Database } from 'sql.js';
 import type { HiveConfig } from '../config/schema.js';
+import { queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
 import {
   getRequirementById,
   updateRequirement,
   type RequirementRow,
 } from '../db/queries/requirements.js';
-import { queryAll } from '../db/client.js';
 import type { StoryRow } from '../db/queries/stories.js';
 import { createPullRequest as createGitHubPR } from '../git/github.js';
 
