@@ -84,6 +84,88 @@ describe('withHiveContext', () => {
     expect(mockReleaseLock).toHaveBeenCalledOnce();
   });
 
+  it('logs warning when lock is held for more than 90s', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    // Mock Date.now to simulate 95s duration
+    const realDateNow = Date.now;
+    let callCount = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) return realDateNow(); // lock acquired
+      return realDateNow() + 95000; // lock released after 95s
+    });
+
+    await withHiveContext(() => {});
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[TELEMETRY] DB lock held for 95.00s')
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('exceeds 90s warning threshold')
+    );
+
+    warnSpy.mockRestore();
+    logSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('logs info when lock is held for more than 60s but less than 90s', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    // Mock Date.now to simulate 70s duration
+    const realDateNow = Date.now;
+    let callCount = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) return realDateNow(); // lock acquired
+      return realDateNow() + 70000; // lock released after 70s
+    });
+
+    await withHiveContext(() => {});
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[TELEMETRY] DB lock held for 70.00s')
+    );
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('exceeds 60s info threshold')
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+    logSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('does not log when lock is held for less than 60s', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    // Mock Date.now to simulate 30s duration
+    const realDateNow = Date.now;
+    let callCount = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) return realDateNow(); // lock acquired
+      return realDateNow() + 30000; // lock released after 30s
+    });
+
+    await withHiveContext(() => {});
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    // logSpy might be called by other code, but not with telemetry message
+    const telemetryLogs = logSpy.mock.calls.filter(call =>
+      call.some(arg => typeof arg === 'string' && arg.includes('[TELEMETRY]'))
+    );
+    expect(telemetryLogs).toHaveLength(0);
+
+    warnSpy.mockRestore();
+    logSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
   it('exits when not in a Hive workspace', async () => {
     vi.mocked(findHiveRoot).mockReturnValue(null);
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
