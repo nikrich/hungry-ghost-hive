@@ -207,6 +207,7 @@ describe('context-files module', () => {
         git_timeout_ms: 30000,
         gh_timeout_ms: 60000,
         tmux_timeout_ms: 10000,
+        tech_lead_max_age_hours: 6,
       },
       logging: { level: 'info', retention_days: 30 },
       cluster: {

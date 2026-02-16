@@ -224,6 +224,8 @@ const ManagerConfigSchema = z.object({
   git_timeout_ms: z.number().int().positive().default(30000), // 30s for git operations
   gh_timeout_ms: z.number().int().positive().default(60000), // 60s for GitHub API calls
   tmux_timeout_ms: z.number().int().positive().default(10000), // 10s for tmux commands
+  // Tech lead session max age in hours before graceful restart for context freshness
+  tech_lead_max_age_hours: z.number().positive().default(6),
 });
 
 // Merge queue configuration
