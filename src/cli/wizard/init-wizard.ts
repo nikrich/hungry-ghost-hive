@@ -107,8 +107,10 @@ export async function runInitWizard(options: InitWizardOptions = {}): Promise<In
       const testingMdPath = join(resolvedPath, 'TESTING.md');
       if (!existsSync(testingMdPath)) {
         console.log(
-          chalk.yellow(`  Warning: TESTING.md not found at "${testingMdPath}". ` +
-            'This file is needed to instruct AI agents on running E2E tests.')
+          chalk.yellow(
+            `  Warning: TESTING.md not found at "${testingMdPath}". ` +
+              'This file is needed to instruct AI agents on running E2E tests.'
+          )
         );
       }
     }
@@ -134,13 +136,17 @@ async function runNonInteractive(options: InitWizardOptions): Promise<InitWizard
   if (options.e2eTestPath) {
     const resolvedPath = resolve(options.e2eTestPath);
     if (!existsSync(resolvedPath)) {
-      console.log(chalk.yellow(`  Warning: E2E test directory "${options.e2eTestPath}" does not exist yet.`));
+      console.log(
+        chalk.yellow(`  Warning: E2E test directory "${options.e2eTestPath}" does not exist yet.`)
+      );
     } else {
       const testingMdPath = join(resolvedPath, 'TESTING.md');
       if (!existsSync(testingMdPath)) {
         console.log(
-          chalk.yellow(`  Warning: TESTING.md not found at "${testingMdPath}". ` +
-            'This file is needed to instruct AI agents on running E2E tests.')
+          chalk.yellow(
+            `  Warning: TESTING.md not found at "${testingMdPath}". ` +
+              'This file is needed to instruct AI agents on running E2E tests.'
+          )
         );
       }
     }
