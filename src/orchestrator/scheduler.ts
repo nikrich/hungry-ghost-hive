@@ -361,7 +361,7 @@ export class Scheduler {
               eventType: 'STORY_ASSIGNED',
               message,
             });
-          });
+          }, this.saveFn);
           assigned++;
 
           // Enqueue Jira operations to prevent race conditions

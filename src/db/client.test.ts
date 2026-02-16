@@ -4,7 +4,7 @@ import { join } from 'path';
 import initSqlJs from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseCorruptionError } from '../errors/index.js';
-import { createDatabase } from './client.js';
+import { createDatabase, withTransaction, withTransactionAndSave } from './client.js';
 
 /**
  * Helper to create a valid SQLite database buffer with the core schema
@@ -332,6 +332,103 @@ describe('createDatabase', () => {
       // File stays corrupt — all 3 retries should fail
       await expect(createDatabase(dbPath)).rejects.toThrow(DatabaseCorruptionError);
       await expect(createDatabase(dbPath)).rejects.toThrow('zero rows in core tables');
+    });
+  });
+
+  describe('withTransaction saveFn', () => {
+    it('should call saveFn after successful commit', async () => {
+      const dbPath = join(tempDir, 'txn-save.db');
+      const client = await createDatabase(dbPath);
+      let saveCalled = false;
+
+      await withTransaction(
+        client.db,
+        () => {
+          client.db.run("INSERT INTO migrations (name) VALUES ('test-txn')");
+        },
+        () => {
+          saveCalled = true;
+        }
+      );
+
+      expect(saveCalled).toBe(true);
+      client.close();
+    });
+
+    it('should NOT call saveFn on rollback', async () => {
+      const dbPath = join(tempDir, 'txn-no-save.db');
+      const client = await createDatabase(dbPath);
+      let saveCalled = false;
+
+      await expect(
+        withTransaction(
+          client.db,
+          () => {
+            throw new Error('deliberate failure');
+          },
+          () => {
+            saveCalled = true;
+          }
+        )
+      ).rejects.toThrow('deliberate failure');
+
+      expect(saveCalled).toBe(false);
+      client.close();
+    });
+
+    it('should work without saveFn (backward compatible)', async () => {
+      const dbPath = join(tempDir, 'txn-no-savefn.db');
+      const client = await createDatabase(dbPath);
+
+      const result = await withTransaction(client.db, () => {
+        client.db.run("INSERT INTO migrations (name) VALUES ('test-compat')");
+        return 42;
+      });
+
+      expect(result).toBe(42);
+      client.close();
+    });
+  });
+
+  describe('withTransactionAndSave', () => {
+    it('should auto-save after successful commit', async () => {
+      const dbPath = join(tempDir, 'txn-and-save.db');
+      const client = await createDatabase(dbPath);
+      let saveCalled = false;
+
+      await withTransactionAndSave(
+        client.db,
+        () => {
+          saveCalled = true;
+        },
+        () => {
+          client.db.run("INSERT INTO migrations (name) VALUES ('test-and-save')");
+        }
+      );
+
+      expect(saveCalled).toBe(true);
+      client.close();
+    });
+
+    it('should NOT save on error', async () => {
+      const dbPath = join(tempDir, 'txn-and-save-err.db');
+      const client = await createDatabase(dbPath);
+      let saveCalled = false;
+
+      await expect(
+        withTransactionAndSave(
+          client.db,
+          () => {
+            saveCalled = true;
+          },
+          () => {
+            throw new Error('transaction error');
+          }
+        )
+      ).rejects.toThrow('transaction error');
+
+      expect(saveCalled).toBe(false);
+      client.close();
     });
   });
 

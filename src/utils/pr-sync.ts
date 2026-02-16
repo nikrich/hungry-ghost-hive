@@ -341,7 +341,7 @@ export async function syncMergedPRsFromGitHub(
             message: `Story synced to merged from GitHub PR #${update.prNumber}`,
           });
         }
-      });
+      }, saveFn);
 
       // Sync status changes to Jira (fire and forget, after DB commit)
       for (const update of toUpdate) {
@@ -353,10 +353,6 @@ export async function syncMergedPRsFromGitHub(
       // gh CLI might not be authenticated or repo might not have remote
       continue;
     }
-  }
-
-  if (storiesUpdated > 0) {
-    saveFn();
   }
 
   return storiesUpdated;

@@ -135,9 +135,7 @@ async function promoteEstimatedStoriesToPlanned(
       message: `Auto-promoted ${promoted} estimated story/ies to planned (${reason})`,
       metadata: { requirement_id: requirementId, promoted, reason },
     });
-  });
-
-  ctx.db.save();
+  }, () => ctx.db.save());
 
   // Sync status changes to Jira
   for (const story of stories) {
