@@ -54,6 +54,14 @@ const ModelsConfigSchema = z.object({
     cli_tool: 'claude',
     safety_mode: 'unsafe',
   }),
+  feature_test: ModelConfigSchema.default({
+    provider: 'anthropic',
+    model: 'claude-opus-4-6',
+    max_tokens: 16000,
+    temperature: 0.3,
+    cli_tool: 'claude',
+    safety_mode: 'unsafe',
+  }),
 });
 
 // Scaling rules
@@ -405,6 +413,14 @@ models:
     model: claude-sonnet-4-5-20250929
     max_tokens: 8000
     temperature: 0.2
+    cli_tool: claude
+    safety_mode: unsafe
+
+  feature_test:
+    provider: anthropic
+    model: claude-opus-4-6
+    max_tokens: 16000
+    temperature: 0.3
     cli_tool: claude
     safety_mode: unsafe
 

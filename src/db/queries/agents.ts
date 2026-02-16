@@ -6,7 +6,7 @@ import { queryAll, queryOne, run, type AgentRow } from '../client.js';
 
 export type { AgentRow };
 
-export type AgentType = 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa';
+export type AgentType = 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa' | 'feature_test';
 export type AgentStatus = 'idle' | 'working' | 'blocked' | 'terminated';
 
 export interface CreateAgentInput {

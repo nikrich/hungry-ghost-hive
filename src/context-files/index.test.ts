@@ -155,6 +155,14 @@ describe('context-files module', () => {
           cli_tool: 'claude',
           safety_mode: 'unsafe',
         },
+        feature_test: {
+          provider: 'anthropic',
+          model: 'claude-opus-4-6',
+          max_tokens: 16000,
+          temperature: 0.3,
+          cli_tool: 'claude',
+          safety_mode: 'unsafe',
+        },
       },
       scaling: {
         senior_capacity: 20,
