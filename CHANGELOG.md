@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.32.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.31.0...hungry-ghost-hive-v0.32.0) (2026-02-16)
+
+
+### Features
+
+* filter old PRs from merge queue sync ([#398](https://github.com/nikrich/hungry-ghost-hive/issues/398)) ([8b912a4](https://github.com/nikrich/hungry-ghost-hive/commit/8b912a416400b8ef326b599cf72e050ee378365e))
+* propagate target_branch from requirements through scheduler to agent prompts ([#401](https://github.com/nikrich/hungry-ghost-hive/issues/401)) ([925dbcd](https://github.com/nikrich/hungry-ghost-hive/commit/925dbcd4fa42cbb96403c9106389afc43a218fac))
+
 ## [0.31.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.30.5...hungry-ghost-hive-v0.31.0) (2026-02-15)
 
 
