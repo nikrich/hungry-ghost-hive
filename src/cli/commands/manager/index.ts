@@ -1032,9 +1032,7 @@ function resolveStaleEscalations(ctx: ManagerCheckContext): void {
         },
       });
     }
-  });
-
-  ctx.db.save();
+  }, () => ctx.db.save());
   console.log(chalk.yellow(`  Auto-cleared ${staleEscalations.length} stale escalation(s)`));
 }
 
@@ -1389,10 +1387,9 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
         message: `Manager assigned PR review: ${nextPR.id}`,
         metadata: { pr_id: nextPR.id, branch: nextPR.branch_name },
       });
-    });
+    }, () => ctx.db.save());
     dispatchCount++;
     verboseLogCtx(ctx, `notifyQAOfQueuedPRs: assigned pr=${nextPR.id} -> ${qa.name}`);
-    ctx.db.save();
 
     const githubLine = nextPR.github_pr_url ? `\n# GitHub: ${nextPR.github_pr_url}` : '';
     await sendToTmuxSession(
@@ -1438,7 +1435,7 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
           message: `Story ${storyId} QA failed: ${pr.review_notes || 'See review comments'}`,
           storyId: storyId,
         });
-      });
+      }, () => ctx.db.save());
 
       // Sync status change to Jira
       await syncStatusForStory(ctx.root, ctx.db.db, storyId, 'qa_failed');
@@ -1471,11 +1468,10 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
     // Developer will create a new PR when they resubmit
     await withTransaction(ctx.db.db, () => {
       updatePullRequest(ctx.db.db, pr.id, { status: 'closed' });
-    });
+    }, () => ctx.db.save());
   }
 
   if (rejectedPRs.length > 0) {
-    ctx.db.save();
     console.log(chalk.yellow(`  Notified ${rejectionNotified} developer(s) of PR rejection(s)`));
   }
 }
@@ -1563,8 +1559,7 @@ async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext): Promi
         metadata: { from_status: 'qa_failed', to_status: 'planned' },
       });
     }
-  });
-  ctx.db.save();
+  }, () => ctx.db.save());
 
   for (const story of recoverableStories) {
     await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'planned');
@@ -1901,9 +1896,7 @@ async function autoProgressDoneStory(
         branch,
       },
     });
-  });
-
-  ctx.db.save();
+  }, () => ctx.db.save());
   await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'pr_submitted');
   await ctx.scheduler.checkMergeQueue();
   ctx.db.save();

@@ -74,8 +74,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
           updatePullRequest(db.db, pr.id, { status: 'queued' });
           claimed = true;
         }
-      });
-      db.save();
+      }, () => db.save());
 
       // If we didn't claim the PR, another manager is already merging it
       if (!claimed) continue;
@@ -180,8 +179,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
               message: `PR #${pr.github_pr_number} is already ${prState.state.toLowerCase()}, skipping merge`,
               metadata: { pr_id: pr.id, github_state: prState.state },
             });
-          });
-          db.save();
+          }, () => db.save());
 
           // Sync status change to Jira (fire and forget, after DB commit)
           if (pr.story_id && prState.state === 'MERGED') {
@@ -243,10 +241,9 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
               metadata: { pr_id: pr.id },
             });
           }
-        });
+        }, () => db.save());
 
         mergedCount++;
-        db.save();
 
         // Post Jira comment for merged event
         if (storyId) {
@@ -268,8 +265,7 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
             message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${mergeErr instanceof Error ? mergeErr.message : 'Unknown error'}`,
             metadata: { pr_id: pr.id },
           });
-        });
-        db.save();
+        }, () => db.save());
       }
     } catch (_error) {
       // Non-fatal - continue with other PRs
