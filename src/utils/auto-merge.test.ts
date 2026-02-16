@@ -6,6 +6,7 @@ import { createAgent, getAgentById, updateAgent } from '../db/queries/agents.js'
 import {
   createPullRequest,
   getApprovedPullRequests,
+  getPullRequestById,
   updatePullRequest,
 } from '../db/queries/pull-requests.js';
 import { createStory, getStoryById, updateStory } from '../db/queries/stories.js';
@@ -263,6 +264,40 @@ describe('auto-merge functionality', () => {
       expect(result).toBe(0);
       // loadConfig should have been called
       expect(mockLoadConfig).toHaveBeenCalledWith('/mock/hive');
+    });
+
+    it('should skip approved PRs marked for manual merge', async () => {
+      const pr = createPullRequest(db, {
+        storyId,
+        teamId,
+        branchName: 'feature/manual-merge',
+        githubPrNumber: 999,
+      });
+      updatePullRequest(db, pr.id, {
+        status: 'approved',
+        reviewNotes: '[manual-merge-required]',
+      });
+
+      mockLoadConfig.mockReturnValue({
+        integrations: {
+          autonomy: {
+            level: 'full',
+          },
+          source_control: { provider: 'github' },
+          project_management: { provider: 'none' },
+        },
+      } as any);
+
+      const dbClient = {
+        db,
+        save: vi.fn(),
+        close: vi.fn(),
+        runMigrations: vi.fn(),
+      };
+
+      const result = await autoMergeApprovedPRs('/mock/root', dbClient);
+      expect(result).toBe(0);
+      expect(getPullRequestById(db, pr.id)?.status).toBe('approved');
     });
   });
 });

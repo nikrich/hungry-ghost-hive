@@ -188,6 +188,13 @@ describe('context-files module', () => {
         slow_poll_interval: 60000,
         stuck_threshold_ms: 120000,
         nudge_cooldown_ms: 300000,
+        max_stuck_nudges_per_story: 1,
+        screen_static_inactivity_threshold_ms: 600000,
+        completion_classifier: {
+          cli_tool: 'codex',
+          model: 'gpt-5.2-codex',
+          timeout_ms: 12000,
+        },
         lock_stale_ms: 120000,
         git_timeout_ms: 30000,
         gh_timeout_ms: 60000,

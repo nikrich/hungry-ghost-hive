@@ -632,15 +632,18 @@ export async function getReadOnlyDatabase(hiveDir: string): Promise<ReadOnlyData
 // Helper function to run a query and get results as objects
 export function queryAll<T>(db: SqlJsDatabase, sql: string, params: unknown[] = []): T[] {
   const stmt = db.prepare(sql);
-  stmt.bind(params);
+  try {
+    stmt.bind(params);
 
-  const results: T[] = [];
-  while (stmt.step()) {
-    const row = stmt.getAsObject();
-    results.push(row as T);
+    const results: T[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      results.push(row as T);
+    }
+    return results;
+  } finally {
+    stmt.free();
   }
-  stmt.free();
-  return results;
 }
 
 // Helper function to run a query and get a single result

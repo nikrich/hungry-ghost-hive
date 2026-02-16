@@ -93,7 +93,7 @@ describe('CLI Runtime Builders', () => {
         '--ask-for-approval',
         'never',
         '--sandbox',
-        'workspace-write',
+        'danger-full-access',
         '--model',
         'gpt-4o-mini',
       ]);
@@ -120,13 +120,13 @@ describe('CLI Runtime Builders', () => {
 
       expect(command).toEqual([
         'codex',
+        'resume',
         '--ask-for-approval',
         'never',
         '--sandbox',
-        'workspace-write',
+        'danger-full-access',
         '--model',
         'gpt-4o-mini',
-        '--resume',
         'session-456',
       ]);
     });
@@ -137,13 +137,13 @@ describe('CLI Runtime Builders', () => {
 
       expect(command).toEqual([
         'codex',
+        'resume',
         '--ask-for-approval',
         'on-request',
         '--sandbox',
         'workspace-write',
         '--model',
         'gpt-4o-mini',
-        '--resume',
         'session-456',
       ]);
     });

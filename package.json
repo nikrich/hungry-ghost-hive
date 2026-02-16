@@ -1,6 +1,6 @@
 {
   "name": "hungry-ghost-hive",
-  "version": "0.30.3",
+  "version": "0.31.0",
   "description": "AI Agent Orchestrator - Manages agile software development teams of AI agents",
   "type": "module",
   "bin": {
@@ -10,7 +10,7 @@
   "scripts": {
     "prepare": "husky install || true && npm run build",
     "postinstall": "node scripts/postinstall.js",
-    "build": "tsc",
+    "build": "tsc && cp -r src/db/migrations dist/db/migrations",
     "prepack": "npm run build",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",

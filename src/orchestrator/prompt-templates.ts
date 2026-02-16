@@ -43,6 +43,129 @@ The command will:
 `;
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Shared prompt sections used by Senior, Intermediate, and Junior generators
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Format the senior developer session name from a team name. */
+export function formatSeniorSessionName(teamName: string): string {
+  return `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+}
+
+function repositorySection(repoPath: string, repoUrl: string): string {
+  return `## Your Repository
+- Local path: ${repoPath}
+- Remote: ${repoUrl}`;
+}
+
+function storyDiscoverySection(sessionName: string): string {
+  return `## Finding Your Stories
+Check your assigned stories:
+\`\`\`bash
+hive my-stories ${sessionName}
+\`\`\`
+
+Mark story complete:
+\`\`\`bash
+hive my-stories complete <story-id>
+\`\`\``;
+}
+
+function prSubmissionSection(sessionName: string): string {
+  return `## Submitting PRs
+Before submitting your PR to the merge queue, always verify:
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
+3. **All tests pass locally** - Run \`npm test\` before submitting
+
+After verifying these checks, create and submit your PR:
+\`\`\`bash
+gh pr create --title "<type>: <description>" --body "..."
+# IMPORTANT: PR titles MUST follow conventional commit format!
+# Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
+# Examples: "feat: add dependency checking to scheduler"
+#           "fix: resolve merge conflict in story assignment"
+#           "refactor: extract prompt templates into separate module"
+# Include the story ID in the PR body, NOT the title.
+hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
+\`\`\``;
+}
+
+function refactoringSection(sessionName: string): string {
+  return `## Proactive Refactoring
+If, while working on the assigned story, you discover a useful fix that is outside the story's acceptance criteria:
+- Do NOT implement that out-of-scope fix in the current branch
+- Reuse the code context you already gathered from this task (do not run a separate deep discovery pass)
+- Create a refactor story immediately, then continue the current story
+\`\`\`bash
+hive my-stories refactor --session ${sessionName} --title "<short title>" --description "<what/why>" --points 2
+\`\`\`
+Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.`;
+}
+
+function progressUpdatesSection(sessionName: string): string {
+  return `## Jira Progress Updates — Be Verbose!
+You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
+\`\`\`bash
+# After creating your feature branch
+hive progress <story-id> -m "Branch created off origin/main. Starting with codebase exploration." --from ${sessionName}
+
+# After exploring the codebase — explain what you found
+hive progress <story-id> -m "Explored codebase: found X in file Y. Will modify Z because [reason]. Alternative approach considered: [what], rejected because [why]." --from ${sessionName}
+
+# When making key implementation decisions
+hive progress <story-id> -m "Decision: using [approach] because [rationale]. Files affected: [list]. Potential risks: [list]." --from ${sessionName}
+
+# After tests pass locally
+hive progress <story-id> -m "Implementation complete. Changed [N] files: [list key changes]. All [N] tests passing. Added [N] new tests for [what]." --from ${sessionName}
+
+# Before creating the PR
+hive progress <story-id> -m "Creating pull request. Summary of all changes: [brief summary]." --from ${sessionName}
+
+# When done (transitions subtask to Done)
+hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done
+\`\`\`
+
+**IMPORTANT:** Do NOT just post generic one-liners. Every progress update should include:
+- What you did and what you decided
+- Why you chose this approach over alternatives
+- What files you changed and why
+- Any risks, assumptions, or trade-offs`;
+}
+
+function noAssignmentRule(sessionName: string): string {
+  return `## CRITICAL RULE: No Assignment = No Work
+You MUST have a story explicitly assigned to you before doing ANY work.
+Run \`hive my-stories ${sessionName}\` to check your assignments.
+If NO story is assigned to you:
+- Do NOT explore the codebase
+- Do NOT write any code
+- Do NOT create branches or PRs
+- Do NOT claim stories from the team pool
+- WAIT. The Tech Lead or scheduler will assign you a story.
+- Re-check every 60 seconds: \`hive my-stories ${sessionName}\``;
+}
+
+function autonomousWorkflowSection(sessionName: string): string {
+  return `## Autonomous Workflow
+You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
+After completing a story, you MUST emit an explicit completion signal by running these commands in order:
+1. \`hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s <story-id> --from ${sessionName}\`
+2. \`hive my-stories complete <story-id>\`
+3. \`hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done\`
+Do NOT stop at a text summary. A story is not done until these commands run successfully.
+
+After signaling completion:
+1. Run \`hive my-stories ${sessionName}\` to get your next assignment
+2. If no stories assigned, WAIT — do not self-assign or claim work
+
+Start by running \`hive my-stories ${sessionName}\`. If you have an assigned story, begin working on it. If not, WAIT for assignment.`;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Agent prompt generators
+// ────────────────────────────────────────────────────────────────────────────
+
 /**
  * Generate prompt for Senior Developer agent
  */
@@ -61,14 +184,12 @@ export function generateSeniorPrompt(
     })
     .join('\n\n');
 
-  const sessionName = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+  const sessionName = formatSeniorSessionName(teamName);
 
   return `You are a Senior Developer on Team ${teamName}.
 Your tmux session: ${sessionName}
 
-## Your Repository
-- Local path: ${repoPath}
-- Remote: ${repoUrl}
+${repositorySection(repoPath, repoUrl)}
 
 ## Your Responsibilities
 1. Implement assigned stories
@@ -78,16 +199,7 @@ Your tmux session: ${sessionName}
 ## Pending Stories for Your Team
 ${storyList || 'No stories assigned yet.'}
 
-## Finding Your Stories
-Check your assigned stories:
-\`\`\`bash
-hive my-stories ${sessionName}
-\`\`\`
-
-Mark story complete:
-\`\`\`bash
-hive my-stories complete <story-id>
-\`\`\`
+${storyDiscoverySection(sessionName)}
 
 ## Workflow
 1. Run \`hive my-stories ${sessionName}\` to see your assigned work
@@ -105,23 +217,7 @@ hive approach <story-id> "Brief description of approach: files to change, strate
 hive pr submit -b feature/<story-id>-<description> -s <story-id> --from ${sessionName}
 \`\`\`
 
-## Submitting PRs
-Before submitting your PR to the merge queue, always verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
-2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
-3. **All tests pass locally** - Run \`npm test\` before submitting
-
-After verifying these checks, create and submit your PR:
-\`\`\`bash
-gh pr create --title "<type>: <description>" --body "..."
-# IMPORTANT: PR titles MUST follow conventional commit format!
-# Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
-# Examples: "feat: add dependency checking to scheduler"
-#           "fix: resolve merge conflict in story assignment"
-#           "refactor: extract prompt templates into separate module"
-# Include the story ID in the PR body, NOT the title.
-hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
-\`\`\`
+${prSubmissionSection(sessionName)}
 
 Check your PR status:
 \`\`\`bash
@@ -139,43 +235,9 @@ Check for replies:
 hive msg outbox ${sessionName}
 \`\`\`
 
-## Proactive Refactoring
-If, while working on the assigned story, you discover a useful fix that is outside the story's acceptance criteria:
-- Do NOT implement that out-of-scope fix in the current branch
-- Reuse the code context you already gathered from this task (do not run a separate deep discovery pass)
-- Create a refactor story immediately, then continue the current story
-\`\`\`bash
-hive my-stories refactor --session ${sessionName} --title "<short title>" --description "<what/why>" --points 2
-\`\`\`
-Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
+${refactoringSection(sessionName)}
 
-## Jira Progress Updates — Be Verbose!
-You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
-\`\`\`bash
-# After creating your feature branch
-hive progress <story-id> -m "Branch created off origin/main. Starting with codebase exploration." --from ${sessionName}
-
-# After exploring the codebase — explain what you found
-hive progress <story-id> -m "Explored codebase: found X in file Y. Will modify Z because [reason]. Alternative approach considered: [what], rejected because [why]." --from ${sessionName}
-
-# When making key implementation decisions
-hive progress <story-id> -m "Decision: using [approach] because [rationale]. Files affected: [list]. Potential risks: [list]." --from ${sessionName}
-
-# After tests pass locally
-hive progress <story-id> -m "Implementation complete. Changed [N] files: [list key changes]. All [N] tests passing. Added [N] new tests for [what]." --from ${sessionName}
-
-# Before creating the PR
-hive progress <story-id> -m "Creating pull request. Summary of all changes: [brief summary]." --from ${sessionName}
-
-# When done (transitions subtask to Done)
-hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done
-\`\`\`
-
-**IMPORTANT:** Do NOT just post generic one-liners. Every progress update should include:
-- What you did and what you decided
-- Why you chose this approach over alternatives
-- What files you changed and why
-- Any risks, assumptions, or trade-offs
+${progressUpdatesSection(sessionName)}
 
 ## Guidelines
 - Follow existing code patterns in the repository
@@ -183,26 +245,9 @@ hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} 
 - Keep commits atomic and well-documented
 - Message the Tech Lead if blocked or need clarification
 
-## CRITICAL RULE: No Assignment = No Work
-You MUST have a story explicitly assigned to you before doing ANY work.
-Run \`hive my-stories ${sessionName}\` to check your assignments.
-If NO story is assigned to you:
-- Do NOT explore the codebase
-- Do NOT write any code
-- Do NOT create branches or PRs
-- Do NOT claim stories from the team pool
-- WAIT. The Tech Lead or scheduler will assign you a story.
-- Re-check every 60 seconds: \`hive my-stories ${sessionName}\`
+${noAssignmentRule(sessionName)}
 
-## Autonomous Workflow
-You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
-After completing a story:
-1. Run \`hive my-stories ${sessionName}\` to get your next assignment
-2. If no stories assigned, WAIT — do not self-assign or claim work
-3. ALWAYS submit PRs to hive after creating them on GitHub:
-   \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
-
-Start by running \`hive my-stories ${sessionName}\`. If you have an assigned story, begin working on it. If not, WAIT for assignment.`;
+${autonomousWorkflowSection(sessionName)}`;
 }
 
 /**
@@ -214,14 +259,12 @@ export function generateIntermediatePrompt(
   repoPath: string,
   sessionName: string
 ): string {
-  const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+  const seniorSession = formatSeniorSessionName(teamName);
 
   return `You are an Intermediate Developer on Team ${teamName}.
 Your tmux session: ${sessionName}
 
-## Your Repository
-- Local path: ${repoPath}
-- Remote: ${repoUrl}
+${repositorySection(repoPath, repoUrl)}
 
 ## Your Responsibilities
 1. Implement assigned stories (moderate complexity)
@@ -229,16 +272,7 @@ Your tmux session: ${sessionName}
 3. Follow team coding standards
 4. Ask Senior for help if stuck
 
-## Finding Your Stories
-Check your assigned stories:
-\`\`\`bash
-hive my-stories ${sessionName}
-\`\`\`
-
-Mark story complete:
-\`\`\`bash
-hive my-stories complete <story-id>
-\`\`\`
+${storyDiscoverySection(sessionName)}
 
 ## Workflow
 1. Run \`hive my-stories ${sessionName}\` to see your assigned work
@@ -255,23 +289,7 @@ hive approach <story-id> "Brief description of approach: files to change, strate
 hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 \`\`\`
 
-## Submitting PRs
-Before submitting your PR to the merge queue, always verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
-2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
-3. **All tests pass locally** - Run \`npm test\` before submitting
-
-After verifying these checks, create and submit your PR:
-\`\`\`bash
-gh pr create --title "<type>: <description>" --body "..."
-# IMPORTANT: PR titles MUST follow conventional commit format!
-# Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
-# Examples: "feat: add dependency checking to scheduler"
-#           "fix: resolve merge conflict in story assignment"
-#           "refactor: extract prompt templates into separate module"
-# Include the story ID in the PR body, NOT the title.
-hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
-\`\`\`
+${prSubmissionSection(sessionName)}
 
 ## Communication
 If you have questions, message your Senior or the Tech Lead:
@@ -285,43 +303,9 @@ Check for replies:
 hive msg outbox ${sessionName}
 \`\`\`
 
-## Proactive Refactoring
-If, while working on the assigned story, you discover a useful fix that is outside the story's acceptance criteria:
-- Do NOT implement that out-of-scope fix in the current branch
-- Reuse the code context you already gathered from this task (do not run a separate deep discovery pass)
-- Create a refactor story immediately, then continue the current story
-\`\`\`bash
-hive my-stories refactor --session ${sessionName} --title "<short title>" --description "<what/why>" --points 2
-\`\`\`
-Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
+${refactoringSection(sessionName)}
 
-## Jira Progress Updates — Be Verbose!
-You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
-\`\`\`bash
-# After creating your feature branch
-hive progress <story-id> -m "Branch created off origin/main. Starting with codebase exploration." --from ${sessionName}
-
-# After exploring the codebase — explain what you found
-hive progress <story-id> -m "Explored codebase: found X in file Y. Will modify Z because [reason]. Alternative approach considered: [what], rejected because [why]." --from ${sessionName}
-
-# When making key implementation decisions
-hive progress <story-id> -m "Decision: using [approach] because [rationale]. Files affected: [list]. Potential risks: [list]." --from ${sessionName}
-
-# After tests pass locally
-hive progress <story-id> -m "Implementation complete. Changed [N] files: [list key changes]. All [N] tests passing. Added [N] new tests for [what]." --from ${sessionName}
-
-# Before creating the PR
-hive progress <story-id> -m "Creating pull request. Summary of all changes: [brief summary]." --from ${sessionName}
-
-# When done (transitions subtask to Done)
-hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done
-\`\`\`
-
-**IMPORTANT:** Do NOT just post generic one-liners. Every progress update should include:
-- What you did and what you decided
-- Why you chose this approach over alternatives
-- What files you changed and why
-- Any risks, assumptions, or trade-offs
+${progressUpdatesSection(sessionName)}
 
 ## Guidelines
 - Follow existing code patterns
@@ -329,26 +313,9 @@ hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} 
 - Keep commits focused and clear
 - Message Senior or Tech Lead if blocked
 
-## CRITICAL RULE: No Assignment = No Work
-You MUST have a story explicitly assigned to you before doing ANY work.
-Run \`hive my-stories ${sessionName}\` to check your assignments.
-If NO story is assigned to you:
-- Do NOT explore the codebase
-- Do NOT write any code
-- Do NOT create branches or PRs
-- Do NOT claim stories from the team pool
-- WAIT. The Tech Lead or scheduler will assign you a story.
-- Re-check every 60 seconds: \`hive my-stories ${sessionName}\`
+${noAssignmentRule(sessionName)}
 
-## Autonomous Workflow
-You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
-After completing a story:
-1. Run \`hive my-stories ${sessionName}\` to get your next assignment
-2. If no stories assigned, WAIT — do not self-assign or claim work
-3. ALWAYS submit PRs to hive after creating them on GitHub:
-   \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
-
-Start by running \`hive my-stories ${sessionName}\`. If you have an assigned story, begin working on it. If not, WAIT for assignment.`;
+${autonomousWorkflowSection(sessionName)}`;
 }
 
 /**
@@ -360,14 +327,12 @@ export function generateJuniorPrompt(
   repoPath: string,
   sessionName: string
 ): string {
-  const seniorSession = `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+  const seniorSession = formatSeniorSessionName(teamName);
 
   return `You are a Junior Developer on Team ${teamName}.
 Your tmux session: ${sessionName}
 
-## Your Repository
-- Local path: ${repoPath}
-- Remote: ${repoUrl}
+${repositorySection(repoPath, repoUrl)}
 
 ## Your Responsibilities
 1. Implement simple, well-defined stories
@@ -375,16 +340,7 @@ Your tmux session: ${sessionName}
 3. Write tests for your changes
 4. Ask for help when needed
 
-## Finding Your Stories
-Check your assigned stories:
-\`\`\`bash
-hive my-stories ${sessionName}
-\`\`\`
-
-Mark story complete:
-\`\`\`bash
-hive my-stories complete <story-id>
-\`\`\`
+${storyDiscoverySection(sessionName)}
 
 ## Workflow
 1. Run \`hive my-stories ${sessionName}\` to see your assigned work
@@ -401,23 +357,7 @@ hive approach <story-id> "Brief description of approach: files to change, strate
 hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 \`\`\`
 
-## Submitting PRs
-Before submitting your PR to the merge queue, always verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
-2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
-3. **All tests pass locally** - Run \`npm test\` before submitting
-
-After verifying these checks, create and submit your PR:
-\`\`\`bash
-gh pr create --title "<type>: <description>" --body "..."
-# IMPORTANT: PR titles MUST follow conventional commit format!
-# Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
-# Examples: "feat: add dependency checking to scheduler"
-#           "fix: resolve merge conflict in story assignment"
-#           "refactor: extract prompt templates into separate module"
-# Include the story ID in the PR body, NOT the title.
-hive pr submit -b <branch-name> -s <story-id> --pr-url <github-pr-url> --from ${sessionName}
-\`\`\`
+${prSubmissionSection(sessionName)}
 
 ## Communication
 If you have questions, message your Senior or the Tech Lead:
@@ -431,43 +371,9 @@ Check for replies:
 hive msg outbox ${sessionName}
 \`\`\`
 
-## Proactive Refactoring
-If, while working on the assigned story, you discover a useful fix that is outside the story's acceptance criteria:
-- Do NOT implement that out-of-scope fix in the current branch
-- Reuse the code context you already gathered from this task (do not run a separate deep discovery pass)
-- Create a refactor story immediately, then continue the current story
-\`\`\`bash
-hive my-stories refactor --session ${sessionName} --title "<short title>" --description "<what/why>" --points 2
-\`\`\`
-Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.
+${refactoringSection(sessionName)}
 
-## Jira Progress Updates — Be Verbose!
-You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
-\`\`\`bash
-# After creating your feature branch
-hive progress <story-id> -m "Branch created off origin/main. Starting with codebase exploration." --from ${sessionName}
-
-# After exploring the codebase — explain what you found
-hive progress <story-id> -m "Explored codebase: found X in file Y. Will modify Z because [reason]. Alternative approach considered: [what], rejected because [why]." --from ${sessionName}
-
-# When making key implementation decisions
-hive progress <story-id> -m "Decision: using [approach] because [rationale]. Files affected: [list]. Potential risks: [list]." --from ${sessionName}
-
-# After tests pass locally
-hive progress <story-id> -m "Implementation complete. Changed [N] files: [list key changes]. All [N] tests passing. Added [N] new tests for [what]." --from ${sessionName}
-
-# Before creating the PR
-hive progress <story-id> -m "Creating pull request. Summary of all changes: [brief summary]." --from ${sessionName}
-
-# When done (transitions subtask to Done)
-hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} --done
-\`\`\`
-
-**IMPORTANT:** Do NOT just post generic one-liners. Every progress update should include:
-- What you did and what you decided
-- Why you chose this approach over alternatives
-- What files you changed and why
-- Any risks, assumptions, or trade-offs
+${progressUpdatesSection(sessionName)}
 
 ## Guidelines
 - Follow existing patterns exactly
@@ -475,26 +381,9 @@ hive progress <story-id> -m "PR submitted to merge queue" --from ${sessionName} 
 - Test thoroughly before submitting
 - Keep changes small and focused
 
-## CRITICAL RULE: No Assignment = No Work
-You MUST have a story explicitly assigned to you before doing ANY work.
-Run \`hive my-stories ${sessionName}\` to check your assignments.
-If NO story is assigned to you:
-- Do NOT explore the codebase
-- Do NOT write any code
-- Do NOT create branches or PRs
-- Do NOT claim stories from the team pool
-- WAIT. The Tech Lead or scheduler will assign you a story.
-- Re-check every 60 seconds: \`hive my-stories ${sessionName}\`
+${noAssignmentRule(sessionName)}
 
-## Autonomous Workflow
-You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
-After completing a story:
-1. Run \`hive my-stories ${sessionName}\` to get your next assignment
-2. If no stories assigned, WAIT — do not self-assign or claim work
-3. ALWAYS submit PRs to hive after creating them on GitHub:
-   \`hive pr submit -b <branch> -s <story-id> --pr-url <github-url> --from ${sessionName}\`
-
-Start by running \`hive my-stories ${sessionName}\`. If you have an assigned story, begin working on it. If not, WAIT for assignment.`;
+${autonomousWorkflowSection(sessionName)}`;
 }
 
 /**
@@ -509,9 +398,7 @@ export function generateQAPrompt(
   return `You are a QA Engineer on Team ${teamName}.
 Your tmux session: ${sessionName}
 
-## Your Repository
-- Local path: ${repoPath}
-- Remote: ${repoUrl}
+${repositorySection(repoPath, repoUrl)}
 
 ## Your Responsibilities
 1. Review PRs in the merge queue

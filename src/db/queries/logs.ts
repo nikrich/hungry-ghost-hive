@@ -73,9 +73,106 @@ export interface CreateLogInput {
   metadata?: Record<string, unknown> | null;
 }
 
+function inferAgentType(
+  agentId: string
+): 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa' {
+  const normalized = agentId.toLowerCase();
+  if (normalized.includes('qa')) return 'qa';
+  if (normalized.includes('senior')) return 'senior';
+  if (normalized.includes('intermediate')) return 'intermediate';
+  if (normalized.includes('junior')) return 'junior';
+  return 'tech_lead';
+}
+
+function getAgentColumnNames(db: Database): Set<string> {
+  const result = db.exec('PRAGMA table_info(agents)');
+  if (result.length === 0) return new Set<string>();
+
+  const columnNames = new Set<string>();
+  for (const row of result[0].values) {
+    // PRAGMA table_info columns: cid, name, type, notnull, dflt_value, pk
+    columnNames.add(String(row[1]));
+  }
+  return columnNames;
+}
+
+function ensureLogAgentExists(db: Database, agentId: string): void {
+  const existing = queryOne<{ id: string }>(db, 'SELECT id FROM agents WHERE id = ?', [agentId]);
+  if (existing?.id) return;
+
+  const columns = getAgentColumnNames(db);
+  const now = new Date().toISOString();
+  const insertColumns: string[] = ['id'];
+  const insertValues: (string | null)[] = [agentId];
+
+  if (columns.has('type')) {
+    insertColumns.push('type');
+    insertValues.push(inferAgentType(agentId));
+  }
+  if (columns.has('status')) {
+    insertColumns.push('status');
+    insertValues.push('terminated');
+  }
+  if (columns.has('created_at')) {
+    insertColumns.push('created_at');
+    insertValues.push(now);
+  }
+  if (columns.has('updated_at')) {
+    insertColumns.push('updated_at');
+    insertValues.push(now);
+  }
+  if (columns.has('last_seen')) {
+    insertColumns.push('last_seen');
+    insertValues.push(now);
+  }
+
+  const placeholders = insertColumns.map(() => '?').join(', ');
+  run(
+    db,
+    `
+    INSERT OR IGNORE INTO agents (${insertColumns.join(', ')})
+    VALUES (${placeholders})
+  `,
+    insertValues
+  );
+}
+
+function resolveLogAgentId(db: Database, rawAgentId: string): string {
+  const direct = queryOne<{ id: string }>(db, 'SELECT id FROM agents WHERE id = ?', [rawAgentId]);
+  if (direct?.id) return direct.id;
+
+  const columns = getAgentColumnNames(db);
+
+  // Many call-sites provide tmux session names (for example: "hive-qa-team-1").
+  // Prefer resolving those back to canonical agent IDs so logs remain linked.
+  if (columns.has('tmux_session')) {
+    const bySession = queryOne<{ id: string }>(
+      db,
+      `SELECT id FROM agents WHERE tmux_session = ?${
+        columns.has('updated_at') ? ' ORDER BY updated_at DESC' : ''
+      } LIMIT 1`,
+      [rawAgentId]
+    );
+    if (bySession?.id) return bySession.id;
+  }
+
+  // Last resort: create a lightweight synthetic agent row for system/session actors
+  // like "manager" or "scheduler" so FK constraints cannot fail logging.
+  ensureLogAgentExists(db, rawAgentId);
+  return rawAgentId;
+}
+
+function resolveLogStoryId(db: Database, storyId?: string | null): string | null {
+  if (!storyId) return null;
+  const story = queryOne<{ id: string }>(db, 'SELECT id FROM stories WHERE id = ?', [storyId]);
+  return story?.id || null;
+}
+
 export function createLog(db: Database, input: CreateLogInput): AgentLogRow {
   const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
   const now = new Date().toISOString();
+  const resolvedAgentId = resolveLogAgentId(db, input.agentId);
+  const resolvedStoryId = resolveLogStoryId(db, input.storyId);
 
   run(
     db,
@@ -84,8 +181,8 @@ export function createLog(db: Database, input: CreateLogInput): AgentLogRow {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
     [
-      input.agentId,
-      input.storyId || null,
+      resolvedAgentId,
+      resolvedStoryId,
       input.eventType,
       input.status || null,
       input.message || null,

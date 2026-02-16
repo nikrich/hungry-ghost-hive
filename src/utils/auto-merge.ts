@@ -13,6 +13,7 @@ import { createLog } from '../db/queries/logs.js';
 import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
+import { isManualMergeRequired } from './manual-merge.js';
 import { getHivePaths } from './paths.js';
 import { ghRepoSlug } from './pr-sync.js';
 
@@ -44,7 +45,9 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
     return 0;
   }
 
-  const approvedPRs = getApprovedPullRequests(db.db);
+  const approvedPRs = getApprovedPullRequests(db.db).filter(
+    pr => !isManualMergeRequired(pr.review_notes)
+  );
   if (approvedPRs.length === 0) return 0;
 
   let mergedCount = 0;

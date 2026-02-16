@@ -3,11 +3,26 @@
 import { describe, expect, it } from 'vitest';
 import type { StoryRow } from '../db/client.js';
 import {
+  formatSeniorSessionName,
   generateIntermediatePrompt,
   generateJuniorPrompt,
   generateQAPrompt,
   generateSeniorPrompt,
 } from './prompt-templates.js';
+
+describe('formatSeniorSessionName', () => {
+  it('should format a simple team name', () => {
+    expect(formatSeniorSessionName('TestTeam')).toBe('hive-senior-testteam');
+  });
+
+  it('should replace non-alphanumeric characters with hyphens', () => {
+    expect(formatSeniorSessionName('Test_Team-123!@#')).toBe('hive-senior-test-team-123---');
+  });
+
+  it('should lowercase the team name', () => {
+    expect(formatSeniorSessionName('MY-TEAM')).toBe('hive-senior-my-team');
+  });
+});
 
 describe('Prompt Templates', () => {
   const teamName = 'TestTeam';
@@ -267,6 +282,8 @@ describe('Prompt Templates', () => {
 
       expect(prompt).toContain('DO NOT ask "Is there anything else?"');
       expect(prompt).toContain('autonomous agent');
+      expect(prompt).toContain('A story is not done until these commands run successfully');
+      expect(prompt).toContain('hive pr submit -b $(git rev-parse --abbrev-ref HEAD)');
     });
 
     it('should include instructions to check for merge conflicts before submission', () => {
