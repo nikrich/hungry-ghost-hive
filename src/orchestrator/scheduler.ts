@@ -134,14 +134,11 @@ export class Scheduler {
 
     try {
       // Create worktree from the specified base branch (30s timeout for git operations)
-      execSync(
-        `git worktree add "${fullWorktreePath}" -b "${branchName}" "origin/${baseBranch}"`,
-        {
-          cwd: fullRepoPath,
-          stdio: 'pipe',
-          timeout: GIT_WORKTREE_TIMEOUT_MS,
-        }
-      );
+      execSync(`git worktree add "${fullWorktreePath}" -b "${branchName}" "origin/${baseBranch}"`, {
+        cwd: fullRepoPath,
+        stdio: 'pipe',
+        timeout: GIT_WORKTREE_TIMEOUT_MS,
+      });
     } catch (err) {
       // If worktree or branch already exists, try to add without creating branch
       try {
