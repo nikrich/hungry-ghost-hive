@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.35.0...hungry-ghost-hive-v0.36.0) (2026-02-16)
+
+
+### Features
+
+* add feature_test agent type with prompt template and spawn logic ([#411](https://github.com/nikrich/hungry-ghost-hive/issues/411)) ([beda316](https://github.com/nikrich/hungry-ghost-hive/commit/beda316c09fcc36dacafe4d03d1588c0d2cd1c27))
+
 ## [0.35.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.34.1...hungry-ghost-hive-v0.35.0) (2026-02-16)
 
 
