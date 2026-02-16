@@ -1,11 +1,12 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { input, select } from '@inquirer/prompts';
+import { confirm, input, select } from '@inquirer/prompts';
 import chalk from 'chalk';
-import { join } from 'path';
+import { existsSync } from 'fs';
+import { join, resolve } from 'path';
 import { startJiraOAuthFlow, storeJiraTokens } from '../../auth/jira-oauth.js';
 import { TokenStore } from '../../auth/token-store.js';
-import type { IntegrationsConfig } from '../../config/schema.js';
+import type { E2ETestsConfig, IntegrationsConfig } from '../../config/schema.js';
 import { bootstrapConnectors } from '../../connectors/bootstrap.js';
 import { registry } from '../../connectors/registry.js';
 import { openBrowser } from '../../utils/open-browser.js';
@@ -18,10 +19,12 @@ export interface InitWizardOptions {
   projectManagement?: string;
   autonomy?: string;
   jiraProject?: string;
+  e2eTestPath?: string;
 }
 
 export interface InitWizardResult {
   integrations: IntegrationsConfig;
+  e2e_tests?: E2ETestsConfig;
 }
 
 export async function runInitWizard(options: InitWizardOptions = {}): Promise<InitWizardResult> {
@@ -83,13 +86,42 @@ export async function runInitWizard(options: InitWizardOptions = {}): Promise<In
     default: 'full',
   });
 
+  // Step 4: E2E testing configuration (optional)
+  const wantsE2E = await confirm({
+    message: 'Configure E2E testing?',
+    default: false,
+  });
+
+  let e2eTestPath: string | undefined;
+  if (wantsE2E) {
+    e2eTestPath = await input({
+      message: 'Path to E2E tests directory',
+      default: './e2e',
+      validate: (value: string) => (value.length > 0 ? true : 'Path is required'),
+    });
+
+    const resolvedPath = resolve(e2eTestPath);
+    if (!existsSync(resolvedPath)) {
+      console.log(chalk.yellow(`  Warning: Directory "${e2eTestPath}" does not exist yet.`));
+    } else {
+      const testingMdPath = join(resolvedPath, 'TESTING.md');
+      if (!existsSync(testingMdPath)) {
+        console.log(
+          chalk.yellow(`  Warning: TESTING.md not found at "${testingMdPath}". ` +
+            'This file is needed to instruct AI agents on running E2E tests.')
+        );
+      }
+    }
+  }
+
   console.log();
 
   return buildResult(
     sourceControl as 'github' | 'bitbucket' | 'gitlab',
     projectManagement as 'none' | 'jira',
     autonomy as 'full' | 'partial',
-    options
+    options,
+    e2eTestPath
   );
 }
 
@@ -98,7 +130,24 @@ async function runNonInteractive(options: InitWizardOptions): Promise<InitWizard
   const projectManagement = validateProjectManagement(options.projectManagement ?? 'none');
   const autonomy = validateAutonomy(options.autonomy ?? 'full');
 
-  return buildResult(sourceControl, projectManagement, autonomy, options);
+  let e2eTestPath: string | undefined;
+  if (options.e2eTestPath) {
+    const resolvedPath = resolve(options.e2eTestPath);
+    if (!existsSync(resolvedPath)) {
+      console.log(chalk.yellow(`  Warning: E2E test directory "${options.e2eTestPath}" does not exist yet.`));
+    } else {
+      const testingMdPath = join(resolvedPath, 'TESTING.md');
+      if (!existsSync(testingMdPath)) {
+        console.log(
+          chalk.yellow(`  Warning: TESTING.md not found at "${testingMdPath}". ` +
+            'This file is needed to instruct AI agents on running E2E tests.')
+        );
+      }
+    }
+    e2eTestPath = options.e2eTestPath;
+  }
+
+  return buildResult(sourceControl, projectManagement, autonomy, options, e2eTestPath);
 }
 
 function validateSourceControl(value: string): string {
@@ -139,7 +188,8 @@ async function buildResult(
   sourceControl: string,
   projectManagement: string,
   autonomy: 'full' | 'partial',
-  options: InitWizardOptions = {}
+  options: InitWizardOptions = {},
+  e2eTestPath?: string
 ): Promise<InitWizardResult> {
   const integrations: IntegrationsConfig = {
     source_control: { provider: sourceControl },
@@ -222,5 +272,9 @@ async function buildResult(
     }
   }
 
-  return { integrations };
+  const result: InitWizardResult = { integrations };
+  if (e2eTestPath) {
+    result.e2e_tests = { path: e2eTestPath };
+  }
+  return result;
 }
