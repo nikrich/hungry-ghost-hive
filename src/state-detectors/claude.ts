@@ -32,7 +32,7 @@ const CLAUDE_STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: AgentState.PROCESSING,
-    patterns: [/Processing|Analyzing|Generating/i, /Please wait/i],
+    patterns: [/\b(?:processing|analyzing|generating)\b/i, /Please wait/i],
     priority: 90,
   },
 

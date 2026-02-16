@@ -4,7 +4,7 @@ import blessed from 'blessed';
 import { appendFileSync, existsSync, renameSync, statSync } from 'fs';
 import { join } from 'path';
 import type { Database } from 'sql.js';
-import { getDatabase, type DatabaseClient } from '../../db/client.js';
+import { getReadOnlyDatabase, type ReadOnlyDatabaseClient } from '../../db/client.js';
 import { getAllRequirements } from '../../db/queries/requirements.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getVersion } from '../../utils/version.js';
@@ -57,7 +57,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   const paths = getHivePaths(root);
   const dbPath = join(paths.hiveDir, 'hive.db');
   debugLog(`Dashboard starting - root: ${root}, hiveDir: ${paths.hiveDir}`);
-  let db: DatabaseClient = await getDatabase(paths.hiveDir);
+  let db: ReadOnlyDatabaseClient = await getReadOnlyDatabase(paths.hiveDir);
   let lastDbMtime = statSync(dbPath).mtimeMs;
   const refreshInterval = options.refreshInterval || 5000;
   const version = getVersion();
@@ -121,7 +121,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
         lastDbMtime = currentMtime;
 
         // Get new database connection first, then close old one
-        const newDb = await getDatabase(paths.hiveDir);
+        const newDb = await getReadOnlyDatabase(paths.hiveDir);
         try {
           db.db.close();
         } catch (_error) {

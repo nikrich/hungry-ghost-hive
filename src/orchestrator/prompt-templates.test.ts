@@ -3,11 +3,26 @@
 import { describe, expect, it } from 'vitest';
 import type { StoryRow } from '../db/client.js';
 import {
+  formatSeniorSessionName,
   generateIntermediatePrompt,
   generateJuniorPrompt,
   generateQAPrompt,
   generateSeniorPrompt,
 } from './prompt-templates.js';
+
+describe('formatSeniorSessionName', () => {
+  it('should format a simple team name', () => {
+    expect(formatSeniorSessionName('TestTeam')).toBe('hive-senior-testteam');
+  });
+
+  it('should replace non-alphanumeric characters with hyphens', () => {
+    expect(formatSeniorSessionName('Test_Team-123!@#')).toBe('hive-senior-test-team-123---');
+  });
+
+  it('should lowercase the team name', () => {
+    expect(formatSeniorSessionName('MY-TEAM')).toBe('hive-senior-my-team');
+  });
+});
 
 describe('Prompt Templates', () => {
   const teamName = 'TestTeam';
@@ -267,6 +282,8 @@ describe('Prompt Templates', () => {
 
       expect(prompt).toContain('DO NOT ask "Is there anything else?"');
       expect(prompt).toContain('autonomous agent');
+      expect(prompt).toContain('A story is not done until these commands run successfully');
+      expect(prompt).toContain('hive pr submit -b $(git rev-parse --abbrev-ref HEAD)');
     });
 
     it('should include instructions to check for merge conflicts before submission', () => {
@@ -402,6 +419,94 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('Code quality');
       expect(prompt).toContain('Functionality');
       expect(prompt).toContain('Story requirements');
+    });
+  });
+
+  describe('Target Branch Propagation', () => {
+    describe('generateSeniorPrompt with custom target branch', () => {
+      it('should include custom target_branch in merge conflict check instructions', () => {
+        const stories: StoryRow[] = [];
+        const targetBranch = 'develop';
+        const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories, targetBranch);
+
+        expect(prompt).toContain(`origin/${targetBranch}`);
+        expect(prompt).not.toContain('origin/main');
+      });
+
+      it('should default to main branch when target_branch not provided', () => {
+        const stories: StoryRow[] = [];
+        const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories);
+
+        expect(prompt).toContain('origin/main');
+      });
+
+      it('should use target_branch for feature branch creation instructions', () => {
+        const stories: StoryRow[] = [];
+        const targetBranch = 'release/v2.0';
+        const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories, targetBranch);
+
+        expect(prompt).toContain(`origin/${targetBranch}`);
+      });
+    });
+
+    describe('generateIntermediatePrompt with custom target branch', () => {
+      it('should include custom target_branch in merge conflict check instructions', () => {
+        const targetBranch = 'staging';
+        const sessionName = 'hive-intermediate-testteam-1';
+        const prompt = generateIntermediatePrompt(
+          teamName,
+          repoUrl,
+          repoPath,
+          sessionName,
+          targetBranch
+        );
+
+        expect(prompt).toContain(`origin/${targetBranch}`);
+        expect(prompt).not.toContain('origin/main');
+      });
+
+      it('should default to main branch when target_branch not provided', () => {
+        const sessionName = 'hive-intermediate-testteam-1';
+        const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName);
+
+        expect(prompt).toContain('origin/main');
+      });
+    });
+
+    describe('generateJuniorPrompt with custom target branch', () => {
+      it('should include custom target_branch in merge conflict check instructions', () => {
+        const targetBranch = 'hotfix/critical';
+        const sessionName = 'hive-junior-testteam-1';
+        const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName, targetBranch);
+
+        expect(prompt).toContain(`origin/${targetBranch}`);
+        expect(prompt).not.toContain('origin/main');
+      });
+
+      it('should default to main branch when target_branch not provided', () => {
+        const sessionName = 'hive-junior-testteam-1';
+        const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName);
+
+        expect(prompt).toContain('origin/main');
+      });
+    });
+
+    describe('generateQAPrompt with custom target branch', () => {
+      it('should include custom target_branch in merge conflict check instructions', () => {
+        const targetBranch = 'production';
+        const sessionName = 'hive-qa-testteam';
+        const prompt = generateQAPrompt(teamName, repoUrl, repoPath, sessionName, targetBranch);
+
+        expect(prompt).toContain(`origin/${targetBranch}`);
+        expect(prompt).not.toContain('origin/main');
+      });
+
+      it('should default to main branch when target_branch not provided', () => {
+        const sessionName = 'hive-qa-testteam';
+        const prompt = generateQAPrompt(teamName, repoUrl, repoPath, sessionName);
+
+        expect(prompt).toContain('origin/main');
+      });
     });
   });
 });

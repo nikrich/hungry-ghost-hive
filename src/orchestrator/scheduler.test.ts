@@ -537,6 +537,57 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(unchangedStory?.[1]).toBe('in_progress');
   });
 
+  it('should recover stale in_progress stories without assigned agents', async () => {
+    const team = createTeam(db, {
+      name: 'Stale Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const staleStory = createStory(db, {
+      teamId: team.id,
+      title: 'Stale In Progress Story',
+      description: 'Lost assignment',
+    });
+    updateStory(db, staleStory.id, {
+      status: 'in_progress',
+      assignedAgentId: null,
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).toContain(staleStory.id);
+
+    const recoveredStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${staleStory.id}'`
+    )[0]?.values[0];
+
+    expect(recoveredStory?.[0]).toBeNull();
+    expect(recoveredStory?.[1]).toBe('planned');
+  });
+
+  it('should not recover planned stories that are unassigned', async () => {
+    const team = createTeam(db, {
+      name: 'Planned Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const plannedStory = createStory(db, {
+      teamId: team.id,
+      title: 'Already Planned',
+      description: 'Should stay planned',
+    });
+    updateStory(db, plannedStory.id, {
+      status: 'planned',
+      assignedAgentId: null,
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).not.toContain(plannedStory.id);
+  });
+
   it('should recover multiple orphaned stories', async () => {
     const team = createTeam(db, {
       name: 'Test Team',
@@ -1626,5 +1677,131 @@ describe('Scheduler checkScaling', () => {
     expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
 
     spawnSeniorSpy.mockRestore();
+  });
+});
+
+describe('Scheduler Target Branch Propagation', () => {
+  it('should retrieve target_branch from requirement when creating story', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a requirement with custom target_branch
+    const requirement = createRequirement(db, {
+      title: 'Feature for Release Branch',
+      description: 'Test feature',
+      targetBranch: 'release/v2.0',
+    });
+
+    // Create a story linked to this requirement
+    const story = createStory(db, {
+      teamId: team.id,
+      requirementId: requirement.id,
+      title: 'Story for Release',
+      description: 'Test story',
+    });
+
+    // Verify story is linked to requirement and team
+    expect(story.requirement_id).toBe(requirement.id);
+    expect(story.team_id).toBe(team.id);
+
+    // Verify we can retrieve the requirement and its target_branch
+    const retrievedReq = db.exec(
+      `SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`
+    )[0]?.values[0];
+    expect(retrievedReq?.[0]).toBe('release/v2.0');
+  });
+
+  it('should use default target_branch (main) when requirement has no custom branch', () => {
+    // Create a requirement without specifying target_branch
+    const requirement = createRequirement(db, {
+      title: 'Feature for Main Branch',
+      description: 'Test feature',
+    });
+
+    // Verify the requirement defaults to main branch
+    const retrievedReq = db.exec(
+      `SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`
+    )[0]?.values[0];
+    expect(retrievedReq?.[0]).toBe('main');
+  });
+
+  it('should handle stories with different target branches from different requirements', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create two requirements with different target branches
+    const req1 = createRequirement(db, {
+      title: 'Main Feature',
+      description: 'Goes to main',
+      targetBranch: 'main',
+    });
+
+    const req2 = createRequirement(db, {
+      title: 'Staging Feature',
+      description: 'Goes to staging',
+      targetBranch: 'staging',
+    });
+
+    // Create stories for each requirement
+    const story1 = createStory(db, {
+      teamId: team.id,
+      requirementId: req1.id,
+      title: 'Story 1',
+      description: 'Test',
+    });
+
+    const story2 = createStory(db, {
+      teamId: team.id,
+      requirementId: req2.id,
+      title: 'Story 2',
+      description: 'Test',
+    });
+
+    // Verify each story can access its requirement's target_branch via JOIN
+    const result = db.exec(
+      `SELECT s.id, r.target_branch
+       FROM stories s
+       LEFT JOIN requirements r ON s.requirement_id = r.id
+       WHERE s.id IN ('${story1.id}', '${story2.id}')
+       ORDER BY s.id`
+    );
+
+    expect(result[0].values).toHaveLength(2);
+    const branches = result[0].values.map(row => row[1]);
+    expect(branches).toContain('main');
+    expect(branches).toContain('staging');
+  });
+
+  it('should handle stories without a linked requirement (null requirement_id)', () => {
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create a story without a requirement
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Standalone Story',
+      description: 'No requirement',
+    });
+
+    expect(story.requirement_id).toBeNull();
+
+    // When joining with requirements, should get null for target_branch
+    const result = db.exec(
+      `SELECT s.id, r.target_branch
+       FROM stories s
+       LEFT JOIN requirements r ON s.requirement_id = r.id
+       WHERE s.id = '${story.id}'`
+    );
+
+    expect(result[0].values[0][1]).toBeNull();
   });
 });

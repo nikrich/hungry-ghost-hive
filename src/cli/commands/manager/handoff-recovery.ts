@@ -17,6 +17,11 @@ import { PROACTIVE_HANDOFF_RETRY_DELAY_MS } from './types.js';
 // In-memory state tracking for planning handoff dedup
 export const planningHandoffState = new Map<string, PlanningHandoffTracking>();
 
+function verboseLog(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string): void {
+  if (!ctx.verbose) return;
+  console.log(chalk.gray(`  [verbose] ${message}`));
+}
+
 function getRequirementKey(requirementId: string | null): string {
   return requirementId || '__unscoped__';
 }
@@ -79,6 +84,7 @@ async function nudgeTechLeadForStalledHandoff(
   const sessionName = techLead?.tmux_session || 'hive-tech-lead';
 
   if (!(await isTmuxSessionRunning(sessionName))) {
+    verboseLog(ctx, `handoff: tech-lead session not running (${sessionName})`);
     return false;
   }
 
@@ -89,6 +95,10 @@ async function nudgeTechLeadForStalledHandoff(
   const cliTool = (techLead?.cli_tool || 'claude') as CLITool;
 
   await nudgeAgent(ctx.root, sessionName, nudgeMessage, undefined, undefined, cliTool);
+  verboseLog(
+    ctx,
+    `handoff: nudged tech-lead session=${sessionName} requirement=${requirementLabel} estimated=${estimatedCount}`
+  );
   ctx.counters.nudged++;
 
   createLog(ctx.db.db, {
@@ -141,6 +151,10 @@ async function runAutoAssignmentAfterHandoff(ctx: ManagerCheckContext): Promise<
   await ctx.scheduler.checkScaling();
   await ctx.scheduler.checkMergeQueue();
   const result = await ctx.scheduler.assignStories();
+  verboseLog(
+    ctx,
+    `handoff: auto-assignment result assigned=${result.assigned} errors=${result.errors.length}`
+  );
   ctx.db.save();
 
   ctx.counters.handoffAutoAssigned += result.assigned;
@@ -169,8 +183,10 @@ async function runAutoAssignmentAfterHandoff(ctx: ManagerCheckContext): Promise<
 
 export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Promise<void> {
   const estimatedStories = getStoriesByStatus(ctx.db.db, 'estimated');
+  verboseLog(ctx, `handoff: estimatedStories=${estimatedStories.length}`);
   if (estimatedStories.length === 0) {
     planningHandoffState.clear();
+    verboseLog(ctx, 'handoff: no estimated stories, cleared handoff tracker');
     return;
   }
 
@@ -193,10 +209,18 @@ export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Pr
 
   for (const [key, group] of groupedStories) {
     activeKeys.add(key);
+    verboseLog(
+      ctx,
+      `handoff: evaluating requirement=${formatRequirementLabel(group.requirementId)} estimated=${group.stories.length}`
+    );
 
     const latestUpdateMs = getLatestStoryUpdateMs(group.stories);
     if (latestUpdateMs === 0 || nowMs - latestUpdateMs < stallThresholdMs) {
       planningHandoffState.delete(key);
+      verboseLog(
+        ctx,
+        `handoff: requirement=${formatRequirementLabel(group.requirementId)} skip=not_stale`
+      );
       continue;
     }
 
@@ -206,6 +230,10 @@ export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Pr
     );
     if (activePipelineCount > 0) {
       planningHandoffState.delete(key);
+      verboseLog(
+        ctx,
+        `handoff: requirement=${formatRequirementLabel(group.requirementId)} skip=active_pipeline count=${activePipelineCount}`
+      );
       continue;
     }
 
@@ -234,6 +262,10 @@ export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Pr
         ctx.config.manager.fast_poll_interval
       );
       if (nowMs - previous.lastNudgeAt < retryDelayMs) {
+        verboseLog(
+          ctx,
+          `handoff: requirement=${formatRequirementLabel(group.requirementId)} cooldown_active`
+        );
         continue;
       }
     }
@@ -254,6 +286,10 @@ export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Pr
           `  Auto-promoted ${promoted} stalled estimated story/ies (${formatRequirementLabel(group.requirementId)})`
         )
       );
+      verboseLog(
+        ctx,
+        `handoff: requirement=${formatRequirementLabel(group.requirementId)} action=auto_promote promoted=${promoted}`
+      );
     }
     planningHandoffState.delete(key);
   }
@@ -265,6 +301,7 @@ export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Pr
   }
 
   if (shouldRunAutoAssignment && promotedTotal > 0) {
+    verboseLog(ctx, `handoff: running auto-assignment after promotedTotal=${promotedTotal}`);
     await runAutoAssignmentAfterHandoff(ctx);
   }
 }

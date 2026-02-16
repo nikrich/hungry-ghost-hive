@@ -10,18 +10,30 @@ import { killTmuxSession, sendToTmuxSession } from '../../../tmux/manager.js';
 import type { ManagerCheckContext } from './types.js';
 import { AGENT_SPINDOWN_DELAY_MS, IDLE_SPINDOWN_DELAY_MS } from './types.js';
 
+function verboseLog(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string): void {
+  if (!ctx.verbose) return;
+  console.log(chalk.gray(`  [verbose] ${message}`));
+}
+
 export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<void> {
   const mergedStoriesWithAgents = queryAll<StoryRow>(
     ctx.db.db,
     `SELECT * FROM stories WHERE status = 'merged' AND assigned_agent_id IS NOT NULL`
   );
+  verboseLog(ctx, `spinDownMergedAgents: mergedStories=${mergedStoriesWithAgents.length}`);
 
   let agentsSpunDown = 0;
   for (const story of mergedStoriesWithAgents) {
     if (!story.assigned_agent_id) continue;
 
     const agent = getAgentById(ctx.db.db, story.assigned_agent_id);
-    if (!agent || agent.status === 'terminated') continue;
+    if (!agent || agent.status === 'terminated') {
+      verboseLog(
+        ctx,
+        `spinDownMergedAgents: story=${story.id} skip=agent_missing_or_terminated status=${agent?.status || 'missing'}`
+      );
+      continue;
+    }
 
     // Safety: Don't kill agents that are working on other stories
     if (agent.current_story_id && agent.current_story_id !== story.id) {
@@ -29,6 +41,10 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
       await withTransaction(ctx.db.db, () => {
         updateStoryAssignment(ctx.db.db, story.id, null);
       });
+      verboseLog(
+        ctx,
+        `spinDownMergedAgents: story=${story.id} cleared assignment; agent=${agent.id} moved_to=${agent.current_story_id}`
+      );
       continue;
     }
 
@@ -43,6 +59,10 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
       await withTransaction(ctx.db.db, () => {
         updateStoryAssignment(ctx.db.db, story.id, null);
       });
+      verboseLog(
+        ctx,
+        `spinDownMergedAgents: story=${story.id} cleared assignment; agent=${agent.id} has_other_active=${otherActiveStories.length}`
+      );
       continue;
     }
 
@@ -74,6 +94,7 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
     });
 
     agentsSpunDown++;
+    verboseLog(ctx, `spinDownMergedAgents: spun_down agent=${agent.id} story=${story.id}`);
   }
 
   // Also find working agents with no current story that have no active stories assigned
@@ -94,7 +115,13 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
       `SELECT * FROM stories WHERE assigned_agent_id = ? AND status NOT IN ('merged', 'draft')`,
       [agent.id]
     );
-    if (activeStories.length > 0) continue;
+    if (activeStories.length > 0) {
+      verboseLog(
+        ctx,
+        `spinDownMergedAgents: orphaned-check skip agent=${agent.id} activeStories=${activeStories.length}`
+      );
+      continue;
+    }
 
     const agentSession = ctx.hiveSessions.find(
       s => s.name === agent.tmux_session || s.name.includes(agent.id)
@@ -116,6 +143,7 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
     });
 
     agentsSpunDown++;
+    verboseLog(ctx, `spinDownMergedAgents: orphaned-check spun_down agent=${agent.id}`);
   }
 
   if (agentsSpunDown > 0) {
@@ -129,13 +157,18 @@ export async function spinDownIdleAgents(ctx: ManagerCheckContext): Promise<void
     ctx.db.db,
     `SELECT * FROM stories WHERE status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')`
   );
+  verboseLog(ctx, `spinDownIdleAgents: activeStories=${activeStories.length}`);
 
-  if (activeStories.length > 0) return;
+  if (activeStories.length > 0) {
+    verboseLog(ctx, 'spinDownIdleAgents: skip pipeline_not_empty');
+    return;
+  }
 
   const workingAgents = queryAll<{ id: string; tmux_session: string | null; type: string }>(
     ctx.db.db,
     `SELECT id, tmux_session, type FROM agents WHERE status = 'working' AND type != 'tech_lead'`
   );
+  verboseLog(ctx, `spinDownIdleAgents: workingAgents=${workingAgents.length}`);
 
   let idleSpunDown = 0;
   for (const agent of workingAgents) {
@@ -158,6 +191,7 @@ export async function spinDownIdleAgents(ctx: ManagerCheckContext): Promise<void
       });
     });
     idleSpunDown++;
+    verboseLog(ctx, `spinDownIdleAgents: spun_down agent=${agent.id}`);
   }
 
   if (idleSpunDown > 0) {

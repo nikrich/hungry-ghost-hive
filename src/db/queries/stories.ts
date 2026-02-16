@@ -406,6 +406,18 @@ export function getStoriesWithOrphanedAssignments(
   );
 }
 
+export function getStaleInProgressStoriesWithoutAssignment(db: Database): Array<{ id: string }> {
+  return queryAll<{ id: string }>(
+    db,
+    `
+    SELECT id
+    FROM stories
+    WHERE status = 'in_progress'
+      AND assigned_agent_id IS NULL
+  `
+  );
+}
+
 /** @deprecated Use getStoryByExternalKey instead */
 export function getStoryByJiraKey(db: Database, jiraIssueKey: string): StoryRow | undefined {
   return queryOne<StoryRow>(

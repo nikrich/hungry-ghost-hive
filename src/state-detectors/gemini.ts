@@ -34,7 +34,7 @@ const GEMINI_STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: AgentState.PROCESSING,
-    patterns: [/processing/i, /computing/i, /working on it/i],
+    patterns: [/\bprocessing\b/i, /\bcomputing\b/i, /working on it/i],
     priority: 90,
   },
 

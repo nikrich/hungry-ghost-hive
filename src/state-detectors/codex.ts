@@ -34,7 +34,7 @@ const CODEX_STATE_INDICATORS: StateIndicator[] = [
   },
   {
     state: AgentState.PROCESSING,
-    patterns: [/processing/i, /loading/i, /working/i],
+    patterns: [/\bprocessing\b/i, /\bloading\b/i, /\bworking\b/i],
     priority: 90,
   },
 

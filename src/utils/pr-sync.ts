@@ -26,6 +26,7 @@ export interface GitHubPR {
   headRefName: string;
   url: string;
   title: string;
+  createdAt: string; // ISO 8601 timestamp from GitHub
 }
 
 export interface SyncedPR {
@@ -85,7 +86,14 @@ export async function fetchOpenGitHubPRs(
   repoDir: string,
   repoSlug?: string | null
 ): Promise<GitHubPR[]> {
-  const args = ['pr', 'list', '--json', 'number,headRefName,url,title', '--state', 'open'];
+  const args = [
+    'pr',
+    'list',
+    '--json',
+    'number,headRefName,url,title,createdAt',
+    '--state',
+    'open',
+  ];
   if (repoSlug) args.push('-R', repoSlug);
   const result = await execa('gh', args, { cwd: repoDir });
   return JSON.parse(result.stdout) as GitHubPR[];
@@ -96,12 +104,18 @@ export async function fetchOpenGitHubPRs(
  *
  * Core logic shared between `hive pr sync` CLI command and the manager daemon.
  *
+ * Filters out old PRs that don't match active stories:
+ * - PRs without story IDs are imported (for manual/hotfix PRs)
+ * - PRs with story IDs are only imported if the story exists and is not merged
+ * - PRs older than maxAgeHours are skipped (age-based filtering)
+ *
  * @param db        - sql.js Database instance
  * @param repoDir   - Absolute path to the git repository
  * @param teamId    - Team ID to associate with created PRs (null for CLI usage)
  * @param existingBranches  - Set of branch names already in the queue
  * @param existingPrNumbers - Set of GitHub PR numbers already in the queue
  * @param repoSlug - Optional 'owner/repo' slug for `-R` flag (needed for forks)
+ * @param maxAgeHours - Optional max age in hours for PRs (default: no limit)
  */
 export async function syncOpenGitHubPRs(
   db: Database,
@@ -109,7 +123,8 @@ export async function syncOpenGitHubPRs(
   teamId: string | null,
   existingBranches: Set<string>,
   existingPrNumbers: Set<number>,
-  repoSlug?: string | null
+  repoSlug?: string | null,
+  maxAgeHours?: number
 ): Promise<SyncGitHubPRsResult> {
   const ghPRs = await fetchOpenGitHubPRs(repoDir, repoSlug);
   const imported: SyncedPR[] = [];
@@ -119,7 +134,57 @@ export async function syncOpenGitHubPRs(
       continue;
     }
 
+    // Age-based filtering: skip PRs older than maxAgeHours
+    if (maxAgeHours !== undefined) {
+      const prCreatedAt = new Date(ghPR.createdAt);
+      const ageHours = (Date.now() - prCreatedAt.getTime()) / (1000 * 60 * 60);
+
+      if (ageHours > maxAgeHours) {
+        createLog(db, {
+          agentId: 'manager',
+          eventType: 'PR_SYNC_SKIPPED',
+          status: 'info',
+          message: `Skipped syncing old PR #${ghPR.number} (${ghPR.headRefName}): created ${ageHours.toFixed(1)}h ago (max: ${maxAgeHours}h)`,
+          metadata: {
+            pr_number: ghPR.number,
+            branch: ghPR.headRefName,
+            age_hours: ageHours,
+            max_age_hours: maxAgeHours,
+            reason: 'too_old',
+          },
+        });
+        continue;
+      }
+    }
+
     const storyId = extractStoryIdFromBranch(ghPR.headRefName);
+
+    // If the PR has a story ID, check if the story is active
+    if (storyId) {
+      // Check if the story exists and is active (not merged)
+      const storyRows = queryAll<{ id: string; status: string }>(
+        db,
+        `SELECT id, status FROM stories WHERE id = ? AND status != 'merged'`,
+        [storyId]
+      );
+
+      // Skip PRs where story doesn't exist or is merged
+      if (storyRows.length === 0) {
+        createLog(db, {
+          agentId: 'manager',
+          eventType: 'PR_SYNC_SKIPPED',
+          status: 'info',
+          message: `Skipped syncing PR #${ghPR.number} (${ghPR.headRefName}): story ${storyId} not found or already merged`,
+          metadata: {
+            pr_number: ghPR.number,
+            branch: ghPR.headRefName,
+            story_id: storyId,
+            reason: 'inactive_story',
+          },
+        });
+        continue;
+      }
+    }
 
     const pr = createPullRequest(db, {
       storyId,
@@ -150,12 +215,14 @@ export async function syncOpenGitHubPRs(
  * Convenience wrapper over syncOpenGitHubPRs for the common case of
  * syncing all teams at once.
  *
+ * @param maxAgeHours - Optional max age in hours for PRs
  * @returns Total number of newly imported PRs.
  */
 export async function syncAllTeamOpenPRs(
   root: string,
   db: Database,
-  saveFn: () => void
+  saveFn: () => void,
+  maxAgeHours?: number
 ): Promise<number> {
   const teams = getAllTeams(db);
   if (teams.length === 0) return 0;
@@ -173,7 +240,8 @@ export async function syncAllTeamOpenPRs(
         team.id,
         existingBranches,
         existingPrNumbers,
-        ghRepoSlug(team.repo_url)
+        ghRepoSlug(team.repo_url),
+        maxAgeHours
       );
       totalSynced += result.synced;
     } catch {
