@@ -215,6 +215,9 @@ describe('context-files module', () => {
         request_timeout_ms: 5000,
         story_similarity_threshold: 0.92,
       },
+      merge_queue: {
+        max_age_hours: 1,
+      },
     };
 
     it('should create a new context file if it does not exist', () => {

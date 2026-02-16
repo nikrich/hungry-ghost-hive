@@ -19,6 +19,8 @@ let db: Database;
 beforeEach(async () => {
   vi.clearAllMocks();
   db = await createTestDatabase();
+  // Create a 'manager' agent for logging (required by foreign key constraint)
+  db.run("INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')");
 });
 
 describe('getExistingPRIdentifiers', () => {
@@ -78,6 +80,9 @@ describe('getExistingPRIdentifiers', () => {
 });
 
 describe('syncOpenGitHubPRs', () => {
+  const recentTimestamp = new Date(Date.now() - 1000 * 60 * 60).toISOString(); // 1 hour ago
+  const oldTimestamp = new Date(Date.now() - 1000 * 60 * 60 * 24 * 8).toISOString(); // 8 days ago
+
   it('should import new PRs from GitHub', async () => {
     mockExeca.mockResolvedValue({
       stdout: JSON.stringify([
@@ -86,6 +91,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/new-one',
           url: 'https://github.com/test/repo/pull/10',
           title: 'New PR',
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -106,12 +112,14 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/existing',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Existing',
+          createdAt: recentTimestamp,
         },
         {
           number: 11,
           headRefName: 'feature/new',
           url: 'https://github.com/test/repo/pull/11',
           title: 'New',
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -131,12 +139,14 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/dup-num',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Dup',
+          createdAt: recentTimestamp,
         },
         {
           number: 11,
           headRefName: 'feature/new',
           url: 'https://github.com/test/repo/pull/11',
           title: 'New',
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -157,6 +167,7 @@ describe('syncOpenGitHubPRs', () => {
             headRefName: 'feature/shared',
             url: 'https://github.com/test/repo/pull/10',
             title: 'Shared PR',
+            createdAt: recentTimestamp,
           },
         ]),
       } as any)
@@ -167,6 +178,7 @@ describe('syncOpenGitHubPRs', () => {
             headRefName: 'feature/shared',
             url: 'https://github.com/test/repo/pull/10',
             title: 'Shared PR',
+            createdAt: recentTimestamp,
           },
         ]),
       } as any);
@@ -200,6 +212,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/existing',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Existing',
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -219,6 +232,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/new',
           url: 'https://github.com/test/repo/pull/10',
           title: 'New',
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -249,6 +263,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'STORY-GOD-001',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Story PR',
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -259,7 +274,7 @@ describe('syncOpenGitHubPRs', () => {
     expect(prs[0].values[0][0]).toBe('STORY-GOD-001');
   });
 
-  it('should set story_id to null for non-matching branch names', async () => {
+  it('should import PRs without story IDs (for manual/hotfix PRs)', async () => {
     mockExeca.mockResolvedValue({
       stdout: JSON.stringify([
         {
@@ -267,13 +282,238 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/some-fix',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Fix',
+          createdAt: recentTimestamp,
+        },
+      ]),
+    } as any);
+
+    const result = await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set());
+
+    expect(result.synced).toBe(1);
+    expect(result.imported).toHaveLength(1);
+
+    // Verify the PR was created with null story_id
+    const prs = db.exec('SELECT story_id FROM pull_requests');
+    expect(prs[0].values[0][0]).toBeNull();
+  });
+
+  it('should skip PRs where story does not exist in database', async () => {
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'STORY-MISSING-001',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'Missing Story',
+          createdAt: recentTimestamp,
+        },
+      ]),
+    } as any);
+
+    const result = await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set());
+
+    expect(result.synced).toBe(0);
+    expect(result.imported).toHaveLength(0);
+  });
+
+  it('should skip PRs where story status is merged', async () => {
+    // Create a merged story
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-MERGED-001', 'Merged Story', 'Test', 'merged')"
+    );
+
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'STORY-MERGED-001',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'Merged Story PR',
+          createdAt: recentTimestamp,
+        },
+      ]),
+    } as any);
+
+    const result = await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set());
+
+    expect(result.synced).toBe(0);
+    expect(result.imported).toHaveLength(0);
+  });
+
+  it('should import PRs with active (non-merged) stories', async () => {
+    // Create an active story
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-ACTIVE-001', 'Active Story', 'Test', 'in_progress')"
+    );
+
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'STORY-ACTIVE-001',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'Active Story PR',
+          createdAt: recentTimestamp,
+        },
+      ]),
+    } as any);
+
+    const result = await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set());
+
+    expect(result.synced).toBe(1);
+    expect(result.imported).toHaveLength(1);
+    expect(result.imported[0].branch).toBe('STORY-ACTIVE-001');
+  });
+
+  it('should filter mixed PRs - import active stories and PRs without story IDs', async () => {
+    // Create stories with different statuses
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-ACTIVE-001', 'Active', 'Test', 'planned')"
+    );
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-MERGED-001', 'Merged', 'Test', 'merged')"
+    );
+
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'STORY-ACTIVE-001',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'Active PR',
+          createdAt: recentTimestamp,
+        },
+        {
+          number: 11,
+          headRefName: 'STORY-MERGED-001',
+          url: 'https://github.com/test/repo/pull/11',
+          title: 'Merged PR',
+          createdAt: recentTimestamp,
+        },
+        {
+          number: 12,
+          headRefName: 'STORY-MISSING-001',
+          url: 'https://github.com/test/repo/pull/12',
+          title: 'Missing PR',
+          createdAt: recentTimestamp,
+        },
+        {
+          number: 13,
+          headRefName: 'feature/no-story',
+          url: 'https://github.com/test/repo/pull/13',
+          title: 'No Story PR',
+          createdAt: recentTimestamp,
+        },
+      ]),
+    } as any);
+
+    const result = await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set());
+
+    expect(result.synced).toBe(2);
+    expect(result.imported).toHaveLength(2);
+    // Active story PR and PR without story ID should be imported
+    const branches = result.imported.map(pr => pr.branch).sort();
+    expect(branches).toEqual(['STORY-ACTIVE-001', 'feature/no-story']);
+  });
+
+  it('should skip PRs older than maxAgeHours', async () => {
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'feature/old-pr',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'Old PR',
+          createdAt: oldTimestamp,
+        },
+        {
+          number: 11,
+          headRefName: 'feature/recent-pr',
+          url: 'https://github.com/test/repo/pull/11',
+          title: 'Recent PR',
+          createdAt: recentTimestamp,
+        },
+      ]),
+    } as any);
+
+    const maxAgeHours = 168; // 7 days
+    const result = await syncOpenGitHubPRs(
+      db,
+      '/repo',
+      null,
+      new Set(),
+      new Set(),
+      null,
+      maxAgeHours
+    );
+
+    expect(result.synced).toBe(1);
+    expect(result.imported).toHaveLength(1);
+    expect(result.imported[0].branch).toBe('feature/recent-pr');
+  });
+
+  it('should import all PRs when maxAgeHours is not specified', async () => {
+    const oldPRTimestamp = new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(); // 30 days ago
+
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'feature/very-old-pr',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'Very Old PR',
+          createdAt: oldPRTimestamp,
+        },
+      ]),
+    } as any);
+
+    // No maxAgeHours parameter - should import all PRs
+    const result = await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set());
+
+    expect(result.synced).toBe(1);
+    expect(result.imported).toHaveLength(1);
+  });
+
+  it('should log PR_SYNC_SKIPPED events for old PRs', async () => {
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'feature/old-pr',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'Old PR',
+          createdAt: oldTimestamp,
+        },
+      ]),
+    } as any);
+
+    const maxAgeHours = 168; // 7 days
+    await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set(), null, maxAgeHours);
+
+    // Check that a log entry was created
+    const logs = db.exec("SELECT * FROM agent_logs WHERE event_type = 'PR_SYNC_SKIPPED'");
+    expect(logs.length).toBeGreaterThan(0);
+    expect(logs[0].values.length).toBeGreaterThan(0);
+  });
+
+  it('should log PR_SYNC_SKIPPED events for inactive stories', async () => {
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'STORY-MISSING-999',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'Missing Story PR',
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
 
     await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set());
 
-    const prs = db.exec('SELECT story_id FROM pull_requests');
-    expect(prs[0].values[0][0]).toBeNull();
+    // Check that a log entry was created
+    const logs = db.exec("SELECT * FROM agent_logs WHERE event_type = 'PR_SYNC_SKIPPED'");
+    expect(logs.length).toBeGreaterThan(0);
+    expect(logs[0].values.length).toBeGreaterThan(0);
   });
 });

@@ -218,6 +218,13 @@ const ManagerConfigSchema = z.object({
   tmux_timeout_ms: z.number().int().positive().default(10000), // 10s for tmux commands
 });
 
+// Merge queue configuration
+const MergeQueueConfigSchema = z.object({
+  // Maximum age in hours for PRs to be synced into the queue
+  // PRs older than this are considered stale and skipped during sync
+  max_age_hours: z.number().positive().default(1), // 1 hour default
+});
+
 // Logging configuration
 const LoggingConfigSchema = z.object({
   // Log level
@@ -294,6 +301,7 @@ export const HiveConfigSchema = z.object({
   qa: QAConfigSchema.default({}),
   agents: AgentsConfigSchema.default({}),
   manager: ManagerConfigSchema.default({}),
+  merge_queue: MergeQueueConfigSchema.default({}),
   logging: LoggingConfigSchema.default({}),
   cluster: ClusterConfigSchema.default({}),
 });
@@ -311,6 +319,7 @@ export type GitHubConfig = z.infer<typeof GitHubConfigSchema>;
 export type QAConfig = z.infer<typeof QAConfigSchema>;
 export type AgentsConfig = z.infer<typeof AgentsConfigSchema>;
 export type ManagerConfig = z.infer<typeof ManagerConfigSchema>;
+export type MergeQueueConfig = z.infer<typeof MergeQueueConfigSchema>;
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
 export type ClusterPeerConfig = z.infer<typeof ClusterPeerSchema>;
 export type ClusterConfig = z.infer<typeof ClusterConfigSchema>;
@@ -474,6 +483,12 @@ manager:
   gh_timeout_ms: 60000
   # Timeout for tmux operations to prevent manager hangs (ms)
   tmux_timeout_ms: 10000
+
+# Merge queue configuration
+merge_queue:
+  # Maximum age in hours for PRs to be synced (default: 1)
+  # PRs older than this are considered stale and skipped
+  max_age_hours: 1
 
 # Logging
 logging:

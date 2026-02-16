@@ -911,7 +911,8 @@ async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
 }
 
 async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
-  const syncedPRs = await syncAllTeamOpenPRs(ctx.root, ctx.db.db, () => ctx.db.save());
+  const maxAgeHours = ctx.config.merge_queue?.max_age_hours;
+  const syncedPRs = await syncAllTeamOpenPRs(ctx.root, ctx.db.db, () => ctx.db.save(), maxAgeHours);
   verboseLogCtx(ctx, `syncOpenPRs: synced=${syncedPRs}`);
   if (syncedPRs > 0) {
     console.log(chalk.yellow(`  Synced ${syncedPRs} GitHub PR(s) into merge queue`));
