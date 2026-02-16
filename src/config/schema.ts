@@ -222,7 +222,7 @@ const ManagerConfigSchema = z.object({
 const MergeQueueConfigSchema = z.object({
   // Maximum age in hours for PRs to be synced into the queue
   // PRs older than this are considered stale and skipped during sync
-  max_age_hours: z.number().positive().default(168), // 7 days default
+  max_age_hours: z.number().positive().default(1), // 1 hour default
 });
 
 // Logging configuration
@@ -486,9 +486,9 @@ manager:
 
 # Merge queue configuration
 merge_queue:
-  # Maximum age in hours for PRs to be synced (default: 168 = 7 days)
+  # Maximum age in hours for PRs to be synced (default: 1)
   # PRs older than this are considered stale and skipped
-  max_age_hours: 168
+  max_age_hours: 1
 
 # Logging
 logging:

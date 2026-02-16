@@ -26,7 +26,7 @@ export interface GitHubPR {
   headRefName: string;
   url: string;
   title: string;
-  updatedAt: string; // ISO 8601 timestamp from GitHub
+  createdAt: string; // ISO 8601 timestamp from GitHub
 }
 
 export interface SyncedPR {
@@ -90,7 +90,7 @@ export async function fetchOpenGitHubPRs(
     'pr',
     'list',
     '--json',
-    'number,headRefName,url,title,updatedAt',
+    'number,headRefName,url,title,createdAt',
     '--state',
     'open',
   ];
@@ -136,15 +136,15 @@ export async function syncOpenGitHubPRs(
 
     // Age-based filtering: skip PRs older than maxAgeHours
     if (maxAgeHours !== undefined) {
-      const prUpdatedAt = new Date(ghPR.updatedAt);
-      const ageHours = (Date.now() - prUpdatedAt.getTime()) / (1000 * 60 * 60);
+      const prCreatedAt = new Date(ghPR.createdAt);
+      const ageHours = (Date.now() - prCreatedAt.getTime()) / (1000 * 60 * 60);
 
       if (ageHours > maxAgeHours) {
         createLog(db, {
           agentId: 'manager',
           eventType: 'PR_SYNC_SKIPPED',
           status: 'info',
-          message: `Skipped syncing old PR #${ghPR.number} (${ghPR.headRefName}): last updated ${ageHours.toFixed(1)}h ago (max: ${maxAgeHours}h)`,
+          message: `Skipped syncing old PR #${ghPR.number} (${ghPR.headRefName}): created ${ageHours.toFixed(1)}h ago (max: ${maxAgeHours}h)`,
           metadata: {
             pr_number: ghPR.number,
             branch: ghPR.headRefName,

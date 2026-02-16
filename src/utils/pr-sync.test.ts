@@ -20,9 +20,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   db = await createTestDatabase();
   // Create a 'manager' agent for logging (required by foreign key constraint)
-  db.run(
-    "INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')"
-  );
+  db.run("INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')");
 });
 
 describe('getExistingPRIdentifiers', () => {
@@ -93,7 +91,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/new-one',
           url: 'https://github.com/test/repo/pull/10',
           title: 'New PR',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -114,14 +112,14 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/existing',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Existing',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
         {
           number: 11,
           headRefName: 'feature/new',
           url: 'https://github.com/test/repo/pull/11',
           title: 'New',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -141,14 +139,14 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/dup-num',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Dup',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
         {
           number: 11,
           headRefName: 'feature/new',
           url: 'https://github.com/test/repo/pull/11',
           title: 'New',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -169,7 +167,7 @@ describe('syncOpenGitHubPRs', () => {
             headRefName: 'feature/shared',
             url: 'https://github.com/test/repo/pull/10',
             title: 'Shared PR',
-            updatedAt: recentTimestamp,
+            createdAt: recentTimestamp,
           },
         ]),
       } as any)
@@ -180,7 +178,7 @@ describe('syncOpenGitHubPRs', () => {
             headRefName: 'feature/shared',
             url: 'https://github.com/test/repo/pull/10',
             title: 'Shared PR',
-            updatedAt: recentTimestamp,
+            createdAt: recentTimestamp,
           },
         ]),
       } as any);
@@ -214,7 +212,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/existing',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Existing',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -234,7 +232,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/new',
           url: 'https://github.com/test/repo/pull/10',
           title: 'New',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -265,7 +263,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'STORY-GOD-001',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Story PR',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -284,7 +282,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/some-fix',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Fix',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -307,7 +305,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'STORY-MISSING-001',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Missing Story',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -331,7 +329,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'STORY-MERGED-001',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Merged Story PR',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -355,7 +353,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'STORY-ACTIVE-001',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Active Story PR',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -383,28 +381,28 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'STORY-ACTIVE-001',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Active PR',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
         {
           number: 11,
           headRefName: 'STORY-MERGED-001',
           url: 'https://github.com/test/repo/pull/11',
           title: 'Merged PR',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
         {
           number: 12,
           headRefName: 'STORY-MISSING-001',
           url: 'https://github.com/test/repo/pull/12',
           title: 'Missing PR',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
         {
           number: 13,
           headRefName: 'feature/no-story',
           url: 'https://github.com/test/repo/pull/13',
           title: 'No Story PR',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
@@ -426,20 +424,28 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/old-pr',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Old PR',
-          updatedAt: oldTimestamp,
+          createdAt: oldTimestamp,
         },
         {
           number: 11,
           headRefName: 'feature/recent-pr',
           url: 'https://github.com/test/repo/pull/11',
           title: 'Recent PR',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);
 
     const maxAgeHours = 168; // 7 days
-    const result = await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set(), null, maxAgeHours);
+    const result = await syncOpenGitHubPRs(
+      db,
+      '/repo',
+      null,
+      new Set(),
+      new Set(),
+      null,
+      maxAgeHours
+    );
 
     expect(result.synced).toBe(1);
     expect(result.imported).toHaveLength(1);
@@ -456,7 +462,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/very-old-pr',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Very Old PR',
-          updatedAt: oldPRTimestamp,
+          createdAt: oldPRTimestamp,
         },
       ]),
     } as any);
@@ -476,7 +482,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'feature/old-pr',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Old PR',
-          updatedAt: oldTimestamp,
+          createdAt: oldTimestamp,
         },
       ]),
     } as any);
@@ -498,7 +504,7 @@ describe('syncOpenGitHubPRs', () => {
           headRefName: 'STORY-MISSING-999',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Missing Story PR',
-          updatedAt: recentTimestamp,
+          createdAt: recentTimestamp,
         },
       ]),
     } as any);

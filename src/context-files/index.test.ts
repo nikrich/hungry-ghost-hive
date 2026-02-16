@@ -216,7 +216,7 @@ describe('context-files module', () => {
         story_similarity_threshold: 0.92,
       },
       merge_queue: {
-        max_age_hours: 168,
+        max_age_hours: 1,
       },
     };
 
