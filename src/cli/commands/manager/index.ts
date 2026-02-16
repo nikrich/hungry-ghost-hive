@@ -13,7 +13,7 @@ import {
   syncFromProvider,
   syncStatusForStory,
 } from '../../../connectors/project-management/operations.js';
-import type { StoryRow } from '../../../db/client.js';
+import type { DatabaseClient, StoryRow } from '../../../db/client.js';
 import { queryAll, withTransaction } from '../../../db/client.js';
 import { acquireLock } from '../../../db/lock.js';
 import {
@@ -696,10 +696,57 @@ async function managerCheck(
   const timestamp = new Date().toLocaleTimeString();
   console.log(chalk.gray(`[${timestamp}] Manager checking...`));
 
-  await withHiveContext(async ({ paths, db }) => {
+  // Persistent state shared across lock-scoped phases.
+  // The db and scheduler fields are ephemeral - only valid within each withHiveContext callback.
+  let paths: ReturnType<typeof getHivePaths> | null = null;
+  const hiveSessions: ManagerCheckContext['hiveSessions'] = [];
+  const counters: ManagerCheckContext['counters'] = {
+    nudged: 0,
+    autoProgressed: 0,
+    messagesForwarded: 0,
+    escalationsCreated: 0,
+    escalationsResolved: 0,
+    queuedPRCount: 0,
+    handoffPromoted: 0,
+    handoffAutoAssigned: 0,
+    jiraSynced: 0,
+    featureTestsSpawned: 0,
+  };
+  const escalatedSessions: ManagerCheckContext['escalatedSessions'] = new Set();
+  const agentsBySessionName: ManagerCheckContext['agentsBySessionName'] = new Map();
+  const messagesToMarkRead: string[] = [];
+
+  // Build a ManagerCheckContext from persistent state with a fresh DB handle.
+  // Must only be called within a withHiveContext callback.
+  function makeCtx(db: DatabaseClient): ManagerCheckContext {
+    return {
+      root,
+      verbose,
+      config: config!,
+      paths: paths!,
+      db,
+      scheduler: new Scheduler(db.db, {
+        scaling: config!.scaling,
+        models: config!.models,
+        qa: config!.qa,
+        rootDir: root,
+        saveFn: () => db.save(),
+        hiveConfig: config!,
+      }),
+      hiveSessions,
+      counters,
+      escalatedSessions,
+      agentsBySessionName,
+      messagesToMarkRead,
+    };
+  }
+
+  // Phase 1: Cluster sync + config initialization
+  const isFollower = await withHiveContext(async ({ paths: p, db }) => {
+    paths = p;
     // Load config if not provided (for backwards compatibility)
     if (!config) {
-      config = loadConfig(paths.hiveDir);
+      config = loadConfig(p.hiveDir);
     }
 
     if (clusterRuntime?.isEnabled()) {
@@ -730,7 +777,7 @@ async function managerCheck(
         );
         db.save();
         verboseLog(verbose, 'Cluster sync: follower mode skip');
-        return;
+        return true;
       }
 
       const leaderStatus = clusterRuntime.getStatus();
@@ -740,102 +787,167 @@ async function managerCheck(
       verboseLog(verbose, 'Cluster sync: leader mode ready');
     }
 
-    const ctx: ManagerCheckContext = {
-      root,
-      verbose,
-      config,
-      paths,
-      db,
-      scheduler: new Scheduler(db.db, {
-        scaling: config.scaling,
-        models: config.models,
-        qa: config.qa,
-        rootDir: root,
-        saveFn: () => db.save(),
-        hiveConfig: config,
-      }),
-      hiveSessions: [],
-      counters: {
-        nudged: 0,
-        autoProgressed: 0,
-        messagesForwarded: 0,
-        escalationsCreated: 0,
-        escalationsResolved: 0,
-        queuedPRCount: 0,
-        handoffPromoted: 0,
-        handoffAutoAssigned: 0,
-        jiraSynced: 0,
-        featureTestsSpawned: 0,
-      },
-      escalatedSessions: new Set(),
-      agentsBySessionName: new Map(),
-      messagesToMarkRead: [],
-    };
-
-    verboseLogCtx(ctx, 'Step: backfill PR numbers');
-    await backfillPRNumbers(ctx);
-    verboseLogCtx(ctx, 'Step: health check');
-    await runHealthCheck(ctx);
-    verboseLogCtx(ctx, 'Step: merge queue check');
-    await checkMergeQueue(ctx);
-    verboseLogCtx(ctx, 'Step: auto-merge approved PRs');
-    await runAutoMerge(ctx);
-    verboseLogCtx(ctx, 'Step: sync merged PRs from GitHub');
-    await syncMergedPRs(ctx);
-    verboseLogCtx(ctx, 'Step: sync open PRs from GitHub');
-    await syncOpenPRs(ctx);
-    verboseLogCtx(ctx, 'Step: close stale PRs');
-    await closeStalePRs(ctx);
-    verboseLogCtx(ctx, 'Step: sync Jira statuses');
-    await syncJiraStatuses(ctx);
-    verboseLogCtx(ctx, 'Step: planning handoff recovery');
-    await handleStalledPlanningHandoff(ctx);
-    verboseLogCtx(ctx, 'Step: restart stale tech lead');
-    await restartStaleTechLead(ctx);
-
-    // Discover active tmux sessions
-    verboseLogCtx(ctx, 'Step: discover hive tmux sessions');
-    const sessions = await getHiveSessions();
-    ctx.hiveSessions = sessions.filter(s => s.name.startsWith('hive-'));
-    verboseLogCtx(ctx, `Discovered ${ctx.hiveSessions.length} hive session(s)`);
-    resolveOrphanedSessionEscalations(ctx);
-
-    verboseLogCtx(ctx, 'Step: prepare session data');
-    prepareSessionData(ctx);
-    verboseLogCtx(ctx, 'Step: resolve stale escalations');
-    resolveStaleEscalations(ctx);
-
-    if (ctx.hiveSessions.length === 0) {
-      console.log(chalk.gray('  No agent sessions found'));
-      return;
-    }
-
-    verboseLogCtx(ctx, 'Step: scan agent sessions');
-    await scanAgentSessions(ctx);
-    verboseLogCtx(ctx, 'Step: mark forwarded messages as read');
-    batchMarkMessagesRead(ctx);
-    verboseLogCtx(ctx, 'Step: notify QA about queued PRs');
-    await notifyQAOfQueuedPRs(ctx);
-    verboseLogCtx(ctx, 'Step: handle rejected PRs');
-    await handleRejectedPRs(ctx);
-    verboseLogCtx(ctx, 'Step: recover unassigned qa_failed stories');
-    await recoverUnassignedQAFailedStories(ctx);
-    verboseLogCtx(ctx, 'Step: nudge qa_failed stories');
-    await nudgeQAFailedStories(ctx);
-    verboseLogCtx(ctx, 'Step: spin down merged agents');
-    await spinDownMergedAgents(ctx);
-    verboseLogCtx(ctx, 'Step: check feature sign-off readiness');
-    await checkFeatureSignOff(ctx);
-    verboseLogCtx(ctx, 'Step: check feature test results');
-    await checkFeatureTestResult(ctx);
-    verboseLogCtx(ctx, 'Step: spin down idle agents');
-    await spinDownIdleAgents(ctx);
-    verboseLogCtx(ctx, 'Step: evaluate stuck stories');
-    await nudgeStuckStories(ctx);
-    verboseLogCtx(ctx, 'Step: notify seniors about unassigned stories');
-    await notifyUnassignedStories(ctx);
-    printSummary(ctx);
+    return false;
   });
+
+  if (isFollower) return;
+
+  // Phase 2: DB maintenance (backfill, health check, merge queue)
+  try {
+    await withHiveContext(async ({ db }) => {
+      const ctx = makeCtx(db);
+      verboseLogCtx(ctx, 'Step: backfill PR numbers');
+      await backfillPRNumbers(ctx);
+      verboseLogCtx(ctx, 'Step: health check');
+      await runHealthCheck(ctx);
+      verboseLogCtx(ctx, 'Step: merge queue check');
+      await checkMergeQueue(ctx);
+    });
+  } catch (error) {
+    verboseLog(
+      verbose,
+      `Phase 2 (DB maintenance) error: ${error instanceof Error ? error.message : error}`
+    );
+  }
+
+  // Phase 3: Auto-merge approved PRs
+  try {
+    await withHiveContext(async ({ db }) => {
+      const ctx = makeCtx(db);
+      verboseLogCtx(ctx, 'Step: auto-merge approved PRs');
+      await runAutoMerge(ctx);
+    });
+  } catch (error) {
+    verboseLog(
+      verbose,
+      `Phase 3 (auto-merge) error: ${error instanceof Error ? error.message : error}`
+    );
+  }
+
+  // Phase 4: GitHub PR sync (merged, open, stale)
+  try {
+    await withHiveContext(async ({ db }) => {
+      const ctx = makeCtx(db);
+      verboseLogCtx(ctx, 'Step: sync merged PRs from GitHub');
+      await syncMergedPRs(ctx);
+      verboseLogCtx(ctx, 'Step: sync open PRs from GitHub');
+      await syncOpenPRs(ctx);
+      verboseLogCtx(ctx, 'Step: close stale PRs');
+      await closeStalePRs(ctx);
+    });
+  } catch (error) {
+    verboseLog(
+      verbose,
+      `Phase 4 (PR sync) error: ${error instanceof Error ? error.message : error}`
+    );
+  }
+
+  // Phase 5: External sync (Jira statuses)
+  try {
+    await withHiveContext(async ({ db }) => {
+      const ctx = makeCtx(db);
+      verboseLogCtx(ctx, 'Step: sync Jira statuses');
+      await syncJiraStatuses(ctx);
+    });
+  } catch (error) {
+    verboseLog(
+      verbose,
+      `Phase 5 (Jira sync) error: ${error instanceof Error ? error.message : error}`
+    );
+  }
+
+  // Phase 6: Recovery (planning handoff, tech lead restart)
+  try {
+    await withHiveContext(async ({ db }) => {
+      const ctx = makeCtx(db);
+      verboseLogCtx(ctx, 'Step: planning handoff recovery');
+      await handleStalledPlanningHandoff(ctx);
+      verboseLogCtx(ctx, 'Step: restart stale tech lead');
+      await restartStaleTechLead(ctx);
+    });
+  } catch (error) {
+    verboseLog(
+      verbose,
+      `Phase 6 (recovery) error: ${error instanceof Error ? error.message : error}`
+    );
+  }
+
+  // Discover active tmux sessions (no DB lock needed)
+  verboseLog(verbose, 'Step: discover hive tmux sessions');
+  const sessions = await getHiveSessions();
+  hiveSessions.push(...sessions.filter(s => s.name.startsWith('hive-')));
+  verboseLog(verbose, `Discovered ${hiveSessions.length} hive session(s)`);
+
+  // Phase 7: Session-related escalation resolution
+  try {
+    await withHiveContext(async ({ db }) => {
+      const ctx = makeCtx(db);
+      resolveOrphanedSessionEscalations(ctx);
+      verboseLogCtx(ctx, 'Step: prepare session data');
+      prepareSessionData(ctx);
+      verboseLogCtx(ctx, 'Step: resolve stale escalations');
+      resolveStaleEscalations(ctx);
+    });
+  } catch (error) {
+    verboseLog(
+      verbose,
+      `Phase 7 (escalations) error: ${error instanceof Error ? error.message : error}`
+    );
+  }
+
+  if (hiveSessions.length === 0) {
+    console.log(chalk.gray('  No agent sessions found'));
+    return;
+  }
+
+  // Phase 8: Agent session scanning
+  try {
+    await withHiveContext(async ({ db }) => {
+      const ctx = makeCtx(db);
+      verboseLogCtx(ctx, 'Step: scan agent sessions');
+      await scanAgentSessions(ctx);
+      verboseLogCtx(ctx, 'Step: mark forwarded messages as read');
+      batchMarkMessagesRead(ctx);
+    });
+  } catch (error) {
+    verboseLog(
+      verbose,
+      `Phase 8 (session scanning) error: ${error instanceof Error ? error.message : error}`
+    );
+  }
+
+  // Phase 9: Queue management, spin-down, stuck stories, summary
+  try {
+    await withHiveContext(async ({ db }) => {
+      const ctx = makeCtx(db);
+      verboseLogCtx(ctx, 'Step: notify QA about queued PRs');
+      await notifyQAOfQueuedPRs(ctx);
+      verboseLogCtx(ctx, 'Step: handle rejected PRs');
+      await handleRejectedPRs(ctx);
+      verboseLogCtx(ctx, 'Step: recover unassigned qa_failed stories');
+      await recoverUnassignedQAFailedStories(ctx);
+      verboseLogCtx(ctx, 'Step: nudge qa_failed stories');
+      await nudgeQAFailedStories(ctx);
+      verboseLogCtx(ctx, 'Step: spin down merged agents');
+      await spinDownMergedAgents(ctx);
+      verboseLogCtx(ctx, 'Step: check feature sign-off readiness');
+      await checkFeatureSignOff(ctx);
+      verboseLogCtx(ctx, 'Step: check feature test results');
+      await checkFeatureTestResult(ctx);
+      verboseLogCtx(ctx, 'Step: spin down idle agents');
+      await spinDownIdleAgents(ctx);
+      verboseLogCtx(ctx, 'Step: evaluate stuck stories');
+      await nudgeStuckStories(ctx);
+      verboseLogCtx(ctx, 'Step: notify seniors about unassigned stories');
+      await notifyUnassignedStories(ctx);
+      printSummary(ctx);
+    });
+  } catch (error) {
+    verboseLog(
+      verbose,
+      `Phase 9 (queue management) error: ${error instanceof Error ? error.message : error}`
+    );
+  }
 }
 
 async function backfillPRNumbers(ctx: ManagerCheckContext): Promise<void> {
