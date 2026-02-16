@@ -12,6 +12,9 @@ import { extractStoryIdFromBranch } from './story-id.js';
 
 const GITHUB_PR_LIST_LIMIT = 20;
 
+/** Default timeout in ms for GitHub CLI operations */
+const GH_CLI_TIMEOUT_MS = 30000;
+
 /**
  * Extract 'owner/repo' slug from a GitHub URL for use with `gh -R`.
  * Handles https://github.com/owner/repo.git and similar variants.
@@ -95,7 +98,7 @@ export async function fetchOpenGitHubPRs(
     'open',
   ];
   if (repoSlug) args.push('-R', repoSlug);
-  const result = await execa('gh', args, { cwd: repoDir });
+  const result = await execa('gh', args, { cwd: repoDir, timeout: GH_CLI_TIMEOUT_MS });
   return JSON.parse(result.stdout) as GitHubPR[];
 }
 
@@ -289,7 +292,7 @@ export async function syncMergedPRsFromGitHub(
         String(GITHUB_PR_LIST_LIMIT),
       ];
       if (slug) args.push('-R', slug);
-      const result = await execa('gh', args, { cwd: repoDir });
+      const result = await execa('gh', args, { cwd: repoDir, timeout: GH_CLI_TIMEOUT_MS });
       const mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }> =
         JSON.parse(result.stdout);
 
@@ -412,7 +415,10 @@ export async function closeStaleGitHubPRs(root: string, db: Database): Promise<n
           // If this PR is not in the queue, it's stale and should be closed
           if (!isInQueue) {
             try {
-              await execa('gh', ['pr', 'close', String(ghPR.number)], { cwd: repoDir });
+              await execa('gh', ['pr', 'close', String(ghPR.number)], {
+                cwd: repoDir,
+                timeout: GH_CLI_TIMEOUT_MS,
+              });
               createLog(db, {
                 agentId: 'manager',
                 storyId,

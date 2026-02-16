@@ -10,7 +10,11 @@ import type { DatabaseClient } from '../db/client.js';
 import { queryOne, withTransaction } from '../db/client.js';
 import { getAgentById, updateAgent } from '../db/queries/agents.js';
 import { createLog } from '../db/queries/logs.js';
-import { getApprovedPullRequests, updatePullRequest } from '../db/queries/pull-requests.js';
+import {
+  getApprovedPullRequests,
+  updatePullRequest,
+  type PullRequestRow,
+} from '../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
 import { isManualMergeRequired } from './manual-merge.js';
@@ -28,14 +32,39 @@ interface GitHubPRState {
 }
 
 /**
- * Auto-merge all approved PRs that are ready to merge
- * Can be called immediately after PR approval or from manager daemon
+ * Callback type for executing a function with the DB lock held.
+ * The lock is acquired before calling fn and released after it returns.
+ * This enables releasing the lock between phases of auto-merge.
+ */
+export type WithLockFn = <T>(fn: (db: DatabaseClient) => Promise<T>) => Promise<T>;
+
+/** Collected info needed to execute GitHub operations without holding the lock */
+interface ClaimedPR {
+  pr: PullRequestRow;
+  repoCwd: string;
+  repoFlag: string;
+  teamId: string | null;
+}
+
+/**
+ * Auto-merge all approved PRs that are ready to merge.
+ * Can be called immediately after PR approval or from manager daemon.
+ *
+ * When `withLock` is provided, the function releases the DB lock during
+ * GitHub API calls (Phase 2) and re-acquires it for DB updates (Phase 3).
+ * This prevents holding the lock for 30-60+ seconds during network operations.
  *
  * @param root - Hive root directory
- * @param db - Database client
+ * @param db - Database client (used directly when withLock is not provided)
+ * @param withLock - Optional lock-acquire function for phased lock management.
+ *   When provided, db updates use withLock; when omitted, uses db directly (legacy behavior).
  * @returns Number of PRs successfully merged
  */
-export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Promise<number> {
+export async function autoMergeApprovedPRs(
+  root: string,
+  db: DatabaseClient,
+  withLock?: WithLockFn
+): Promise<number> {
   // Load config to check autonomy level
   const paths = getHivePaths(root);
   const config = loadConfig(paths.hiveDir);
@@ -45,94 +74,154 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
     return 0;
   }
 
-  const approvedPRs = getApprovedPullRequests(db.db).filter(
-    pr => !isManualMergeRequired(pr.review_notes)
-  );
-  if (approvedPRs.length === 0) return 0;
+  // === Phase 1 (with lock): Read approved PRs and claim them ===
+  const claimedPRs: ClaimedPR[] = [];
 
-  let mergedCount = 0;
+  const claimPhase = async (phaseDb: DatabaseClient) => {
+    const approvedPRs = getApprovedPullRequests(phaseDb.db).filter(
+      pr => !isManualMergeRequired(pr.review_notes)
+    );
 
-  for (const pr of approvedPRs) {
-    // Skip PRs without GitHub PR numbers
-    if (!pr.github_pr_number) continue;
+    for (const pr of approvedPRs) {
+      if (!pr.github_pr_number) continue;
 
-    try {
-      // Atomically claim this PR for merging using optimistic locking
-      // This prevents race conditions when multiple managers run concurrently
       let claimed = false;
       await withTransaction(
-        db.db,
+        phaseDb.db,
         () => {
-          // Re-fetch PR status to ensure it's still 'approved'
           const currentPR = queryOne<{ status: string }>(
-            db.db,
+            phaseDb.db,
             `SELECT status FROM pull_requests WHERE id = ?`,
             [pr.id]
           );
-
           if (currentPR?.status === 'approved') {
-            // Update to 'queued' status (temporary merge-in-progress state)
-            // Only this manager will proceed if status was 'approved'
-            updatePullRequest(db.db, pr.id, { status: 'queued' });
+            updatePullRequest(phaseDb.db, pr.id, { status: 'queued' });
             claimed = true;
           }
         },
-        () => db.save()
+        () => phaseDb.save()
       );
 
-      // If we didn't claim the PR, another manager is already merging it
       if (!claimed) continue;
 
-      // Get team to find repo path and repo slug for gh -R flag
+      // Resolve team/repo info while we have the lock
       let teamId = pr.team_id;
       let repoCwd = root;
       let repoSlug: string | null = null;
 
       if (teamId) {
-        const team = getAllTeams(db.db).find(t => t.id === teamId);
-        if (team?.repo_path) {
-          repoCwd = join(root, team.repo_path);
-        }
-        if (team?.repo_url) {
-          repoSlug = ghRepoSlug(team.repo_url);
-        }
+        const team = getAllTeams(phaseDb.db).find(t => t.id === teamId);
+        if (team?.repo_path) repoCwd = join(root, team.repo_path);
+        if (team?.repo_url) repoSlug = ghRepoSlug(team.repo_url);
       } else if (pr.branch_name) {
-        // Try to find team by matching branch name pattern
-        const teams = getAllTeams(db.db);
+        const teams = getAllTeams(phaseDb.db);
         for (const team of teams) {
           if (team.repo_path) {
             repoCwd = join(root, team.repo_path);
             teamId = team.id;
-            if (team.repo_url) {
-              repoSlug = ghRepoSlug(team.repo_url);
-            }
+            if (team.repo_url) repoSlug = ghRepoSlug(team.repo_url);
             break;
           }
         }
       }
-      const repoFlag = repoSlug ? ` -R ${repoSlug}` : '';
 
-      // Check if PR is still open and mergeable before attempting merge
-      const { execSync } = await import('child_process');
+      claimedPRs.push({
+        pr,
+        repoCwd,
+        repoFlag: repoSlug ? ` -R ${repoSlug}` : '',
+        teamId,
+      });
+    }
+  };
+
+  if (withLock) {
+    await withLock(claimPhase);
+  } else {
+    await claimPhase(db);
+  }
+
+  if (claimedPRs.length === 0) return 0;
+
+  // === Phase 2 (WITHOUT lock): Execute GitHub API calls ===
+  interface MergeResult {
+    claimed: ClaimedPR;
+    outcome:
+      | { type: 'merged' }
+      | { type: 'already_closed'; prState: GitHubPRState }
+      | { type: 'conflicts' }
+      | { type: 'unknown_state' }
+      | { type: 'merge_failed'; error: Error };
+  }
+
+  const results: MergeResult[] = [];
+  const { execSync } = await import('child_process');
+
+  for (const claimed of claimedPRs) {
+    const { pr, repoCwd, repoFlag } = claimed;
+    try {
+      // Check PR state
+      let prState: GitHubPRState;
+      let mergeableStatus: boolean;
       try {
-        // Verify PR state and mergeable status
-        let prState: GitHubPRState;
-        let mergeableStatus: boolean;
-        try {
-          const prViewOutput = execSync(
-            `gh pr view ${pr.github_pr_number} --json state,mergeable${repoFlag}`,
-            {
-              stdio: 'pipe',
-              cwd: repoCwd,
-              encoding: 'utf-8',
-              timeout: PR_STATE_CHECK_TIMEOUT_MS,
-            }
-          );
-          prState = JSON.parse(prViewOutput);
-          mergeableStatus = prState.mergeable === 'MERGEABLE';
-        } catch (_error) {
-          // If we can't determine PR status, skip this PR
-          createLog(db.db, {
+        const prViewOutput = execSync(
+          `gh pr view ${pr.github_pr_number} --json state,mergeable${repoFlag}`,
+          {
+            stdio: 'pipe',
+            cwd: repoCwd,
+            encoding: 'utf-8',
+            timeout: PR_STATE_CHECK_TIMEOUT_MS,
+          }
+        );
+        prState = JSON.parse(prViewOutput);
+        mergeableStatus = prState.mergeable === 'MERGEABLE';
+      } catch {
+        results.push({ claimed, outcome: { type: 'unknown_state' } });
+        continue;
+      }
+
+      if (prState.state !== 'OPEN') {
+        results.push({ claimed, outcome: { type: 'already_closed', prState } });
+        continue;
+      }
+
+      if (!mergeableStatus) {
+        results.push({ claimed, outcome: { type: 'conflicts' } });
+        continue;
+      }
+
+      // Attempt merge
+      try {
+        execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch${repoFlag}`, {
+          stdio: 'pipe',
+          cwd: repoCwd,
+          timeout: PR_MERGE_TIMEOUT_MS,
+        });
+        results.push({ claimed, outcome: { type: 'merged' } });
+      } catch (mergeErr) {
+        results.push({
+          claimed,
+          outcome: {
+            type: 'merge_failed',
+            error: mergeErr instanceof Error ? mergeErr : new Error(String(mergeErr)),
+          },
+        });
+      }
+    } catch {
+      // Non-fatal - skip this PR
+      continue;
+    }
+  }
+
+  // === Phase 3 (with lock): Update DB with results ===
+  let mergedCount = 0;
+
+  const updatePhase = async (phaseDb: DatabaseClient) => {
+    for (const result of results) {
+      const { pr } = result.claimed;
+
+      switch (result.outcome.type) {
+        case 'unknown_state': {
+          createLog(phaseDb.db, {
             agentId: 'manager',
             storyId: pr.story_id || undefined,
             eventType: 'PR_MERGE_SKIPPED',
@@ -140,45 +229,43 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
             message: `Skipped auto-merge of PR ${pr.id} (GitHub PR #${pr.github_pr_number}): Could not determine PR status`,
             metadata: { pr_id: pr.id },
           });
-          continue;
+          break;
         }
 
-        // Check if PR is still open
-        if (prState.state !== 'OPEN') {
-          // PR is not open (closed, merged, or draft), skip merge attempt
+        case 'already_closed': {
+          const prState = result.outcome.prState;
           const newStatus = prState.state === 'MERGED' ? 'merged' : 'closed';
           await withTransaction(
-            db.db,
+            phaseDb.db,
             () => {
-              updatePullRequest(db.db, pr.id, { status: newStatus });
-              // Also update story status to stay in sync with GitHub
+              updatePullRequest(phaseDb.db, pr.id, { status: newStatus });
               if (pr.story_id && prState.state === 'MERGED') {
-                // Clear the assigned agent's currentStoryId so it can be reassigned or spun down
-                const story = getStoryById(db.db, pr.story_id);
+                const story = getStoryById(phaseDb.db, pr.story_id);
                 if (story?.assigned_agent_id) {
-                  const agent = getAgentById(db.db, story.assigned_agent_id);
+                  const agent = getAgentById(phaseDb.db, story.assigned_agent_id);
                   if (agent && agent.current_story_id === pr.story_id) {
-                    updateAgent(db.db, agent.id, { currentStoryId: null, status: 'idle' });
+                    updateAgent(phaseDb.db, agent.id, { currentStoryId: null, status: 'idle' });
                   }
                 }
-
-                updateStory(db.db, pr.story_id, { status: 'merged', assignedAgentId: null });
-                createLog(db.db, {
+                updateStory(phaseDb.db, pr.story_id, { status: 'merged', assignedAgentId: null });
+                createLog(phaseDb.db, {
                   agentId: 'manager',
                   storyId: pr.story_id,
                   eventType: 'STORY_MERGED',
                   message: `Story merged (PR #${pr.github_pr_number} was already merged on GitHub)`,
                   metadata: { pr_id: pr.id },
                 });
-
-                // Post Jira comment for merged event
-                postLifecycleComment(db.db, paths.hiveDir, config, pr.story_id, 'merged').catch(
-                  () => {
-                    /* non-fatal */
-                  }
-                );
+                postLifecycleComment(
+                  phaseDb.db,
+                  paths.hiveDir,
+                  config,
+                  pr.story_id,
+                  'merged'
+                ).catch(() => {
+                  /* non-fatal */
+                });
               }
-              createLog(db.db, {
+              createLog(phaseDb.db, {
                 agentId: 'manager',
                 storyId: pr.story_id || undefined,
                 eventType: 'PR_MERGE_SKIPPED',
@@ -186,20 +273,17 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
                 metadata: { pr_id: pr.id, github_state: prState.state },
               });
             },
-            () => db.save()
+            () => phaseDb.save()
           );
 
-          // Sync status change to Jira (fire and forget, after DB commit)
           if (pr.story_id && prState.state === 'MERGED') {
-            syncStatusForStory(root, db.db, pr.story_id, 'merged');
+            syncStatusForStory(root, phaseDb.db, pr.story_id, 'merged');
           }
-          continue;
+          break;
         }
 
-        // Check if PR has merge conflicts
-        if (!mergeableStatus) {
-          // PR has conflicts - skip merge
-          createLog(db.db, {
+        case 'conflicts': {
+          createLog(phaseDb.db, {
             agentId: 'manager',
             storyId: pr.story_id || undefined,
             eventType: 'PR_MERGE_SKIPPED',
@@ -207,86 +291,79 @@ export async function autoMergeApprovedPRs(root: string, db: DatabaseClient): Pr
             message: `Skipped auto-merge of PR ${pr.id} (GitHub PR #${pr.github_pr_number}): PR has merge conflicts`,
             metadata: { pr_id: pr.id },
           });
-          continue;
+          break;
         }
 
-        // Use --auto flag to enable GitHub's auto-merge feature (idempotent if already merged)
-        // Add timeout to prevent blocking the manager daemon (60s for GitHub API operations)
-        execSync(`gh pr merge ${pr.github_pr_number} --auto --squash --delete-branch${repoFlag}`, {
-          stdio: 'pipe',
-          cwd: repoCwd,
-          timeout: PR_MERGE_TIMEOUT_MS,
-        });
-
-        // Update PR and story status, create logs (atomic transaction)
-        const storyId = pr.story_id;
-        await withTransaction(
-          db.db,
-          () => {
-            updatePullRequest(db.db, pr.id, { status: 'merged' });
-
-            if (storyId) {
-              updateStory(db.db, storyId, { status: 'merged' });
-
-              // Clear the assigned agent's currentStoryId so it can be reassigned or spun down
-              const story = getStoryById(db.db, storyId);
-              if (story?.assigned_agent_id) {
-                const agent = getAgentById(db.db, story.assigned_agent_id);
-                if (agent && agent.current_story_id === storyId) {
-                  updateAgent(db.db, agent.id, { currentStoryId: null, status: 'idle' });
+        case 'merged': {
+          const storyId = pr.story_id;
+          await withTransaction(
+            phaseDb.db,
+            () => {
+              updatePullRequest(phaseDb.db, pr.id, { status: 'merged' });
+              if (storyId) {
+                updateStory(phaseDb.db, storyId, { status: 'merged' });
+                const story = getStoryById(phaseDb.db, storyId);
+                if (story?.assigned_agent_id) {
+                  const agent = getAgentById(phaseDb.db, story.assigned_agent_id);
+                  if (agent && agent.current_story_id === storyId) {
+                    updateAgent(phaseDb.db, agent.id, { currentStoryId: null, status: 'idle' });
+                  }
                 }
+                createLog(phaseDb.db, {
+                  agentId: 'manager',
+                  storyId,
+                  eventType: 'STORY_MERGED',
+                  message: `Story auto-merged from GitHub PR #${pr.github_pr_number}`,
+                });
+              } else {
+                createLog(phaseDb.db, {
+                  agentId: 'manager',
+                  eventType: 'PR_MERGED',
+                  message: `PR ${pr.id} auto-merged (GitHub PR #${pr.github_pr_number})`,
+                  metadata: { pr_id: pr.id },
+                });
               }
+            },
+            () => phaseDb.save()
+          );
 
-              createLog(db.db, {
+          mergedCount++;
+
+          if (storyId) {
+            postLifecycleComment(phaseDb.db, paths.hiveDir, config, storyId, 'merged').catch(() => {
+              /* non-fatal */
+            });
+            syncStatusForStory(root, phaseDb.db, storyId, 'merged');
+          }
+          break;
+        }
+
+        case 'merge_failed': {
+          await withTransaction(
+            phaseDb.db,
+            () => {
+              updatePullRequest(phaseDb.db, pr.id, { status: 'approved' });
+              createLog(phaseDb.db, {
                 agentId: 'manager',
-                storyId: storyId,
-                eventType: 'STORY_MERGED',
-                message: `Story auto-merged from GitHub PR #${pr.github_pr_number}`,
-              });
-            } else {
-              createLog(db.db, {
-                agentId: 'manager',
-                eventType: 'PR_MERGED',
-                message: `PR ${pr.id} auto-merged (GitHub PR #${pr.github_pr_number})`,
+                storyId: pr.story_id || undefined,
+                eventType: 'PR_MERGE_FAILED',
+                status: 'error',
+                message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${result.outcome.type === 'merge_failed' ? result.outcome.error.message : 'Unknown error'}`,
                 metadata: { pr_id: pr.id },
               });
-            }
-          },
-          () => db.save()
-        );
-
-        mergedCount++;
-
-        // Post Jira comment for merged event
-        if (storyId) {
-          postLifecycleComment(db.db, paths.hiveDir, config, storyId, 'merged').catch(() => {
-            /* non-fatal */
-          });
-          // Sync status change to Jira (fire and forget, after DB commit)
-          syncStatusForStory(root, db.db, storyId, 'merged');
+            },
+            () => phaseDb.save()
+          );
+          break;
         }
-      } catch (mergeErr) {
-        // Merge failed - revert PR status back to approved for retry (atomic transaction)
-        await withTransaction(
-          db.db,
-          () => {
-            updatePullRequest(db.db, pr.id, { status: 'approved' });
-            createLog(db.db, {
-              agentId: 'manager',
-              storyId: pr.story_id || undefined,
-              eventType: 'PR_MERGE_FAILED',
-              status: 'error',
-              message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${mergeErr instanceof Error ? mergeErr.message : 'Unknown error'}`,
-              metadata: { pr_id: pr.id },
-            });
-          },
-          () => db.save()
-        );
       }
-    } catch (_error) {
-      // Non-fatal - continue with other PRs
-      continue;
     }
+  };
+
+  if (withLock) {
+    await withLock(updatePhase);
+  } else {
+    await updatePhase(db);
   }
 
   return mergedCount;
