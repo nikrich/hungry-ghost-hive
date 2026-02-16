@@ -6,10 +6,7 @@ import { appendFileSync } from 'fs';
 import type { Database } from 'sql.js';
 import { loadConfig } from '../../../config/loader.js';
 import type { ModelsConfig } from '../../../config/schema.js';
-import {
-  getActiveAgents,
-  type AgentRow,
-} from '../../../db/queries/agents.js';
+import { getActiveAgents, type AgentRow } from '../../../db/queries/agents.js';
 import { getTeamById } from '../../../db/queries/teams.js';
 import { getHiveSessions } from '../../../tmux/manager.js';
 import { findHiveRoot, getHivePaths } from '../../../utils/paths.js';
