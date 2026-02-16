@@ -102,9 +102,7 @@ describe('withHiveContext', () => {
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('[TELEMETRY] DB lock held for 95.00s')
     );
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('exceeds 90s warning threshold')
-    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('exceeds 90s warning threshold'));
 
     warnSpy.mockRestore();
     logSpy.mockRestore();
@@ -129,9 +127,7 @@ describe('withHiveContext', () => {
     expect(logSpy).toHaveBeenCalledWith(
       expect.stringContaining('[TELEMETRY] DB lock held for 70.00s')
     );
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('exceeds 60s info threshold')
-    );
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('exceeds 60s info threshold'));
     expect(warnSpy).not.toHaveBeenCalled();
 
     warnSpy.mockRestore();
