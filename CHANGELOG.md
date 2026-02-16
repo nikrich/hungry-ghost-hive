@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.38.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.37.0...hungry-ghost-hive-v0.38.0) (2026-02-16)
+
+
+### Features
+
+* add feature test result handling and feature branch merge ([#417](https://github.com/nikrich/hungry-ghost-hive/issues/417)) ([7b16d82](https://github.com/nikrich/hungry-ghost-hive/commit/7b16d82d0c95e5d29bc0a91bf330c9d007a15c1e))
+* add tech lead periodic graceful restart for context freshness ([#416](https://github.com/nikrich/hungry-ghost-hive/issues/416)) ([ed57eef](https://github.com/nikrich/hungry-ghost-hive/commit/ed57eef024552320c0dacdd17d8ae23fbf8b37d2))
+
 ## [0.37.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.36.0...hungry-ghost-hive-v0.37.0) (2026-02-16)
 
 
