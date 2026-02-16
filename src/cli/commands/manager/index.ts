@@ -71,6 +71,7 @@ import {
 } from './agent-monitoring.js';
 import { assessCompletionFromOutput } from './done-intelligence.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
+import { checkFeatureSignOff } from './feature-sign-off.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
 import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
 import { findSessionForAgent } from './session-resolution.js';
@@ -755,6 +756,7 @@ async function managerCheck(
         handoffPromoted: 0,
         handoffAutoAssigned: 0,
         jiraSynced: 0,
+        featureTestsSpawned: 0,
       },
       escalatedSessions: new Set(),
       agentsBySessionName: new Map(),
@@ -811,6 +813,8 @@ async function managerCheck(
     await nudgeQAFailedStories(ctx);
     verboseLogCtx(ctx, 'Step: spin down merged agents');
     await spinDownMergedAgents(ctx);
+    verboseLogCtx(ctx, 'Step: check feature sign-off readiness');
+    await checkFeatureSignOff(ctx);
     verboseLogCtx(ctx, 'Step: spin down idle agents');
     await spinDownIdleAgents(ctx);
     verboseLogCtx(ctx, 'Step: evaluate stuck stories');
@@ -1989,6 +1993,7 @@ function printSummary(ctx: ManagerCheckContext): void {
     handoffPromoted,
     handoffAutoAssigned,
     jiraSynced,
+    featureTestsSpawned,
   } = ctx.counters;
   const summary = [];
 
@@ -2001,6 +2006,7 @@ function printSummary(ctx: ManagerCheckContext): void {
   if (handoffPromoted > 0) summary.push(`${handoffPromoted} auto-promoted from estimated`);
   if (handoffAutoAssigned > 0) summary.push(`${handoffAutoAssigned} auto-assigned after recovery`);
   if (jiraSynced > 0) summary.push(`${jiraSynced} synced from Jira`);
+  if (featureTestsSpawned > 0) summary.push(`${featureTestsSpawned} feature test(s) spawned`);
 
   if (summary.length > 0) {
     console.log(chalk.yellow(`  ${summary.join(', ')}`));

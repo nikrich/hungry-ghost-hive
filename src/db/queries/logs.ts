@@ -65,7 +65,9 @@ export type EventType =
   | 'JIRA_ASSIGNMENT_REPAIR_FAILED'
   | 'APPROACH_POSTED'
   | 'FEATURE_BRANCH_CREATED'
-  | 'FEATURE_BRANCH_FAILED';
+  | 'FEATURE_BRANCH_FAILED'
+  | 'FEATURE_TEST_SPAWNED'
+  | 'FEATURE_SIGN_OFF_TRIGGERED';
 
 export interface CreateLogInput {
   agentId: string;
