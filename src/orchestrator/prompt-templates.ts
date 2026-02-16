@@ -71,16 +71,16 @@ hive my-stories complete <story-id>
 \`\`\``;
 }
 
-function prSubmissionSection(sessionName: string): string {
+function prSubmissionSection(sessionName: string, targetBranch: string): string {
   return `## Submitting PRs
 Before submitting your PR to the merge queue, always verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/${targetBranch}\`
 2. **CI checks are passing** - Wait for GitHub Actions to complete and show green checkmarks
 3. **All tests pass locally** - Run \`npm test\` before submitting
 
 After verifying these checks, create and submit your PR:
 \`\`\`bash
-gh pr create --title "<type>: <description>" --body "..."
+gh pr create --title "<type>: <description>" --body "..." --base ${targetBranch}
 # IMPORTANT: PR titles MUST follow conventional commit format!
 # Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
 # Examples: "feat: add dependency checking to scheduler"
@@ -103,12 +103,12 @@ hive my-stories refactor --session ${sessionName} --title "<short title>" --desc
 Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.`;
 }
 
-function progressUpdatesSection(sessionName: string): string {
+function progressUpdatesSection(sessionName: string, targetBranch: string): string {
   return `## Jira Progress Updates — Be Verbose!
 You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
 \`\`\`bash
 # After creating your feature branch
-hive progress <story-id> -m "Branch created off origin/main. Starting with codebase exploration." --from ${sessionName}
+hive progress <story-id> -m "Branch created off origin/${targetBranch}. Starting with codebase exploration." --from ${sessionName}
 
 # After exploring the codebase — explain what you found
 hive progress <story-id> -m "Explored codebase: found X in file Y. Will modify Z because [reason]. Alternative approach considered: [what], rejected because [why]." --from ${sessionName}
@@ -173,7 +173,8 @@ export function generateSeniorPrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  stories: StoryRow[]
+  stories: StoryRow[],
+  targetBranch: string = 'main'
 ): string {
   const storyList = stories
     .map(s => {
@@ -217,7 +218,7 @@ hive approach <story-id> "Brief description of approach: files to change, strate
 hive pr submit -b feature/<story-id>-<description> -s <story-id> --from ${sessionName}
 \`\`\`
 
-${prSubmissionSection(sessionName)}
+${prSubmissionSection(sessionName, targetBranch)}
 
 Check your PR status:
 \`\`\`bash
@@ -237,7 +238,7 @@ hive msg outbox ${sessionName}
 
 ${refactoringSection(sessionName)}
 
-${progressUpdatesSection(sessionName)}
+${progressUpdatesSection(sessionName, targetBranch)}
 
 ## Guidelines
 - Follow existing code patterns in the repository
@@ -257,7 +258,8 @@ export function generateIntermediatePrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  sessionName: string
+  sessionName: string,
+  targetBranch: string = 'main'
 ): string {
   const seniorSession = formatSeniorSessionName(teamName);
 
@@ -289,7 +291,7 @@ hive approach <story-id> "Brief description of approach: files to change, strate
 hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 \`\`\`
 
-${prSubmissionSection(sessionName)}
+${prSubmissionSection(sessionName, targetBranch)}
 
 ## Communication
 If you have questions, message your Senior or the Tech Lead:
@@ -305,7 +307,7 @@ hive msg outbox ${sessionName}
 
 ${refactoringSection(sessionName)}
 
-${progressUpdatesSection(sessionName)}
+${progressUpdatesSection(sessionName, targetBranch)}
 
 ## Guidelines
 - Follow existing code patterns
@@ -325,7 +327,8 @@ export function generateJuniorPrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  sessionName: string
+  sessionName: string,
+  targetBranch: string = 'main'
 ): string {
   const seniorSession = formatSeniorSessionName(teamName);
 
@@ -357,7 +360,7 @@ hive approach <story-id> "Brief description of approach: files to change, strate
 hive pr submit -b <branch-name> -s <story-id> --from ${sessionName}
 \`\`\`
 
-${prSubmissionSection(sessionName)}
+${prSubmissionSection(sessionName, targetBranch)}
 
 ## Communication
 If you have questions, message your Senior or the Tech Lead:
@@ -373,7 +376,7 @@ hive msg outbox ${sessionName}
 
 ${refactoringSection(sessionName)}
 
-${progressUpdatesSection(sessionName)}
+${progressUpdatesSection(sessionName, targetBranch)}
 
 ## Guidelines
 - Follow existing patterns exactly
@@ -393,7 +396,8 @@ export function generateQAPrompt(
   teamName: string,
   repoUrl: string,
   repoPath: string,
-  sessionName: string
+  sessionName: string,
+  targetBranch: string = 'main'
 ): string {
   return `You are a QA Engineer on Team ${teamName}.
 Your tmux session: ${sessionName}
@@ -446,7 +450,7 @@ hive msg send <developer-session> "Your PR was rejected: <reason>" --from ${sess
 
 ## Review Checklist
 For each PR, verify:
-1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/main\`
+1. **No merge conflicts** - Check with \`git fetch && git merge --no-commit origin/${targetBranch}\`
 2. **Tests pass** - Run the project's test suite
 3. **Code quality** - Check for code standards, no obvious bugs
 4. **Functionality** - Test that the changes work as expected
@@ -467,7 +471,7 @@ hive msg outbox ${sessionName}
 - Review PRs in queue order (first in, first out)
 - Be thorough but efficient
 - Provide clear feedback when rejecting
-- Ensure main branch stays stable
+- Ensure ${targetBranch} branch stays stable
 
 Start by running \`hive pr queue\` to see PRs waiting for review.`;
 }
