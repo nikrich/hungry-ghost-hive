@@ -48,6 +48,10 @@ import * as logger from '../utils/logger.js';
 import { selectAgentWithLeastWorkload } from './agent-selector.js';
 import { getCapacityPoints, selectStoriesForCapacity } from './capacity-planner.js';
 import { areDependenciesSatisfied, topologicalSort } from './dependency-resolver.js';
+import {
+  createRequirementFeatureBranch,
+  getRequirementsNeedingFeatureBranch,
+} from './feature-branch.js';
 import { detectAndRecoverOrphanedStories } from './orphan-recovery.js';
 import {
   generateIntermediatePrompt,
@@ -199,6 +203,11 @@ export class Scheduler {
       errors.push('Circular dependency detected in planned stories');
       return { assigned, errors, preventedDuplicates };
     }
+
+    // Before assigning stories, create feature branches for requirements
+    // that have e2e_tests configured. This ensures the target_branch is set
+    // correctly before agents are spawned and worktrees are created.
+    await this.createFeatureBranchesForPlannedStories(sortedStories, errors);
 
     // Group stories by team
     const storiesByTeam = new Map<string, StoryRow[]>();
@@ -1023,5 +1032,45 @@ export class Scheduler {
     `,
       [teamId]
     );
+  }
+
+  /**
+   * Create feature branches for requirements that have e2e_tests configured.
+   * This is called before story assignment to ensure feature branches exist
+   * and target_branch is set correctly for agent worktree creation.
+   *
+   * For each unique requirement referenced by planned stories:
+   * - If e2e_tests is configured and no feature branch exists yet
+   * - Create feature/REQ-xxx branch from main
+   * - Update requirement target_branch and feature_branch
+   * - Transition requirement to in_progress
+   */
+  private async createFeatureBranchesForPlannedStories(
+    stories: StoryRow[],
+    errors: string[]
+  ): Promise<void> {
+    const storyIds = stories.map(s => s.id);
+    const requirementIds = getRequirementsNeedingFeatureBranch(
+      this.db,
+      storyIds,
+      this.config.hiveConfig
+    );
+
+    if (requirementIds.length === 0) return;
+
+    // Find the repo path from the first team that has stories
+    // (all stories for a requirement typically belong to the same repo)
+    const teams = getAllTeams(this.db);
+    const repoPath = teams.length > 0 ? `${this.config.rootDir}/${teams[0].repo_path}` : null;
+
+    if (!repoPath) return;
+
+    for (const reqId of requirementIds) {
+      const branch = await createRequirementFeatureBranch(this.db, repoPath, reqId, this.saveFn);
+
+      if (!branch) {
+        errors.push(`Failed to create feature branch for requirement ${reqId}`);
+      }
+    }
   }
 }
