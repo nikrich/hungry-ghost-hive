@@ -96,6 +96,10 @@ export async function fetchOpenGitHubPRs(
  *
  * Core logic shared between `hive pr sync` CLI command and the manager daemon.
  *
+ * Filters out old PRs that don't match active stories:
+ * - PRs without story IDs are imported (for manual/hotfix PRs)
+ * - PRs with story IDs are only imported if the story exists and is not merged
+ *
  * @param db        - sql.js Database instance
  * @param repoDir   - Absolute path to the git repository
  * @param teamId    - Team ID to associate with created PRs (null for CLI usage)
@@ -120,6 +124,21 @@ export async function syncOpenGitHubPRs(
     }
 
     const storyId = extractStoryIdFromBranch(ghPR.headRefName);
+
+    // If the PR has a story ID, check if the story is active
+    if (storyId) {
+      // Check if the story exists and is active (not merged)
+      const storyRows = queryAll<{ id: string; status: string }>(
+        db,
+        `SELECT id, status FROM stories WHERE id = ? AND status != 'merged'`,
+        [storyId]
+      );
+
+      // Skip PRs where story doesn't exist or is merged
+      if (storyRows.length === 0) {
+        continue;
+      }
+    }
 
     const pr = createPullRequest(db, {
       storyId,
