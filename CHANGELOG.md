@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.33.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.32.0...hungry-ghost-hive-v0.33.0) (2026-02-16)
+
+
+### Features
+
+* add E2E testing configuration to schema and init wizard ([#403](https://github.com/nikrich/hungry-ghost-hive/issues/403)) ([cbb96d7](https://github.com/nikrich/hungry-ghost-hive/commit/cbb96d713f61ca4f4c80bd1a21898f6bdeb607ba))
+
+
+### Bug Fixes
+
+* enforce CI pass before PR submission in agent prompts ([8b45184](https://github.com/nikrich/hungry-ghost-hive/commit/8b45184d10037e90100c6026e5e001801e03ecc7))
+
 ## [0.32.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.31.0...hungry-ghost-hive-v0.32.0) (2026-02-16)
 
 
