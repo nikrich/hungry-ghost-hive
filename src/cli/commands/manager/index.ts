@@ -15,7 +15,7 @@ import {
 import type { StoryRow } from '../../../db/client.js';
 import { queryAll, withTransaction } from '../../../db/client.js';
 import { acquireLock } from '../../../db/lock.js';
-import { getAgentById, getAllAgents } from '../../../db/queries/agents.js';
+import { getAgentById, getAllAgents, getAgentsByType, updateAgent } from '../../../db/queries/agents.js';
 import {
   createEscalation,
   getActiveEscalationsForAgent,
@@ -47,6 +47,7 @@ import {
   killTmuxSession,
   sendEnterToTmuxSession,
   sendToTmuxSession,
+  spawnTmuxSession,
   stopManager as stopManagerSession,
 } from '../../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../../utils/auto-merge.js';
@@ -56,7 +57,9 @@ import {
   syncAllTeamOpenPRs,
   syncMergedPRsFromGitHub,
 } from '../../../utils/pr-sync.js';
+import { findHiveRoot as findHiveRootFromDir, getHivePaths } from '../../../utils/paths.js';
 import { withHiveContext, withHiveRoot } from '../../../utils/with-hive-context.js';
+import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../../../cli-runtimes/index.js';
 import {
   agentStates,
   detectAgentState,
@@ -781,6 +784,8 @@ async function managerCheck(
     await syncJiraStatuses(ctx);
     verboseLogCtx(ctx, 'Step: planning handoff recovery');
     await handleStalledPlanningHandoff(ctx);
+    verboseLogCtx(ctx, 'Step: restart stale tech lead');
+    await restartStaleTechLead(ctx);
 
     // Discover active tmux sessions
     verboseLogCtx(ctx, 'Step: discover hive tmux sessions');
@@ -1979,6 +1984,136 @@ async function notifyUnassignedStories(ctx: ManagerCheckContext): Promise<void> 
         `notifyUnassignedStories: skip ${senior.name} waiting=${stateResult.isWaiting} needsHuman=${stateResult.needsHuman} state=${stateResult.state}`
       );
     }
+  }
+}
+
+async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<void> {
+  const maxAgeHours = ctx.config.manager.tech_lead_max_age_hours;
+  const maxAgeMs = maxAgeHours * 60 * 60 * 1000;
+  const now = Date.now();
+
+  // Get all tech lead agents
+  const techLeads = getAgentsByType(ctx.db.db, 'tech_lead');
+  verboseLogCtx(ctx, `restartStaleTechLead: found ${techLeads.length} tech lead agent(s)`);
+
+  for (const techLead of techLeads) {
+    // Check if tech lead has a tmux session
+    if (!techLead.tmux_session) {
+      verboseLogCtx(ctx, `restartStaleTechLead: techLead=${techLead.id} skip=no_tmux_session`);
+      continue;
+    }
+
+    // Check if session is running
+    const sessionRunning = await isTmuxSessionRunning(techLead.tmux_session);
+    if (!sessionRunning) {
+      verboseLogCtx(
+        ctx,
+        `restartStaleTechLead: techLead=${techLead.id} skip=session_not_running session=${techLead.tmux_session}`
+      );
+      continue;
+    }
+
+    // Calculate session age
+    const createdAt = new Date(techLead.created_at).getTime();
+    const ageMs = now - createdAt;
+    const ageHours = ageMs / (60 * 60 * 1000);
+
+    verboseLogCtx(
+      ctx,
+      `restartStaleTechLead: techLead=${techLead.id} age=${ageHours.toFixed(2)}h threshold=${maxAgeHours}h`
+    );
+
+    // Check if session has exceeded max age
+    if (ageMs < maxAgeMs) {
+      verboseLogCtx(
+        ctx,
+        `restartStaleTechLead: techLead=${techLead.id} skip=not_stale remainingMs=${maxAgeMs - ageMs}`
+      );
+      continue;
+    }
+
+    // Check tech lead state
+    const agentCliTool = (techLead.cli_tool || 'claude') as CLITool;
+    const output = await captureTmuxPane(techLead.tmux_session, TMUX_CAPTURE_LINES_SHORT);
+    const stateResult = detectAgentState(output, agentCliTool);
+
+    verboseLogCtx(
+      ctx,
+      `restartStaleTechLead: techLead=${techLead.id} state=${stateResult.state} waiting=${stateResult.isWaiting} needsHuman=${stateResult.needsHuman}`
+    );
+
+    // Only restart if tech lead is in a safe state (waiting/idle, not mid-task)
+    if (
+      !stateResult.isWaiting ||
+      stateResult.needsHuman ||
+      stateResult.state === AgentState.THINKING
+    ) {
+      verboseLogCtx(
+        ctx,
+        `restartStaleTechLead: techLead=${techLead.id} skip=not_safe_state state=${stateResult.state}`
+      );
+      continue;
+    }
+
+    // Perform graceful restart
+    verboseLogCtx(
+      ctx,
+      `restartStaleTechLead: techLead=${techLead.id} action=restarting session=${techLead.tmux_session}`
+    );
+
+    // Log the restart
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      eventType: 'AGENT_SPAWNED',
+      status: 'info',
+      message: `Tech lead ${techLead.id} restarted for context freshness (age: ${ageHours.toFixed(1)}h)`,
+      metadata: {
+        agent_id: techLead.id,
+        tmux_session: techLead.tmux_session,
+        age_hours: ageHours,
+        threshold_hours: maxAgeHours,
+        restart_reason: 'context_freshness',
+      },
+    });
+
+    // Kill the existing session
+    await killTmuxSession(techLead.tmux_session);
+
+    // Spawn a new session with the same configuration
+    const hiveRoot = findHiveRootFromDir(ctx.root);
+    if (!hiveRoot) {
+      verboseLogCtx(ctx, `restartStaleTechLead: techLead=${techLead.id} error=hive_root_not_found`);
+      continue;
+    }
+
+    const paths = getHivePaths(hiveRoot);
+    const config = loadConfig(paths.hiveDir);
+    const agentConfig = config.models.tech_lead;
+    const cliTool = agentConfig.cli_tool;
+    const safetyMode = agentConfig.safety_mode;
+    const model = resolveRuntimeModelForCli(agentConfig.model, cliTool);
+
+    const runtimeBuilder = getCliRuntimeBuilder(cliTool);
+    const commandArgs = runtimeBuilder.buildSpawnCommand(model, safetyMode);
+
+    await spawnTmuxSession({
+      sessionName: techLead.tmux_session,
+      workDir: ctx.root,
+      commandArgs,
+    });
+
+    // Update agent record status (updated_at is set automatically)
+    updateAgent(ctx.db.db, techLead.id, {
+      status: 'working',
+    });
+
+    ctx.db.save();
+
+    console.log(
+      chalk.green(
+        `  Tech lead ${techLead.id} restarted for context freshness (age: ${ageHours.toFixed(1)}h)`
+      )
+    );
   }
 }
 
