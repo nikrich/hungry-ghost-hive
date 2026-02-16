@@ -119,23 +119,27 @@ async function promoteEstimatedStoriesToPlanned(
 ): Promise<number> {
   let promoted = 0;
 
-  await withTransaction(ctx.db.db, () => {
-    for (const story of stories) {
-      updateStory(ctx.db.db, story.id, { status: 'planned' });
-      promoted++;
-    }
+  await withTransaction(
+    ctx.db.db,
+    () => {
+      for (const story of stories) {
+        updateStory(ctx.db.db, story.id, { status: 'planned' });
+        promoted++;
+      }
 
-    if (requirementId) {
-      updateRequirement(ctx.db.db, requirementId, { status: 'planned' });
-    }
+      if (requirementId) {
+        updateRequirement(ctx.db.db, requirementId, { status: 'planned' });
+      }
 
-    createLog(ctx.db.db, {
-      agentId: 'manager',
-      eventType: 'PLANNING_COMPLETED',
-      message: `Auto-promoted ${promoted} estimated story/ies to planned (${reason})`,
-      metadata: { requirement_id: requirementId, promoted, reason },
-    });
-  }, () => ctx.db.save());
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        eventType: 'PLANNING_COMPLETED',
+        message: `Auto-promoted ${promoted} estimated story/ies to planned (${reason})`,
+        metadata: { requirement_id: requirementId, promoted, reason },
+      });
+    },
+    () => ctx.db.save()
+  );
 
   // Sync status changes to Jira
   for (const story of stories) {

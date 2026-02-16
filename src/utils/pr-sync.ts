@@ -331,17 +331,21 @@ export async function syncMergedPRsFromGitHub(
         continue;
       }
 
-      await withTransaction(db, () => {
-        for (const update of toUpdate) {
-          updateStory(db, update.storyId, { status: 'merged', assignedAgentId: null });
-          createLog(db, {
-            agentId: 'manager',
-            storyId: update.storyId,
-            eventType: 'STORY_MERGED',
-            message: `Story synced to merged from GitHub PR #${update.prNumber}`,
-          });
-        }
-      }, saveFn);
+      await withTransaction(
+        db,
+        () => {
+          for (const update of toUpdate) {
+            updateStory(db, update.storyId, { status: 'merged', assignedAgentId: null });
+            createLog(db, {
+              agentId: 'manager',
+              storyId: update.storyId,
+              eventType: 'STORY_MERGED',
+              message: `Story synced to merged from GitHub PR #${update.prNumber}`,
+            });
+          }
+        },
+        saveFn
+      );
 
       // Sync status changes to Jira (fire and forget, after DB commit)
       for (const update of toUpdate) {
