@@ -340,28 +340,32 @@ export class Scheduler {
 
         // Assign the story (atomic transaction)
         try {
-          await withTransaction(this.db, () => {
-            updateStory(this.db, story.id, {
-              assignedAgentId: targetAgent.id,
-              status: 'in_progress',
-            });
+          await withTransaction(
+            this.db,
+            () => {
+              updateStory(this.db, story.id, {
+                assignedAgentId: targetAgent.id,
+                status: 'in_progress',
+              });
 
-            updateAgent(this.db, targetAgent.id, {
-              status: 'working',
-              currentStoryId: story.id,
-            });
+              updateAgent(this.db, targetAgent.id, {
+                status: 'working',
+                currentStoryId: story.id,
+              });
 
-            const message = isBlocker
-              ? `Assigned to ${targetAgent.type} (escalated due to being a dependency blocker)`
-              : `Assigned to ${targetAgent.type}`;
+              const message = isBlocker
+                ? `Assigned to ${targetAgent.type} (escalated due to being a dependency blocker)`
+                : `Assigned to ${targetAgent.type}`;
 
-            createLog(this.db, {
-              agentId: targetAgent.id,
-              storyId: story.id,
-              eventType: 'STORY_ASSIGNED',
-              message,
-            });
-          });
+              createLog(this.db, {
+                agentId: targetAgent.id,
+                storyId: story.id,
+                eventType: 'STORY_ASSIGNED',
+                message,
+              });
+            },
+            this.saveFn
+          );
           assigned++;
 
           // Enqueue Jira operations to prevent race conditions

@@ -738,17 +738,31 @@ export function run(db: SqlJsDatabase, sql: string, params: unknown[] = []): voi
 }
 
 /**
- * Execute a function within a database transaction
- * Automatically commits on success, rolls back on error
+ * Execute a function within a database transaction.
+ * Automatically commits on success, rolls back on error.
+ *
+ * **Important:** With sql.js, committing a transaction only updates the in-memory
+ * database. You should provide a `saveFn` to persist changes to disk after commit,
+ * or explicitly call `db.save()` after this function returns. Omitting persistence
+ * risks data loss if the process crashes.
+ *
  * @param db Database instance
  * @param fn Function to execute within transaction
+ * @param saveFn Optional function to persist the database to disk after a successful commit
  * @returns Result of the function
  */
-export async function withTransaction<T>(db: SqlJsDatabase, fn: () => Promise<T> | T): Promise<T> {
+export async function withTransaction<T>(
+  db: SqlJsDatabase,
+  fn: () => Promise<T> | T,
+  saveFn?: () => void
+): Promise<T> {
   try {
     db.run('BEGIN IMMEDIATE');
     const result = await fn();
     db.run('COMMIT');
+    if (saveFn) {
+      saveFn();
+    }
     return result;
   } catch (error) {
     try {
@@ -758,6 +772,23 @@ export async function withTransaction<T>(db: SqlJsDatabase, fn: () => Promise<T>
     }
     throw error;
   }
+}
+
+/**
+ * Convenience wrapper that executes a function within a database transaction
+ * and automatically persists to disk after a successful commit.
+ *
+ * @param db Database instance
+ * @param saveFn Function to persist the database to disk (e.g., `() => db.save()`)
+ * @param fn Function to execute within transaction
+ * @returns Result of the function
+ */
+export async function withTransactionAndSave<T>(
+  db: SqlJsDatabase,
+  saveFn: () => void,
+  fn: () => Promise<T> | T
+): Promise<T> {
+  return withTransaction(db, fn, saveFn);
 }
 
 // Type definitions for database rows
