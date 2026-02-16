@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.33.0...hungry-ghost-hive-v0.34.0) (2026-02-16)
+
+
+### Features
+
+* add database migration for feature testing support ([#405](https://github.com/nikrich/hungry-ghost-hive/issues/405)) ([6d45d40](https://github.com/nikrich/hungry-ghost-hive/commit/6d45d401b81b90d148c8c9379b41b9c4bf72ee8d))
+
 ## [0.33.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.32.0...hungry-ghost-hive-v0.33.0) (2026-02-16)
 
 
