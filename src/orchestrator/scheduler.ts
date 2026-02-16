@@ -24,7 +24,7 @@ import {
 import { createEscalation } from '../db/queries/escalations.js';
 import { createLog } from '../db/queries/logs.js';
 import { isAgentReviewingPR } from '../db/queries/pull-requests.js';
-import { type RequirementRow } from '../db/queries/requirements.js';
+import { getRequirementById, type RequirementRow } from '../db/queries/requirements.js';
 import {
   getPlannedStories,
   getStoriesDependingOn,
@@ -105,7 +105,12 @@ export class Scheduler {
    * Create a git worktree for an agent
    * Returns the worktree path
    */
-  private async createWorktree(agentId: string, teamId: string, repoPath: string): Promise<string> {
+  private async createWorktree(
+    agentId: string,
+    teamId: string,
+    repoPath: string,
+    baseBranch: string = 'main'
+  ): Promise<string> {
     const { execSync } = await import('child_process');
 
     // Construct worktree path: repos/<team-id>-<agent-id>/
@@ -116,13 +121,27 @@ export class Scheduler {
     // Branch name: agent/<agent-id>
     const branchName = `agent/${agentId}`;
 
+    // Fetch the base branch so worktree starts from the correct point
     try {
-      // Create worktree from main branch (30s timeout for git operations)
-      execSync(`git worktree add "${fullWorktreePath}" -b "${branchName}"`, {
+      execSync(`git fetch origin ${baseBranch}`, {
         cwd: fullRepoPath,
         stdio: 'pipe',
         timeout: GIT_WORKTREE_TIMEOUT_MS,
       });
+    } catch (_err) {
+      // Fetch failure is non-fatal; proceed with whatever is available locally
+    }
+
+    try {
+      // Create worktree from the specified base branch (30s timeout for git operations)
+      execSync(
+        `git worktree add "${fullWorktreePath}" -b "${branchName}" "origin/${baseBranch}"`,
+        {
+          cwd: fullRepoPath,
+          stdio: 'pipe',
+          timeout: GIT_WORKTREE_TIMEOUT_MS,
+        }
+      );
     } catch (err) {
       // If worktree or branch already exists, try to add without creating branch
       try {
@@ -833,8 +852,11 @@ export class Scheduler {
       model: runtimeModel,
     });
 
-    // Create git worktree for this agent
-    const worktreePath = await this.createWorktree(agent.id, teamId, repoPath);
+    // Determine the target branch for this team's stories
+    const targetBranch = this.getTargetBranchForTeam(teamId);
+
+    // Create git worktree for this agent from the correct base branch
+    const worktreePath = await this.createWorktree(agent.id, teamId, repoPath, targetBranch);
     const workDir = `${this.config.rootDir}/${worktreePath}`;
 
     if (!(await isTmuxSessionRunning(sessionName))) {
@@ -844,18 +866,37 @@ export class Scheduler {
 
       if (type === 'senior') {
         const stories = this.getTeamStories(teamId);
-        prompt = generateSeniorPrompt(teamName, team?.repo_url || '', worktreePath, stories);
+        prompt = generateSeniorPrompt(
+          teamName,
+          team?.repo_url || '',
+          worktreePath,
+          stories,
+          targetBranch
+        );
       } else if (type === 'intermediate') {
         prompt = generateIntermediatePrompt(
           teamName,
           team?.repo_url || '',
           worktreePath,
-          sessionName
+          sessionName,
+          targetBranch
         );
       } else if (type === 'junior') {
-        prompt = generateJuniorPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
+        prompt = generateJuniorPrompt(
+          teamName,
+          team?.repo_url || '',
+          worktreePath,
+          sessionName,
+          targetBranch
+        );
       } else {
-        prompt = generateQAPrompt(teamName, team?.repo_url || '', worktreePath, sessionName);
+        prompt = generateQAPrompt(
+          teamName,
+          team?.repo_url || '',
+          worktreePath,
+          sessionName,
+          targetBranch
+        );
       }
 
       // Build CLI command using the configured runtime
@@ -941,6 +982,38 @@ export class Scheduler {
     const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'junior');
     const index = existing.length + 1;
     return this.spawnAgent('junior', teamId, teamName, repoPath, index);
+  }
+
+  /**
+   * Determine the target branch for a team by looking at the stories
+   * assigned to the team and their parent requirement's target_branch.
+   * If stories come from multiple requirements with different target branches,
+   * use the most common one. Defaults to 'main' if no requirement or target_branch is set.
+   */
+  private getTargetBranchForTeam(teamId: string): string {
+    const stories = this.getTeamStories(teamId);
+
+    const branchCounts = new Map<string, number>();
+    for (const story of stories) {
+      if (!story.requirement_id) continue;
+      const requirement = getRequirementById(this.db, story.requirement_id);
+      if (!requirement?.target_branch) continue;
+      const count = branchCounts.get(requirement.target_branch) || 0;
+      branchCounts.set(requirement.target_branch, count + 1);
+    }
+
+    if (branchCounts.size === 0) return 'main';
+
+    // Return the most common target_branch
+    let maxBranch = 'main';
+    let maxCount = 0;
+    for (const [branch, count] of branchCounts) {
+      if (count > maxCount) {
+        maxBranch = branch;
+        maxCount = count;
+      }
+    }
+    return maxBranch;
   }
 
   private getTeamStories(teamId: string): StoryRow[] {
