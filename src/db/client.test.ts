@@ -459,4 +459,502 @@ describe('createDatabase', () => {
       client.close();
     });
   });
+
+  describe('auto-merge flow persistence', () => {
+    it('should persist PR status change to disk when saveFn is passed to withTransaction', async () => {
+      const dbPath = join(tempDir, 'auto-merge-persist.db');
+      const client = await createDatabase(dbPath);
+      client.save(); // initial save to create file
+
+      // Setup: Insert a team, story, and pull request
+      client.db.run(
+        "INSERT INTO teams VALUES ('t1', 'https://github.com/test/repo.git', '/tmp/repo', 'Test', datetime('now'))"
+      );
+      client.db.run(
+        "INSERT INTO stories (id, team_id, title, description, status) VALUES ('s1', 't1', 'Test Story', 'desc', 'in_progress')"
+      );
+      client.db.run(
+        "INSERT INTO pull_requests (id, story_id, team_id, branch_name, github_pr_number, status) VALUES ('pr1', 's1', 't1', 'feature/test', 100, 'approved')"
+      );
+      client.save();
+
+      // Simulate auto-merge claim: atomically change PR status from approved to queued
+      await withTransaction(
+        client.db,
+        () => {
+          const currentPR = client.db.exec("SELECT status FROM pull_requests WHERE id = 'pr1'");
+          expect(currentPR[0].values[0][0]).toBe('approved');
+          client.db.run("UPDATE pull_requests SET status = 'queued' WHERE id = 'pr1'");
+        },
+        () => client.save()
+      );
+
+      // Verify the status persisted to disk by reading the file back
+      const SQL = await initSqlJs();
+      const buffer = readFileSync(dbPath);
+      const diskDb = new SQL.Database(buffer);
+      const result = diskDb.exec("SELECT status FROM pull_requests WHERE id = 'pr1'");
+      expect(result[0].values[0][0]).toBe('queued');
+      diskDb.close();
+
+      client.close();
+    });
+
+    it('should persist merged status and story update atomically after successful merge', async () => {
+      const dbPath = join(tempDir, 'auto-merge-merged.db');
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // Setup
+      client.db.run(
+        "INSERT INTO teams VALUES ('t1', 'https://github.com/test/repo.git', '/tmp/repo', 'Test', datetime('now'))"
+      );
+      client.db.run(
+        "INSERT INTO stories (id, team_id, title, description, status) VALUES ('s1', 't1', 'Test Story', 'desc', 'pr_submitted')"
+      );
+      client.db.run(
+        "INSERT INTO pull_requests (id, story_id, team_id, branch_name, github_pr_number, status) VALUES ('pr1', 's1', 't1', 'feature/test', 100, 'queued')"
+      );
+      client.save();
+
+      // Simulate merge completion: update PR and story atomically with disk persistence
+      await withTransaction(
+        client.db,
+        () => {
+          client.db.run("UPDATE pull_requests SET status = 'merged' WHERE id = 'pr1'");
+          client.db.run("UPDATE stories SET status = 'merged' WHERE id = 's1'");
+        },
+        () => client.save()
+      );
+
+      // Verify both changes persisted to disk
+      const SQL = await initSqlJs();
+      const buffer = readFileSync(dbPath);
+      const diskDb = new SQL.Database(buffer);
+
+      const prResult = diskDb.exec("SELECT status FROM pull_requests WHERE id = 'pr1'");
+      expect(prResult[0].values[0][0]).toBe('merged');
+
+      const storyResult = diskDb.exec("SELECT status FROM stories WHERE id = 's1'");
+      expect(storyResult[0].values[0][0]).toBe('merged');
+
+      diskDb.close();
+      client.close();
+    });
+
+    it('should NOT persist claim when merge fails and transaction rolls back', async () => {
+      const dbPath = join(tempDir, 'auto-merge-rollback.db');
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // Setup: Create an approved PR
+      client.db.run(
+        "INSERT INTO teams VALUES ('t1', 'https://github.com/test/repo.git', '/tmp/repo', 'Test', datetime('now'))"
+      );
+      client.db.run(
+        "INSERT INTO pull_requests (id, team_id, branch_name, github_pr_number, status) VALUES ('pr1', 't1', 'feature/test', 100, 'approved')"
+      );
+      client.save();
+
+      let saveCallCount = 0;
+
+      // Simulate a failed transaction: claim + merge in one transaction that throws
+      await expect(
+        withTransaction(
+          client.db,
+          () => {
+            client.db.run("UPDATE pull_requests SET status = 'merged' WHERE id = 'pr1'");
+            throw new Error('gh pr merge failed');
+          },
+          () => {
+            saveCallCount++;
+          }
+        )
+      ).rejects.toThrow('gh pr merge failed');
+
+      // saveFn should NOT have been called
+      expect(saveCallCount).toBe(0);
+
+      // In-memory DB should have rolled back (PR still approved)
+      const memResult = client.db.exec("SELECT status FROM pull_requests WHERE id = 'pr1'");
+      expect(memResult[0].values[0][0]).toBe('approved');
+
+      // Disk should still show approved (no save was called)
+      const SQL = await initSqlJs();
+      const buffer = readFileSync(dbPath);
+      const diskDb = new SQL.Database(buffer);
+      const diskResult = diskDb.exec("SELECT status FROM pull_requests WHERE id = 'pr1'");
+      expect(diskResult[0].values[0][0]).toBe('approved');
+      diskDb.close();
+
+      client.close();
+    });
+  });
+
+  describe('manager daemon persistence', () => {
+    it('should persist escalation resolution via withTransaction + saveFn', async () => {
+      const dbPath = join(tempDir, 'manager-escalation.db');
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // Setup: Create an escalation
+      client.db.run(
+        "INSERT INTO teams VALUES ('t1', 'https://github.com/test/repo.git', '/tmp/repo', 'Test', datetime('now'))"
+      );
+      client.db.run(
+        "INSERT INTO agents (id, type, team_id, status) VALUES ('a1', 'senior', 't1', 'working')"
+      );
+      client.db.run(
+        "INSERT INTO escalations (id, from_agent_id, reason, status) VALUES ('e1', 'a1', 'blocked on review', 'pending')"
+      );
+      client.save();
+
+      // Simulate manager resolving stale escalations (as in manager/index.ts)
+      await withTransaction(
+        client.db,
+        () => {
+          client.db.run(
+            "UPDATE escalations SET status = 'resolved', resolution = 'auto-resolved: stale' WHERE id = 'e1'"
+          );
+        },
+        () => client.save()
+      );
+
+      // Verify persisted to disk
+      const SQL = await initSqlJs();
+      const buffer = readFileSync(dbPath);
+      const diskDb = new SQL.Database(buffer);
+      const result = diskDb.exec("SELECT status, resolution FROM escalations WHERE id = 'e1'");
+      expect(result[0].values[0][0]).toBe('resolved');
+      expect(result[0].values[0][1]).toBe('auto-resolved: stale');
+      diskDb.close();
+
+      client.close();
+    });
+
+    it('should persist QA story recovery via withTransaction + saveFn', async () => {
+      const dbPath = join(tempDir, 'manager-qa-recovery.db');
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // Setup: Create stories in qa_failed state without assigned agents
+      client.db.run(
+        "INSERT INTO teams VALUES ('t1', 'https://github.com/test/repo.git', '/tmp/repo', 'Test', datetime('now'))"
+      );
+      client.db.run(
+        "INSERT INTO stories (id, team_id, title, description, status, assigned_agent_id) VALUES ('s1', 't1', 'Fix bug', 'desc', 'qa_failed', NULL)"
+      );
+      client.db.run(
+        "INSERT INTO stories (id, team_id, title, description, status, assigned_agent_id) VALUES ('s2', 't1', 'Add feature', 'desc', 'qa_failed', NULL)"
+      );
+      client.save();
+
+      // Simulate manager recovering unassigned qa_failed stories
+      await withTransaction(
+        client.db,
+        () => {
+          client.db.run(
+            "UPDATE stories SET status = 'planned', assigned_agent_id = NULL WHERE id = 's1'"
+          );
+          client.db.run(
+            "UPDATE stories SET status = 'planned', assigned_agent_id = NULL WHERE id = 's2'"
+          );
+        },
+        () => client.save()
+      );
+
+      // Verify both stories were persisted as planned on disk
+      const SQL = await initSqlJs();
+      const buffer = readFileSync(dbPath);
+      const diskDb = new SQL.Database(buffer);
+      const result = diskDb.exec(
+        "SELECT id, status FROM stories WHERE id IN ('s1', 's2') ORDER BY id"
+      );
+      expect(result[0].values).toHaveLength(2);
+      expect(result[0].values[0][1]).toBe('planned');
+      expect(result[0].values[1][1]).toBe('planned');
+      diskDb.close();
+
+      client.close();
+    });
+
+    it('should persist multiple sequential transactions each with their own save', async () => {
+      const dbPath = join(tempDir, 'manager-sequential.db');
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // Setup
+      client.db.run(
+        "INSERT INTO teams VALUES ('t1', 'https://github.com/test/repo.git', '/tmp/repo', 'Test', datetime('now'))"
+      );
+      client.db.run(
+        "INSERT INTO stories (id, team_id, title, description, status) VALUES ('s1', 't1', 'Story 1', 'desc', 'draft')"
+      );
+      client.db.run(
+        "INSERT INTO stories (id, team_id, title, description, status) VALUES ('s2', 't1', 'Story 2', 'desc', 'draft')"
+      );
+      client.save();
+
+      let saveCount = 0;
+      const saveFn = () => {
+        saveCount++;
+        client.save();
+      };
+
+      // First transaction: update story 1
+      await withTransaction(
+        client.db,
+        () => {
+          client.db.run("UPDATE stories SET status = 'planned' WHERE id = 's1'");
+        },
+        saveFn
+      );
+
+      expect(saveCount).toBe(1);
+
+      // Second transaction: update story 2
+      await withTransaction(
+        client.db,
+        () => {
+          client.db.run("UPDATE stories SET status = 'in_progress' WHERE id = 's2'");
+        },
+        saveFn
+      );
+
+      expect(saveCount).toBe(2);
+
+      // Verify both changes persisted
+      const SQL = await initSqlJs();
+      const buffer = readFileSync(dbPath);
+      const diskDb = new SQL.Database(buffer);
+      const s1 = diskDb.exec("SELECT status FROM stories WHERE id = 's1'");
+      const s2 = diskDb.exec("SELECT status FROM stories WHERE id = 's2'");
+      expect(s1[0].values[0][0]).toBe('planned');
+      expect(s2[0].values[0][0]).toBe('in_progress');
+      diskDb.close();
+
+      client.close();
+    });
+  });
+
+  describe('scheduler atomicity', () => {
+    it('should persist story assignment and agent status atomically via saveFn', async () => {
+      const dbPath = join(tempDir, 'scheduler-assign.db');
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // Setup: Create team, agent, and planned story
+      client.db.run(
+        "INSERT INTO teams VALUES ('t1', 'https://github.com/test/repo.git', '/tmp/repo', 'Test', datetime('now'))"
+      );
+      client.db.run(
+        "INSERT INTO agents (id, type, team_id, status, current_story_id) VALUES ('a1', 'senior', 't1', 'idle', NULL)"
+      );
+      client.db.run(
+        "INSERT INTO stories (id, team_id, title, description, status, assigned_agent_id) VALUES ('s1', 't1', 'Implement feature', 'desc', 'planned', NULL)"
+      );
+      client.save();
+
+      // Simulate scheduler's assignStories pattern: update story + agent atomically
+      await withTransaction(
+        client.db,
+        () => {
+          client.db.run(
+            "UPDATE stories SET assigned_agent_id = 'a1', status = 'in_progress' WHERE id = 's1'"
+          );
+          client.db.run(
+            "UPDATE agents SET status = 'working', current_story_id = 's1' WHERE id = 'a1'"
+          );
+        },
+        () => client.save()
+      );
+
+      // Verify both changes persisted atomically to disk
+      const SQL = await initSqlJs();
+      const buffer = readFileSync(dbPath);
+      const diskDb = new SQL.Database(buffer);
+
+      const storyResult = diskDb.exec(
+        "SELECT status, assigned_agent_id FROM stories WHERE id = 's1'"
+      );
+      expect(storyResult[0].values[0][0]).toBe('in_progress');
+      expect(storyResult[0].values[0][1]).toBe('a1');
+
+      const agentResult = diskDb.exec(
+        "SELECT status, current_story_id FROM agents WHERE id = 'a1'"
+      );
+      expect(agentResult[0].values[0][0]).toBe('working');
+      expect(agentResult[0].values[0][1]).toBe('s1');
+
+      diskDb.close();
+      client.close();
+    });
+
+    it('should roll back both story and agent changes on error (no disk write)', async () => {
+      const dbPath = join(tempDir, 'scheduler-rollback.db');
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // Setup
+      client.db.run(
+        "INSERT INTO teams VALUES ('t1', 'https://github.com/test/repo.git', '/tmp/repo', 'Test', datetime('now'))"
+      );
+      client.db.run(
+        "INSERT INTO agents (id, type, team_id, status, current_story_id) VALUES ('a1', 'senior', 't1', 'idle', NULL)"
+      );
+      client.db.run(
+        "INSERT INTO stories (id, team_id, title, description, status, assigned_agent_id) VALUES ('s1', 't1', 'Test Story', 'desc', 'planned', NULL)"
+      );
+      client.save();
+
+      let saveCalled = false;
+
+      // Simulate a failed assignment (e.g., agent spawn failure after DB update)
+      await expect(
+        withTransaction(
+          client.db,
+          () => {
+            client.db.run(
+              "UPDATE stories SET assigned_agent_id = 'a1', status = 'in_progress' WHERE id = 's1'"
+            );
+            client.db.run(
+              "UPDATE agents SET status = 'working', current_story_id = 's1' WHERE id = 'a1'"
+            );
+            throw new Error('agent spawn failed');
+          },
+          () => {
+            saveCalled = true;
+          }
+        )
+      ).rejects.toThrow('agent spawn failed');
+
+      expect(saveCalled).toBe(false);
+
+      // In-memory should be rolled back
+      const memStory = client.db.exec(
+        "SELECT status, assigned_agent_id FROM stories WHERE id = 's1'"
+      );
+      expect(memStory[0].values[0][0]).toBe('planned');
+      expect(memStory[0].values[0][1]).toBeNull();
+
+      const memAgent = client.db.exec(
+        "SELECT status, current_story_id FROM agents WHERE id = 'a1'"
+      );
+      expect(memAgent[0].values[0][0]).toBe('idle');
+      expect(memAgent[0].values[0][1]).toBeNull();
+
+      // Disk should still show original state
+      const SQL = await initSqlJs();
+      const buffer = readFileSync(dbPath);
+      const diskDb = new SQL.Database(buffer);
+      const diskStory = diskDb.exec("SELECT status FROM stories WHERE id = 's1'");
+      expect(diskStory[0].values[0][0]).toBe('planned');
+      diskDb.close();
+
+      client.close();
+    });
+
+    it('should support withTransactionAndSave for scheduler-style operations', async () => {
+      const dbPath = join(tempDir, 'scheduler-and-save.db');
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // Setup
+      client.db.run(
+        "INSERT INTO teams VALUES ('t1', 'https://github.com/test/repo.git', '/tmp/repo', 'Test', datetime('now'))"
+      );
+      client.db.run(
+        "INSERT INTO agents (id, type, team_id, status) VALUES ('a1', 'senior', 't1', 'idle')"
+      );
+      client.db.run(
+        "INSERT INTO stories (id, team_id, title, description, status) VALUES ('s1', 't1', 'Story', 'desc', 'planned')"
+      );
+      client.save();
+
+      // Use withTransactionAndSave (convenience wrapper)
+      await withTransactionAndSave(
+        client.db,
+        () => client.save(),
+        () => {
+          client.db.run(
+            "UPDATE stories SET assigned_agent_id = 'a1', status = 'in_progress' WHERE id = 's1'"
+          );
+          client.db.run(
+            "UPDATE agents SET status = 'working', current_story_id = 's1' WHERE id = 'a1'"
+          );
+        }
+      );
+
+      // Verify persisted to disk
+      const SQL = await initSqlJs();
+      const buffer = readFileSync(dbPath);
+      const diskDb = new SQL.Database(buffer);
+
+      const storyResult = diskDb.exec("SELECT status FROM stories WHERE id = 's1'");
+      expect(storyResult[0].values[0][0]).toBe('in_progress');
+
+      const agentResult = diskDb.exec("SELECT status FROM agents WHERE id = 'a1'");
+      expect(agentResult[0].values[0][0]).toBe('working');
+
+      diskDb.close();
+      client.close();
+    });
+
+    it('should handle concurrent-safe optimistic locking pattern', async () => {
+      const dbPath = join(tempDir, 'scheduler-optimistic.db');
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // Setup: PR in approved state
+      client.db.run(
+        "INSERT INTO teams VALUES ('t1', 'https://github.com/test/repo.git', '/tmp/repo', 'Test', datetime('now'))"
+      );
+      client.db.run(
+        "INSERT INTO pull_requests (id, team_id, branch_name, github_pr_number, status) VALUES ('pr1', 't1', 'feature/test', 100, 'approved')"
+      );
+      client.save();
+
+      // Simulate optimistic locking: re-fetch status within transaction before updating
+      let claimed = false;
+      await withTransaction(
+        client.db,
+        () => {
+          const currentPR = client.db.exec("SELECT status FROM pull_requests WHERE id = 'pr1'");
+          if (currentPR[0].values[0][0] === 'approved') {
+            client.db.run("UPDATE pull_requests SET status = 'queued' WHERE id = 'pr1'");
+            claimed = true;
+          }
+        },
+        () => client.save()
+      );
+
+      expect(claimed).toBe(true);
+
+      // Second attempt should not claim (status is now queued)
+      let claimedAgain = false;
+      await withTransaction(
+        client.db,
+        () => {
+          const currentPR = client.db.exec("SELECT status FROM pull_requests WHERE id = 'pr1'");
+          if (currentPR[0].values[0][0] === 'approved') {
+            client.db.run("UPDATE pull_requests SET status = 'queued' WHERE id = 'pr1'");
+            claimedAgain = true;
+          }
+        },
+        () => client.save()
+      );
+
+      expect(claimedAgain).toBe(false);
+
+      // Verify disk still shows queued from first claim
+      const SQL = await initSqlJs();
+      const buffer = readFileSync(dbPath);
+      const diskDb = new SQL.Database(buffer);
+      const result = diskDb.exec("SELECT status FROM pull_requests WHERE id = 'pr1'");
+      expect(result[0].values[0][0]).toBe('queued');
+      diskDb.close();
+
+      client.close();
+    });
+  });
 });
