@@ -4,7 +4,8 @@ import { join } from 'path';
 import initSqlJs from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseCorruptionError } from '../errors/index.js';
-import { createDatabase } from './client.js';
+import { createDatabase, getMigrationStatus } from './client.js';
+import { MIGRATIONS } from './migrations/index.js';
 
 /**
  * Helper to create a valid SQLite database buffer with the core schema
@@ -332,6 +333,52 @@ describe('createDatabase', () => {
       // File stays corrupt — all 3 retries should fail
       await expect(createDatabase(dbPath)).rejects.toThrow(DatabaseCorruptionError);
       await expect(createDatabase(dbPath)).rejects.toThrow('zero rows in core tables');
+    });
+  });
+
+  describe('migration runner', () => {
+    it('should apply all migrations on a new database', async () => {
+      const dbPath = join(tempDir, 'migrations-new.db');
+      const client = await createDatabase(dbPath);
+
+      const status = getMigrationStatus(client.db);
+      expect(status.length).toBe(MIGRATIONS.length);
+      expect(status.every(m => m.applied)).toBe(true);
+
+      client.close();
+    });
+
+    it('should skip already-applied migrations on re-open', async () => {
+      const dbPath = join(tempDir, 'migrations-reopen.db');
+      const client = await createDatabase(dbPath);
+      client.save();
+
+      // Re-open and verify all migrations still show as applied
+      const client2 = await createDatabase(dbPath);
+      const status = getMigrationStatus(client2.db);
+      expect(status.every(m => m.applied)).toBe(true);
+
+      client2.close();
+      client.close();
+    });
+
+    it('getMigrationStatus should return correct applied/pending info', async () => {
+      const dbPath = join(tempDir, 'migration-status.db');
+      const client = await createDatabase(dbPath);
+
+      const status = getMigrationStatus(client.db);
+      // Verify the structure
+      for (const entry of status) {
+        expect(entry).toHaveProperty('name');
+        expect(entry).toHaveProperty('applied');
+        expect(typeof entry.name).toBe('string');
+        expect(typeof entry.applied).toBe('boolean');
+      }
+
+      // All should be applied after createDatabase
+      expect(status.filter(m => !m.applied).length).toBe(0);
+
+      client.close();
     });
   });
 
