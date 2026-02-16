@@ -68,11 +68,15 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
           });
         } finally {
           // Restore dashboard in the same process (do not spawn nested dashboards).
-          // Do NOT call updateAgentsPanel here — the `db` reference captured in this
-          // closure may be stale (closed by the refresh timer while spawnSync blocked
-          // the event loop). The next scheduled refresh cycle will update all panels
-          // with the current database connection.
+          // spawnSync blocks the event loop so the refresh timer cannot fire and
+          // the captured `db` reference remains valid.
           resumeScreen();
+          // Force full redraw — after tmux detach the terminal buffer is clobbered
+          // so blessed's incremental render would show a corrupt screen.
+          screen.alloc();
+          void updateAgentsPanel(list, db).catch(err =>
+            debugLog(`Failed to refresh agents panel after tmux detach: ${err}`)
+          );
           screen.render();
         }
 

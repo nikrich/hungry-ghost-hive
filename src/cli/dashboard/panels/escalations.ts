@@ -92,6 +92,8 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Wi
       } finally {
         // Restore dashboard in the same process (do not spawn nested dashboards).
         resumeScreen();
+        // Force full redraw — after tmux detach the terminal buffer is clobbered
+        screen.alloc();
         void updateEscalationsPanel(list, db).catch(err =>
           console.error('Failed to update escalations panel:', err)
         );
