@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run, type AgentLogRow } from '../client.js';
 
 export type { AgentLogRow };
@@ -91,16 +91,19 @@ function inferAgentType(
   return 'tech_lead';
 }
 
-function getAgentColumnNames(db: Database.Database): Set<string> {
-  const rows = db.pragma('table_info(agents)') as { name: string }[];
+function getAgentColumnNames(db: Database): Set<string> {
+  const result = db.exec('PRAGMA table_info(agents)');
+  if (result.length === 0) return new Set<string>();
+
   const columnNames = new Set<string>();
-  for (const row of rows) {
-    columnNames.add(row.name);
+  for (const row of result[0].values) {
+    // PRAGMA table_info columns: cid, name, type, notnull, dflt_value, pk
+    columnNames.add(String(row[1]));
   }
   return columnNames;
 }
 
-function ensureLogAgentExists(db: Database.Database, agentId: string): void {
+function ensureLogAgentExists(db: Database, agentId: string): void {
   const existing = queryOne<{ id: string }>(db, 'SELECT id FROM agents WHERE id = ?', [agentId]);
   if (existing?.id) return;
 
@@ -141,7 +144,7 @@ function ensureLogAgentExists(db: Database.Database, agentId: string): void {
   );
 }
 
-function resolveLogAgentId(db: Database.Database, rawAgentId: string): string {
+function resolveLogAgentId(db: Database, rawAgentId: string): string {
   const direct = queryOne<{ id: string }>(db, 'SELECT id FROM agents WHERE id = ?', [rawAgentId]);
   if (direct?.id) return direct.id;
 
@@ -166,13 +169,13 @@ function resolveLogAgentId(db: Database.Database, rawAgentId: string): string {
   return rawAgentId;
 }
 
-function resolveLogStoryId(db: Database.Database, storyId?: string | null): string | null {
+function resolveLogStoryId(db: Database, storyId?: string | null): string | null {
   if (!storyId) return null;
   const story = queryOne<{ id: string }>(db, 'SELECT id FROM stories WHERE id = ?', [storyId]);
   return story?.id || null;
 }
 
-export function createLog(db: Database.Database, input: CreateLogInput): AgentLogRow {
+export function createLog(db: Database, input: CreateLogInput): AgentLogRow {
   const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
   const now = new Date().toISOString();
   const resolvedAgentId = resolveLogAgentId(db, input.agentId);
@@ -200,11 +203,11 @@ export function createLog(db: Database.Database, input: CreateLogInput): AgentLo
   return getLogById(db, result?.id || 0)!;
 }
 
-export function getLogById(db: Database.Database, id: number): AgentLogRow | undefined {
+export function getLogById(db: Database, id: number): AgentLogRow | undefined {
   return queryOne<AgentLogRow>(db, 'SELECT * FROM agent_logs WHERE id = ?', [id]);
 }
 
-export function getLogsByAgent(db: Database.Database, agentId: string, limit = 100): AgentLogRow[] {
+export function getLogsByAgent(db: Database, agentId: string, limit = 100): AgentLogRow[] {
   return queryAll<AgentLogRow>(
     db,
     `
@@ -217,7 +220,7 @@ export function getLogsByAgent(db: Database.Database, agentId: string, limit = 1
   );
 }
 
-export function getLogsByStory(db: Database.Database, storyId: string): AgentLogRow[] {
+export function getLogsByStory(db: Database, storyId: string): AgentLogRow[] {
   return queryAll<AgentLogRow>(
     db,
     `
@@ -229,11 +232,7 @@ export function getLogsByStory(db: Database.Database, storyId: string): AgentLog
   );
 }
 
-export function getLogsByEventType(
-  db: Database.Database,
-  eventType: EventType,
-  limit = 100
-): AgentLogRow[] {
+export function getLogsByEventType(db: Database, eventType: EventType, limit = 100): AgentLogRow[] {
   return queryAll<AgentLogRow>(
     db,
     `
@@ -246,7 +245,7 @@ export function getLogsByEventType(
   );
 }
 
-export function getRecentLogs(db: Database.Database, limit = 50): AgentLogRow[] {
+export function getRecentLogs(db: Database, limit = 50): AgentLogRow[] {
   return queryAll<AgentLogRow>(
     db,
     `
@@ -258,7 +257,7 @@ export function getRecentLogs(db: Database.Database, limit = 50): AgentLogRow[] 
   );
 }
 
-export function getLogsSince(db: Database.Database, since: string): AgentLogRow[] {
+export function getLogsSince(db: Database, since: string): AgentLogRow[] {
   return queryAll<AgentLogRow>(
     db,
     `
@@ -270,7 +269,7 @@ export function getLogsSince(db: Database.Database, since: string): AgentLogRow[
   );
 }
 
-export function countQaFailuresByStory(db: Database.Database, storyId: string): number {
+export function countQaFailuresByStory(db: Database, storyId: string): number {
   const result = queryOne<{ count: number }>(
     db,
     `
@@ -283,7 +282,7 @@ export function countQaFailuresByStory(db: Database.Database, storyId: string): 
   return result?.count || 0;
 }
 
-export function pruneOldLogs(db: Database.Database, retentionDays: number): number {
+export function pruneOldLogs(db: Database, retentionDays: number): number {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
   const cutoff = cutoffDate.toISOString();

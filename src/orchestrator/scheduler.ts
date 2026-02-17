@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import {
   getCliRuntimeBuilder,
   resolveRuntimeModelForCli,
@@ -81,17 +81,20 @@ export interface SchedulerConfig {
   models: ModelsConfig;
   qa?: QAConfig;
   rootDir: string;
+  saveFn?: () => void;
   hiveConfig?: HiveConfig;
 }
 
 export class Scheduler {
-  private db: Database.Database;
+  private db: Database;
   private config: SchedulerConfig;
+  private saveFn?: () => void;
   private pmQueue: PMOperationQueue;
 
-  constructor(db: Database.Database, config: SchedulerConfig) {
+  constructor(db: Database, config: SchedulerConfig) {
     this.db = db;
     this.config = config;
+    this.saveFn = config.saveFn;
     this.pmQueue = new PMOperationQueue();
   }
 
@@ -337,28 +340,32 @@ export class Scheduler {
 
         // Assign the story (atomic transaction)
         try {
-          await withTransaction(this.db, () => {
-            updateStory(this.db, story.id, {
-              assignedAgentId: targetAgent.id,
-              status: 'in_progress',
-            });
+          await withTransaction(
+            this.db,
+            () => {
+              updateStory(this.db, story.id, {
+                assignedAgentId: targetAgent.id,
+                status: 'in_progress',
+              });
 
-            updateAgent(this.db, targetAgent.id, {
-              status: 'working',
-              currentStoryId: story.id,
-            });
+              updateAgent(this.db, targetAgent.id, {
+                status: 'working',
+                currentStoryId: story.id,
+              });
 
-            const message = isBlocker
-              ? `Assigned to ${targetAgent.type} (escalated due to being a dependency blocker)`
-              : `Assigned to ${targetAgent.type}`;
+              const message = isBlocker
+                ? `Assigned to ${targetAgent.type} (escalated due to being a dependency blocker)`
+                : `Assigned to ${targetAgent.type}`;
 
-            createLog(this.db, {
-              agentId: targetAgent.id,
-              storyId: story.id,
-              eventType: 'STORY_ASSIGNED',
-              message,
-            });
-          });
+              createLog(this.db, {
+                agentId: targetAgent.id,
+                storyId: story.id,
+                eventType: 'STORY_ASSIGNED',
+                message,
+              });
+            },
+            this.saveFn
+          );
           assigned++;
 
           // Enqueue Jira operations to prevent race conditions
@@ -437,6 +444,8 @@ export class Scheduler {
           externalSubtaskKey: subtask.key,
           externalSubtaskId: subtask.id,
         });
+        if (this.saveFn) this.saveFn();
+
         logger.info(`Created subtask ${subtask.key} for story ${freshStory.id}`);
 
         // Post "assigned" comment
@@ -939,6 +948,11 @@ export class Scheduler {
       worktreePath,
     });
 
+    // Save database immediately so spawned agent can see itself when querying
+    if (this.saveFn) {
+      this.saveFn();
+    }
+
     return agent;
   }
 
@@ -1097,7 +1111,7 @@ export class Scheduler {
     if (!repoPath) return;
 
     for (const reqId of requirementIds) {
-      const branch = await createRequirementFeatureBranch(this.db, repoPath, reqId);
+      const branch = await createRequirementFeatureBranch(this.db, repoPath, reqId, this.saveFn);
 
       if (!branch) {
         errors.push(`Failed to create feature branch for requirement ${reqId}`);

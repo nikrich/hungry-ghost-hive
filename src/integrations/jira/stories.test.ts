@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import type { Database } from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
@@ -125,7 +125,7 @@ describe('Jira Story Creation', () => {
   });
 
   describe('Story Points Fallback', () => {
-    let db: Database.Database;
+    let db: Database;
     let envDir: string;
     let tokenStore: TokenStore;
 
@@ -139,7 +139,7 @@ describe('Jira Story Creation', () => {
     };
 
     beforeEach(async () => {
-      db = createTestDatabase();
+      db = await createTestDatabase();
       envDir = mkdtempSync(join(tmpdir(), 'hive-test-'));
       tokenStore = new TokenStore(envDir);
 

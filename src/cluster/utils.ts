@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
 import { createHash } from 'crypto';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run } from '../db/client.js';
 import type { ClusterEventVersion, ReplicatedTable } from './types.js';
 
@@ -92,7 +92,7 @@ export function toAgentLogPayload(row: Record<string, unknown>): Record<string, 
   };
 }
 
-export function deleteAgentLogByRowId(db: Database.Database, rowId: string): void {
+export function deleteAgentLogByRowId(db: Database, rowId: string): void {
   const rows = queryAll<Record<string, unknown>>(
     db,
     'SELECT id, agent_id, story_id, event_type, status, message, metadata, timestamp FROM agent_logs'
@@ -107,7 +107,7 @@ export function deleteAgentLogByRowId(db: Database.Database, rowId: string): voi
 }
 
 export function setRowHash(
-  db: Database.Database,
+  db: Database,
   table: ReplicatedTable,
   rowId: string,
   rowHash: string
@@ -123,7 +123,7 @@ export function setRowHash(
   );
 }
 
-export function incrementAndGetCounter(db: Database.Database): number {
+export function incrementAndGetCounter(db: Database): number {
   run(
     db,
     'UPDATE cluster_state SET event_counter = event_counter + 1, updated_at = ? WHERE id = 1',

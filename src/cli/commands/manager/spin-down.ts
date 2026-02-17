@@ -147,6 +147,7 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
   }
 
   if (agentsSpunDown > 0) {
+    ctx.db.save();
     console.log(chalk.green(`  Spun down ${agentsSpunDown} agent(s) after successful merge`));
   }
 }
@@ -194,6 +195,7 @@ export async function spinDownIdleAgents(ctx: ManagerCheckContext): Promise<void
   }
 
   if (idleSpunDown > 0) {
+    ctx.db.save();
     console.log(chalk.green(`  Spun down ${idleSpunDown} idle agent(s) - pipeline empty`));
   }
 }

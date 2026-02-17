@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
 import blessed, { type Widgets } from 'blessed';
 import { spawnSync } from 'child_process';
+import type { Database } from 'sql.js';
 import { getPendingEscalations, type EscalationRow } from '../../../db/queries/escalations.js';
 
 // Store escalations for selection lookup
@@ -21,10 +21,7 @@ function summarizeEscalationReason(reason: string): string {
   return truncate(reason, 38);
 }
 
-export function createEscalationsPanel(
-  screen: Widgets.Screen,
-  db: Database.Database
-): Widgets.ListElement {
+export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
   const list = blessed.list({
     parent: screen,
     top: '55%+5',
@@ -116,7 +113,7 @@ export function createEscalationsPanel(
 
 export async function updateEscalationsPanel(
   list: Widgets.ListElement,
-  db: Database.Database
+  db: Database
 ): Promise<void> {
   const escalations = getPendingEscalations(db);
   currentEscalations = escalations; // Store for selection lookup

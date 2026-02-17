@@ -246,6 +246,7 @@ export async function handlePermissionPrompt(
           detected_state: stateResult.state,
         },
       });
+      ctx.db.save();
       console.log(chalk.green(`  AUTO-APPROVED: ${sessionName} permission prompt`));
       return true;
     }

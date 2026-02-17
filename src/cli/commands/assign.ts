@@ -117,20 +117,24 @@ export const assignCommand = new Command('assign')
           models: config.models,
           qa: config.qa,
           rootDir: root,
+          saveFn: () => db.save(),
           hiveConfig: config,
         });
 
         // Check scaling first (spawns additional seniors if needed)
         spinner.text = 'Checking team scaling...';
         await scheduler.checkScaling();
+        db.save(); // Save immediately to prevent race condition with manager daemon
 
         // Check merge queue (spawns QA agents if needed)
         spinner.text = 'Checking merge queue...';
         await scheduler.checkMergeQueue();
+        db.save(); // Save immediately to prevent race condition with manager daemon
 
         // Assign stories to agents
         spinner.text = 'Assigning stories to agents...';
         const result = await scheduler.assignStories();
+        db.save(); // Save immediately to prevent race condition with manager daemon
 
         let summaryMsg = `Assigned ${result.assigned} stories`;
         if (result.preventedDuplicates > 0) {
@@ -157,6 +161,7 @@ export const assignCommand = new Command('assign')
         if (result.assigned > 0) {
           spinner.text = 'Syncing with Jira...';
           await scheduler.flushJiraQueue();
+          db.save();
         }
 
         // Determine if we should start the manager, but don't start it yet

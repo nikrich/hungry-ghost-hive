@@ -200,6 +200,7 @@ export async function handleEscalationAndNudge(
         backoff_ms: backoffMs,
       },
     });
+    ctx.db.save();
     console.log(
       chalk.yellow(
         `  AUTO-BACKOFF: ${sessionName} hit rate limit, requested ${Math.round(backoffMs / 1000)}s pause`
@@ -240,6 +241,7 @@ export async function handleEscalationAndNudge(
           attempts,
         },
       });
+      ctx.db.save();
       console.log(
         chalk.yellow(
           `  AUTO-RESTART: ${sessionName} remained interrupted after ${attempts} attempts`
@@ -282,6 +284,7 @@ export async function handleEscalationAndNudge(
         attempt: attempts + 1,
       },
     });
+    ctx.db.save();
     verboseLog(
       ctx,
       `escalationCheck: ${sessionName} action=interruption_recovery_prompt attempt=${attempts + 1}`
@@ -333,6 +336,7 @@ export async function handleEscalationAndNudge(
         detected_state: stateResult.state,
       },
     });
+    ctx.db.save();
     ctx.counters.escalationsCreated++;
     ctx.escalatedSessions.add(sessionName);
 
@@ -362,6 +366,7 @@ export async function handleEscalationAndNudge(
           resolved_count: activeEscalations.length,
         },
       });
+      ctx.db.save();
       console.log(
         chalk.green(
           `  AUTO-RESOLVED: ${sessionName} recovered, resolved ${activeEscalations.length} escalation(s)`

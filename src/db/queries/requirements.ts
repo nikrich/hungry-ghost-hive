@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
 import { nanoid } from 'nanoid';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run, type RequirementRow } from '../client.js';
 
 export type { RequirementRow };
@@ -41,10 +41,7 @@ export interface UpdateRequirementInput {
   featureBranch?: string | null;
 }
 
-export function createRequirement(
-  db: Database.Database,
-  input: CreateRequirementInput
-): RequirementRow {
+export function createRequirement(db: Database, input: CreateRequirementInput): RequirementRow {
   const id = `REQ-${nanoid(8).toUpperCase()}`;
   const now = new Date().toISOString();
 
@@ -69,21 +66,18 @@ export function createRequirement(
   return getRequirementById(db, id)!;
 }
 
-export function getRequirementById(db: Database.Database, id: string): RequirementRow | undefined {
+export function getRequirementById(db: Database, id: string): RequirementRow | undefined {
   return queryOne<RequirementRow>(db, 'SELECT * FROM requirements WHERE id = ?', [id]);
 }
 
-export function getAllRequirements(db: Database.Database): RequirementRow[] {
+export function getAllRequirements(db: Database): RequirementRow[] {
   return queryAll<RequirementRow>(
     db,
     'SELECT * FROM requirements ORDER BY created_at DESC, rowid DESC'
   );
 }
 
-export function getRequirementsByStatus(
-  db: Database.Database,
-  status: RequirementStatus
-): RequirementRow[] {
+export function getRequirementsByStatus(db: Database, status: RequirementStatus): RequirementRow[] {
   return queryAll<RequirementRow>(
     db,
     'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC, rowid DESC',
@@ -91,7 +85,7 @@ export function getRequirementsByStatus(
   );
 }
 
-export function getPendingRequirements(db: Database.Database): RequirementRow[] {
+export function getPendingRequirements(db: Database): RequirementRow[] {
   return queryAll<RequirementRow>(
     db,
     `
@@ -103,7 +97,7 @@ export function getPendingRequirements(db: Database.Database): RequirementRow[] 
 }
 
 export function updateRequirement(
-  db: Database.Database,
+  db: Database,
   id: string,
   input: UpdateRequirementInput
 ): RequirementRow | undefined {
@@ -164,6 +158,6 @@ export function updateRequirement(
   return getRequirementById(db, id);
 }
 
-export function deleteRequirement(db: Database.Database, id: string): void {
+export function deleteRequirement(db: Database, id: string): void {
   run(db, 'DELETE FROM requirements WHERE id = ?', [id]);
 }

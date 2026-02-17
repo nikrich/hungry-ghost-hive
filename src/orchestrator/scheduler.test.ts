@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
+import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getLogsByEventType } from '../db/queries/logs.js';
@@ -32,7 +33,7 @@ vi.mock('../git/worktree.js', () => ({
   removeWorktree: vi.fn().mockResolvedValue(true),
 }));
 
-let db: Database.Database;
+let db: Database;
 let scheduler: Scheduler;
 
 const mockConfig = {
@@ -173,10 +174,11 @@ CREATE TABLE IF NOT EXISTS requirements (
 `;
 
 beforeEach(async () => {
-  db = new Database(':memory:');
-  db.exec('PRAGMA foreign_keys = ON');
-  db.exec(INITIAL_MIGRATION);
-  db.exec("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
+  const SQL = await initSqlJs();
+  db = new SQL.Database();
+  db.run('PRAGMA foreign_keys = ON');
+  db.run(INITIAL_MIGRATION);
+  db.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
 
   scheduler = new Scheduler(db, mockConfig as any);
 });
@@ -466,10 +468,11 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     // Create a terminated agent in the database
     const terminatedAgentId = 'agent-terminated-1';
-    db.prepare(
+    db.run(
       `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
-    ).run(terminatedAgentId, 'intermediate', team.id, 'terminated');
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [terminatedAgentId, 'intermediate', team.id, 'terminated']
+    );
 
     // Create a story assigned to the terminated agent
     const story = createStory(db, {
@@ -490,12 +493,12 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(recovered.length).toBe(1);
 
     // Verify the story's assignment was cleared and status changed
-    const recoveredStory = db
-      .prepare(`SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`)
-      .get() as any;
+    const recoveredStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
+    )[0]?.values[0];
 
-    expect(recoveredStory?.assigned_agent_id).toBeNull(); // assigned_agent_id should be null
-    expect(recoveredStory?.status).toBe('planned'); // status should be 'planned'
+    expect(recoveredStory?.[0]).toBeNull(); // assigned_agent_id should be null
+    expect(recoveredStory?.[1]).toBe('planned'); // status should be 'planned'
   });
 
   it('should not affect stories assigned to active agents', async () => {
@@ -507,10 +510,11 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     // Create an active (non-terminated) agent
     const activeAgentId = 'agent-active-1';
-    db.prepare(
+    db.run(
       `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
-    ).run(activeAgentId, 'intermediate', team.id, 'working');
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [activeAgentId, 'intermediate', team.id, 'working']
+    );
 
     // Create a story assigned to the active agent
     const story = createStory(db, { teamId: team.id, title: 'Active Story', description: 'Test' });
@@ -526,12 +530,12 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(recovered.length).toBe(0);
 
     // Verify the story's assignment was NOT changed
-    const unchangedStory = db
-      .prepare(`SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`)
-      .get() as any;
+    const unchangedStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
+    )[0]?.values[0];
 
-    expect(unchangedStory?.assigned_agent_id).toBe(activeAgentId);
-    expect(unchangedStory?.status).toBe('in_progress');
+    expect(unchangedStory?.[0]).toBe(activeAgentId);
+    expect(unchangedStory?.[1]).toBe('in_progress');
   });
 
   it('should recover stale in_progress stories without assigned agents', async () => {
@@ -555,12 +559,12 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     expect(recovered).toContain(staleStory.id);
 
-    const recoveredStory = db
-      .prepare(`SELECT assigned_agent_id, status FROM stories WHERE id = '${staleStory.id}'`)
-      .get() as any;
+    const recoveredStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${staleStory.id}'`
+    )[0]?.values[0];
 
-    expect(recoveredStory?.assigned_agent_id).toBeNull();
-    expect(recoveredStory?.status).toBe('planned');
+    expect(recoveredStory?.[0]).toBeNull();
+    expect(recoveredStory?.[1]).toBe('planned');
   });
 
   it('should not recover planned stories that are unassigned', async () => {
@@ -594,10 +598,11 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     // Create a terminated agent
     const terminatedAgentId = 'agent-terminated-2';
-    db.prepare(
+    db.run(
       `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
-    ).run(terminatedAgentId, 'intermediate', team.id, 'terminated');
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [terminatedAgentId, 'intermediate', team.id, 'terminated']
+    );
 
     // Create multiple stories assigned to the terminated agent
     const story1 = createStory(db, {
@@ -1137,13 +1142,13 @@ describe('Scheduler Agent Selection', () => {
     });
 
     // Create three junior agents with different workloads
-    db.exec(
+    db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('junior-1', 'junior', '${team.id}', 'idle')`
     );
-    db.exec(
+    db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('junior-2', 'junior', '${team.id}', 'idle')`
     );
-    db.exec(
+    db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('junior-3', 'junior', '${team.id}', 'idle')`
     );
 
@@ -1260,7 +1265,7 @@ describe('Scheduler Agent Selection', () => {
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    db.exec(
+    db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`
     );
 
@@ -1280,7 +1285,7 @@ describe('Scheduler Agent Selection', () => {
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    db.exec(
+    db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`
     );
 
@@ -1343,7 +1348,7 @@ describe('Scheduler Story Assignment Prevention', () => {
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    db.exec(
+    db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`
     );
 
@@ -1359,10 +1364,8 @@ describe('Scheduler Story Assignment Prevention', () => {
     updateStory(db, story.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
 
     // Verify the story is now assigned
-    const result = db
-      .prepare(`SELECT assigned_agent_id FROM stories WHERE id = '${story.id}'`)
-      .get() as any;
-    expect(result.assigned_agent_id).toBe('agent-1');
+    const result = db.exec(`SELECT assigned_agent_id FROM stories WHERE id = '${story.id}'`);
+    expect(result[0].values[0][0]).toBe('agent-1');
   });
 
   it('should verify story assignment changes status', () => {
@@ -1383,8 +1386,8 @@ describe('Scheduler Story Assignment Prevention', () => {
     updateStory(db, story.id, { status: 'in_progress' });
 
     // Verify status changed
-    const result = db.prepare(`SELECT status FROM stories WHERE id = '${story.id}'`).get() as any;
-    expect(result.status).toBe('in_progress');
+    const result = db.exec(`SELECT status FROM stories WHERE id = '${story.id}'`);
+    expect(result[0].values[0][0]).toBe('in_progress');
   });
 
   it('should skip stories with unsatisfied dependencies', () => {
@@ -1452,7 +1455,7 @@ describe('Scheduler Story Assignment Prevention', () => {
       description: 'Test requirement with godmode',
       godmode: true,
     });
-    db.prepare(`UPDATE requirements SET status = 'planning' WHERE id = ?`).run(req.id);
+    db.run(`UPDATE requirements SET status = 'planning' WHERE id = ?`, [req.id]);
 
     // Godmode should be detected as active
     const isGodmodeActive = (scheduler as any).isGodmodeActive();
@@ -1472,7 +1475,7 @@ describe('Scheduler Story Assignment Prevention', () => {
       description: 'Test requirement with godmode',
       godmode: true,
     });
-    db.prepare(`UPDATE requirements SET status = 'in_progress' WHERE id = ?`).run(req.id);
+    db.run(`UPDATE requirements SET status = 'in_progress' WHERE id = ?`, [req.id]);
 
     // Create a story that has moved to in_progress (no longer planned)
     const story = createStory(db, {
@@ -1495,7 +1498,7 @@ describe('Scheduler Story Assignment Prevention', () => {
       description: 'Test requirement without godmode',
       godmode: false,
     });
-    db.prepare(`UPDATE requirements SET status = 'planning' WHERE id = ?`).run(req.id);
+    db.run(`UPDATE requirements SET status = 'planning' WHERE id = ?`, [req.id]);
 
     // Godmode should not be detected as active
     const isGodmodeActive = (scheduler as any).isGodmodeActive();
@@ -1509,7 +1512,7 @@ describe('Scheduler Story Assignment Prevention', () => {
       description: 'Test requirement with godmode',
       godmode: true,
     });
-    db.prepare(`UPDATE requirements SET status = 'completed' WHERE id = ?`).run(req.id);
+    db.run(`UPDATE requirements SET status = 'completed' WHERE id = ?`, [req.id]);
 
     // Godmode should not be active for completed requirements
     const isGodmodeActive = (scheduler as any).isGodmodeActive();
@@ -1532,22 +1535,21 @@ describe('Scheduler Agent Reassignment for Working Agents with NULL currentStory
     });
 
     // Create a working agent with no current story (effectively idle)
-    db.prepare(
+    db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`
-    ).run('senior-orphan-1', 'senior', team.id, 'working');
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+      ['senior-orphan-1', 'senior', team.id, 'working']
+    );
 
     // Query agents using the same filter logic from assignStories
-    const result = db
-      .prepare(
-        `SELECT id, type, status, current_story_id FROM agents
+    const result = db.exec(
+      `SELECT id, type, status, current_story_id FROM agents
        WHERE team_id = '${team.id}' AND type != 'qa'
        AND (status = 'idle' OR (status = 'working' AND current_story_id IS NULL))`
-      )
-      .all() as any[];
+    );
 
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe('senior-orphan-1');
+    expect(result[0].values).toHaveLength(1);
+    expect(result[0].values[0][0]).toBe('senior-orphan-1');
   });
 
   it('should not consider working agents with a current story as available', () => {
@@ -1560,19 +1562,18 @@ describe('Scheduler Agent Reassignment for Working Agents with NULL currentStory
     const story = createStory(db, { teamId: team.id, title: 'Active', description: 'Test' });
 
     // Create a working agent with a current story
-    db.prepare(
+    db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-    ).run('senior-busy-1', 'senior', team.id, 'working', story.id);
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      ['senior-busy-1', 'senior', team.id, 'working', story.id]
+    );
 
     // Query agents using the same filter logic from assignStories
-    const result = db
-      .prepare(
-        `SELECT id, type, status, current_story_id FROM agents
+    const result = db.exec(
+      `SELECT id, type, status, current_story_id FROM agents
        WHERE team_id = '${team.id}' AND type != 'qa'
        AND (status = 'idle' OR (status = 'working' AND current_story_id IS NULL))`
-      )
-      .all() as any[];
+    );
 
     // Should not include the busy agent
     expect(result).toHaveLength(0);
@@ -1708,10 +1709,10 @@ describe('Scheduler Target Branch Propagation', () => {
     expect(story.team_id).toBe(team.id);
 
     // Verify we can retrieve the requirement and its target_branch
-    const retrievedReq = db
-      .prepare(`SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`)
-      .get() as any;
-    expect(retrievedReq?.target_branch).toBe('release/v2.0');
+    const retrievedReq = db.exec(
+      `SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`
+    )[0]?.values[0];
+    expect(retrievedReq?.[0]).toBe('release/v2.0');
   });
 
   it('should use default target_branch (main) when requirement has no custom branch', () => {
@@ -1722,10 +1723,10 @@ describe('Scheduler Target Branch Propagation', () => {
     });
 
     // Verify the requirement defaults to main branch
-    const retrievedReq = db
-      .prepare(`SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`)
-      .get() as any;
-    expect(retrievedReq?.target_branch).toBe('main');
+    const retrievedReq = db.exec(
+      `SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`
+    )[0]?.values[0];
+    expect(retrievedReq?.[0]).toBe('main');
   });
 
   it('should handle stories with different target branches from different requirements', () => {
@@ -1764,18 +1765,16 @@ describe('Scheduler Target Branch Propagation', () => {
     });
 
     // Verify each story can access its requirement's target_branch via JOIN
-    const result = db
-      .prepare(
-        `SELECT s.id, r.target_branch
+    const result = db.exec(
+      `SELECT s.id, r.target_branch
        FROM stories s
        LEFT JOIN requirements r ON s.requirement_id = r.id
        WHERE s.id IN ('${story1.id}', '${story2.id}')
        ORDER BY s.id`
-      )
-      .all() as any[];
+    );
 
-    expect(result).toHaveLength(2);
-    const branches = result.map(row => row.target_branch);
+    expect(result[0].values).toHaveLength(2);
+    const branches = result[0].values.map(row => row[1]);
     expect(branches).toContain('main');
     expect(branches).toContain('staging');
   });
@@ -1797,15 +1796,13 @@ describe('Scheduler Target Branch Propagation', () => {
     expect(story.requirement_id).toBeNull();
 
     // When joining with requirements, should get null for target_branch
-    const result = db
-      .prepare(
-        `SELECT s.id, r.target_branch
+    const result = db.exec(
+      `SELECT s.id, r.target_branch
        FROM stories s
        LEFT JOIN requirements r ON s.requirement_id = r.id
        WHERE s.id = '${story.id}'`
-      )
-      .get() as any;
+    );
 
-    expect(result.target_branch).toBeNull();
+    expect(result[0].values[0][1]).toBeNull();
   });
 });

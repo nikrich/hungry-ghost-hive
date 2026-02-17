@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import {
   updateAgent,
   type AgentRow,
@@ -31,7 +31,7 @@ export interface MemoryState {
 }
 
 export interface AgentContext {
-  db: Database.Database;
+  db: Database;
   provider: LLMProvider;
   agentRow: AgentRow;
   workDir: string;
@@ -45,7 +45,7 @@ export interface AgentContext {
 }
 
 export abstract class BaseAgent {
-  protected db: Database.Database;
+  protected db: Database;
   protected provider: LLMProvider;
   protected agentId: string;
   protected agentType: AgentType;

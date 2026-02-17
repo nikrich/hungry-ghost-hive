@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import {
   getBatchStoryDependencies,
   getStoryDependencies,
@@ -11,10 +11,7 @@ import {
  * Build a dependency graph for stories.
  * Returns a map of story ID to its direct dependencies.
  */
-export function buildDependencyGraph(
-  db: Database.Database,
-  stories: StoryRow[]
-): Map<string, Set<string>> {
+export function buildDependencyGraph(db: Database, stories: StoryRow[]): Map<string, Set<string>> {
   const graph = new Map<string, Set<string>>();
   const storyIds = new Set(stories.map(s => s.id));
 
@@ -45,7 +42,7 @@ export function buildDependencyGraph(
  * Returns stories in order where dependencies come before dependents.
  * Returns null if circular dependency is detected.
  */
-export function topologicalSort(db: Database.Database, stories: StoryRow[]): StoryRow[] | null {
+export function topologicalSort(db: Database, stories: StoryRow[]): StoryRow[] | null {
   const graph = buildDependencyGraph(db, stories);
   const storyMap = new Map(stories.map(s => [s.id, s]));
 
@@ -98,7 +95,7 @@ export function topologicalSort(db: Database.Database, stories: StoryRow[]): Sto
  * Check if a story's dependencies are satisfied.
  * A dependency is satisfied only if it's merged (completed).
  */
-export function areDependenciesSatisfied(db: Database.Database, storyId: string): boolean {
+export function areDependenciesSatisfied(db: Database, storyId: string): boolean {
   const dependencies = getStoryDependencies(db, storyId);
 
   for (const dep of dependencies) {

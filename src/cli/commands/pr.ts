@@ -122,6 +122,8 @@ prCommand
           submittedBy: options.from || null,
         });
 
+        db.save();
+
         const position = getQueuePosition(db.db, pr.id);
 
         console.log(chalk.green(`PR submitted to merge queue`));
@@ -140,6 +142,7 @@ prCommand
             message: `Submitted PR for branch ${options.branch}`,
             metadata: { pr_id: pr.id, queue_position: position },
           });
+          db.save();
         }
 
         // Post Jira comment for PR created event
@@ -166,9 +169,11 @@ prCommand
               models: config.models,
               qa: config.qa,
               rootDir: root,
+              saveFn: () => db.save(),
               hiveConfig: config,
             });
             await scheduler.checkMergeQueue();
+            db.save();
             console.log(chalk.gray('  QA agents notified'));
           }
         } catch {
@@ -239,6 +244,7 @@ prCommand
         status: 'reviewing',
         reviewedBy: options.from || null,
       });
+      db.save();
 
       console.log(chalk.green(`Claimed PR for review: ${pr.id}`));
       console.log(chalk.gray(`  Branch: ${pr.branch_name}`));
@@ -260,6 +266,7 @@ prCommand
           message: `Started reviewing PR ${pr.id}`,
           metadata: { pr_id: pr.id, branch: pr.branch_name },
         });
+        db.save();
       }
     });
   });
@@ -387,6 +394,8 @@ prCommand
         updateStory(db.db, storyId, { status: 'merged' });
       }
 
+      db.save();
+
       // Sync status change to Jira
       if (storyId && newStatus === 'merged') {
         await syncStatusForStory(root, db.db, storyId, 'merged');
@@ -421,6 +430,7 @@ prCommand
           message: `${newStatus === 'merged' ? 'Merged' : 'Approved'} PR ${prId}${storyId ? ` (${storyId})` : ''}`,
           metadata: { pr_id: prId, branch: pr.branch_name, story_id: storyId },
         });
+        db.save();
       }
     });
   });
@@ -453,6 +463,8 @@ prCommand
       if (storyId) {
         updateStory(db.db, storyId, { status: 'qa_failed' });
       }
+
+      db.save();
 
       // Sync status change to Jira
       if (storyId) {
@@ -497,6 +509,7 @@ prCommand
           message: `Rejected PR ${prId}${storyId ? ` (${storyId})` : ''}: ${options.reason}`,
           metadata: { pr_id: prId, branch: pr.branch_name, story_id: storyId },
         });
+        db.save();
       }
     });
   });
@@ -527,6 +540,8 @@ prCommand
         console.log(chalk.green(`  Imported: PR #${pr.number} (${pr.branch}) → ${pr.prId}`));
       }
 
+      db.save();
+
       if (result.synced > 0) {
         console.log(chalk.green(`\nImported ${result.synced} PR(s) into merge queue.`));
 
@@ -542,9 +557,11 @@ prCommand
               scaling: config.scaling,
               models: config.models,
               rootDir: root,
+              saveFn: () => db.save(),
               hiveConfig: config,
             });
             await scheduler.checkMergeQueue();
+            db.save();
             console.log(chalk.gray('QA agents notified.'));
           }
         } catch {

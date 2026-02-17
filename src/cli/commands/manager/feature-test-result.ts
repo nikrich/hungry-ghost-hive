@@ -221,6 +221,7 @@ Co-Authored-By: Feature Test Agent <noreply@hive>`;
       },
     });
 
+    ctx.db.save();
     console.log(
       chalk.green(
         `  Feature sign-off: ${requirementId} PASSED — merged ${featureBranch} to main (PR #${prNumber})`
@@ -229,6 +230,7 @@ Co-Authored-By: Feature Test Agent <noreply@hive>`;
   } catch (err) {
     // Revert status on failure
     updateRequirement(ctx.db.db, requirementId, { status: 'sign_off' });
+    ctx.db.save();
 
     console.error(
       chalk.red(`  Feature sign-off merge failed for ${requirementId}:`),
@@ -280,6 +282,7 @@ async function handleTestFailure(
     },
   });
 
+  ctx.db.save();
   console.log(
     chalk.red(
       `  Feature sign-off: ${requirementId} FAILED — E2E tests failed (see test agent logs for details)`

@@ -9,8 +9,8 @@
  * even when no PM provider is configured — they silently return in that case.
  */
 
-import type Database from 'better-sqlite3';
 import { join } from 'path';
+import type { Database } from 'sql.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { queryOne } from '../../db/client.js';
 import type { StoryRow } from '../../db/queries/stories.js';
@@ -75,7 +75,7 @@ async function resolveProvider(root: string) {
  */
 export async function syncStatusForStory(
   root: string,
-  db: Database.Database,
+  db: Database,
   storyId: string,
   newStatus: string
 ): Promise<void> {
@@ -105,7 +105,7 @@ export async function syncStatusForStory(
  * Never throws — failures are logged as warnings.
  */
 export async function postLifecycleComment(
-  db: Database.Database,
+  db: Database,
   _hiveDir: string,
   hiveConfig: HiveConfig | undefined,
   storyId: string,
@@ -141,7 +141,7 @@ export async function postLifecycleComment(
  * Never throws — failures are logged as warnings.
  */
 export async function postProgressUpdate(
-  db: Database.Database,
+  db: Database,
   _hiveDir: string,
   hiveConfig: HiveConfig | undefined,
   storyId: string,
@@ -181,7 +181,7 @@ export async function postProgressUpdate(
  *
  * Never throws — failures are logged.
  */
-export async function syncFromProvider(root: string, db: Database.Database): Promise<number> {
+export async function syncFromProvider(root: string, db: Database): Promise<number> {
   try {
     const resolved = await resolveProvider(root);
     if (!resolved) return 0;
@@ -208,7 +208,7 @@ export async function syncFromProvider(root: string, db: Database.Database): Pro
  */
 export async function syncStoryToProvider(
   root: string,
-  db: Database.Database,
+  db: Database,
   story: StoryRow,
   teamName?: string
 ): Promise<{ key: string; id: string } | null> {
@@ -239,7 +239,7 @@ export async function syncStoryToProvider(
  */
 export async function syncRequirementToProvider(
   root: string,
-  db: Database.Database,
+  db: Database,
   requirement: { id: string; title: string; description: string },
   storyIds: string[],
   teamName?: string

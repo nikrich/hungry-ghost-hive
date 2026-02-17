@@ -40,7 +40,7 @@ afterEach(async () => {
 
 describe('distributed replication edge cases', () => {
   it('emits upsert event for story dependency rows using compound row id', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     insertStory(db, 'S-A', 'A', 'A');
     insertStory(db, 'S-B', 'B', 'B');
     run(db, `INSERT INTO story_dependencies (story_id, depends_on_story_id) VALUES ('S-A', 'S-B')`);
@@ -62,7 +62,7 @@ describe('distributed replication edge cases', () => {
   });
 
   it('emits delete event when story dependency rows are removed', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     insertStory(db, 'S-A', 'A', 'A');
     insertStory(db, 'S-B', 'B', 'B');
     run(db, `INSERT INTO story_dependencies (story_id, depends_on_story_id) VALUES ('S-A', 'S-B')`);
@@ -91,7 +91,7 @@ describe('distributed replication edge cases', () => {
   });
 
   it('applies remote upsert events for story dependencies', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     insertStory(db, 'S-A', 'A', 'A');
     insertStory(db, 'S-B', 'B', 'B');
 
@@ -118,7 +118,7 @@ describe('distributed replication edge cases', () => {
   });
 
   it('applies remote story deletes and removes related dependencies', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     insertStory(db, 'S-1', 'One', 'One');
     insertStory(db, 'S-2', 'Two', 'Two');
     run(db, `INSERT INTO story_dependencies (story_id, depends_on_story_id) VALUES ('S-1', 'S-2')`);
@@ -146,7 +146,7 @@ describe('distributed replication edge cases', () => {
   });
 
   it('clears stored row hash when delete event removes a story', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     insertStory(db, 'S-HASH', 'Hash', 'Hash');
     scanLocalChanges(db, 'node-a');
 
@@ -176,7 +176,7 @@ describe('distributed replication edge cases', () => {
   });
 
   it('returns all cluster events ordered by logical timestamp then actor id', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     ensureClusterTables(db, 'node-a');
 
     run(
@@ -197,7 +197,7 @@ describe('distributed replication edge cases', () => {
   });
 
   it('returns no delta events when remote version vector is fully current', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     insertStory(db, 'S-DELTA', 'Delta', 'Delta');
     scanLocalChanges(db, 'node-a');
 
@@ -209,7 +209,7 @@ describe('distributed replication edge cases', () => {
   });
 
   it('records upsert events with null payload without writing target rows', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     const event = buildEvent({
       event_id: 'node-r:7',
@@ -234,7 +234,7 @@ describe('distributed replication edge cases', () => {
   });
 
   it('keeps the highest progression status when merging duplicate stories', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     insertStory(
       db,
       'S-100',
@@ -262,7 +262,7 @@ describe('distributed replication edge cases', () => {
   });
 
   it('keeps longer title and description when merging duplicate stories', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     insertStory(db, 'S-LONG-1', 'Implement OAuth Login', 'Implement oauth2 login with pkce');
     insertStory(
       db,
@@ -286,7 +286,7 @@ describe('distributed replication edge cases', () => {
   });
 
   it('takes maximum complexity and story points when merging duplicates', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     insertStory(db, 'S-COMP-1', 'Auth merge', 'Auth merge', 'planned', 3, 2);
     insertStory(db, 'S-COMP-2', 'Auth merge', 'Auth merge', 'planned', 8, 5);
 
@@ -303,7 +303,7 @@ describe('distributed replication edge cases', () => {
   });
 
   it('ignores stories already marked merged when searching for duplicates', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     insertStory(db, 'S-MERGED-1', 'Auth duplicate', 'Auth duplicate', 'planned');
     insertStory(db, 'S-MERGED-2', 'Auth duplicate', 'Auth duplicate', 'merged');
 
@@ -477,7 +477,7 @@ describe('distributed runtime endpoint and election edge cases', () => {
     const { runtime, config } = await startRuntimeFixture({
       node_id: 'node-delta-defaults',
     });
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     insertStory(db, 'S-D1', 'One', 'One');
     insertStory(db, 'S-D2', 'Two', 'Two');
