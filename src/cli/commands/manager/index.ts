@@ -940,9 +940,18 @@ async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
 
 async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
   const closedPRs = await closeStaleGitHubPRs(ctx.root, ctx.db.db);
-  verboseLogCtx(ctx, `closeStalePRs: closed=${closedPRs}`);
-  if (closedPRs > 0) {
-    console.log(chalk.yellow(`  Closed ${closedPRs} stale GitHub PR(s)`));
+  verboseLogCtx(ctx, `closeStalePRs: closed=${closedPRs.length}`);
+  if (closedPRs.length > 0) {
+    console.log(chalk.yellow(`  Closed ${closedPRs.length} stale GitHub PR(s):`));
+    for (const info of closedPRs) {
+      const supersededDesc =
+        info.supersededByPrNumber !== null ? ` (superseded by PR #${info.supersededByPrNumber})` : '';
+      console.log(
+        chalk.gray(
+          `    PR #${info.closedPrNumber} [${info.storyId}] ${info.branch}${supersededDesc}`
+        )
+      );
+    }
     ctx.db.save();
   }
 }

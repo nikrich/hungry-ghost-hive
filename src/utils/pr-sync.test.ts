@@ -4,7 +4,7 @@ import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPullRequest } from '../db/queries/pull-requests.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
-import { getExistingPRIdentifiers, syncOpenGitHubPRs } from './pr-sync.js';
+import { closeStaleGitHubPRs, getExistingPRIdentifiers, syncOpenGitHubPRs } from './pr-sync.js';
 
 vi.mock('execa', () => ({
   execa: vi.fn(),
@@ -515,5 +515,186 @@ describe('syncOpenGitHubPRs', () => {
     const logs = db.exec("SELECT * FROM agent_logs WHERE event_type = 'PR_SYNC_SKIPPED'");
     expect(logs.length).toBeGreaterThan(0);
     expect(logs[0].values.length).toBeGreaterThan(0);
+  });
+});
+
+describe('closeStaleGitHubPRs', () => {
+  beforeEach(() => {
+    // Insert a team so the function can iterate teams
+    db.run(
+      "INSERT INTO teams (id, repo_url, repo_path, name) VALUES ('team-1', 'https://github.com/test/repo', 'repos/test', 'Test')"
+    );
+  });
+
+  it('should return empty array when no teams exist', async () => {
+    // Remove the team inserted in beforeEach
+    db.run("DELETE FROM teams WHERE id = 'team-1'");
+
+    const result = await closeStaleGitHubPRs('/root', db);
+
+    expect(result).toEqual([]);
+    expect(mockExeca).not.toHaveBeenCalled();
+  });
+
+  it('should return empty array when no open GitHub PRs exist', async () => {
+    mockExeca.mockResolvedValue({ stdout: JSON.stringify([]) } as any);
+
+    const result = await closeStaleGitHubPRs('/root', db);
+
+    expect(result).toEqual([]);
+  });
+
+  it('should skip open GitHub PRs without a story ID', async () => {
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'feature/no-story',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'No story',
+          createdAt: new Date().toISOString(),
+        },
+      ]),
+    } as any);
+
+    const result = await closeStaleGitHubPRs('/root', db);
+
+    expect(result).toEqual([]);
+  });
+
+  it('should skip a GitHub PR that is already in the queue', async () => {
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-TST-001', 'Test', 'Test', 'in_progress')"
+    );
+    const pr = createPullRequest(db, {
+      storyId: 'STORY-TST-001',
+      branchName: 'feature/STORY-TST-001-work',
+      githubPrNumber: 10,
+    });
+    expect(pr).toBeDefined();
+
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'feature/STORY-TST-001-work',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'Test PR',
+          createdAt: new Date().toISOString(),
+        },
+      ]),
+    } as any);
+
+    const result = await closeStaleGitHubPRs('/root', db);
+
+    expect(result).toEqual([]);
+    // gh pr close should NOT have been called
+    const closeCalls = mockExeca.mock.calls.filter(
+      call => call[0] === 'gh' && Array.isArray(call[1]) && call[1].includes('close')
+    );
+    expect(closeCalls).toHaveLength(0);
+  });
+
+  it('should close a stale GitHub PR and return ClosedPRInfo', async () => {
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-TST-002', 'Test', 'Test', 'in_progress')"
+    );
+    // Queue PR has github_pr_number 20 (the newer one)
+    createPullRequest(db, {
+      storyId: 'STORY-TST-002',
+      branchName: 'feature/STORY-TST-002-v2',
+      githubPrNumber: 20,
+    });
+
+    // GitHub still has the old PR #10 open
+    mockExeca
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify([
+          {
+            number: 10,
+            headRefName: 'feature/STORY-TST-002-v1',
+            url: 'https://github.com/test/repo/pull/10',
+            title: 'Old PR',
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+      } as any)
+      .mockResolvedValueOnce({ stdout: '' } as any); // gh pr close succeeds
+
+    const result = await closeStaleGitHubPRs('/root', db);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].storyId).toBe('STORY-TST-002');
+    expect(result[0].closedPrNumber).toBe(10);
+    expect(result[0].branch).toBe('feature/STORY-TST-002-v1');
+    expect(result[0].supersededByPrNumber).toBe(20);
+  });
+
+  it('should include superseding PR number in the log message', async () => {
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-TST-003', 'Test', 'Test', 'in_progress')"
+    );
+    createPullRequest(db, {
+      storyId: 'STORY-TST-003',
+      branchName: 'feature/STORY-TST-003-v2',
+      githubPrNumber: 30,
+    });
+
+    mockExeca
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify([
+          {
+            number: 15,
+            headRefName: 'feature/STORY-TST-003-v1',
+            url: 'https://github.com/test/repo/pull/15',
+            title: 'Old PR',
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+      } as any)
+      .mockResolvedValueOnce({ stdout: '' } as any);
+
+    await closeStaleGitHubPRs('/root', db);
+
+    const logs = db.exec(
+      "SELECT message, metadata FROM agent_logs WHERE event_type = 'PR_CLOSED'"
+    );
+    expect(logs.length).toBeGreaterThan(0);
+    const message = logs[0].values[0][0] as string;
+    expect(message).toContain('#15');
+    expect(message).toContain('by PR #30');
+
+    const metadata = JSON.parse(logs[0].values[0][1] as string) as Record<string, unknown>;
+    expect(metadata.superseded_by_pr_number).toBe(30);
+  });
+
+  it('should not close if gh CLI throws and should not include in result', async () => {
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-TST-004', 'Test', 'Test', 'in_progress')"
+    );
+    createPullRequest(db, {
+      storyId: 'STORY-TST-004',
+      branchName: 'feature/STORY-TST-004-v2',
+      githubPrNumber: 40,
+    });
+
+    mockExeca
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify([
+          {
+            number: 5,
+            headRefName: 'feature/STORY-TST-004-v1',
+            url: 'https://github.com/test/repo/pull/5',
+            title: 'Old PR',
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+      } as any)
+      .mockRejectedValueOnce(new Error('gh CLI error') as never);
+
+    const result = await closeStaleGitHubPRs('/root', db);
+
+    // Non-fatal: result should be empty since close failed
+    expect(result).toHaveLength(0);
   });
 });

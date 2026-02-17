@@ -10,7 +10,7 @@ import {
   postLifecycleComment,
   syncStatusForStory,
 } from '../../connectors/project-management/operations.js';
-import { createLog } from '../../db/queries/logs.js';
+import { createLog, getLogsByEventType } from '../../db/queries/logs.js';
 import {
   createPullRequest,
   getMergeQueue,
@@ -570,5 +570,54 @@ prCommand
       } else {
         console.log(chalk.yellow('\nNo new PRs to import.'));
       }
+    });
+  });
+
+// Show recently closed PRs with reasons
+prCommand
+  .command('closed')
+  .description('Show recently closed PRs with close reasons')
+  .option('-n, --limit <number>', 'Number of entries to show', '20')
+  .option('--json', 'Output as JSON')
+  .action(async (options: { limit?: string; json?: boolean }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
+      const limit = parseInt(options.limit ?? '20', 10);
+      const logs = getLogsByEventType(db.db, 'PR_CLOSED', limit);
+
+      if (options.json) {
+        console.log(JSON.stringify(logs, null, 2));
+        return;
+      }
+
+      if (logs.length === 0) {
+        console.log(chalk.yellow('No recently closed PRs found.'));
+        return;
+      }
+
+      console.log(chalk.bold('\nRecently Closed PRs:\n'));
+      console.log(
+        chalk.gray(
+          `${'Timestamp'.padEnd(22)} ${'Story'.padEnd(20)} ${'PR#'.padEnd(6)} ${'Reason'}`
+        )
+      );
+      console.log(chalk.gray('─'.repeat(80)));
+
+      for (const log of logs) {
+        const ts = new Date(log.timestamp).toLocaleString();
+        const story = (log.story_id ?? '-').padEnd(20);
+        const metadata =
+          typeof log.metadata === 'string' ? (JSON.parse(log.metadata) as Record<string, unknown>) : (log.metadata as Record<string, unknown> | null) ?? {};
+        const prNum = String(metadata?.github_pr_number ?? '-').padEnd(6);
+        const supersededBy =
+          metadata?.superseded_by_pr_number != null
+            ? ` (superseded by PR #${metadata.superseded_by_pr_number})`
+            : '';
+        const reason = String(metadata?.reason ?? 'closed') + supersededBy;
+
+        console.log(
+          `${chalk.gray(ts.padEnd(22))} ${chalk.cyan(story)} ${chalk.yellow(prNum)} ${reason}`
+        );
+      }
+      console.log();
     });
   });
