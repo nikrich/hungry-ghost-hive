@@ -84,50 +84,50 @@ describe('withHiveContext', () => {
     expect(mockReleaseLock).toHaveBeenCalledOnce();
   });
 
-  it('logs warning when lock is held for more than 90s', async () => {
+  it('logs warning when lock is held for more than 20s', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    // Mock Date.now to simulate 95s duration
+    // Mock Date.now to simulate 25s duration
     const realDateNow = Date.now;
     let callCount = 0;
     vi.spyOn(Date, 'now').mockImplementation(() => {
       callCount++;
       if (callCount === 1) return realDateNow(); // lock acquired
-      return realDateNow() + 95000; // lock released after 95s
+      return realDateNow() + 25000; // lock released after 25s
     });
 
     await withHiveContext(() => {});
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[TELEMETRY] DB lock held for 95.00s')
+      expect.stringContaining('[TELEMETRY] DB lock held for 25.00s')
     );
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('exceeds 90s warning threshold'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('exceeds 20s warning threshold'));
 
     warnSpy.mockRestore();
     logSpy.mockRestore();
     vi.restoreAllMocks();
   });
 
-  it('logs info when lock is held for more than 60s but less than 90s', async () => {
+  it('logs info when lock is held for more than 10s but less than 20s', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    // Mock Date.now to simulate 70s duration
+    // Mock Date.now to simulate 15s duration
     const realDateNow = Date.now;
     let callCount = 0;
     vi.spyOn(Date, 'now').mockImplementation(() => {
       callCount++;
       if (callCount === 1) return realDateNow(); // lock acquired
-      return realDateNow() + 70000; // lock released after 70s
+      return realDateNow() + 15000; // lock released after 15s
     });
 
     await withHiveContext(() => {});
 
     expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[TELEMETRY] DB lock held for 70.00s')
+      expect.stringContaining('[TELEMETRY] DB lock held for 15.00s')
     );
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('exceeds 60s info threshold'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('exceeds 10s info threshold'));
     expect(warnSpy).not.toHaveBeenCalled();
 
     warnSpy.mockRestore();
@@ -135,17 +135,17 @@ describe('withHiveContext', () => {
     vi.restoreAllMocks();
   });
 
-  it('does not log when lock is held for less than 60s', async () => {
+  it('does not log when lock is held for less than 10s', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    // Mock Date.now to simulate 30s duration
+    // Mock Date.now to simulate 5s duration
     const realDateNow = Date.now;
     let callCount = 0;
     vi.spyOn(Date, 'now').mockImplementation(() => {
       callCount++;
       if (callCount === 1) return realDateNow(); // lock acquired
-      return realDateNow() + 30000; // lock released after 30s
+      return realDateNow() + 5000; // lock released after 5s
     });
 
     await withHiveContext(() => {});

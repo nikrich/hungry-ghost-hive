@@ -187,20 +187,22 @@ export async function handleEscalationAndNudge(
       });
     }
 
-    createLog(ctx.db.db, {
-      agentId: 'manager',
-      storyId: agent?.current_story_id || undefined,
-      eventType: 'STORY_PROGRESS_UPDATE',
-      message: `Auto-backoff message sent to rate-limited session ${sessionName}`,
-      metadata: {
-        session_name: sessionName,
-        detected_state: stateResult.state,
-        recovery: 'rate_limit_backoff',
-        attempt: attempts + 1,
-        backoff_ms: backoffMs,
-      },
+    await ctx.withDb(async db => {
+      createLog(db.db, {
+        agentId: 'manager',
+        storyId: agent?.current_story_id || undefined,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Auto-backoff message sent to rate-limited session ${sessionName}`,
+        metadata: {
+          session_name: sessionName,
+          detected_state: stateResult.state,
+          recovery: 'rate_limit_backoff',
+          attempt: attempts + 1,
+          backoff_ms: backoffMs,
+        },
+      });
+      db.save();
     });
-    ctx.db.save();
     console.log(
       chalk.yellow(
         `  AUTO-BACKOFF: ${sessionName} hit rate limit, requested ${Math.round(backoffMs / 1000)}s pause`
@@ -229,19 +231,21 @@ export async function handleEscalationAndNudge(
     if (attempts >= INTERRUPTION_HARD_RESET_ATTEMPTS) {
       await killTmuxSession(sessionName);
       interruptionRecoveryAttempts.delete(sessionName);
-      createLog(ctx.db.db, {
-        agentId: 'manager',
-        storyId: agent?.current_story_id || undefined,
-        eventType: 'STORY_PROGRESS_UPDATE',
-        message: `Auto-restarted interrupted session ${sessionName} after ${attempts} failed recovery attempts`,
-        metadata: {
-          session_name: sessionName,
-          detected_state: stateResult.state,
-          recovery: 'conversation_interrupted_restart',
-          attempts,
-        },
+      await ctx.withDb(async db => {
+        createLog(db.db, {
+          agentId: 'manager',
+          storyId: agent?.current_story_id || undefined,
+          eventType: 'STORY_PROGRESS_UPDATE',
+          message: `Auto-restarted interrupted session ${sessionName} after ${attempts} failed recovery attempts`,
+          metadata: {
+            session_name: sessionName,
+            detected_state: stateResult.state,
+            recovery: 'conversation_interrupted_restart',
+            attempts,
+          },
+        });
+        db.save();
       });
-      ctx.db.save();
       console.log(
         chalk.yellow(
           `  AUTO-RESTART: ${sessionName} remained interrupted after ${attempts} attempts`
@@ -272,19 +276,21 @@ export async function handleEscalationAndNudge(
       });
     }
 
-    createLog(ctx.db.db, {
-      agentId: 'manager',
-      storyId: agent?.current_story_id || undefined,
-      eventType: 'STORY_PROGRESS_UPDATE',
-      message: `Auto-recovery message sent to interrupted session ${sessionName}`,
-      metadata: {
-        session_name: sessionName,
-        detected_state: stateResult.state,
-        recovery: 'conversation_interrupted',
-        attempt: attempts + 1,
-      },
+    await ctx.withDb(async db => {
+      createLog(db.db, {
+        agentId: 'manager',
+        storyId: agent?.current_story_id || undefined,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Auto-recovery message sent to interrupted session ${sessionName}`,
+        metadata: {
+          session_name: sessionName,
+          detected_state: stateResult.state,
+          recovery: 'conversation_interrupted',
+          attempt: attempts + 1,
+        },
+      });
+      db.save();
     });
-    ctx.db.save();
     verboseLog(
       ctx,
       `escalationCheck: ${sessionName} action=interruption_recovery_prompt attempt=${attempts + 1}`
@@ -303,8 +309,11 @@ export async function handleEscalationAndNudge(
 
   const hasRecentEscalation =
     ctx.escalatedSessions.has(sessionName) ||
-    getRecentEscalationsForAgent(ctx.db.db, sessionName, RECENT_ESCALATION_LOOKBACK_MINUTES)
-      .length > 0;
+    (await ctx.withDb(
+      async db =>
+        getRecentEscalationsForAgent(db.db, sessionName, RECENT_ESCALATION_LOOKBACK_MINUTES)
+          .length > 0
+    ));
   verboseLog(ctx, `escalationCheck: ${sessionName} hasRecentEscalation=${hasRecentEscalation}`);
 
   if (waitingInfo.needsHuman && !hasRecentEscalation) {
@@ -318,25 +327,27 @@ export async function handleEscalationAndNudge(
       output
     );
 
-    const escalation = createEscalation(ctx.db.db, {
-      storyId,
-      fromAgentId: sessionName,
-      toAgentId: null,
-      reason: escalationReason,
+    await ctx.withDb(async db => {
+      const escalation = createEscalation(db.db, {
+        storyId,
+        fromAgentId: sessionName,
+        toAgentId: null,
+        reason: escalationReason,
+      });
+      createLog(db.db, {
+        agentId: 'manager',
+        storyId,
+        eventType: 'ESCALATION_CREATED',
+        status: 'error',
+        message: `${sessionName} requires human approval: ${escalationReason}`,
+        metadata: {
+          escalation_id: escalation.id,
+          session_name: sessionName,
+          detected_state: stateResult.state,
+        },
+      });
+      db.save();
     });
-    createLog(ctx.db.db, {
-      agentId: 'manager',
-      storyId,
-      eventType: 'ESCALATION_CREATED',
-      status: 'error',
-      message: `${sessionName} requires human approval: ${escalationReason}`,
-      metadata: {
-        escalation_id: escalation.id,
-        session_name: sessionName,
-        detected_state: stateResult.state,
-      },
-    });
-    ctx.db.save();
     ctx.counters.escalationsCreated++;
     ctx.escalatedSessions.add(sessionName);
 
@@ -348,33 +359,38 @@ export async function handleEscalationAndNudge(
   } else if (!waitingInfo.isWaiting && !waitingInfo.needsHuman) {
     interruptionRecoveryAttempts.delete(sessionName);
     // Agent recovered - auto-resolve active escalations
-    const activeEscalations = getActiveEscalationsForAgent(ctx.db.db, sessionName);
-    for (const escalation of activeEscalations) {
-      updateEscalation(ctx.db.db, escalation.id, {
-        status: 'resolved',
-        resolution: `Agent recovered: no longer in waiting state`,
-      });
-      ctx.counters.escalationsResolved++;
-    }
-    if (activeEscalations.length > 0) {
-      createLog(ctx.db.db, {
-        agentId: 'manager',
-        eventType: 'ESCALATION_RESOLVED',
-        message: `${sessionName} recovered and manager auto-resolved ${activeEscalations.length} escalation(s)`,
-        metadata: {
-          session_name: sessionName,
-          resolved_count: activeEscalations.length,
-        },
-      });
-      ctx.db.save();
+    const resolvedCount = await ctx.withDb(async db => {
+      const activeEscalations = getActiveEscalationsForAgent(db.db, sessionName);
+      for (const escalation of activeEscalations) {
+        updateEscalation(db.db, escalation.id, {
+          status: 'resolved',
+          resolution: `Agent recovered: no longer in waiting state`,
+        });
+        ctx.counters.escalationsResolved++;
+      }
+      if (activeEscalations.length > 0) {
+        createLog(db.db, {
+          agentId: 'manager',
+          eventType: 'ESCALATION_RESOLVED',
+          message: `${sessionName} recovered and manager auto-resolved ${activeEscalations.length} escalation(s)`,
+          metadata: {
+            session_name: sessionName,
+            resolved_count: activeEscalations.length,
+          },
+        });
+        db.save();
+      }
+      return activeEscalations.length;
+    });
+    if (resolvedCount > 0) {
       console.log(
         chalk.green(
-          `  AUTO-RESOLVED: ${sessionName} recovered, resolved ${activeEscalations.length} escalation(s)`
+          `  AUTO-RESOLVED: ${sessionName} recovered, resolved ${resolvedCount} escalation(s)`
         )
       );
       verboseLog(
         ctx,
-        `escalationCheck: ${sessionName} action=resolve_escalations count=${activeEscalations.length}`
+        `escalationCheck: ${sessionName} action=resolve_escalations count=${resolvedCount}`
       );
     }
   } else if (waitingInfo.isWaiting && stateResult.state !== AgentState.THINKING) {

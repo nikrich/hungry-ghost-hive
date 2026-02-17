@@ -53,17 +53,23 @@ import { checkFeatureSignOff } from './feature-sign-off.js';
 import type { ManagerCheckContext } from './types.js';
 
 function makeCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheckContext {
-  return {
+  const mockDb = { db: {} as never, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+  const mockScheduler = {
+    spawnFeatureTest: vi.fn().mockResolvedValue({ id: 'team-1-feature-test-1' }),
+  };
+
+  const withDb: ManagerCheckContext['withDb'] = async fn => {
+    return fn(mockDb as never, mockScheduler as never);
+  };
+
+  const ctx: ManagerCheckContext = {
     root: '/test',
     verbose: false,
     config: {
       e2e_tests: { path: './e2e' },
     } as unknown as HiveConfig,
     paths: {} as ManagerCheckContext['paths'],
-    db: { db: {} as never, save: vi.fn() } as unknown as ManagerCheckContext['db'],
-    scheduler: {
-      spawnFeatureTest: vi.fn().mockResolvedValue({ id: 'team-1-feature-test-1' }),
-    } as unknown as ManagerCheckContext['scheduler'],
+    withDb,
     hiveSessions: [],
     counters: {
       nudged: 0,
@@ -82,6 +88,12 @@ function makeCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheckCont
     messagesToMarkRead: [],
     ...overrides,
   };
+
+  // Expose internals for assertions in tests
+  (ctx as unknown as Record<string, unknown>)._mockDb = mockDb;
+  (ctx as unknown as Record<string, unknown>)._mockScheduler = mockScheduler;
+
+  return ctx;
 }
 
 function makeRequirement(overrides: Partial<RequirementRow> = {}): RequirementRow {
@@ -211,7 +223,10 @@ describe('checkFeatureSignOff', () => {
     expect(mockUpdateRequirement).toHaveBeenCalledWith(expect.anything(), 'REQ-TEST1234', {
       status: 'sign_off',
     });
-    expect(ctx.scheduler.spawnFeatureTest).toHaveBeenCalledWith(
+    const mockScheduler = (ctx as unknown as Record<string, unknown>)._mockScheduler as {
+      spawnFeatureTest: ReturnType<typeof vi.fn>;
+    };
+    expect(mockScheduler.spawnFeatureTest).toHaveBeenCalledWith(
       'team-abc',
       'team-abc',
       'repos/team-abc',
@@ -222,7 +237,10 @@ describe('checkFeatureSignOff', () => {
       }
     );
     expect(ctx.counters.featureTestsSpawned).toBe(1);
-    expect(ctx.db.save).toHaveBeenCalled();
+    const mockDb = (ctx as unknown as Record<string, unknown>)._mockDb as {
+      save: ReturnType<typeof vi.fn>;
+    };
+    expect(mockDb.save).toHaveBeenCalled();
   });
 
   it('should create log entries on successful spawn', async () => {
@@ -299,11 +317,11 @@ describe('checkFeatureSignOff', () => {
   });
 
   it('should revert requirement status on spawn failure', async () => {
-    const ctx = makeCtx({
-      scheduler: {
-        spawnFeatureTest: vi.fn().mockRejectedValue(new Error('spawn failed')),
-      } as unknown as ManagerCheckContext['scheduler'],
-    });
+    const ctx = makeCtx();
+    const mockScheduler = (ctx as unknown as Record<string, unknown>)._mockScheduler as {
+      spawnFeatureTest: ReturnType<typeof vi.fn>;
+    };
+    mockScheduler.spawnFeatureTest.mockRejectedValue(new Error('spawn failed'));
     mockGetRequirementsByStatus.mockReturnValue([makeRequirement()]);
     mockGetStoriesByRequirement.mockReturnValue([makeStory({ status: 'merged' })]);
     mockGetAllTeams.mockReturnValue([makeTeam()]);
