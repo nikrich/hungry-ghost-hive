@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.39.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.38.0...hungry-ghost-hive-v0.39.0) (2026-02-17)
+
+
+### Features
+
+* add auto-save support to withTransaction for reliable persistence ([#425](https://github.com/nikrich/hungry-ghost-hive/issues/425)) ([1062f30](https://github.com/nikrich/hungry-ghost-hive/commit/1062f308affc26a488ff62c75b9ad007f3314085))
+* add lock hold duration telemetry and increase stale timeout ([#419](https://github.com/nikrich/hungry-ghost-hive/issues/419)) ([9ff4a6a](https://github.com/nikrich/hungry-ghost-hive/commit/9ff4a6a7f32f4108c59cebdb025f711d71bb4f72))
+* add PR close reason logging and hive pr closed command ([#435](https://github.com/nikrich/hungry-ghost-hive/issues/435)) ([9ed07ba](https://github.com/nikrich/hungry-ghost-hive/commit/9ed07ba3cae1db16ba7a68573916c6a728a83693))
+* migrate from sql.js to better-sqlite3 with WAL mode ([#436](https://github.com/nikrich/hungry-ghost-hive/issues/436)) ([3878bfc](https://github.com/nikrich/hungry-ghost-hive/commit/3878bfccf2d1951b0789cb980d089ce1a21c803d))
+* reduce lock scope in auto-merge and add timeouts to PR sync ([#428](https://github.com/nikrich/hungry-ghost-hive/issues/428)) ([feaf669](https://github.com/nikrich/hungry-ghost-hive/commit/feaf6692e7846034af7d265fe9118d773b65dad2))
+
+
+### Bug Fixes
+
+* feature sign-off skipped when requirement has target_branch but no feature_branch ([#443](https://github.com/nikrich/hungry-ghost-hive/issues/443)) ([afc7c26](https://github.com/nikrich/hungry-ghost-hive/commit/afc7c2691471861acf35b2f632d4da53b50ec982))
+* include target_branch in my-stories output for post-compaction recovery ([#446](https://github.com/nikrich/hungry-ghost-hive/issues/446)) ([c5817ae](https://github.com/nikrich/hungry-ghost-hive/commit/c5817aedf548ea747f6605f456872755bb8ee53a)), closes [#440](https://github.com/nikrich/hungry-ghost-hive/issues/440)
+* prevent auto-close of PRs with unsynced merge queue entries ([45284a2](https://github.com/nikrich/hungry-ghost-hive/commit/45284a26166b1e4a92afdff087ea8db9afd18890))
+* replace single DB lock in manager check with per-step lock acqui… ([#442](https://github.com/nikrich/hungry-ghost-hive/issues/442)) ([fa1c1c0](https://github.com/nikrich/hungry-ghost-hive/commit/fa1c1c0fe70da0b995a2068d1c5f81dc1f1bb4df))
+* resolve Jira sync race condition during hive assign lock contention ([#448](https://github.com/nikrich/hungry-ghost-hive/issues/448)) ([80e5e08](https://github.com/nikrich/hungry-ghost-hive/commit/80e5e08b3cd7ad1fba28e61832213765acffc284))
+* skip auto-closing PRs targeting non-configured base branch ([#447](https://github.com/nikrich/hungry-ghost-hive/issues/447)) ([8cc0389](https://github.com/nikrich/hungry-ghost-hive/commit/8cc03892b2ca198a66eb0e155a195bde90a58a3a)), closes [#439](https://github.com/nikrich/hungry-ghost-hive/issues/439)
+
+
+### Code Refactoring
+
+* replace repetitive migration blocks with loop-driven runner ([#429](https://github.com/nikrich/hungry-ghost-hive/issues/429)) ([43d7a88](https://github.com/nikrich/hungry-ghost-hive/commit/43d7a888e7f80513854427f4a8732dc0930848c6))
+
 ## [0.38.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.37.0...hungry-ghost-hive-v0.38.0) (2026-02-16)
 
 
