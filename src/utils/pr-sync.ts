@@ -416,6 +416,12 @@ export async function closeStaleGitHubPRs(root: string, db: Database): Promise<C
 
         // If there are PRs in the queue for this story, check if this GitHub PR is stale
         if (prsForStory.length > 0) {
+          // If any queue entry has a NULL github_pr_number, the PR hasn't been
+          // synced yet — skip auto-close to avoid closing a valid PR that just
+          // hasn't had its number populated.
+          const hasUnsyncedEntry = prsForStory.some(pr => pr.github_pr_number == null);
+          if (hasUnsyncedEntry) continue;
+
           // Check if this GitHub PR number matches any of the queue PRs
           const isInQueue = prsForStory.some(pr => pr.github_pr_number === ghPR.number);
 
