@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import initSqlJs, { type Database } from 'sql.js';
+import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import { JiraClient } from './client.js';
@@ -322,13 +322,12 @@ describe('postComment', () => {
 });
 
 describe('postJiraLifecycleComment', () => {
-  let db: Database;
+  let db: Database.Database;
 
-  beforeEach(async () => {
-    const SQL = await initSqlJs();
-    db = new SQL.Database();
+  beforeEach(() => {
+    db = new Database(':memory:');
 
-    db.run(`
+    db.exec(`
       CREATE TABLE stories (
         id TEXT PRIMARY KEY,
         title TEXT,
@@ -338,20 +337,20 @@ describe('postJiraLifecycleComment', () => {
       )
     `);
 
-    db.run(`INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`, [
+    db.prepare(`INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`).run(
       'STORY-1',
       'Test Story',
       'Description',
       'PROJ-123',
-    ]);
+    );
   });
 
   it('should skip posting comment if story has no Jira issue key', async () => {
-    db.run(`INSERT INTO stories (id, title, description) VALUES (?, ?, ?)`, [
+    db.prepare(`INSERT INTO stories (id, title, description) VALUES (?, ?, ?)`).run(
       'STORY-2',
       'No Jira Story',
       'Description',
-    ]);
+    );
 
     const hiveConfig = {
       integrations: {
@@ -465,13 +464,12 @@ describe('transitionSubtask', () => {
 });
 
 describe('postProgressToSubtask', () => {
-  let db: Database;
+  let db: Database.Database;
 
-  beforeEach(async () => {
-    const SQL = await initSqlJs();
-    db = new SQL.Database();
+  beforeEach(() => {
+    db = new Database(':memory:');
 
-    db.run(`
+    db.exec(`
       CREATE TABLE stories (
         id TEXT PRIMARY KEY,
         title TEXT,
@@ -483,12 +481,12 @@ describe('postProgressToSubtask', () => {
   });
 
   it('should skip when story has no subtask key', async () => {
-    db.run(`INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`, [
+    db.prepare(`INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`).run(
       'STORY-1',
       'Test',
       'Desc',
       'PROJ-123',
-    ]);
+    );
 
     const hiveConfig = {
       integrations: {
@@ -506,10 +504,9 @@ describe('postProgressToSubtask', () => {
   });
 
   it('should skip when Jira is not configured', async () => {
-    db.run(
-      `INSERT INTO stories (id, title, description, jira_issue_key, jira_subtask_key) VALUES (?, ?, ?, ?, ?)`,
-      ['STORY-1', 'Test', 'Desc', 'PROJ-123', 'PROJ-456']
-    );
+    db.prepare(
+      `INSERT INTO stories (id, title, description, jira_issue_key, jira_subtask_key) VALUES (?, ?, ?, ?, ?)`
+    ).run('STORY-1', 'Test', 'Desc', 'PROJ-123', 'PROJ-456');
 
     const hiveConfig = {
       integrations: {

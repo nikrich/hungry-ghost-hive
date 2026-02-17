@@ -1,20 +1,19 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+import Database from 'better-sqlite3';
 
 /**
  * Creates an in-memory database for testing
  * This is a shared helper for all query module tests
  */
-export async function createTestDatabase(): Promise<SqlJsDatabase> {
-  const SQL = await initSqlJs();
-  const db = new SQL.Database();
+export function createTestDatabase(): Database.Database {
+  const db = new Database(':memory:');
 
   // Enable foreign keys
-  db.run('PRAGMA foreign_keys = ON');
+  db.pragma('foreign_keys = ON');
 
   // Run initial schema
-  db.run(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS teams (
       id TEXT PRIMARY KEY,
       repo_url TEXT NOT NULL,

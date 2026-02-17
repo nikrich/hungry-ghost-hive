@@ -1,15 +1,16 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createTeam, deleteTeam, getAllTeams, getTeamById, getTeamByName } from './teams.js';
 import { createTestDatabase } from './test-helpers.js';
 
 describe('teams queries', () => {
-  let db: Database;
+  let db: Database.Database;
 
   beforeEach(async () => {
-    db = await createTestDatabase();
+    db = createTestDatabase();
   });
 
   describe('createTeam', () => {

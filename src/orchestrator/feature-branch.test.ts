@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
-import initSqlJs from 'sql.js';
+import Database from 'better-sqlite3';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { HiveConfig } from '../config/schema.js';
@@ -125,7 +124,7 @@ CREATE TABLE IF NOT EXISTS requirements (
 );
 `;
 
-let db: Database;
+let db: Database.Database;
 
 const mockHiveConfigWithE2E: HiveConfig = {
   e2e_tests: { path: './e2e' },
@@ -134,11 +133,10 @@ const mockHiveConfigWithE2E: HiveConfig = {
 const mockHiveConfigWithoutE2E: HiveConfig = {} as HiveConfig;
 
 beforeEach(async () => {
-  const SQL = await initSqlJs();
-  db = new SQL.Database();
-  db.run('PRAGMA foreign_keys = ON');
-  db.run(INITIAL_MIGRATION);
-  db.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
+  db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+  db.exec(INITIAL_MIGRATION);
+  db.prepare("INSERT INTO migrations (name) VALUES (?)").run('001-initial.sql');
   vi.clearAllMocks();
 });
 
@@ -223,8 +221,7 @@ describe('createRequirementFeatureBranch', () => {
     });
     updateRequirement(db, req.id, { status: 'planned' });
 
-    const saveFn = vi.fn();
-    const result = await createRequirementFeatureBranch(db, '/tmp/repo', req.id, saveFn);
+    const result = await createRequirementFeatureBranch(db, '/tmp/repo', req.id);
 
     expect(result).toBe(`feature/${req.id}`);
 
@@ -248,7 +245,7 @@ describe('createRequirementFeatureBranch', () => {
     expect(updated.status).toBe('in_progress');
 
     // Verify save was called
-    expect(saveFn).toHaveBeenCalled();
+    // better-sqlite3 auto-persists, no saveFn needed
 
     // Verify log was created
     const logs = getLogsByEventType(db, 'FEATURE_BRANCH_CREATED');

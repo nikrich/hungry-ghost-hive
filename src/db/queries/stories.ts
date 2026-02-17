@@ -1,7 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { nanoid } from 'nanoid';
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { queryAll, queryOne, run, type StoryRow } from '../client.js';
 
 export type { StoryRow };
@@ -55,7 +56,7 @@ export interface UpdateStoryInput {
   inSprint?: boolean;
 }
 
-export function createStory(db: Database, input: CreateStoryInput): StoryRow {
+export function createStory(db: Database.Database, input: CreateStoryInput): StoryRow {
   const id = `STORY-${nanoid(6).toUpperCase()}`;
   const acceptanceCriteria = input.acceptanceCriteria
     ? JSON.stringify(input.acceptanceCriteria)
@@ -83,11 +84,11 @@ export function createStory(db: Database, input: CreateStoryInput): StoryRow {
   return getStoryById(db, id)!;
 }
 
-export function getStoryById(db: Database, id: string): StoryRow | undefined {
+export function getStoryById(db: Database.Database, id: string): StoryRow | undefined {
   return queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE id = ?', [id]);
 }
 
-export function getStoriesByRequirement(db: Database, requirementId: string): StoryRow[] {
+export function getStoriesByRequirement(db: Database.Database, requirementId: string): StoryRow[] {
   return queryAll<StoryRow>(
     db,
     'SELECT * FROM stories WHERE requirement_id = ? ORDER BY created_at',
@@ -95,19 +96,19 @@ export function getStoriesByRequirement(db: Database, requirementId: string): St
   );
 }
 
-export function getStoriesByTeam(db: Database, teamId: string): StoryRow[] {
+export function getStoriesByTeam(db: Database.Database, teamId: string): StoryRow[] {
   return queryAll<StoryRow>(db, 'SELECT * FROM stories WHERE team_id = ? ORDER BY created_at', [
     teamId,
   ]);
 }
 
-export function getStoriesByStatus(db: Database, status: StoryStatus): StoryRow[] {
+export function getStoriesByStatus(db: Database.Database, status: StoryStatus): StoryRow[] {
   return queryAll<StoryRow>(db, 'SELECT * FROM stories WHERE status = ? ORDER BY created_at', [
     status,
   ]);
 }
 
-export function getStoriesByAgent(db: Database, agentId: string): StoryRow[] {
+export function getStoriesByAgent(db: Database.Database, agentId: string): StoryRow[] {
   return queryAll<StoryRow>(
     db,
     'SELECT * FROM stories WHERE assigned_agent_id = ? ORDER BY created_at',
@@ -115,7 +116,7 @@ export function getStoriesByAgent(db: Database, agentId: string): StoryRow[] {
   );
 }
 
-export function getActiveStoriesByAgent(db: Database, agentId: string): StoryRow[] {
+export function getActiveStoriesByAgent(db: Database.Database, agentId: string): StoryRow[] {
   return queryAll<StoryRow>(
     db,
     `
@@ -128,11 +129,11 @@ export function getActiveStoriesByAgent(db: Database, agentId: string): StoryRow
   );
 }
 
-export function getAllStories(db: Database): StoryRow[] {
+export function getAllStories(db: Database.Database): StoryRow[] {
   return queryAll<StoryRow>(db, 'SELECT * FROM stories ORDER BY created_at DESC');
 }
 
-export function getPlannedStories(db: Database): StoryRow[] {
+export function getPlannedStories(db: Database.Database): StoryRow[] {
   return queryAll<StoryRow>(
     db,
     `
@@ -143,7 +144,7 @@ export function getPlannedStories(db: Database): StoryRow[] {
   );
 }
 
-export function getInProgressStories(db: Database): StoryRow[] {
+export function getInProgressStories(db: Database.Database): StoryRow[] {
   return queryAll<StoryRow>(
     db,
     `
@@ -154,7 +155,7 @@ export function getInProgressStories(db: Database): StoryRow[] {
   );
 }
 
-export function getStoryPointsByTeam(db: Database, teamId: string): number {
+export function getStoryPointsByTeam(db: Database.Database, teamId: string): number {
   const result = queryOne<{ total: number }>(
     db,
     `
@@ -168,7 +169,7 @@ export function getStoryPointsByTeam(db: Database, teamId: string): number {
 }
 
 export function updateStory(
-  db: Database,
+  db: Database.Database,
   id: string,
   input: UpdateStoryInput
 ): StoryRow | undefined {
@@ -274,13 +275,13 @@ export function updateStory(
   return getStoryById(db, id);
 }
 
-export function deleteStory(db: Database, id: string): void {
+export function deleteStory(db: Database.Database, id: string): void {
   run(db, 'DELETE FROM story_dependencies WHERE story_id = ? OR depends_on_story_id = ?', [id, id]);
   run(db, 'DELETE FROM stories WHERE id = ?', [id]);
 }
 
 // Story dependencies
-export function addStoryDependency(db: Database, storyId: string, dependsOnStoryId: string): void {
+export function addStoryDependency(db: Database.Database, storyId: string, dependsOnStoryId: string): void {
   run(
     db,
     `
@@ -292,7 +293,7 @@ export function addStoryDependency(db: Database, storyId: string, dependsOnStory
 }
 
 export function removeStoryDependency(
-  db: Database,
+  db: Database.Database,
   storyId: string,
   dependsOnStoryId: string
 ): void {
@@ -302,7 +303,7 @@ export function removeStoryDependency(
   ]);
 }
 
-export function getStoryDependencies(db: Database, storyId: string): StoryRow[] {
+export function getStoryDependencies(db: Database.Database, storyId: string): StoryRow[] {
   return queryAll<StoryRow>(
     db,
     `
@@ -314,7 +315,7 @@ export function getStoryDependencies(db: Database, storyId: string): StoryRow[] 
   );
 }
 
-export function getStoriesDependingOn(db: Database, storyId: string): StoryRow[] {
+export function getStoriesDependingOn(db: Database.Database, storyId: string): StoryRow[] {
   return queryAll<StoryRow>(
     db,
     `
@@ -333,7 +334,7 @@ export function getStoriesDependingOn(db: Database, storyId: string): StoryRow[]
  * @param storyIds Array of story IDs to get dependencies for
  * @returns Map of story ID to array of dependent story IDs
  */
-export function getBatchStoryDependencies(db: Database, storyIds: string[]): Map<string, string[]> {
+export function getBatchStoryDependencies(db: Database.Database, storyIds: string[]): Map<string, string[]> {
   if (storyIds.length === 0) return new Map();
 
   const placeholders = storyIds.map(() => '?').join(',');
@@ -361,7 +362,7 @@ export function getBatchStoryDependencies(db: Database, storyIds: string[]): Map
   return deps;
 }
 
-export function getStoryCounts(db: Database): Record<StoryStatus, number> {
+export function getStoryCounts(db: Database.Database): Record<StoryStatus, number> {
   const rows = queryAll<{ status: StoryStatus; count: number }>(
     db,
     `
@@ -391,7 +392,7 @@ export function getStoryCounts(db: Database): Record<StoryStatus, number> {
 }
 
 export function getStoriesWithOrphanedAssignments(
-  db: Database
+  db: Database.Database
 ): Array<{ id: string; agent_id: string }> {
   return queryAll<{ id: string; agent_id: string }>(
     db,
@@ -406,7 +407,7 @@ export function getStoriesWithOrphanedAssignments(
   );
 }
 
-export function getStaleInProgressStoriesWithoutAssignment(db: Database): Array<{ id: string }> {
+export function getStaleInProgressStoriesWithoutAssignment(db: Database.Database): Array<{ id: string }> {
   return queryAll<{ id: string }>(
     db,
     `
@@ -419,7 +420,7 @@ export function getStaleInProgressStoriesWithoutAssignment(db: Database): Array<
 }
 
 /** @deprecated Use getStoryByExternalKey instead */
-export function getStoryByJiraKey(db: Database, jiraIssueKey: string): StoryRow | undefined {
+export function getStoryByJiraKey(db: Database.Database, jiraIssueKey: string): StoryRow | undefined {
   return queryOne<StoryRow>(
     db,
     'SELECT * FROM stories WHERE external_issue_key = ? OR jira_issue_key = ?',
@@ -428,7 +429,7 @@ export function getStoryByJiraKey(db: Database, jiraIssueKey: string): StoryRow 
 }
 
 export function getStoryByExternalKey(
-  db: Database,
+  db: Database.Database,
   externalIssueKey: string
 ): StoryRow | undefined {
   return queryOne<StoryRow>(
@@ -438,7 +439,7 @@ export function getStoryByExternalKey(
   );
 }
 
-export function updateStoryAssignment(db: Database, storyId: string, agentId: string | null): void {
+export function updateStoryAssignment(db: Database.Database, storyId: string, agentId: string | null): void {
   run(db, 'UPDATE stories SET assigned_agent_id = ?, updated_at = ? WHERE id = ?', [
     agentId,
     new Date().toISOString(),

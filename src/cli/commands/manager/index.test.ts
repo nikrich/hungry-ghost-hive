@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getApprovedPullRequests, updatePullRequest } from '../../../db/queries/pull-requests.js';
 
@@ -35,7 +36,7 @@ describe('Auto-merge PRs', () => {
     vi.mocked(getApprovedPullRequests).mockReturnValue([]);
 
     // This is a basic test to ensure the function handles empty PR lists
-    const approvedPRs = getApprovedPullRequests({} as Database);
+    const approvedPRs = getApprovedPullRequests({} as Database.Database);
     expect(approvedPRs).toEqual([]);
   });
 

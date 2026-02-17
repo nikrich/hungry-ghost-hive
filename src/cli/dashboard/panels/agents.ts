@@ -3,7 +3,8 @@
 import blessed, { type Widgets } from 'blessed';
 import { spawnSync } from 'child_process';
 import { appendFileSync } from 'fs';
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { loadConfig } from '../../../config/loader.js';
 import type { ModelsConfig } from '../../../config/schema.js';
 import { getActiveAgents, type AgentRow } from '../../../db/queries/agents.js';
@@ -18,7 +19,7 @@ function debugLog(msg: string) {
 // Store agents for selection lookup
 let currentAgents: AgentRow[] = [];
 
-export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
+export function createAgentsPanel(screen: Widgets.Screen, db: Database.Database): Widgets.ListElement {
   const list = blessed.list({
     parent: screen,
     top: 1,
@@ -96,7 +97,7 @@ interface DisplayAgent extends AgentRow {
   repo?: string;
 }
 
-export async function updateAgentsPanel(list: Widgets.ListElement, db: Database): Promise<void> {
+export async function updateAgentsPanel(list: Widgets.ListElement, db: Database.Database): Promise<void> {
   // Preserve current selection before updating
   const currentSelection = (list as unknown as { selected: number }).selected;
 

@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { queryOne } from '../db/client.js';
 import type { AgentRow } from '../db/queries/agents.js';
 
@@ -8,7 +9,7 @@ import type { AgentRow } from '../db/queries/agents.js';
  * Select the agent with the least workload (queue-depth aware).
  * Returns the agent with fewest active stories; breaks ties by creation order.
  */
-export function selectAgentWithLeastWorkload(db: Database, agents: AgentRow[]): AgentRow {
+export function selectAgentWithLeastWorkload(db: Database.Database, agents: AgentRow[]): AgentRow {
   let selectedAgent = agents[0];
   let minWorkload = getAgentWorkload(db, selectedAgent.id);
 
@@ -26,7 +27,7 @@ export function selectAgentWithLeastWorkload(db: Database, agents: AgentRow[]): 
 /**
  * Calculate queue depth for an agent (number of active stories).
  */
-export function getAgentWorkload(db: Database, agentId: string): number {
+export function getAgentWorkload(db: Database.Database, agentId: string): number {
   const result = queryOne<{ count: number }>(
     db,
     `

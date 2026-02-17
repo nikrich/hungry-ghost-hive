@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
-import initSqlJs from 'sql.js';
+import Database from 'better-sqlite3';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createAgent } from './agents.js';
 import {
@@ -21,13 +20,13 @@ import { createTeam } from './teams.js';
 import { createTestDatabase } from './test-helpers.js';
 
 describe('logs queries', () => {
-  let db: Database;
+  let db: Database.Database;
   let teamId: string;
   let agentId: string;
   let storyId: string;
 
   beforeEach(async () => {
-    db = await createTestDatabase();
+    db = createTestDatabase();
     const team = createTeam(db, {
       repoUrl: 'https://github.com/test/repo.git',
       repoPath: '/path/to/repo',
@@ -147,8 +146,8 @@ describe('logs queries', () => {
       });
 
       expect(log.agent_id).toBe('scheduler');
-      const result = db.exec("SELECT id, type, status FROM agents WHERE id = 'scheduler'");
-      expect(result[0]?.values[0]).toEqual(['scheduler', 'tech_lead', 'terminated']);
+      const result = db.prepare("SELECT id, type, status FROM agents WHERE id = 'scheduler'").get() as any;
+      expect([result.id, result.type, result.status]).toEqual(['scheduler', 'tech_lead', 'terminated']);
     });
 
     it('should drop invalid story references to avoid FK failures', () => {
@@ -162,10 +161,9 @@ describe('logs queries', () => {
     });
 
     it('should support legacy agents schemas without last_seen', async () => {
-      const SQL = await initSqlJs();
-      const legacyDb = new SQL.Database();
-      legacyDb.run('PRAGMA foreign_keys = ON');
-      legacyDb.run(`
+      const legacyDb = new Database(':memory:');
+      legacyDb.pragma('foreign_keys = ON');
+      legacyDb.exec(`
         CREATE TABLE agents (
           id TEXT PRIMARY KEY,
           type TEXT,
@@ -174,8 +172,8 @@ describe('logs queries', () => {
           updated_at TIMESTAMP
         );
       `);
-      legacyDb.run(`CREATE TABLE stories (id TEXT PRIMARY KEY);`);
-      legacyDb.run(`
+      legacyDb.exec(`CREATE TABLE stories (id TEXT PRIMARY KEY);`);
+      legacyDb.exec(`
         CREATE TABLE agent_logs (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           agent_id TEXT NOT NULL REFERENCES agents(id),
@@ -193,8 +191,8 @@ describe('logs queries', () => {
         eventType: 'TEAM_SCALED_UP',
       });
       expect(log.agent_id).toBe('scheduler');
-      const row = legacyDb.exec("SELECT id, status FROM agents WHERE id = 'scheduler'");
-      expect(row[0]?.values[0]).toEqual(['scheduler', 'terminated']);
+      const row = legacyDb.prepare("SELECT id, status FROM agents WHERE id = 'scheduler'").get() as any;
+      expect([row.id, row.status]).toEqual(['scheduler', 'terminated']);
     });
   });
 
@@ -449,13 +447,12 @@ describe('logs queries', () => {
       oldDate.setDate(oldDate.getDate() - 100);
 
       // We need to manually insert to set a past timestamp
-      db.run(
+      db.prepare(
         `
         INSERT INTO agent_logs (agent_id, event_type, timestamp)
         VALUES (?, ?, ?)
-      `,
-        [agentId, 'AGENT_SPAWNED', oldDate.toISOString()]
-      );
+      `
+      ).run(agentId, 'AGENT_SPAWNED', oldDate.toISOString());
 
       // Create a recent log
       createLog(db, { agentId, eventType: 'STORY_STARTED' });
@@ -485,21 +482,19 @@ describe('logs queries', () => {
       const date20DaysAgo = new Date();
       date20DaysAgo.setDate(date20DaysAgo.getDate() - 20);
 
-      db.run(
+      db.prepare(
         `
         INSERT INTO agent_logs (agent_id, event_type, timestamp)
         VALUES (?, ?, ?)
-      `,
-        [agentId, 'AGENT_SPAWNED', date50DaysAgo.toISOString()]
-      );
+      `
+      ).run(agentId, 'AGENT_SPAWNED', date50DaysAgo.toISOString());
 
-      db.run(
+      db.prepare(
         `
         INSERT INTO agent_logs (agent_id, event_type, timestamp)
         VALUES (?, ?, ?)
-      `,
-        [agentId, 'STORY_STARTED', date20DaysAgo.toISOString()]
-      );
+      `
+      ).run(agentId, 'STORY_STARTED', date20DaysAgo.toISOString());
 
       createLog(db, { agentId, eventType: 'STORY_COMPLETED' });
 

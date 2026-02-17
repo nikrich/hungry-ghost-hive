@@ -3,7 +3,8 @@
 import blessed from 'blessed';
 import { appendFileSync, existsSync, renameSync, statSync } from 'fs';
 import { join } from 'path';
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { getReadOnlyDatabase, type ReadOnlyDatabaseClient } from '../../db/client.js';
 import { getAllRequirements } from '../../db/queries/requirements.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
@@ -42,7 +43,7 @@ export interface DashboardOptions {
 /**
  * Check if godmode is active by looking for any non-completed requirement with godmode enabled.
  */
-export function isGodmodeActive(db: Database): boolean {
+export function isGodmodeActive(db: Database.Database): boolean {
   const requirements = getAllRequirements(db);
   return requirements.some(req => req.godmode && req.status !== 'completed');
 }

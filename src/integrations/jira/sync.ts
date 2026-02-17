@@ -1,7 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { join } from 'path';
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
 import { loadConfig } from '../../config/loader.js';
@@ -112,7 +113,7 @@ export function jiraStatusToHiveStatus(
  * @returns Number of stories updated
  */
 export async function syncJiraStatusesToHive(
-  db: Database,
+  db: Database.Database,
   tokenStore: TokenStore,
   config: JiraConfig
 ): Promise<number> {
@@ -234,7 +235,7 @@ export async function syncJiraStatusesToHive(
  * @returns Number of stories synced to Jira
  */
 export async function syncUnsyncedStoriesToJira(
-  db: Database,
+  db: Database.Database,
   tokenStore: TokenStore,
   config: JiraConfig
 ): Promise<number> {
@@ -348,7 +349,7 @@ export async function syncUnsyncedStoriesToJira(
  * @returns Number of stories repaired
  */
 export async function repairMissedAssignmentHooks(
-  db: Database,
+  db: Database.Database,
   tokenStore: TokenStore,
   config: JiraConfig
 ): Promise<number> {
@@ -463,7 +464,7 @@ export async function repairMissedAssignmentHooks(
  * @returns Number of stories moved to sprint
  */
 export async function retrySprintAssignment(
-  db: Database,
+  db: Database.Database,
   tokenStore: TokenStore,
   config: JiraConfig
 ): Promise<number> {
@@ -514,7 +515,7 @@ export async function retrySprintAssignment(
  * @returns Number of stories pushed to Jira
  */
 export async function syncHiveStatusesToJira(
-  db: Database,
+  db: Database.Database,
   tokenStore: TokenStore,
   config: JiraConfig
 ): Promise<number> {
@@ -635,7 +636,7 @@ export async function syncHiveStatusesToJira(
  * @param db - Database instance
  * @returns Number of stories updated (from bidirectional status sync)
  */
-export async function syncFromJira(root: string, db: Database): Promise<number> {
+export async function syncFromJira(root: string, db: Database.Database): Promise<number> {
   try {
     const paths = getHivePaths(root);
     const config = loadConfig(paths.hiveDir);

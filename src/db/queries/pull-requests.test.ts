@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createPullRequest,
@@ -23,12 +24,12 @@ import { createTeam } from './teams.js';
 import { createTestDatabase } from './test-helpers.js';
 
 describe('pull-requests queries', () => {
-  let db: Database;
+  let db: Database.Database;
   let teamId: string;
   let storyId: string;
 
   beforeEach(async () => {
-    db = await createTestDatabase();
+    db = createTestDatabase();
     const team = createTeam(db, {
       repoUrl: 'https://github.com/test/repo.git',
       repoPath: '/path/to/repo',

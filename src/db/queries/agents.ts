@@ -1,7 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { nanoid } from 'nanoid';
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { queryAll, queryOne, run, type AgentRow } from '../client.js';
 
 export type { AgentRow };
@@ -25,7 +26,7 @@ export interface UpdateAgentInput {
   worktreePath?: string | null;
 }
 
-export function createAgent(db: Database, input: CreateAgentInput): AgentRow {
+export function createAgent(db: Database.Database, input: CreateAgentInput): AgentRow {
   const id = input.type === 'tech_lead' ? 'tech-lead' : `${input.type}-${nanoid(8)}`;
   const now = new Date().toISOString();
 
@@ -51,27 +52,27 @@ export function createAgent(db: Database, input: CreateAgentInput): AgentRow {
   return getAgentById(db, id)!;
 }
 
-export function getAgentById(db: Database, id: string): AgentRow | undefined {
+export function getAgentById(db: Database.Database, id: string): AgentRow | undefined {
   return queryOne<AgentRow>(db, 'SELECT * FROM agents WHERE id = ?', [id]);
 }
 
-export function getAgentsByTeam(db: Database, teamId: string): AgentRow[] {
+export function getAgentsByTeam(db: Database.Database, teamId: string): AgentRow[] {
   return queryAll<AgentRow>(db, 'SELECT * FROM agents WHERE team_id = ?', [teamId]);
 }
 
-export function getAgentsByType(db: Database, type: AgentType): AgentRow[] {
+export function getAgentsByType(db: Database.Database, type: AgentType): AgentRow[] {
   return queryAll<AgentRow>(db, 'SELECT * FROM agents WHERE type = ?', [type]);
 }
 
-export function getAgentsByStatus(db: Database, status: AgentStatus): AgentRow[] {
+export function getAgentsByStatus(db: Database.Database, status: AgentStatus): AgentRow[] {
   return queryAll<AgentRow>(db, 'SELECT * FROM agents WHERE status = ?', [status]);
 }
 
-export function getAllAgents(db: Database): AgentRow[] {
+export function getAllAgents(db: Database.Database): AgentRow[] {
   return queryAll<AgentRow>(db, 'SELECT * FROM agents ORDER BY type, team_id');
 }
 
-export function getActiveAgents(db: Database): AgentRow[] {
+export function getActiveAgents(db: Database.Database): AgentRow[] {
   return queryAll<AgentRow>(
     db,
     `
@@ -82,12 +83,12 @@ export function getActiveAgents(db: Database): AgentRow[] {
   );
 }
 
-export function getTechLead(db: Database): AgentRow | undefined {
+export function getTechLead(db: Database.Database): AgentRow | undefined {
   return queryOne<AgentRow>(db, `SELECT * FROM agents WHERE type = 'tech_lead'`);
 }
 
 export function updateAgent(
-  db: Database,
+  db: Database.Database,
   id: string,
   input: UpdateAgentInput
 ): AgentRow | undefined {
@@ -125,10 +126,10 @@ export function updateAgent(
   return getAgentById(db, id);
 }
 
-export function deleteAgent(db: Database, id: string): void {
+export function deleteAgent(db: Database.Database, id: string): void {
   run(db, 'DELETE FROM agents WHERE id = ?', [id]);
 }
 
-export function terminateAgent(db: Database, id: string): void {
+export function terminateAgent(db: Database.Database, id: string): void {
   updateAgent(db, id, { status: 'terminated', tmuxSession: null });
 }

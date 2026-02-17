@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { queryAll, queryOne, run } from '../client.js';
 
 export interface MessageRow {
@@ -15,7 +16,7 @@ export interface MessageRow {
   replied_at: string | null;
 }
 
-export function getUnreadMessages(db: Database, toSession: string): MessageRow[] {
+export function getUnreadMessages(db: Database.Database, toSession: string): MessageRow[] {
   return queryAll<MessageRow>(
     db,
     `
@@ -27,11 +28,11 @@ export function getUnreadMessages(db: Database, toSession: string): MessageRow[]
   );
 }
 
-export function markMessageRead(db: Database, messageId: string): void {
+export function markMessageRead(db: Database.Database, messageId: string): void {
   run(db, `UPDATE messages SET status = 'read' WHERE id = ? AND status = 'pending'`, [messageId]);
 }
 
-export function markMessagesRead(db: Database, messageIds: string[]): void {
+export function markMessagesRead(db: Database.Database, messageIds: string[]): void {
   if (messageIds.length === 0) return;
   const placeholders = messageIds.map(() => '?').join(',');
   run(
@@ -41,11 +42,11 @@ export function markMessagesRead(db: Database, messageIds: string[]): void {
   );
 }
 
-export function getMessageById(db: Database, id: string): MessageRow | undefined {
+export function getMessageById(db: Database.Database, id: string): MessageRow | undefined {
   return queryOne<MessageRow>(db, 'SELECT * FROM messages WHERE id = ?', [id]);
 }
 
-export function getAllPendingMessages(db: Database): MessageRow[] {
+export function getAllPendingMessages(db: Database.Database): MessageRow[] {
   return queryAll<MessageRow>(
     db,
     `

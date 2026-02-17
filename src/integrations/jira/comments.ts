@@ -1,7 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { join } from 'path';
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
 import type { HiveConfig } from '../../config/schema.js';
@@ -349,7 +350,7 @@ function createCode(text: string) {
  * @param context - Additional context for the comment
  */
 export async function postJiraLifecycleComment(
-  db: Database,
+  db: Database.Database,
   hiveDir: string,
   hiveConfig: HiveConfig | undefined,
   storyId: string,
@@ -403,7 +404,7 @@ export async function postJiraLifecycleComment(
  * @param agentName - Name of the agent posting the update
  */
 export async function postProgressToSubtask(
-  db: Database,
+  db: Database.Database,
   hiveDir: string,
   hiveConfig: HiveConfig | undefined,
   storyId: string,

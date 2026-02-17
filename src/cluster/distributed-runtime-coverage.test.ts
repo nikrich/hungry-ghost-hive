@@ -455,7 +455,7 @@ describe('distributed runtime election semantics', () => {
 
 describe('distributed runtime sync behavior', () => {
   it('returns zeroed sync metrics when cluster mode is disabled', async () => {
-    const db = await createTestDatabase();
+    const db = createTestDatabase();
     const runtime = new ClusterRuntime({
       enabled: false,
       node_id: 'node-disabled',
@@ -486,7 +486,7 @@ describe('distributed runtime sync behavior', () => {
     if (!(await canListenOnLocalhost())) return;
 
     const fixture = await startRuntimeFixture({ node_id: 'node-sync-local' });
-    const db = await createTestDatabase();
+    const db = createTestDatabase();
 
     insertStory(db, 'STORY-LOCAL-1', 'Local sync story', 'Emit local event on first sync');
     const result = await fixture.runtime.sync(db);
@@ -505,7 +505,7 @@ describe('distributed runtime sync behavior', () => {
       node_id: 'node-sync-merge',
       story_similarity_threshold: 0.8,
     });
-    const db = await createTestDatabase();
+    const db = createTestDatabase();
 
     insertStory(
       db,
@@ -535,7 +535,7 @@ describe('distributed runtime sync behavior', () => {
     if (!(await canListenOnLocalhost())) return;
 
     const fixture = await startRuntimeFixture({ node_id: 'node-sync-durable' });
-    const db = await createTestDatabase();
+    const db = createTestDatabase();
 
     insertStory(db, 'STORY-DURABLE-1', 'Durable event', 'Verify dedupe across sync calls');
     const first = await fixture.runtime.sync(db);
@@ -568,8 +568,8 @@ describe('distributed runtime sync behavior', () => {
 
     const fixtureA = await startRuntimeWithConfig(configA);
     const fixtureB = await startRuntimeWithConfig(configB);
-    const dbA = await createTestDatabase();
-    const dbB = await createTestDatabase();
+    const dbA = createTestDatabase();
+    const dbB = createTestDatabase();
 
     insertStory(dbA, 'STORY-REMOTE-1', 'Peer story', 'This story should replicate to node-b');
     await fixtureA.runtime.sync(dbA);
@@ -596,7 +596,7 @@ describe('distributed runtime sync behavior', () => {
       peers: [{ id: 'node-dead', url: `http://127.0.0.1:${deadPort}` }],
       request_timeout_ms: 150,
     });
-    const db = await createTestDatabase();
+    const db = createTestDatabase();
 
     const result = await fixture.runtime.sync(db);
     expect(result.imported_events_applied).toBe(0);
@@ -608,7 +608,7 @@ describe('distributed runtime sync behavior', () => {
     if (!(await canListenOnLocalhost())) return;
 
     const fixture = await startRuntimeFixture({ node_id: 'node-delta-vector' });
-    const db = await createTestDatabase();
+    const db = createTestDatabase();
 
     insertStory(db, 'STORY-DELTA-1', 'Delta 1', 'first');
     insertStory(db, 'STORY-DELTA-2', 'Delta 2', 'second');
@@ -640,7 +640,7 @@ describe('distributed runtime sync behavior', () => {
     if (!(await canListenOnLocalhost())) return;
 
     const fixture = await startRuntimeFixture({ node_id: 'node-delta-limit' });
-    const db = await createTestDatabase();
+    const db = createTestDatabase();
 
     insertStory(db, 'STORY-LIMIT-1', 'Limit 1', 'first');
     insertStory(db, 'STORY-LIMIT-2', 'Limit 2', 'second');

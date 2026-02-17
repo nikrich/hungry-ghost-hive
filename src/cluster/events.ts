@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import { queryAll, queryOne, run } from '../db/client.js';
 import type {
   ClusterEvent,
@@ -13,7 +14,7 @@ import type {
 } from './types.js';
 import { hashPayload, incrementAndGetCounter, stableStringify, toObject } from './utils.js';
 
-export function ensureClusterTables(db: Database, nodeId: string): void {
+export function ensureClusterTables(db: Database.Database, nodeId: string): void {
   run(
     db,
     `
@@ -110,7 +111,7 @@ export function ensureClusterTables(db: Database, nodeId: string): void {
   }
 }
 
-export function getVersionVector(db: Database): VersionVector {
+export function getVersionVector(db: Database.Database): VersionVector {
   const rows = queryAll<{ actor_id: string; max_counter: number }>(
     db,
     `
@@ -128,7 +129,7 @@ export function getVersionVector(db: Database): VersionVector {
   return vector;
 }
 
-export function getAllClusterEvents(db: Database): ClusterEvent[] {
+export function getAllClusterEvents(db: Database.Database): ClusterEvent[] {
   const rows = queryAll<ClusterEventRow>(
     db,
     `
@@ -142,7 +143,7 @@ export function getAllClusterEvents(db: Database): ClusterEvent[] {
 }
 
 export function getDeltaEvents(
-  db: Database,
+  db: Database.Database,
   remoteVersionVector: VersionVector,
   limit = 2000
 ): ClusterEvent[] {
@@ -156,7 +157,7 @@ export function getDeltaEvents(
 }
 
 export function emitLocalEvent(
-  db: Database,
+  db: Database.Database,
   nodeId: string,
   input: {
     table_name: ReplicatedTable;
@@ -204,7 +205,7 @@ export function emitLocalEvent(
   );
 }
 
-export function fetchTableSnapshots(db: Database, adapter: TableAdapter): TableRowSnapshot[] {
+export function fetchTableSnapshots(db: Database.Database, adapter: TableAdapter): TableRowSnapshot[] {
   const rows = queryAll<Record<string, unknown>>(db, adapter.selectSql);
 
   return rows.map(row => {

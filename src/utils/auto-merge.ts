@@ -98,8 +98,7 @@ export async function autoMergeApprovedPRs(
             updatePullRequest(phaseDb.db, pr.id, { status: 'queued' });
             claimed = true;
           }
-        },
-        () => phaseDb.save()
+        }
       );
 
       if (!claimed) continue;
@@ -272,8 +271,7 @@ export async function autoMergeApprovedPRs(
                 message: `PR #${pr.github_pr_number} is already ${prState.state.toLowerCase()}, skipping merge`,
                 metadata: { pr_id: pr.id, github_state: prState.state },
               });
-            },
-            () => phaseDb.save()
+            }
           );
 
           if (pr.story_id && prState.state === 'MERGED') {
@@ -323,8 +321,7 @@ export async function autoMergeApprovedPRs(
                   metadata: { pr_id: pr.id },
                 });
               }
-            },
-            () => phaseDb.save()
+            }
           );
 
           mergedCount++;
@@ -351,8 +348,7 @@ export async function autoMergeApprovedPRs(
                 message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${result.outcome.type === 'merge_failed' ? result.outcome.error.message : 'Unknown error'}`,
                 metadata: { pr_id: pr.id },
               });
-            },
-            () => phaseDb.save()
+            }
           );
           break;
         }

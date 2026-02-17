@@ -2,7 +2,8 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
 import { join } from 'path';
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import type { ClusterConfig, ClusterPeerConfig } from '../config/schema.js';
 import { RaftMetadataStore } from './raft-store.js';
 import {
@@ -181,7 +182,7 @@ export class ClusterRuntime {
     };
   }
 
-  async sync(db: Database): Promise<ClusterSyncResult> {
+  async sync(db: Database.Database): Promise<ClusterSyncResult> {
     if (!this.config.enabled) {
       return {
         local_events_emitted: 0,
@@ -233,7 +234,7 @@ export class ClusterRuntime {
     this.role = 'follower';
   }
 
-  private refreshCache(db: Database): void {
+  private refreshCache(db: Database.Database): void {
     this.eventCache = getAllClusterEvents(db).slice(-20000);
     this.versionVectorCache = getVersionVector(db);
   }
@@ -246,7 +247,7 @@ export class ClusterRuntime {
     return appended;
   }
 
-  private async pullEventsFromPeers(db: Database): Promise<number> {
+  private async pullEventsFromPeers(db: Database.Database): Promise<number> {
     if (this.config.peers.length === 0) return 0;
 
     let applied = 0;

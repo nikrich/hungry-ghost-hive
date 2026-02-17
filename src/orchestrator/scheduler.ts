@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
+// @ts-ignore Database.Database type;
 import {
   getCliRuntimeBuilder,
   resolveRuntimeModelForCli,
@@ -81,20 +82,17 @@ export interface SchedulerConfig {
   models: ModelsConfig;
   qa?: QAConfig;
   rootDir: string;
-  saveFn?: () => void;
   hiveConfig?: HiveConfig;
 }
 
 export class Scheduler {
-  private db: Database;
+  private db: Database.Database;
   private config: SchedulerConfig;
-  private saveFn?: () => void;
   private pmQueue: PMOperationQueue;
 
-  constructor(db: Database, config: SchedulerConfig) {
+  constructor(db: Database.Database, config: SchedulerConfig) {
     this.db = db;
     this.config = config;
-    this.saveFn = config.saveFn;
     this.pmQueue = new PMOperationQueue();
   }
 
@@ -363,8 +361,7 @@ export class Scheduler {
                 eventType: 'STORY_ASSIGNED',
                 message,
               });
-            },
-            this.saveFn
+            }
           );
           assigned++;
 
@@ -444,8 +441,6 @@ export class Scheduler {
           externalSubtaskKey: subtask.key,
           externalSubtaskId: subtask.id,
         });
-        if (this.saveFn) this.saveFn();
-
         logger.info(`Created subtask ${subtask.key} for story ${freshStory.id}`);
 
         // Post "assigned" comment
@@ -948,11 +943,6 @@ export class Scheduler {
       worktreePath,
     });
 
-    // Save database immediately so spawned agent can see itself when querying
-    if (this.saveFn) {
-      this.saveFn();
-    }
-
     return agent;
   }
 
@@ -1111,7 +1101,7 @@ export class Scheduler {
     if (!repoPath) return;
 
     for (const reqId of requirementIds) {
-      const branch = await createRequirementFeatureBranch(this.db, repoPath, reqId, this.saveFn);
+      const branch = await createRequirementFeatureBranch(this.db, repoPath, reqId);
 
       if (!branch) {
         errors.push(`Failed to create feature branch for requirement ${reqId}`);

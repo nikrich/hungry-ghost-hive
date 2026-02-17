@@ -397,7 +397,6 @@ export const cleanupCommand = new Command('cleanup')
           console.log(chalk.cyan('Unassigning orphaned stories:'));
           const cleaned = cleanupOrphanedAssignments(db, stats.orphanedStories, false);
           totalCleaned += cleaned;
-          db.save();
           console.log();
         }
 

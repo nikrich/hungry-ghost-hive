@@ -165,7 +165,6 @@ myStoriesCommand
       `,
         [agent.id, storyId]
       );
-      db.save();
 
       // Sync status change to Jira
       await syncStatusForStory(root, db.db, storyId, 'in_progress');
@@ -195,7 +194,6 @@ myStoriesCommand
       `,
         [storyId]
       );
-      db.save();
 
       // Sync status change to Jira
       await syncStatusForStory(root, db.db, storyId, 'review');
@@ -292,7 +290,6 @@ myStoriesCommand
           },
         });
 
-        db.save();
 
         console.log(chalk.green(`Created refactor story: ${story.id}`));
         console.log(chalk.gray(`Title: ${normalizedTitle}`));
