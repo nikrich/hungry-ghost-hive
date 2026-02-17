@@ -240,7 +240,7 @@ export async function handleEscalationAndNudge(
           attempts,
         },
       });
-        console.log(
+      console.log(
         chalk.yellow(
           `  AUTO-RESTART: ${sessionName} remained interrupted after ${attempts} attempts`
         )
@@ -362,7 +362,7 @@ export async function handleEscalationAndNudge(
           resolved_count: activeEscalations.length,
         },
       });
-        console.log(
+      console.log(
         chalk.green(
           `  AUTO-RESOLVED: ${sessionName} recovered, resolved ${activeEscalations.length} escalation(s)`
         )

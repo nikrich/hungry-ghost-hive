@@ -70,7 +70,11 @@ export function scanLocalChanges(db: Database.Database, nodeId: string): number 
   return emitted;
 }
 
-export function applyRemoteEvents(db: Database.Database, nodeId: string, events: ClusterEvent[]): number {
+export function applyRemoteEvents(
+  db: Database.Database,
+  nodeId: string,
+  events: ClusterEvent[]
+): number {
   ensureClusterTables(db, nodeId);
 
   let applied = 0;

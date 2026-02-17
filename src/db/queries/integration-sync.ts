@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { nanoid } from 'nanoid';
 import type Database from 'better-sqlite3';
+import { nanoid } from 'nanoid';
 import { queryAll, queryOne, run } from '../client.js';
 
 export type SyncEntityType = 'story' | 'requirement' | 'pull_request';
@@ -28,7 +28,10 @@ export interface CreateSyncRecordInput {
   externalId: string;
 }
 
-export function createSyncRecord(db: Database.Database, input: CreateSyncRecordInput): IntegrationSyncRow {
+export function createSyncRecord(
+  db: Database.Database,
+  input: CreateSyncRecordInput
+): IntegrationSyncRow {
   const id = `SYNC-${nanoid(8).toUpperCase()}`;
   const now = new Date().toISOString();
 
@@ -44,7 +47,10 @@ export function createSyncRecord(db: Database.Database, input: CreateSyncRecordI
   return getSyncRecordById(db, id)!;
 }
 
-export function getSyncRecordById(db: Database.Database, id: string): IntegrationSyncRow | undefined {
+export function getSyncRecordById(
+  db: Database.Database,
+  id: string
+): IntegrationSyncRow | undefined {
   return queryOne<IntegrationSyncRow>(db, 'SELECT * FROM integration_sync WHERE id = ?', [id]);
 }
 

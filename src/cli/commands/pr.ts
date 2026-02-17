@@ -122,7 +122,6 @@ prCommand
           submittedBy: options.from || null,
         });
 
-
         const position = getQueuePosition(db.db, pr.id);
 
         console.log(chalk.green(`PR submitted to merge queue`));
@@ -388,7 +387,6 @@ prCommand
         updateStory(db.db, storyId, { status: 'merged' });
       }
 
-
       // Sync status change to Jira
       if (storyId && newStatus === 'merged') {
         await syncStatusForStory(root, db.db, storyId, 'merged');
@@ -455,7 +453,6 @@ prCommand
       if (storyId) {
         updateStory(db.db, storyId, { status: 'qa_failed' });
       }
-
 
       // Sync status change to Jira
       if (storyId) {
@@ -529,7 +526,6 @@ prCommand
       for (const pr of result.imported) {
         console.log(chalk.green(`  Imported: PR #${pr.number} (${pr.branch}) → ${pr.prId}`));
       }
-
 
       if (result.synced > 0) {
         console.log(chalk.green(`\nImported ${result.synced} PR(s) into merge queue.`));

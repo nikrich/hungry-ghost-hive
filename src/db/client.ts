@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import Database from 'better-sqlite3';
 import { existsSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
-import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { InitializationError } from '../errors/index.js';
 
@@ -421,9 +421,7 @@ function runMigrations(db: Database.Database): void {
  * Returns the status of all migrations (applied vs pending).
  * Useful for debugging migration issues.
  */
-export function getMigrationStatus(
-  db: Database.Database
-): { name: string; applied: boolean }[] {
+export function getMigrationStatus(db: Database.Database): { name: string; applied: boolean }[] {
   const appliedRows = db.prepare('SELECT name FROM migrations').all() as { name: string }[];
   const appliedMigrations = new Set(appliedRows.map(row => row.name));
 

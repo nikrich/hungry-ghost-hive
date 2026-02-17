@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { join } from 'path';
 import type Database from 'better-sqlite3';
+import { join } from 'path';
 import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
 import type { HiveConfig } from '../../config/schema.js';

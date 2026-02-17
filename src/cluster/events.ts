@@ -204,7 +204,10 @@ export function emitLocalEvent(
   );
 }
 
-export function fetchTableSnapshots(db: Database.Database, adapter: TableAdapter): TableRowSnapshot[] {
+export function fetchTableSnapshots(
+  db: Database.Database,
+  adapter: TableAdapter
+): TableRowSnapshot[] {
   const rows = queryAll<Record<string, unknown>>(db, adapter.selectSql);
 
   return rows.map(row => {

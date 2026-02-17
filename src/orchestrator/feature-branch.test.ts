@@ -136,7 +136,7 @@ beforeEach(async () => {
   db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   db.exec(INITIAL_MIGRATION);
-  db.prepare("INSERT INTO migrations (name) VALUES (?)").run('001-initial.sql');
+  db.prepare('INSERT INTO migrations (name) VALUES (?)').run('001-initial.sql');
   vi.clearAllMocks();
 });
 

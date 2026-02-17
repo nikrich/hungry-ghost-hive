@@ -229,7 +229,11 @@ export function getLogsByStory(db: Database.Database, storyId: string): AgentLog
   );
 }
 
-export function getLogsByEventType(db: Database.Database, eventType: EventType, limit = 100): AgentLogRow[] {
+export function getLogsByEventType(
+  db: Database.Database,
+  eventType: EventType,
+  limit = 100
+): AgentLogRow[] {
   return queryAll<AgentLogRow>(
     db,
     `

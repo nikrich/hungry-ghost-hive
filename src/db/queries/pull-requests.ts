@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { nanoid } from 'nanoid';
 import type Database from 'better-sqlite3';
+import { nanoid } from 'nanoid';
 import { extractPRNumber } from '../../utils/github.js';
 import { queryAll, queryOne, run, type PullRequestRow, type StoryRow } from '../client.js';
 
@@ -32,7 +32,10 @@ export interface UpdatePullRequestInput {
   githubPrUrl?: string | null;
 }
 
-export function createPullRequest(db: Database.Database, input: CreatePullRequestInput): PullRequestRow {
+export function createPullRequest(
+  db: Database.Database,
+  input: CreatePullRequestInput
+): PullRequestRow {
   const id = `pr-${nanoid(8)}`;
   const now = new Date().toISOString();
 
@@ -68,7 +71,10 @@ export function getPullRequestById(db: Database.Database, id: string): PullReque
   return queryOne<PullRequestRow>(db, 'SELECT * FROM pull_requests WHERE id = ?', [id]);
 }
 
-export function getPullRequestByStory(db: Database.Database, storyId: string): PullRequestRow | undefined {
+export function getPullRequestByStory(
+  db: Database.Database,
+  storyId: string
+): PullRequestRow | undefined {
   return queryOne<PullRequestRow>(db, 'SELECT * FROM pull_requests WHERE story_id = ?', [storyId]);
 }
 
@@ -178,7 +184,10 @@ export function getPrioritizedMergeQueue(db: Database.Database, teamId?: string)
   return scored.map(item => item.pr);
 }
 
-export function getPullRequestsByStatus(db: Database.Database, status: PullRequestStatus): PullRequestRow[] {
+export function getPullRequestsByStatus(
+  db: Database.Database,
+  status: PullRequestStatus
+): PullRequestRow[] {
   return queryAll<PullRequestRow>(
     db,
     `
@@ -201,7 +210,10 @@ export function getApprovedPullRequests(db: Database.Database): PullRequestRow[]
   );
 }
 
-export function getOpenPullRequestsByStory(db: Database.Database, storyId: string): PullRequestRow[] {
+export function getOpenPullRequestsByStory(
+  db: Database.Database,
+  storyId: string
+): PullRequestRow[] {
   return queryAll<PullRequestRow>(
     db,
     `

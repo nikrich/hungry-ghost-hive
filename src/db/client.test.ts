@@ -155,7 +155,7 @@ describe('queryOne', () => {
       )
       .run();
 
-    const row = queryOne<{ name: string }>(client.db, "SELECT name FROM teams WHERE id = ?", [
+    const row = queryOne<{ name: string }>(client.db, 'SELECT name FROM teams WHERE id = ?', [
       't1',
     ]);
     expect(row?.name).toBe('Team A');
@@ -185,7 +185,7 @@ describe('run', () => {
   it('should execute a parameterized statement', async () => {
     const client = await createDatabase(join(tempDir, 'run.db'));
 
-    run(client.db, "INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)", [
+    run(client.db, 'INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)', [
       't1',
       'url',
       '/path',
@@ -214,7 +214,7 @@ describe('withTransaction', () => {
     const client = await createDatabase(join(tempDir, 'txn.db'));
 
     await withTransaction(client.db, () => {
-      run(client.db, "INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)", [
+      run(client.db, 'INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)', [
         't1',
         'url',
         '/path',
@@ -233,7 +233,7 @@ describe('withTransaction', () => {
 
     await expect(
       withTransaction(client.db, () => {
-        run(client.db, "INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)", [
+        run(client.db, 'INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)', [
           't1',
           'url',
           '/path',
@@ -254,7 +254,7 @@ describe('withTransaction', () => {
     const client = await createDatabase(join(tempDir, 'txn-compat.db'));
 
     await withTransaction(client.db, () => {
-      run(client.db, "INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)", [
+      run(client.db, 'INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)', [
         't1',
         'url',
         '/path',

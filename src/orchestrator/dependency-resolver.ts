@@ -11,7 +11,10 @@ import {
  * Build a dependency graph for stories.
  * Returns a map of story ID to its direct dependencies.
  */
-export function buildDependencyGraph(db: Database.Database, stories: StoryRow[]): Map<string, Set<string>> {
+export function buildDependencyGraph(
+  db: Database.Database,
+  stories: StoryRow[]
+): Map<string, Set<string>> {
   const graph = new Map<string, Set<string>>();
   const storyIds = new Set(stories.map(s => s.id));
 

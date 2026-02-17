@@ -104,12 +104,14 @@ describe('cluster runtime helpers', () => {
       configBase
     );
 
-    db.db.prepare(
-      `
+    db.db
+      .prepare(
+        `
       INSERT INTO stories (id, requirement_id, team_id, title, description, status, created_at, updated_at)
       VALUES ('STORY-PERSIST', NULL, NULL, 'Persist me', 'Ensure durable raft metadata', 'planned', ?, ?)
     `
-    ).run(new Date().toISOString(), new Date().toISOString());
+      )
+      .run(new Date().toISOString(), new Date().toISOString());
 
     await runtimeA.sync(db.db);
 

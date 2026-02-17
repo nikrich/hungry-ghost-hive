@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import type Database from 'better-sqlite3';
 import blessed from 'blessed';
 import { appendFileSync, existsSync, renameSync, statSync } from 'fs';
 import { join } from 'path';
-import type Database from 'better-sqlite3';
 import { getReadOnlyDatabase, type ReadOnlyDatabaseClient } from '../../db/client.js';
 import { getAllRequirements } from '../../db/queries/requirements.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';

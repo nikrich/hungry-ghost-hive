@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import { JiraClient } from './client.js';
@@ -337,19 +337,16 @@ describe('postJiraLifecycleComment', () => {
       )
     `);
 
-    db.prepare(`INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`).run(
-      'STORY-1',
-      'Test Story',
-      'Description',
-      'PROJ-123',
-    );
+    db.prepare(
+      `INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`
+    ).run('STORY-1', 'Test Story', 'Description', 'PROJ-123');
   });
 
   it('should skip posting comment if story has no Jira issue key', async () => {
     db.prepare(`INSERT INTO stories (id, title, description) VALUES (?, ?, ?)`).run(
       'STORY-2',
       'No Jira Story',
-      'Description',
+      'Description'
     );
 
     const hiveConfig = {
@@ -481,12 +478,9 @@ describe('postProgressToSubtask', () => {
   });
 
   it('should skip when story has no subtask key', async () => {
-    db.prepare(`INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`).run(
-      'STORY-1',
-      'Test',
-      'Desc',
-      'PROJ-123',
-    );
+    db.prepare(
+      `INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`
+    ).run('STORY-1', 'Test', 'Desc', 'PROJ-123');
 
     const hiveConfig = {
       integrations: {

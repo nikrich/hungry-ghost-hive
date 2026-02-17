@@ -152,7 +152,11 @@ function showOverallStatus(db: import('better-sqlite3').Database, json?: boolean
   }
 }
 
-function showTeamStatus(db: import('better-sqlite3').Database, teamName: string, json?: boolean): void {
+function showTeamStatus(
+  db: import('better-sqlite3').Database,
+  teamName: string,
+  json?: boolean
+): void {
   const team = getTeamByName(db, teamName);
   if (!team) {
     console.error(chalk.red(`Team not found: ${teamName}`));
@@ -236,7 +240,11 @@ function showTeamStatus(db: import('better-sqlite3').Database, teamName: string,
   }
 }
 
-function showStoryStatus(db: import('better-sqlite3').Database, storyId: string, json?: boolean): void {
+function showStoryStatus(
+  db: import('better-sqlite3').Database,
+  storyId: string,
+  json?: boolean
+): void {
   const story = getStoryById(db, storyId);
   if (!story) {
     console.error(chalk.red(`Story not found: ${storyId}`));

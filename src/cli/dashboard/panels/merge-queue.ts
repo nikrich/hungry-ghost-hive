@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import blessed, { type Widgets } from 'blessed';
 import type Database from 'better-sqlite3';
+import blessed, { type Widgets } from 'blessed';
 import { getMergeQueue, type PullRequestRow } from '../../../db/queries/pull-requests.js';
 
 export function createMergeQueuePanel(

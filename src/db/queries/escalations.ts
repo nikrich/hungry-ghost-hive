@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { nanoid } from 'nanoid';
 import type Database from 'better-sqlite3';
+import { nanoid } from 'nanoid';
 import { queryAll, queryOne, run, type EscalationRow } from '../client.js';
 
 export type { EscalationRow };
@@ -21,7 +21,10 @@ export interface UpdateEscalationInput {
   resolution?: string | null;
 }
 
-export function createEscalation(db: Database.Database, input: CreateEscalationInput): EscalationRow {
+export function createEscalation(
+  db: Database.Database,
+  input: CreateEscalationInput
+): EscalationRow {
   const id = `ESC-${nanoid(6).toUpperCase()}`;
   const now = new Date().toISOString();
 
@@ -72,7 +75,10 @@ export function getEscalationsByFromAgent(db: Database.Database, agentId: string
   );
 }
 
-export function getEscalationsByToAgent(db: Database.Database, agentId: string | null): EscalationRow[] {
+export function getEscalationsByToAgent(
+  db: Database.Database,
+  agentId: string | null
+): EscalationRow[] {
   if (agentId === null) {
     return queryAll<EscalationRow>(
       db,
@@ -94,7 +100,10 @@ export function getEscalationsByToAgent(db: Database.Database, agentId: string |
   );
 }
 
-export function getEscalationsByStatus(db: Database.Database, status: EscalationStatus): EscalationRow[] {
+export function getEscalationsByStatus(
+  db: Database.Database,
+  status: EscalationStatus
+): EscalationRow[] {
   return queryAll<EscalationRow>(
     db,
     `
@@ -138,7 +147,10 @@ export function getRecentEscalationsForAgent(
   );
 }
 
-export function getActiveEscalationsForAgent(db: Database.Database, agentId: string): EscalationRow[] {
+export function getActiveEscalationsForAgent(
+  db: Database.Database,
+  agentId: string
+): EscalationRow[] {
   return queryAll<EscalationRow>(
     db,
     `
@@ -197,7 +209,10 @@ export function resolveEscalation(
   return updateEscalation(db, id, { status: 'resolved', resolution });
 }
 
-export function acknowledgeEscalation(db: Database.Database, id: string): EscalationRow | undefined {
+export function acknowledgeEscalation(
+  db: Database.Database,
+  id: string
+): EscalationRow | undefined {
   return updateEscalation(db, id, { status: 'acknowledged' });
 }
 

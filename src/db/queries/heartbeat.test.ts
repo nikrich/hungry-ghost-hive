@@ -30,7 +30,9 @@ describe('heartbeat queries', () => {
 
       updateAgentHeartbeat(db, agent.id);
 
-      const afterUpdate = db.prepare(`SELECT last_seen FROM agents WHERE id = ?`).all(agent.id) as any[];
+      const afterUpdate = db
+        .prepare(`SELECT last_seen FROM agents WHERE id = ?`)
+        .all(agent.id) as any[];
       const updatedLastSeen = afterUpdate[0]?.last_seen;
 
       expect(updatedLastSeen).toBeDefined();
@@ -127,7 +129,7 @@ describe('heartbeat queries', () => {
       db.prepare(`UPDATE agents SET last_seen = ? WHERE id = ?`).run(oldTimestamp, workingAgent.id);
       db.prepare(`UPDATE agents SET last_seen = ?, status = 'terminated' WHERE id = ?`).run(
         oldTimestamp,
-        terminatedAgent.id,
+        terminatedAgent.id
       );
 
       const staleAgents = getStaleAgents(db, 15);
@@ -147,7 +149,7 @@ describe('heartbeat queries', () => {
       const oldCreatedAt = new Date(Date.now() - 90000).toISOString(); // 90 seconds ago
       db.prepare(`UPDATE agents SET last_seen = NULL, created_at = ? WHERE id = ?`).run(
         oldCreatedAt,
-        agent.id,
+        agent.id
       );
 
       const staleAgents = getStaleAgents(db, 15);
@@ -200,7 +202,7 @@ describe('heartbeat queries', () => {
         oldTimestamp,
         agent1.id,
         agent2.id,
-        agent3.id,
+        agent3.id
       );
 
       const staleAgents = getStaleAgents(db, 15);

@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       agentRow.id,
       agentRow.type,
       agentRow.team_id,
-      agentRow.status,
+      agentRow.status
     );
 
     context = {
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       agentRow.memory_state = JSON.stringify(existingMemory);
       db.prepare(`UPDATE agents SET memory_state = ? WHERE id = ?`).run(
         agentRow.memory_state,
-        agentRow.id,
+        agentRow.id
       );
 
       const agent = new TestAgent(context);

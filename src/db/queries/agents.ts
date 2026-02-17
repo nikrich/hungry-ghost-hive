@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { nanoid } from 'nanoid';
 import type Database from 'better-sqlite3';
+import { nanoid } from 'nanoid';
 import { queryAll, queryOne, run, type AgentRow } from '../client.js';
 
 export type { AgentRow };

@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { execa } from 'execa';
 import type Database from 'better-sqlite3';
+import { execa } from 'execa';
 import { syncStatusForStory } from '../connectors/project-management/operations.js';
 import { queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
@@ -372,7 +372,10 @@ export interface ClosedPRInfo {
  * @param db    - Database instance
  * @returns Array of ClosedPRInfo for each PR that was closed.
  */
-export async function closeStaleGitHubPRs(root: string, db: Database.Database): Promise<ClosedPRInfo[]> {
+export async function closeStaleGitHubPRs(
+  root: string,
+  db: Database.Database
+): Promise<ClosedPRInfo[]> {
   const teams = getAllTeams(db);
   if (teams.length === 0) return [];
 

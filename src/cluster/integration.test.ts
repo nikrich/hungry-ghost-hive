@@ -170,12 +170,14 @@ async function stopFixtures(fixtures: NodeFixture[]): Promise<void> {
 
 function insertStory(db: DatabaseClient, id: string, title: string, description: string): void {
   const now = new Date().toISOString();
-  db.db.prepare(
-    `
+  db.db
+    .prepare(
+      `
     INSERT INTO stories (id, requirement_id, team_id, title, description, status, created_at, updated_at)
     VALUES (?, NULL, NULL, ?, ?, 'planned', ?, ?)
   `
-  ).run(id, title, description, now, now);
+    )
+    .run(id, title, description, now, now);
 }
 
 async function waitForSingleLeader(

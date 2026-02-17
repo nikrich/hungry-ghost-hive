@@ -290,7 +290,6 @@ myStoriesCommand
           },
         });
 
-
         console.log(chalk.green(`Created refactor story: ${story.id}`));
         console.log(chalk.gray(`Title: ${normalizedTitle}`));
         console.log(

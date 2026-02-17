@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { nanoid } from 'nanoid';
 import type Database from 'better-sqlite3';
+import { nanoid } from 'nanoid';
 import { queryAll, queryOne, run, type StoryRow } from '../client.js';
 
 export type { StoryRow };
@@ -280,7 +280,11 @@ export function deleteStory(db: Database.Database, id: string): void {
 }
 
 // Story dependencies
-export function addStoryDependency(db: Database.Database, storyId: string, dependsOnStoryId: string): void {
+export function addStoryDependency(
+  db: Database.Database,
+  storyId: string,
+  dependsOnStoryId: string
+): void {
   run(
     db,
     `
@@ -333,7 +337,10 @@ export function getStoriesDependingOn(db: Database.Database, storyId: string): S
  * @param storyIds Array of story IDs to get dependencies for
  * @returns Map of story ID to array of dependent story IDs
  */
-export function getBatchStoryDependencies(db: Database.Database, storyIds: string[]): Map<string, string[]> {
+export function getBatchStoryDependencies(
+  db: Database.Database,
+  storyIds: string[]
+): Map<string, string[]> {
   if (storyIds.length === 0) return new Map();
 
   const placeholders = storyIds.map(() => '?').join(',');
@@ -406,7 +413,9 @@ export function getStoriesWithOrphanedAssignments(
   );
 }
 
-export function getStaleInProgressStoriesWithoutAssignment(db: Database.Database): Array<{ id: string }> {
+export function getStaleInProgressStoriesWithoutAssignment(
+  db: Database.Database
+): Array<{ id: string }> {
   return queryAll<{ id: string }>(
     db,
     `
@@ -419,7 +428,10 @@ export function getStaleInProgressStoriesWithoutAssignment(db: Database.Database
 }
 
 /** @deprecated Use getStoryByExternalKey instead */
-export function getStoryByJiraKey(db: Database.Database, jiraIssueKey: string): StoryRow | undefined {
+export function getStoryByJiraKey(
+  db: Database.Database,
+  jiraIssueKey: string
+): StoryRow | undefined {
   return queryOne<StoryRow>(
     db,
     'SELECT * FROM stories WHERE external_issue_key = ? OR jira_issue_key = ?',
@@ -438,7 +450,11 @@ export function getStoryByExternalKey(
   );
 }
 
-export function updateStoryAssignment(db: Database.Database, storyId: string, agentId: string | null): void {
+export function updateStoryAssignment(
+  db: Database.Database,
+  storyId: string,
+  agentId: string | null
+): void {
   run(db, 'UPDATE stories SET assigned_agent_id = ?, updated_at = ? WHERE id = ?', [
     agentId,
     new Date().toISOString(),

@@ -200,7 +200,7 @@ describe('syncOpenGitHubPRs', () => {
     expect(existingBranches.has('feature/shared')).toBe(true);
     expect(existingPrNumbers.has(10)).toBe(true);
 
-    const countResult = (db.prepare('SELECT COUNT(*) as count FROM pull_requests').get() as any);
+    const countResult = db.prepare('SELECT COUNT(*) as count FROM pull_requests').get() as any;
     expect(countResult.count).toBe(1);
   });
 
@@ -654,7 +654,9 @@ describe('closeStaleGitHubPRs', () => {
 
     await closeStaleGitHubPRs('/root', db);
 
-    const logs = db.prepare("SELECT message, metadata FROM agent_logs WHERE event_type = 'PR_CLOSED'").all() as Array<{ message: string; metadata: string }>;
+    const logs = db
+      .prepare("SELECT message, metadata FROM agent_logs WHERE event_type = 'PR_CLOSED'")
+      .all() as Array<{ message: string; metadata: string }>;
     expect(logs.length).toBeGreaterThan(0);
     const message = logs[0].message;
     expect(message).toContain('#15');

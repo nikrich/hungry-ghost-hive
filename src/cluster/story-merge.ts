@@ -93,7 +93,11 @@ export function mergeSimilarStories(db: Database.Database, similarityThreshold: 
   return merged;
 }
 
-function mergeStoryIntoCanonical(db: Database.Database, canonicalId: string, duplicateId: string): boolean {
+function mergeStoryIntoCanonical(
+  db: Database.Database,
+  canonicalId: string,
+  duplicateId: string
+): boolean {
   const canonical = queryOne<StoryRecord>(db, 'SELECT * FROM stories WHERE id = ?', [canonicalId]);
   const duplicate = queryOne<StoryRecord>(db, 'SELECT * FROM stories WHERE id = ?', [duplicateId]);
 

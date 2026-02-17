@@ -146,8 +146,14 @@ describe('logs queries', () => {
       });
 
       expect(log.agent_id).toBe('scheduler');
-      const result = db.prepare("SELECT id, type, status FROM agents WHERE id = 'scheduler'").get() as any;
-      expect([result.id, result.type, result.status]).toEqual(['scheduler', 'tech_lead', 'terminated']);
+      const result = db
+        .prepare("SELECT id, type, status FROM agents WHERE id = 'scheduler'")
+        .get() as any;
+      expect([result.id, result.type, result.status]).toEqual([
+        'scheduler',
+        'tech_lead',
+        'terminated',
+      ]);
     });
 
     it('should drop invalid story references to avoid FK failures', () => {
@@ -191,7 +197,9 @@ describe('logs queries', () => {
         eventType: 'TEAM_SCALED_UP',
       });
       expect(log.agent_id).toBe('scheduler');
-      const row = legacyDb.prepare("SELECT id, status FROM agents WHERE id = 'scheduler'").get() as any;
+      const row = legacyDb
+        .prepare("SELECT id, status FROM agents WHERE id = 'scheduler'")
+        .get() as any;
       expect([row.id, row.status]).toEqual(['scheduler', 'terminated']);
     });
   });

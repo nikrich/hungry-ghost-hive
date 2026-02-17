@@ -1,10 +1,13 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import blessed, { type Widgets } from 'blessed';
 import type Database from 'better-sqlite3';
+import blessed, { type Widgets } from 'blessed';
 import { queryAll, type StoryRow } from '../../../db/client.js';
 
-export function createStoriesPanel(screen: Widgets.Screen, db: Database.Database): Widgets.ListTableElement {
+export function createStoriesPanel(
+  screen: Widgets.Screen,
+  db: Database.Database
+): Widgets.ListTableElement {
   const table = blessed.listtable({
     parent: screen,
     top: '30%',

@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { createHash } from 'crypto';
 import type Database from 'better-sqlite3';
+import { createHash } from 'crypto';
 import { queryAll, queryOne, run } from '../db/client.js';
 import type { ClusterEventVersion, ReplicatedTable } from './types.js';
 

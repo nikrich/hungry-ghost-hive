@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { execa } from 'execa';
 import type Database from 'better-sqlite3';
+import { execa } from 'execa';
 import type { HiveConfig } from '../config/schema.js';
 import { queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
@@ -105,8 +105,6 @@ export async function createRequirementFeatureBranch(
       status: 'in_progress',
     });
 
-
-
     createLog(db, {
       agentId: 'scheduler',
       eventType: 'FEATURE_BRANCH_CREATED',
@@ -129,7 +127,6 @@ export async function createRequirementFeatureBranch(
     // Still transition requirement to in_progress even if branch creation fails,
     // but without the feature branch. Stories will target main as fallback.
     updateRequirement(db, requirementId, { status: 'in_progress' });
-
 
     return null;
   }

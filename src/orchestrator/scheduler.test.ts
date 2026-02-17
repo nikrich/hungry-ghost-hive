@@ -490,9 +490,9 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(recovered.length).toBe(1);
 
     // Verify the story's assignment was cleared and status changed
-    const recoveredStory = db.prepare(
-      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
-    ).get() as any;
+    const recoveredStory = db
+      .prepare(`SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`)
+      .get() as any;
 
     expect(recoveredStory?.assigned_agent_id).toBeNull(); // assigned_agent_id should be null
     expect(recoveredStory?.status).toBe('planned'); // status should be 'planned'
@@ -526,9 +526,9 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(recovered.length).toBe(0);
 
     // Verify the story's assignment was NOT changed
-    const unchangedStory = db.prepare(
-      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
-    ).get() as any;
+    const unchangedStory = db
+      .prepare(`SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`)
+      .get() as any;
 
     expect(unchangedStory?.assigned_agent_id).toBe(activeAgentId);
     expect(unchangedStory?.status).toBe('in_progress');
@@ -555,9 +555,9 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     expect(recovered).toContain(staleStory.id);
 
-    const recoveredStory = db.prepare(
-      `SELECT assigned_agent_id, status FROM stories WHERE id = '${staleStory.id}'`
-    ).get() as any;
+    const recoveredStory = db
+      .prepare(`SELECT assigned_agent_id, status FROM stories WHERE id = '${staleStory.id}'`)
+      .get() as any;
 
     expect(recoveredStory?.assigned_agent_id).toBeNull();
     expect(recoveredStory?.status).toBe('planned');
@@ -1359,7 +1359,9 @@ describe('Scheduler Story Assignment Prevention', () => {
     updateStory(db, story.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
 
     // Verify the story is now assigned
-    const result = db.prepare(`SELECT assigned_agent_id FROM stories WHERE id = '${story.id}'`).get() as any;
+    const result = db
+      .prepare(`SELECT assigned_agent_id FROM stories WHERE id = '${story.id}'`)
+      .get() as any;
     expect(result.assigned_agent_id).toBe('agent-1');
   });
 
@@ -1536,11 +1538,13 @@ describe('Scheduler Agent Reassignment for Working Agents with NULL currentStory
     ).run('senior-orphan-1', 'senior', team.id, 'working');
 
     // Query agents using the same filter logic from assignStories
-    const result = db.prepare(
-      `SELECT id, type, status, current_story_id FROM agents
+    const result = db
+      .prepare(
+        `SELECT id, type, status, current_story_id FROM agents
        WHERE team_id = '${team.id}' AND type != 'qa'
        AND (status = 'idle' OR (status = 'working' AND current_story_id IS NULL))`
-    ).all() as any[];
+      )
+      .all() as any[];
 
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('senior-orphan-1');
@@ -1562,11 +1566,13 @@ describe('Scheduler Agent Reassignment for Working Agents with NULL currentStory
     ).run('senior-busy-1', 'senior', team.id, 'working', story.id);
 
     // Query agents using the same filter logic from assignStories
-    const result = db.prepare(
-      `SELECT id, type, status, current_story_id FROM agents
+    const result = db
+      .prepare(
+        `SELECT id, type, status, current_story_id FROM agents
        WHERE team_id = '${team.id}' AND type != 'qa'
        AND (status = 'idle' OR (status = 'working' AND current_story_id IS NULL))`
-    ).all() as any[];
+      )
+      .all() as any[];
 
     // Should not include the busy agent
     expect(result).toHaveLength(0);
@@ -1702,9 +1708,9 @@ describe('Scheduler Target Branch Propagation', () => {
     expect(story.team_id).toBe(team.id);
 
     // Verify we can retrieve the requirement and its target_branch
-    const retrievedReq = db.prepare(
-      `SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`
-    ).get() as any;
+    const retrievedReq = db
+      .prepare(`SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`)
+      .get() as any;
     expect(retrievedReq?.target_branch).toBe('release/v2.0');
   });
 
@@ -1716,9 +1722,9 @@ describe('Scheduler Target Branch Propagation', () => {
     });
 
     // Verify the requirement defaults to main branch
-    const retrievedReq = db.prepare(
-      `SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`
-    ).get() as any;
+    const retrievedReq = db
+      .prepare(`SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`)
+      .get() as any;
     expect(retrievedReq?.target_branch).toBe('main');
   });
 
@@ -1758,13 +1764,15 @@ describe('Scheduler Target Branch Propagation', () => {
     });
 
     // Verify each story can access its requirement's target_branch via JOIN
-    const result = db.prepare(
-      `SELECT s.id, r.target_branch
+    const result = db
+      .prepare(
+        `SELECT s.id, r.target_branch
        FROM stories s
        LEFT JOIN requirements r ON s.requirement_id = r.id
        WHERE s.id IN ('${story1.id}', '${story2.id}')
        ORDER BY s.id`
-    ).all() as any[];
+      )
+      .all() as any[];
 
     expect(result).toHaveLength(2);
     const branches = result.map(row => row.target_branch);
@@ -1789,12 +1797,14 @@ describe('Scheduler Target Branch Propagation', () => {
     expect(story.requirement_id).toBeNull();
 
     // When joining with requirements, should get null for target_branch
-    const result = db.prepare(
-      `SELECT s.id, r.target_branch
+    const result = db
+      .prepare(
+        `SELECT s.id, r.target_branch
        FROM stories s
        LEFT JOIN requirements r ON s.requirement_id = r.id
        WHERE s.id = '${story.id}'`
-    ).get() as any;
+      )
+      .get() as any;
 
     expect(result.target_branch).toBeNull();
   });
