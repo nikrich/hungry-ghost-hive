@@ -656,9 +656,7 @@ describe('closeStaleGitHubPRs', () => {
 
     await closeStaleGitHubPRs('/root', db);
 
-    const logs = db.exec(
-      "SELECT message, metadata FROM agent_logs WHERE event_type = 'PR_CLOSED'"
-    );
+    const logs = db.exec("SELECT message, metadata FROM agent_logs WHERE event_type = 'PR_CLOSED'");
     expect(logs.length).toBeGreaterThan(0);
     const message = logs[0].values[0][0] as string;
     expect(message).toContain('#15');

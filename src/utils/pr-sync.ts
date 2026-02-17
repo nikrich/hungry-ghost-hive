@@ -382,10 +382,7 @@ export interface ClosedPRInfo {
  * @param db    - sql.js Database instance
  * @returns Array of ClosedPRInfo for each PR that was closed.
  */
-export async function closeStaleGitHubPRs(
-  root: string,
-  db: Database
-): Promise<ClosedPRInfo[]> {
+export async function closeStaleGitHubPRs(root: string, db: Database): Promise<ClosedPRInfo[]> {
   const teams = getAllTeams(db);
   if (teams.length === 0) return [];
 

@@ -596,9 +596,7 @@ prCommand
 
       console.log(chalk.bold('\nRecently Closed PRs:\n'));
       console.log(
-        chalk.gray(
-          `${'Timestamp'.padEnd(22)} ${'Story'.padEnd(20)} ${'PR#'.padEnd(6)} ${'Reason'}`
-        )
+        chalk.gray(`${'Timestamp'.padEnd(22)} ${'Story'.padEnd(20)} ${'PR#'.padEnd(6)} ${'Reason'}`)
       );
       console.log(chalk.gray('─'.repeat(80)));
 
@@ -606,7 +604,9 @@ prCommand
         const ts = new Date(log.timestamp).toLocaleString();
         const story = (log.story_id ?? '-').padEnd(20);
         const metadata =
-          typeof log.metadata === 'string' ? (JSON.parse(log.metadata) as Record<string, unknown>) : (log.metadata as Record<string, unknown> | null) ?? {};
+          typeof log.metadata === 'string'
+            ? (JSON.parse(log.metadata) as Record<string, unknown>)
+            : ((log.metadata as Record<string, unknown> | null) ?? {});
         const prNum = String(metadata?.github_pr_number ?? '-').padEnd(6);
         const supersededBy =
           metadata?.superseded_by_pr_number != null

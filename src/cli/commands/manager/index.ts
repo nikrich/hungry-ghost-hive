@@ -945,7 +945,9 @@ async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
     console.log(chalk.yellow(`  Closed ${closedPRs.length} stale GitHub PR(s):`));
     for (const info of closedPRs) {
       const supersededDesc =
-        info.supersededByPrNumber !== null ? ` (superseded by PR #${info.supersededByPrNumber})` : '';
+        info.supersededByPrNumber !== null
+          ? ` (superseded by PR #${info.supersededByPrNumber})`
+          : '';
       console.log(
         chalk.gray(
           `    PR #${info.closedPrNumber} [${info.storyId}] ${info.branch}${supersededDesc}`
