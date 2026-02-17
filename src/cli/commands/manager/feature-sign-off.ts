@@ -20,7 +20,7 @@ export async function checkFeatureSignOff(ctx: ManagerCheckContext): Promise<voi
 
   await ctx.withDb(async (db, scheduler) => {
     const inProgressReqs = getRequirementsByStatus(db.db, 'in_progress').filter(
-      req => req.feature_branch
+      req => req.feature_branch || req.target_branch !== 'main'
     );
     verboseLogCtx(ctx, `checkFeatureSignOff: candidates=${inProgressReqs.length}`);
 
@@ -64,13 +64,15 @@ export async function checkFeatureSignOff(ctx: ManagerCheckContext): Promise<voi
         `checkFeatureSignOff: req=${req.id} all_merged=${stories.length} stories, spawning feature_test`
       );
 
+      const effectiveBranch = req.feature_branch || req.target_branch;
+
       try {
         // Transition requirement to sign_off
         updateRequirement(db.db, req.id, { status: 'sign_off' });
 
         // Spawn feature_test agent
         const agent = await scheduler.spawnFeatureTest(teamId, team.name, team.repo_path, {
-          featureBranch: req.feature_branch!,
+          featureBranch: effectiveBranch,
           requirementId: req.id,
           e2eTestsPath,
         });
@@ -78,10 +80,10 @@ export async function checkFeatureSignOff(ctx: ManagerCheckContext): Promise<voi
         createLog(db.db, {
           agentId: agent.id,
           eventType: 'FEATURE_TEST_SPAWNED',
-          message: `Spawned feature_test agent for requirement ${req.id} (branch: ${req.feature_branch})`,
+          message: `Spawned feature_test agent for requirement ${req.id} (branch: ${effectiveBranch})`,
           metadata: {
             requirement_id: req.id,
-            feature_branch: req.feature_branch,
+            feature_branch: effectiveBranch,
             team_id: teamId,
             stories_merged: stories.length,
           },
@@ -92,7 +94,7 @@ export async function checkFeatureSignOff(ctx: ManagerCheckContext): Promise<voi
           message: `All ${stories.length} stories merged for ${req.id} — triggered feature sign-off`,
           metadata: {
             requirement_id: req.id,
-            feature_branch: req.feature_branch,
+            feature_branch: effectiveBranch,
             agent_id: agent.id,
           },
         });
