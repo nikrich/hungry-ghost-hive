@@ -68,7 +68,9 @@ hive my-stories ${sessionName}
 Mark story complete:
 \`\`\`bash
 hive my-stories complete <story-id>
-\`\`\``;
+\`\`\`
+
+**IMPORTANT — Target Branch:** If your stories target a branch other than \`main\`, the target branch is shown in the \`hive my-stories\` output. After context compaction, always re-run \`hive my-stories ${sessionName}\` to confirm which branch to target for PRs and merges. Do NOT assume \`main\` — use the target branch displayed in the output.`;
 }
 
 function prSubmissionSection(sessionName: string, targetBranch: string): string {
