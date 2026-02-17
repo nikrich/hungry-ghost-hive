@@ -27,6 +27,7 @@ export function ghRepoSlug(repoUrl: string): string | null {
 export interface GitHubPR {
   number: number;
   headRefName: string;
+  baseRefName: string;
   url: string;
   title: string;
   createdAt: string; // ISO 8601 timestamp from GitHub
@@ -93,7 +94,7 @@ export async function fetchOpenGitHubPRs(
     'pr',
     'list',
     '--json',
-    'number,headRefName,url,title,createdAt',
+    'number,headRefName,baseRefName,url,title,createdAt',
     '--state',
     'open',
   ];
@@ -382,7 +383,11 @@ export interface ClosedPRInfo {
  * @param db    - sql.js Database instance
  * @returns Array of ClosedPRInfo for each PR that was closed.
  */
-export async function closeStaleGitHubPRs(root: string, db: Database): Promise<ClosedPRInfo[]> {
+export async function closeStaleGitHubPRs(
+  root: string,
+  db: Database,
+  baseBranch = 'main'
+): Promise<ClosedPRInfo[]> {
   const teams = getAllTeams(db);
   if (teams.length === 0) return [];
 
@@ -398,6 +403,9 @@ export async function closeStaleGitHubPRs(root: string, db: Database): Promise<C
       const openGHPRs = await fetchOpenGitHubPRs(repoDir);
 
       for (const ghPR of openGHPRs) {
+        // Skip PRs that don't target the configured base branch
+        if (ghPR.baseRefName !== baseBranch) continue;
+
         const storyId = extractStoryIdFromBranch(ghPR.headRefName);
         if (!storyId) continue;
 
