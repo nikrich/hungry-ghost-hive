@@ -24,17 +24,20 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
     );
     verboseLog(ctx, `spinDownMergedAgents: mergedStories=${mergedStoriesWithAgents.length}`);
 
-    const result: Array<{
-      type: 'clear_assignment';
-      storyId: string;
-      agentId: string;
-      reason: string;
-    } | {
-      type: 'spindown';
-      storyId: string;
-      agentId: string;
-      sessionName: string | null;
-    }> = [];
+    const result: Array<
+      | {
+          type: 'clear_assignment';
+          storyId: string;
+          agentId: string;
+          reason: string;
+        }
+      | {
+          type: 'spindown';
+          storyId: string;
+          agentId: string;
+          sessionName: string | null;
+        }
+    > = [];
 
     for (const story of mergedStoriesWithAgents) {
       if (!story.assigned_agent_id) continue;
@@ -161,12 +164,17 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
             updateStoryAssignment(db.db, action.storyId, null);
           }
         });
-        verboseLog(ctx, `spinDownMergedAgents: spun_down agent=${action.agentId} story=${action.storyId || '-'}`);
+        verboseLog(
+          ctx,
+          `spinDownMergedAgents: spun_down agent=${action.agentId} story=${action.storyId || '-'}`
+        );
       }
       db.save();
     });
 
-    console.log(chalk.green(`  Spun down ${spindownActions.length} agent(s) after successful merge`));
+    console.log(
+      chalk.green(`  Spun down ${spindownActions.length} agent(s) after successful merge`)
+    );
   }
 }
 

@@ -56,6 +56,7 @@ import {
   spawnTmuxSession,
   stopManager as stopManagerSession,
 } from '../../../tmux/manager.js';
+import type { WithLockFn } from '../../../utils/auto-merge.js';
 import { autoMergeApprovedPRs } from '../../../utils/auto-merge.js';
 import type { CLITool } from '../../../utils/cli-commands.js';
 import { findHiveRoot as findHiveRootFromDir, getHivePaths } from '../../../utils/paths.js';
@@ -66,7 +67,6 @@ import {
 } from '../../../utils/pr-sync.js';
 import { extractStoryIdFromBranch } from '../../../utils/story-id.js';
 import { withHiveContext, withHiveRoot } from '../../../utils/with-hive-context.js';
-import type { WithLockFn } from '../../../utils/auto-merge.js';
 import {
   agentStates,
   detectAgentState,
@@ -232,23 +232,26 @@ async function applyHumanInterventionStateOverride(
       )
       .sort((a, b) => b.createdAtMs - a.createdAtMs)[0] ?? null;
 
-  const persistedIntervention = storyId === null
-    ? null
-    : await ctx.withDb(async db => {
-        return (getActiveEscalationsForAgent(db.db, sessionName).find(
-            escalation =>
-              escalation.story_id === storyId &&
-              (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
-                escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
-          ) ??
-          getPendingEscalations(db.db).find(
-            escalation =>
-              escalation.story_id === storyId &&
-              (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
-                escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
-          ) ??
-          null);
-      });
+  const persistedIntervention =
+    storyId === null
+      ? null
+      : await ctx.withDb(async db => {
+          return (
+            getActiveEscalationsForAgent(db.db, sessionName).find(
+              escalation =>
+                escalation.story_id === storyId &&
+                (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
+                  escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
+            ) ??
+            getPendingEscalations(db.db).find(
+              escalation =>
+                escalation.story_id === storyId &&
+                (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
+                  escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
+            ) ??
+            null
+          );
+        });
 
   const interventionReason = transientIntervention?.reason || persistedIntervention?.reason || null;
 
@@ -339,8 +342,8 @@ async function markDoneFalseForHumanIntervention(
   });
 
   await ctx.withDb(async db => {
-    const hasActiveEscalation = getActiveEscalationsForAgent(db.db, sessionName).some(
-      escalation => escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX)
+    const hasActiveEscalation = getActiveEscalationsForAgent(db.db, sessionName).some(escalation =>
+      escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX)
     );
     if (!hasActiveEscalation) {
       const escalation = createEscalation(db.db, {
@@ -971,8 +974,14 @@ async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
   for (const team of teamInfos) {
     try {
       const args = [
-        'pr', 'list', '--json', 'number,headRefName,mergedAt',
-        '--state', 'merged', '--limit', String(GITHUB_PR_LIST_LIMIT),
+        'pr',
+        'list',
+        '--json',
+        'number,headRefName,mergedAt',
+        '--state',
+        'merged',
+        '--limit',
+        String(GITHUB_PR_LIST_LIMIT),
       ];
       if (team.slug) args.push('-R', team.slug);
       const result = await execa('gh', args, { cwd: team.repoDir, timeout: GH_CLI_TIMEOUT_MS });
@@ -1048,11 +1057,13 @@ async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
     const teams = getAllTeams(db.db);
     const { existingBranches, existingPrNumbers } = getExistingPRIdentifiers(db.db, true);
     return {
-      teams: teams.filter(t => t.repo_path).map(t => ({
-        id: t.id,
-        repoDir: `${ctx.root}/${t.repo_path}`,
-        slug: ghRepoSlug(t.repo_url),
-      })),
+      teams: teams
+        .filter(t => t.repo_path)
+        .map(t => ({
+          id: t.id,
+          repoDir: `${ctx.root}/${t.repo_path}`,
+          slug: ghRepoSlug(t.repo_url),
+        })),
       existingBranches,
       existingPrNumbers,
     };
@@ -1085,8 +1096,7 @@ async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
 
         // Age filtering
         if (maxAgeHours !== undefined) {
-          const ageHours =
-            (Date.now() - new Date(ghPR.createdAt).getTime()) / (1000 * 60 * 60);
+          const ageHours = (Date.now() - new Date(ghPR.createdAt).getTime()) / (1000 * 60 * 60);
           if (ageHours > maxAgeHours) {
             createLog(db.db, {
               agentId: 'manager',
@@ -1696,7 +1706,15 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
     const queued = openPRs.filter(pr => pr.status === 'queued');
     verboseLogCtx(ctx, `notifyQAOfQueuedPRs: queued=${queued.length}`);
     if (queued.length === 0) {
-      return { queuedPRs: [] as typeof queued, dispatched: [] as Array<{ prId: string; qaName: string; storyId: string | null; githubPrUrl: string | null }> };
+      return {
+        queuedPRs: [] as typeof queued,
+        dispatched: [] as Array<{
+          prId: string;
+          qaName: string;
+          storyId: string | null;
+          githubPrUrl: string | null;
+        }>,
+      };
     }
 
     const reviewingSessions = new Set(
@@ -1713,7 +1731,12 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
     });
     verboseLogCtx(ctx, `notifyQAOfQueuedPRs: idleQA=${idleQASessions.length}`);
 
-    const dispatchedList: Array<{ prId: string; qaName: string; storyId: string | null; githubPrUrl: string | null }> = [];
+    const dispatchedList: Array<{
+      prId: string;
+      qaName: string;
+      storyId: string | null;
+      githubPrUrl: string | null;
+    }> = [];
     let dispatchCount = 0;
     for (const qa of idleQASessions) {
       const nextPR = queued[dispatchCount];
@@ -1736,7 +1759,12 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
         },
         () => db.save()
       );
-      dispatchedList.push({ prId: nextPR.id, qaName: qa.name, storyId: nextPR.story_id, githubPrUrl: nextPR.github_pr_url });
+      dispatchedList.push({
+        prId: nextPR.id,
+        qaName: qa.name,
+        storyId: nextPR.story_id,
+        githubPrUrl: nextPR.github_pr_url,
+      });
       dispatchCount++;
       verboseLogCtx(ctx, `notifyQAOfQueuedPRs: assigned pr=${nextPR.id} -> ${qa.name}`);
     }

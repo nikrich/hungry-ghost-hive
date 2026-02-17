@@ -84,7 +84,10 @@ async function nudgeTechLeadForStalledHandoff(
   const techLeadInfo = await ctx.withDb(async db => {
     const techLead = getTechLead(db.db);
     return techLead
-      ? { sessionName: techLead.tmux_session || 'hive-tech-lead', cliTool: (techLead.cli_tool || 'claude') as CLITool }
+      ? {
+          sessionName: techLead.tmux_session || 'hive-tech-lead',
+          cliTool: (techLead.cli_tool || 'claude') as CLITool,
+        }
       : { sessionName: 'hive-tech-lead', cliTool: 'claude' as CLITool };
   });
 
@@ -98,7 +101,14 @@ async function nudgeTechLeadForStalledHandoff(
 # Please move stories from estimated -> planned and run:
 # hive assign`;
 
-  await nudgeAgent(ctx.root, techLeadInfo.sessionName, nudgeMessage, undefined, undefined, techLeadInfo.cliTool);
+  await nudgeAgent(
+    ctx.root,
+    techLeadInfo.sessionName,
+    nudgeMessage,
+    undefined,
+    undefined,
+    techLeadInfo.cliTool
+  );
   verboseLog(
     ctx,
     `handoff: nudged tech-lead session=${techLeadInfo.sessionName} requirement=${requirementLabel} estimated=${estimatedCount}`

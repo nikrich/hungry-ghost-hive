@@ -58,7 +58,7 @@ function makeCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheckCont
     spawnFeatureTest: vi.fn().mockResolvedValue({ id: 'team-1-feature-test-1' }),
   };
 
-  const withDb: ManagerCheckContext['withDb'] = async (fn) => {
+  const withDb: ManagerCheckContext['withDb'] = async fn => {
     return fn(mockDb as never, mockScheduler as never);
   };
 
@@ -223,7 +223,9 @@ describe('checkFeatureSignOff', () => {
     expect(mockUpdateRequirement).toHaveBeenCalledWith(expect.anything(), 'REQ-TEST1234', {
       status: 'sign_off',
     });
-    const mockScheduler = (ctx as unknown as Record<string, unknown>)._mockScheduler as { spawnFeatureTest: ReturnType<typeof vi.fn> };
+    const mockScheduler = (ctx as unknown as Record<string, unknown>)._mockScheduler as {
+      spawnFeatureTest: ReturnType<typeof vi.fn>;
+    };
     expect(mockScheduler.spawnFeatureTest).toHaveBeenCalledWith(
       'team-abc',
       'team-abc',
@@ -235,7 +237,9 @@ describe('checkFeatureSignOff', () => {
       }
     );
     expect(ctx.counters.featureTestsSpawned).toBe(1);
-    const mockDb = (ctx as unknown as Record<string, unknown>)._mockDb as { save: ReturnType<typeof vi.fn> };
+    const mockDb = (ctx as unknown as Record<string, unknown>)._mockDb as {
+      save: ReturnType<typeof vi.fn>;
+    };
     expect(mockDb.save).toHaveBeenCalled();
   });
 
@@ -314,7 +318,9 @@ describe('checkFeatureSignOff', () => {
 
   it('should revert requirement status on spawn failure', async () => {
     const ctx = makeCtx();
-    const mockScheduler = (ctx as unknown as Record<string, unknown>)._mockScheduler as { spawnFeatureTest: ReturnType<typeof vi.fn> };
+    const mockScheduler = (ctx as unknown as Record<string, unknown>)._mockScheduler as {
+      spawnFeatureTest: ReturnType<typeof vi.fn>;
+    };
     mockScheduler.spawnFeatureTest.mockRejectedValue(new Error('spawn failed'));
     mockGetRequirementsByStatus.mockReturnValue([makeRequirement()]);
     mockGetStoriesByRequirement.mockReturnValue([makeStory({ status: 'merged' })]);

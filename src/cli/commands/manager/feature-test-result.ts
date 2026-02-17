@@ -182,7 +182,8 @@ async function handleTestSuccess(
   ctx: ManagerCheckContext,
   candidate: FeatureTestCandidate
 ): Promise<void> {
-  const { requirementId, featureBranch, testMessage, repoPath, requirementTitle, agentId } = candidate;
+  const { requirementId, featureBranch, testMessage, repoPath, requirementTitle, agentId } =
+    candidate;
   verboseLogCtx(
     ctx,
     `handleTestSuccess: requirement=${requirementId} branch=${featureBranch} merging to main`

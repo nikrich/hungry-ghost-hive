@@ -307,10 +307,13 @@ export async function handleEscalationAndNudge(
       : undefined,
   };
 
-  const hasRecentEscalation = ctx.escalatedSessions.has(sessionName) ||
-    await ctx.withDb(async db =>
-      getRecentEscalationsForAgent(db.db, sessionName, RECENT_ESCALATION_LOOKBACK_MINUTES).length > 0
-    );
+  const hasRecentEscalation =
+    ctx.escalatedSessions.has(sessionName) ||
+    (await ctx.withDb(
+      async db =>
+        getRecentEscalationsForAgent(db.db, sessionName, RECENT_ESCALATION_LOOKBACK_MINUTES)
+          .length > 0
+    ));
   verboseLog(ctx, `escalationCheck: ${sessionName} hasRecentEscalation=${hasRecentEscalation}`);
 
   if (waitingInfo.needsHuman && !hasRecentEscalation) {
