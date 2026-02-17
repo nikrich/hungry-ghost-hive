@@ -27,7 +27,7 @@ afterEach(() => {
 
 describe('distributed replication primitives', () => {
   it('initializes cluster tables and state for a node', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     ensureClusterTables(db, 'node-a');
 
@@ -43,7 +43,7 @@ describe('distributed replication primitives', () => {
   });
 
   it('updates cluster_state.node_id when ensureClusterTables runs again', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     ensureClusterTables(db, 'node-a');
     ensureClusterTables(db, 'node-b');
@@ -58,7 +58,7 @@ describe('distributed replication primitives', () => {
   });
 
   it('returns empty version vector when no events exist', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     ensureClusterTables(db, 'node-a');
 
     expect(getVersionVector(db)).toEqual({});
@@ -67,7 +67,7 @@ describe('distributed replication primitives', () => {
   });
 
   it('emits insert and update events while incrementing version vector counters', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     const now = new Date().toISOString();
 
     run(
@@ -94,7 +94,7 @@ describe('distributed replication primitives', () => {
   });
 
   it('emits delete events when previously-known rows disappear', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     const now = new Date().toISOString();
 
     run(
@@ -127,7 +127,7 @@ describe('distributed replication primitives', () => {
   });
 
   it('returns only missing events for a provided remote version vector', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     const now = new Date().toISOString();
 
     run(
@@ -154,7 +154,7 @@ describe('distributed replication primitives', () => {
   });
 
   it('applies a hard limit to deltas returned for anti-entropy sync', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     const now = new Date().toISOString();
 
     run(
@@ -178,7 +178,7 @@ describe('distributed replication primitives', () => {
   });
 
   it('ignores events for unsupported tables', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     const event = buildStoryEvent({
       event_id: 'node-x:1',
@@ -196,7 +196,7 @@ describe('distributed replication primitives', () => {
   });
 
   it('applies each event_id only once (idempotent replay)', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     const event = buildStoryEvent({
       event_id: 'node-b:1',
@@ -216,7 +216,7 @@ describe('distributed replication primitives', () => {
   });
 
   it('rejects stale row updates with lower logical timestamp', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     const newer = buildStoryEvent({
       event_id: 'node-b:2',
@@ -242,7 +242,7 @@ describe('distributed replication primitives', () => {
   });
 
   it('breaks same-timestamp ties by actor_id deterministically', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     const logicalTs = 5000;
 
     const fromA = buildStoryEvent({
@@ -271,7 +271,7 @@ describe('distributed replication primitives', () => {
   });
 
   it('breaks same-actor same-timestamp ties by actor_counter', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     const logicalTs = 6000;
 
     const counter1 = buildStoryEvent({
@@ -302,7 +302,7 @@ describe('distributed replication primitives', () => {
 
 describe('distributed story merge behavior', () => {
   it('does not merge similar stories from different teams', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     const now = new Date().toISOString();
 
     run(
@@ -339,7 +339,7 @@ describe('distributed story merge behavior', () => {
   });
 
   it('does not merge similar stories from different requirements', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     run(
       db,
@@ -375,7 +375,7 @@ describe('distributed story merge behavior', () => {
   });
 
   it('merges connected duplicate groups into lexicographically-smallest canonical story', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     insertStoryRow(db, 'STORY-300', {
       title: 'Implement OAuth Login',
@@ -402,7 +402,7 @@ describe('distributed story merge behavior', () => {
   });
 
   it('rebinds references to canonical story during merge', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     const now = new Date().toISOString();
 
     insertStoryRow(db, 'STORY-CAN', {
@@ -510,7 +510,7 @@ describe('distributed story merge behavior', () => {
   });
 
   it('respects similarity thresholds and keeps weak matches separate', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     insertStoryRow(db, 'STORY-S1', {
       title: 'Improve auth',
@@ -533,7 +533,7 @@ describe('distributed story merge behavior', () => {
   });
 
   it('skips re-merging duplicate IDs already recorded in merge history', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     insertStoryRow(db, 'STORY-001', {
       title: 'Implement OAuth Login',

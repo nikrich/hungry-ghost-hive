@@ -80,6 +80,7 @@ describe('cluster integration harness', () => {
       for (let i = 0; i < 20; i++) {
         for (const fixture of fixtures) {
           await fixture.runtime.sync(fixture.db.db);
+          fixture.db.save();
         }
         await sleep(100);
       }
@@ -170,14 +171,14 @@ async function stopFixtures(fixtures: NodeFixture[]): Promise<void> {
 
 function insertStory(db: DatabaseClient, id: string, title: string, description: string): void {
   const now = new Date().toISOString();
-  db.db
-    .prepare(
-      `
+  db.db.run(
+    `
     INSERT INTO stories (id, requirement_id, team_id, title, description, status, created_at, updated_at)
     VALUES (?, NULL, NULL, ?, ?, 'planned', ?, ?)
-  `
-    )
-    .run(id, title, description, now, now);
+  `,
+    [id, title, description, now, now]
+  );
+  db.save();
 }
 
 async function waitForSingleLeader(

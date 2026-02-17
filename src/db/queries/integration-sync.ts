@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
 import { nanoid } from 'nanoid';
+import type { Database } from 'sql.js';
 import { queryAll, queryOne, run } from '../client.js';
 
 export type SyncEntityType = 'story' | 'requirement' | 'pull_request';
@@ -28,10 +28,7 @@ export interface CreateSyncRecordInput {
   externalId: string;
 }
 
-export function createSyncRecord(
-  db: Database.Database,
-  input: CreateSyncRecordInput
-): IntegrationSyncRow {
+export function createSyncRecord(db: Database, input: CreateSyncRecordInput): IntegrationSyncRow {
   const id = `SYNC-${nanoid(8).toUpperCase()}`;
   const now = new Date().toISOString();
 
@@ -47,15 +44,12 @@ export function createSyncRecord(
   return getSyncRecordById(db, id)!;
 }
 
-export function getSyncRecordById(
-  db: Database.Database,
-  id: string
-): IntegrationSyncRow | undefined {
+export function getSyncRecordById(db: Database, id: string): IntegrationSyncRow | undefined {
   return queryOne<IntegrationSyncRow>(db, 'SELECT * FROM integration_sync WHERE id = ?', [id]);
 }
 
 export function getSyncRecordByEntity(
-  db: Database.Database,
+  db: Database,
   entityType: SyncEntityType,
   entityId: string,
   provider: SyncProvider
@@ -68,7 +62,7 @@ export function getSyncRecordByEntity(
 }
 
 export function updateSyncStatus(
-  db: Database.Database,
+  db: Database,
   id: string,
   status: SyncStatus,
   errorMessage?: string | null
@@ -86,7 +80,7 @@ export function updateSyncStatus(
 }
 
 export function getSyncRecordsByProvider(
-  db: Database.Database,
+  db: Database,
   provider: SyncProvider
 ): IntegrationSyncRow[] {
   return queryAll<IntegrationSyncRow>(
@@ -96,7 +90,7 @@ export function getSyncRecordsByProvider(
   );
 }
 
-export function getFailedSyncRecords(db: Database.Database): IntegrationSyncRow[] {
+export function getFailedSyncRecords(db: Database): IntegrationSyncRow[] {
   return queryAll<IntegrationSyncRow>(
     db,
     "SELECT * FROM integration_sync WHERE sync_status = 'failed' ORDER BY created_at DESC"

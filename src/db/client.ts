@@ -1,22 +1,23 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import Database from 'better-sqlite3';
-import { existsSync, readFileSync } from 'fs';
+import { copyFileSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { fileURLToPath } from 'url';
-import { InitializationError } from '../errors/index.js';
+import { DatabaseCorruptionError, InitializationError } from '../errors/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export interface DatabaseClient {
-  db: Database.Database;
+  db: SqlJsDatabase;
   close: () => void;
+  save: () => void;
   runMigrations: () => void;
 }
 
 export interface ReadOnlyDatabaseClient {
-  db: Database.Database;
+  db: SqlJsDatabase;
   close: () => void;
 }
 
@@ -30,34 +31,156 @@ function loadMigration(migrationName: string): string {
   return readFileSync(migrationPath, 'utf-8');
 }
 
-export async function createDatabase(dbPath: string): Promise<DatabaseClient> {
-  let db: Database.Database;
+let SQL: Awaited<ReturnType<typeof initSqlJs>> | null = null;
 
-  try {
-    db = new Database(dbPath);
-  } catch (error) {
-    throw new InitializationError(
-      `Failed to open database at ${dbPath}: ${error instanceof Error ? error.message : String(error)}`
-    );
+async function getSqlJs(): Promise<typeof SQL> {
+  if (!SQL) {
+    SQL = await initSqlJs();
+  }
+  return SQL;
+}
+
+// Minimum file size (in bytes) that indicates a database had meaningful data.
+// Files below this threshold are likely new or schema-only databases.
+const CORRUPTION_CHECK_MIN_FILE_SIZE = 50 * 1024; // 50KB
+
+// Core tables that should have rows in a populated database
+const CORE_TABLES = ['teams', 'agents', 'stories'];
+
+/**
+ * Validate that a loaded database is not a silently-corrupted empty copy.
+ * If the source file was large (>50KB) but the loaded DB has core tables
+ * with zero rows, that indicates sql.js silently returned an empty DB.
+ */
+function validateLoadedDatabase(db: SqlJsDatabase, fileSize: number): void {
+  if (fileSize < CORRUPTION_CHECK_MIN_FILE_SIZE) {
+    return; // Small file — likely a new or schema-only DB, skip validation
   }
 
-  // Enable WAL mode for concurrent access and better performance
-  db.pragma('journal_mode = WAL');
-  // Set busy timeout for lock contention (5 second retry on lock)
-  db.pragma('busy_timeout = 5000');
-  // Enable foreign keys
-  db.pragma('foreign_keys = ON');
+  // Check if migrations table exists and has rows — if so, the DB was properly
+  // initialized via hive init and the schema is intact. Core tables being empty
+  // is expected for a fresh workspace (no teams added yet).
+  try {
+    const migrationResult = db.exec('SELECT COUNT(*) FROM migrations');
+    if (migrationResult.length > 0 && (migrationResult[0].values[0][0] as number) > 0) {
+      return; // Migrations ran — DB is properly initialized, just empty of user data
+    }
+  } catch {
+    // migrations table doesn't exist — fall through to core table check
+  }
 
-  // Run migrations
-  runMigrations(db);
+  // Check if any core table has data
+  for (const table of CORE_TABLES) {
+    try {
+      const result = db.exec(`SELECT COUNT(*) FROM ${table}`);
+      if (result.length > 0 && (result[0].values[0][0] as number) > 0) {
+        return; // At least one core table has data — DB looks valid
+      }
+    } catch {
+      // Table doesn't exist yet — that's fine, migrations haven't run
+      continue;
+    }
+  }
+
+  // File was large but all core tables are empty — likely corruption
+  throw new DatabaseCorruptionError(
+    `Database file is ${fileSize} bytes but loaded with zero rows in core tables (${CORE_TABLES.join(', ')}). ` +
+      'This likely indicates a corrupted or partially-read database file. ' +
+      'Refusing to proceed to prevent data loss. Check the backup at hive.db.bak if available.'
+  );
+}
+
+// Maximum number of attempts when loading a database file that appears corrupted.
+// The file may be mid-write by another process (atomic rename not yet completed).
+const MAX_LOAD_RETRIES = 3;
+// Delay in milliseconds between load retries.
+const RETRY_DELAY_MS = 100;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export async function createDatabase(dbPath: string): Promise<DatabaseClient> {
+  const SqlJs = await getSqlJs();
+  if (!SqlJs) throw new InitializationError('Failed to initialize sql.js');
+
+  let db!: SqlJsDatabase;
+  const backupPath = dbPath + '.bak';
+
+  // Load existing database or create new one
+  if (existsSync(dbPath)) {
+    // Retry loop: the file may be mid-write by another process
+    for (let attempt = 1; attempt <= MAX_LOAD_RETRIES; attempt++) {
+      try {
+        const buffer = readFileSync(dbPath);
+        const fileSize = statSync(dbPath).size;
+
+        try {
+          db = new SqlJs.Database(buffer);
+          // Verify the database is usable by running a basic command
+          db.run('PRAGMA foreign_keys = ON');
+          db.exec('SELECT 1');
+        } catch (error) {
+          throw new DatabaseCorruptionError(
+            `Failed to load database file at ${dbPath}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+
+        // Validate the loaded DB is not silently empty from a corrupt file
+        validateLoadedDatabase(db, fileSize);
+
+        // Run migrations on loaded DB — wrap in try-catch to detect subtle corruption
+        try {
+          runMigrations(db);
+        } catch (error) {
+          throw new DatabaseCorruptionError(
+            `Database file at ${dbPath} appears corrupted (migrations failed): ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+
+        break; // Load succeeded — exit retry loop
+      } catch (error) {
+        if (error instanceof DatabaseCorruptionError && attempt < MAX_LOAD_RETRIES) {
+          // File may be mid-write by another process; retry after a short delay
+          await sleep(RETRY_DELAY_MS);
+          continue;
+        }
+        throw error;
+      }
+    }
+  } else {
+    db = new SqlJs.Database();
+    // Enable foreign keys
+    db.run('PRAGMA foreign_keys = ON');
+    // Run migrations on new DB
+    runMigrations(db);
+  }
+
+  const save = () => {
+    // Write backup before overwriting the main database file
+    if (existsSync(dbPath)) {
+      copyFileSync(dbPath, backupPath);
+    }
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    // Atomic write: write to temp file then rename.
+    // rename() is atomic on POSIX filesystems, preventing readers
+    // from seeing a truncated/partial file.
+    const tmpPath = dbPath + '.tmp';
+    writeFileSync(tmpPath, buffer);
+    renameSync(tmpPath, dbPath);
+  };
 
   const client: DatabaseClient = {
     db,
     close: () => {
+      save();
       db.close();
     },
+    save,
     runMigrations: () => {
       runMigrations(db);
+      save();
     },
   };
 
@@ -65,23 +188,21 @@ export async function createDatabase(dbPath: string): Promise<DatabaseClient> {
 }
 
 /** Helper: check if a column exists on a table */
-function hasColumn(db: Database.Database, table: string, column: string): boolean {
-  const columns = db.pragma(`table_info(${table})`) as { name: string }[];
-  return columns.some(col => col.name === column);
+function hasColumn(db: SqlJsDatabase, table: string, column: string): boolean {
+  const columns = db.exec(`PRAGMA table_info(${table})`);
+  return columns.length > 0 && columns[0].values.some((col: unknown[]) => col[1] === column);
 }
 
 /** Helper: check if a table exists */
-function hasTable(db: Database.Database, table: string): boolean {
-  const result = db
-    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
-    .get(table) as { name: string } | undefined;
-  return result !== undefined;
+function hasTable(db: SqlJsDatabase, table: string): boolean {
+  const tables = db.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='${table}'`);
+  return tables.length > 0 && tables[0].values.length > 0;
 }
 
 /** Helper: get all column names for a table */
-function getColumnNames(db: Database.Database, table: string): string[] {
-  const columns = db.pragma(`table_info(${table})`) as { name: string }[];
-  return columns.map(col => col.name);
+function getColumnNames(db: SqlJsDatabase, table: string): string[] {
+  const columns = db.exec(`PRAGMA table_info(${table})`);
+  return columns.length > 0 ? columns[0].values.map((col: unknown[]) => String(col[1])) : [];
 }
 
 /**
@@ -89,7 +210,7 @@ function getColumnNames(db: Database.Database, table: string): string[] {
  * statements (when columns are added with existence checks above).
  */
 function execMigrationSqlStatements(
-  db: Database.Database,
+  db: SqlJsDatabase,
   sql: string,
   opts?: { skipAlterTable?: boolean }
 ): void {
@@ -106,13 +227,13 @@ function execMigrationSqlStatements(
       return lines.some(l => !l.startsWith('--'));
     });
   for (const stmt of statements) {
-    db.exec(stmt);
+    db.run(stmt);
   }
 }
 
 interface MigrationDefinition {
   name: string;
-  up: (db: Database.Database) => void;
+  up: (db: SqlJsDatabase) => void;
 }
 
 /**
@@ -125,7 +246,7 @@ const MIGRATIONS: MigrationDefinition[] = [
     name: '001-initial.sql',
     up: db => {
       const sql = loadMigration('001-initial.sql');
-      db.exec(sql);
+      db.run(sql);
     },
   },
   {
@@ -133,7 +254,7 @@ const MIGRATIONS: MigrationDefinition[] = [
     up: db => {
       if (!hasColumn(db, 'agents', 'model')) {
         const sql = loadMigration('002-add-agent-model.sql');
-        db.exec(sql);
+        db.run(sql);
       }
     },
   },
@@ -151,7 +272,7 @@ const MIGRATIONS: MigrationDefinition[] = [
     up: db => {
       if (!hasTable(db, 'messages')) {
         const sql = loadMigration('004-add-messages.sql');
-        db.exec(sql);
+        db.run(sql);
       }
     },
   },
@@ -159,7 +280,7 @@ const MIGRATIONS: MigrationDefinition[] = [
     name: '005-add-agent-last-seen.sql',
     up: db => {
       if (!hasColumn(db, 'agents', 'last_seen')) {
-        db.exec('ALTER TABLE agents ADD COLUMN last_seen TIMESTAMP');
+        db.run('ALTER TABLE agents ADD COLUMN last_seen TIMESTAMP');
       }
     },
   },
@@ -167,27 +288,27 @@ const MIGRATIONS: MigrationDefinition[] = [
     name: '006-add-agent-worktree.sql',
     up: db => {
       if (!hasColumn(db, 'agents', 'worktree_path')) {
-        db.exec('ALTER TABLE agents ADD COLUMN worktree_path TEXT');
+        db.run('ALTER TABLE agents ADD COLUMN worktree_path TEXT');
       }
     },
   },
   {
     name: '007-add-indexes.sql',
     up: db => {
-      db.exec('CREATE INDEX IF NOT EXISTS idx_stories_status ON stories(status)');
-      db.exec('CREATE INDEX IF NOT EXISTS idx_stories_team_id ON stories(team_id)');
-      db.exec(
+      db.run('CREATE INDEX IF NOT EXISTS idx_stories_status ON stories(status)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_stories_team_id ON stories(team_id)');
+      db.run(
         'CREATE INDEX IF NOT EXISTS idx_stories_assigned_agent_id ON stories(assigned_agent_id)'
       );
-      db.exec('CREATE INDEX IF NOT EXISTS idx_stories_requirement_id ON stories(requirement_id)');
-      db.exec('CREATE INDEX IF NOT EXISTS idx_agents_team_id ON agents(team_id)');
-      db.exec('CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)');
-      db.exec(
+      db.run('CREATE INDEX IF NOT EXISTS idx_stories_requirement_id ON stories(requirement_id)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_agents_team_id ON agents(team_id)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)');
+      db.run(
         'CREATE INDEX IF NOT EXISTS idx_pull_requests_team_status ON pull_requests(team_id, status)'
       );
-      db.exec('CREATE INDEX IF NOT EXISTS idx_pull_requests_story_id ON pull_requests(story_id)');
-      db.exec('CREATE INDEX IF NOT EXISTS idx_messages_to_session ON messages(to_session)');
-      db.exec('CREATE INDEX IF NOT EXISTS idx_escalations_status ON escalations(status)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_pull_requests_story_id ON pull_requests(story_id)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_messages_to_session ON messages(to_session)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_escalations_status ON escalations(status)');
     },
   },
   {
@@ -195,7 +316,7 @@ const MIGRATIONS: MigrationDefinition[] = [
     up: db => {
       if (!hasColumn(db, 'requirements', 'godmode')) {
         const sql = loadMigration('008-add-godmode.sql');
-        db.exec(sql);
+        db.run(sql);
       }
     },
   },
@@ -211,7 +332,7 @@ const MIGRATIONS: MigrationDefinition[] = [
     up: db => {
       if (!hasColumn(db, 'requirements', 'target_branch')) {
         const sql = loadMigration('010-add-target-branch.sql');
-        db.exec(sql);
+        db.run(sql);
       }
     },
   },
@@ -228,7 +349,7 @@ const MIGRATIONS: MigrationDefinition[] = [
         'jira_subtask_id',
       ]) {
         if (!storyColumnNames.includes(col)) {
-          db.exec(`ALTER TABLE stories ADD COLUMN ${col} TEXT`);
+          db.run(`ALTER TABLE stories ADD COLUMN ${col} TEXT`);
         }
       }
 
@@ -236,18 +357,18 @@ const MIGRATIONS: MigrationDefinition[] = [
       const reqColumnNames = getColumnNames(db, 'requirements');
       for (const col of ['jira_epic_key', 'jira_epic_id']) {
         if (!reqColumnNames.includes(col)) {
-          db.exec(`ALTER TABLE requirements ADD COLUMN ${col} TEXT`);
+          db.run(`ALTER TABLE requirements ADD COLUMN ${col} TEXT`);
         }
       }
 
       // Add column to pull_requests table
       if (!hasColumn(db, 'pull_requests', 'jira_issue_key')) {
-        db.exec('ALTER TABLE pull_requests ADD COLUMN jira_issue_key TEXT');
+        db.run('ALTER TABLE pull_requests ADD COLUMN jira_issue_key TEXT');
       }
 
       // Create integration_sync table
       if (!hasTable(db, 'integration_sync')) {
-        db.exec(`
+        db.run(`
           CREATE TABLE integration_sync (
             id TEXT PRIMARY KEY,
             entity_type TEXT NOT NULL CHECK (entity_type IN ('story', 'requirement', 'pull_request')),
@@ -261,16 +382,16 @@ const MIGRATIONS: MigrationDefinition[] = [
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `);
-        db.exec(
+        db.run(
           'CREATE INDEX IF NOT EXISTS idx_integration_sync_entity ON integration_sync(entity_type, entity_id)'
         );
-        db.exec(
+        db.run(
           'CREATE INDEX IF NOT EXISTS idx_integration_sync_provider ON integration_sync(provider, external_id)'
         );
-        db.exec(
+        db.run(
           'CREATE INDEX IF NOT EXISTS idx_integration_sync_status ON integration_sync(sync_status)'
         );
-        db.exec(
+        db.run(
           'CREATE INDEX IF NOT EXISTS idx_integration_sync_last_synced ON integration_sync(last_synced_at)'
         );
       }
@@ -290,7 +411,7 @@ const MIGRATIONS: MigrationDefinition[] = [
         'external_provider',
       ]) {
         if (!storyColNames.includes(col)) {
-          db.exec(`ALTER TABLE stories ADD COLUMN ${col} TEXT`);
+          db.run(`ALTER TABLE stories ADD COLUMN ${col} TEXT`);
         }
       }
 
@@ -298,7 +419,7 @@ const MIGRATIONS: MigrationDefinition[] = [
       const reqColNames = getColumnNames(db, 'requirements');
       for (const col of ['external_epic_key', 'external_epic_id', 'external_provider']) {
         if (!reqColNames.includes(col)) {
-          db.exec(`ALTER TABLE requirements ADD COLUMN ${col} TEXT`);
+          db.run(`ALTER TABLE requirements ADD COLUMN ${col} TEXT`);
         }
       }
 
@@ -311,7 +432,7 @@ const MIGRATIONS: MigrationDefinition[] = [
     name: '012-sprint-tracking.sql',
     up: db => {
       if (!hasColumn(db, 'stories', 'in_sprint')) {
-        db.exec('ALTER TABLE stories ADD COLUMN in_sprint INTEGER DEFAULT 0');
+        db.run('ALTER TABLE stories ADD COLUMN in_sprint INTEGER DEFAULT 0');
       }
 
       const sql = loadMigration('012-sprint-tracking.sql');
@@ -324,13 +445,13 @@ const MIGRATIONS: MigrationDefinition[] = [
       // Add feature_branch column to requirements
       if (!hasColumn(db, 'requirements', 'feature_branch')) {
         const sql = loadMigration('013-feature-testing-support.sql');
-        db.exec(sql);
+        db.run(sql);
       }
 
       // Recreate agents table with updated type CHECK constraint (add 'feature_test')
-      db.exec('PRAGMA foreign_keys = OFF');
+      db.run('PRAGMA foreign_keys = OFF');
 
-      db.exec(`
+      db.run(`
         CREATE TABLE agents_new (
           id TEXT PRIMARY KEY,
           type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa', 'feature_test')),
@@ -346,15 +467,15 @@ const MIGRATIONS: MigrationDefinition[] = [
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      db.exec('INSERT INTO agents_new SELECT * FROM agents');
-      db.exec('DROP TABLE agents');
-      db.exec('ALTER TABLE agents_new RENAME TO agents');
+      db.run('INSERT INTO agents_new SELECT * FROM agents');
+      db.run('DROP TABLE agents');
+      db.run('ALTER TABLE agents_new RENAME TO agents');
 
-      db.exec('CREATE INDEX IF NOT EXISTS idx_agents_team_id ON agents(team_id)');
-      db.exec('CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_agents_team_id ON agents(team_id)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)');
 
       // Recreate requirements table with updated status CHECK constraint
-      db.exec(`
+      db.run(`
         CREATE TABLE requirements_new (
           id TEXT PRIMARY KEY,
           title TEXT NOT NULL,
@@ -372,21 +493,21 @@ const MIGRATIONS: MigrationDefinition[] = [
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      db.exec(`
+      db.run(`
         INSERT INTO requirements_new (id, title, description, submitted_by, status, godmode, target_branch, feature_branch, jira_epic_key, jira_epic_id, external_epic_key, external_epic_id, external_provider, created_at)
         SELECT id, title, description, submitted_by, status, godmode, target_branch, feature_branch, jira_epic_key, jira_epic_id, external_epic_key, external_epic_id, external_provider, created_at
         FROM requirements
       `);
-      db.exec('DROP TABLE requirements');
-      db.exec('ALTER TABLE requirements_new RENAME TO requirements');
+      db.run('DROP TABLE requirements');
+      db.run('ALTER TABLE requirements_new RENAME TO requirements');
 
-      db.pragma('foreign_keys = ON');
+      db.run('PRAGMA foreign_keys = ON');
     },
   },
   {
     name: '007-backfill-story-points.sql',
     up: db => {
-      db.exec(`
+      db.run(`
         UPDATE stories
         SET story_points = complexity_score
         WHERE story_points IS NULL
@@ -396,9 +517,9 @@ const MIGRATIONS: MigrationDefinition[] = [
   },
 ];
 
-function runMigrations(db: Database.Database): void {
+function runMigrations(db: SqlJsDatabase): void {
   // Create migrations table if it doesn't exist
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -407,13 +528,15 @@ function runMigrations(db: Database.Database): void {
   `);
 
   // Query all applied migrations once
-  const appliedRows = db.prepare('SELECT name FROM migrations').all() as { name: string }[];
-  const appliedMigrations = new Set(appliedRows.map(row => row.name));
+  const appliedResult = db.exec('SELECT name FROM migrations');
+  const appliedMigrations = new Set(
+    appliedResult.length > 0 ? appliedResult[0].values.map((row: unknown[]) => String(row[0])) : []
+  );
 
   for (const migration of MIGRATIONS) {
     if (appliedMigrations.has(migration.name)) continue;
     migration.up(db);
-    db.prepare('INSERT INTO migrations (name) VALUES (?)').run(migration.name);
+    db.run('INSERT INTO migrations (name) VALUES (?)', [migration.name]);
   }
 }
 
@@ -421,9 +544,11 @@ function runMigrations(db: Database.Database): void {
  * Returns the status of all migrations (applied vs pending).
  * Useful for debugging migration issues.
  */
-export function getMigrationStatus(db: Database.Database): { name: string; applied: boolean }[] {
-  const appliedRows = db.prepare('SELECT name FROM migrations').all() as { name: string }[];
-  const appliedMigrations = new Set(appliedRows.map(row => row.name));
+export function getMigrationStatus(db: SqlJsDatabase): { name: string; applied: boolean }[] {
+  const appliedResult = db.exec('SELECT name FROM migrations');
+  const appliedMigrations = new Set(
+    appliedResult.length > 0 ? appliedResult[0].values.map((row: unknown[]) => String(row[0])) : []
+  );
 
   return MIGRATIONS.map(m => ({
     name: m.name,
@@ -438,22 +563,49 @@ export async function getDatabase(hiveDir: string): Promise<DatabaseClient> {
 
 export async function getReadOnlyDatabase(hiveDir: string): Promise<ReadOnlyDatabaseClient> {
   const dbPath = join(hiveDir, 'hive.db');
+  const SqlJs = await getSqlJs();
+  if (!SqlJs) throw new InitializationError('Failed to initialize sql.js');
 
   if (!existsSync(dbPath)) {
     throw new InitializationError(`Database file not found: ${dbPath}`);
   }
 
-  let db: Database.Database;
-  try {
-    db = new Database(dbPath, { readonly: true });
-  } catch (error) {
-    throw new InitializationError(
-      `Failed to open read-only database at ${dbPath}: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
+  let db!: SqlJsDatabase;
 
-  // Enable foreign keys
-  db.pragma('foreign_keys = ON');
+  for (let attempt = 1; attempt <= MAX_LOAD_RETRIES; attempt++) {
+    try {
+      const buffer = readFileSync(dbPath);
+      const fileSize = statSync(dbPath).size;
+
+      try {
+        db = new SqlJs.Database(buffer);
+        db.run('PRAGMA foreign_keys = ON');
+        db.exec('SELECT 1');
+      } catch (error) {
+        throw new DatabaseCorruptionError(
+          `Failed to load database file at ${dbPath}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+
+      validateLoadedDatabase(db, fileSize);
+
+      try {
+        runMigrations(db);
+      } catch (error) {
+        throw new DatabaseCorruptionError(
+          `Database file at ${dbPath} appears corrupted (migrations failed): ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+
+      break;
+    } catch (error) {
+      if (error instanceof DatabaseCorruptionError && attempt < MAX_LOAD_RETRIES) {
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+      throw error;
+    }
+  }
 
   return {
     db,
@@ -462,52 +614,85 @@ export async function getReadOnlyDatabase(hiveDir: string): Promise<ReadOnlyData
 }
 
 // Helper function to run a query and get results as objects
-export function queryAll<T>(db: Database.Database, sql: string, params: unknown[] = []): T[] {
-  return db.prepare(sql).all(...params) as T[];
+export function queryAll<T>(db: SqlJsDatabase, sql: string, params: unknown[] = []): T[] {
+  const stmt = db.prepare(sql);
+  try {
+    stmt.bind(params);
+
+    const results: T[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      results.push(row as T);
+    }
+    return results;
+  } finally {
+    stmt.free();
+  }
 }
 
 // Helper function to run a query and get a single result
-export function queryOne<T>(
-  db: Database.Database,
-  sql: string,
-  params: unknown[] = []
-): T | undefined {
-  return db.prepare(sql).get(...params) as T | undefined;
+export function queryOne<T>(db: SqlJsDatabase, sql: string, params: unknown[] = []): T | undefined {
+  const results = queryAll<T>(db, sql, params);
+  return results[0];
 }
 
 // Helper function to run a statement (INSERT, UPDATE, DELETE)
-export function run(db: Database.Database, sql: string, params: unknown[] = []): void {
-  db.prepare(sql).run(...params);
+export function run(db: SqlJsDatabase, sql: string, params: unknown[] = []): void {
+  db.run(sql, params);
 }
 
 /**
  * Execute a function within a database transaction.
  * Automatically commits on success, rolls back on error.
  *
- * With better-sqlite3, writes are automatically persisted to disk
- * via WAL mode — no manual save step is needed.
+ * **Important:** With sql.js, committing a transaction only updates the in-memory
+ * database. You should provide a `saveFn` to persist changes to disk after commit,
+ * or explicitly call `db.save()` after this function returns. Omitting persistence
+ * risks data loss if the process crashes.
  *
  * @param db Database instance
  * @param fn Function to execute within transaction
+ * @param saveFn Optional function to persist the database to disk after a successful commit
  * @returns Result of the function
  */
 export async function withTransaction<T>(
-  db: Database.Database,
-  fn: () => Promise<T> | T
+  db: SqlJsDatabase,
+  fn: () => Promise<T> | T,
+  saveFn?: () => void
 ): Promise<T> {
-  db.exec('BEGIN IMMEDIATE');
   try {
+    db.run('BEGIN IMMEDIATE');
     const result = await fn();
-    db.exec('COMMIT');
+    db.run('COMMIT');
+    if (saveFn) {
+      saveFn();
+    }
     return result;
   } catch (error) {
     try {
-      db.exec('ROLLBACK');
+      db.run('ROLLBACK');
     } catch (_error) {
       // Ignore rollback errors - transaction may have already been rolled back
     }
     throw error;
   }
+}
+
+/**
+ * Convenience wrapper that executes a function within a database transaction
+ * and automatically persists to disk after a successful commit.
+ *
+ * @param db Database instance
+ * @param saveFn Function to persist the database to disk (e.g., `() => db.save()`)
+ * @param fn Function to execute within transaction
+ * @returns Result of the function
+ */
+export async function withTransactionAndSave<T>(
+  db: SqlJsDatabase,
+  saveFn: () => void,
+  fn: () => Promise<T> | T
+): Promise<T> {
+  return withTransaction(db, fn, saveFn);
 }
 
 // Type definitions for database rows

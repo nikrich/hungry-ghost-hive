@@ -96,6 +96,7 @@ export async function checkFeatureSignOff(ctx: ManagerCheckContext): Promise<voi
         },
       });
 
+      ctx.db.save();
       ctx.counters.featureTestsSpawned++;
       console.log(
         chalk.green(
@@ -105,6 +106,7 @@ export async function checkFeatureSignOff(ctx: ManagerCheckContext): Promise<voi
     } catch (err) {
       // Revert status on failure
       updateRequirement(ctx.db.db, req.id, { status: 'in_progress' });
+      ctx.db.save();
       console.error(
         chalk.red(`  Feature sign-off failed for ${req.id}:`),
         err instanceof Error ? err.message : err

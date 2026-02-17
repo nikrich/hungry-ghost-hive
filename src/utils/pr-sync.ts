@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
 import { execa } from 'execa';
+import type { Database } from 'sql.js';
 import { syncStatusForStory } from '../connectors/project-management/operations.js';
 import { queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
@@ -54,13 +54,13 @@ interface ExistingPRNumberRow {
 /**
  * Build sets of existing branch names and PR numbers from the database.
  *
- * @param db - Database instance
+ * @param db - sql.js Database instance
  * @param includeTerminalBranches - If true, include merged/closed PR branches
  *   in the returned set (prevents re-importing previously synced PRs).
  *   Defaults to true.
  */
 export function getExistingPRIdentifiers(
-  db: Database.Database,
+  db: Database,
   includeTerminalBranches = true
 ): { existingBranches: Set<string>; existingPrNumbers: Set<number> } {
   const branchQuery = includeTerminalBranches
@@ -121,7 +121,7 @@ export async function fetchOpenGitHubPRs(
  * @param maxAgeHours - Optional max age in hours for PRs (default: no limit)
  */
 export async function syncOpenGitHubPRs(
-  db: Database.Database,
+  db: Database,
   repoDir: string,
   teamId: string | null,
   existingBranches: Set<string>,
@@ -223,7 +223,8 @@ export async function syncOpenGitHubPRs(
  */
 export async function syncAllTeamOpenPRs(
   root: string,
-  db: Database.Database,
+  db: Database,
+  saveFn: () => void,
   maxAgeHours?: number
 ): Promise<number> {
   const teams = getAllTeams(db);
@@ -251,6 +252,10 @@ export async function syncAllTeamOpenPRs(
     }
   }
 
+  if (totalSynced > 0) {
+    saveFn();
+  }
+
   return totalSynced;
 }
 
@@ -261,7 +266,8 @@ export async function syncAllTeamOpenPRs(
  */
 export async function syncMergedPRsFromGitHub(
   root: string,
-  db: Database.Database
+  db: Database,
+  saveFn: () => void
 ): Promise<number> {
   const teams = getAllTeams(db);
   if (teams.length === 0) return 0;
@@ -352,6 +358,10 @@ export async function syncMergedPRsFromGitHub(
     }
   }
 
+  if (storiesUpdated > 0) {
+    saveFn();
+  }
+
   return storiesUpdated;
 }
 
@@ -369,13 +379,10 @@ export interface ClosedPRInfo {
  * in the hive merge queue (i.e., the GitHub PR is stale/orphaned).
  *
  * @param root  - Root directory
- * @param db    - Database instance
+ * @param db    - sql.js Database instance
  * @returns Array of ClosedPRInfo for each PR that was closed.
  */
-export async function closeStaleGitHubPRs(
-  root: string,
-  db: Database.Database
-): Promise<ClosedPRInfo[]> {
+export async function closeStaleGitHubPRs(root: string, db: Database): Promise<ClosedPRInfo[]> {
   const teams = getAllTeams(db);
   if (teams.length === 0) return [];
 

@@ -39,6 +39,7 @@ msgCommand
       `,
           [id, fromSession, toSession, options.subject || null, message]
         );
+        db.save();
 
         console.log(chalk.green(`Message sent: ${id}`));
         console.log(chalk.gray(`To: ${toSession}`));
@@ -112,6 +113,7 @@ msgCommand
       // Mark as read
       if (msg.status === 'pending') {
         run(db.db, `UPDATE messages SET status = 'read' WHERE id = ?`, [msgId]);
+        db.save();
       }
 
       console.log(chalk.bold(`\nMessage: ${msg.id}\n`));
@@ -153,6 +155,7 @@ msgCommand
       `,
         [response, msgId]
       );
+      db.save();
 
       console.log(chalk.green(`Reply sent to ${msg.from_session}`));
     });

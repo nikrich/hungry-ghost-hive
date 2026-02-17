@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
@@ -89,7 +89,7 @@ describe('isForwardTransition', () => {
 });
 
 describe('syncJiraStatusesToHive', () => {
-  let db: Database.Database;
+  let db: Database;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -122,10 +122,10 @@ describe('syncJiraStatusesToHive', () => {
   }
 
   beforeEach(async () => {
-    db = createTestDatabase();
+    db = await createTestDatabase();
     envDir = mkdtempSync(join(tmpdir(), 'hive-sync-test-'));
     // Create a manager agent for logging purposes
-    db.exec(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
 
   it('skips sync when no status mapping configured', async () => {
@@ -389,7 +389,7 @@ describe('syncJiraStatusesToHive', () => {
 });
 
 describe('syncUnsyncedStoriesToJira', () => {
-  let db: Database.Database;
+  let db: Database;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -419,9 +419,9 @@ describe('syncUnsyncedStoriesToJira', () => {
   }
 
   beforeEach(async () => {
-    db = createTestDatabase();
+    db = await createTestDatabase();
     envDir = mkdtempSync(join(tmpdir(), 'hive-sync-unsynced-test-'));
-    db.exec(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
 
   it('returns 0 when all stories already have jira keys', async () => {
@@ -583,7 +583,7 @@ describe('syncUnsyncedStoriesToJira', () => {
 });
 
 describe('retrySprintAssignment', () => {
-  let db: Database.Database;
+  let db: Database;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -613,9 +613,9 @@ describe('retrySprintAssignment', () => {
   }
 
   beforeEach(async () => {
-    db = createTestDatabase();
+    db = await createTestDatabase();
     envDir = mkdtempSync(join(tmpdir(), 'hive-sprint-retry-test-'));
-    db.exec(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
 
   it('returns 0 when no stories need sprint assignment', async () => {
@@ -721,10 +721,10 @@ describe('retrySprintAssignment', () => {
 });
 
 describe('idempotency guards', () => {
-  let db: Database.Database;
+  let db: Database;
 
   beforeEach(async () => {
-    db = createTestDatabase();
+    db = await createTestDatabase();
   });
 
   it('unique index prevents duplicate integration_sync records', () => {
@@ -768,7 +768,7 @@ describe('idempotency guards', () => {
 });
 
 describe('syncHiveStatusesToJira', () => {
-  let db: Database.Database;
+  let db: Database;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -799,9 +799,9 @@ describe('syncHiveStatusesToJira', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    db = createTestDatabase();
+    db = await createTestDatabase();
     envDir = mkdtempSync(join(tmpdir(), 'hive-sync-push-test-'));
-    db.exec(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
 
   it('skips push when no status mapping configured', async () => {

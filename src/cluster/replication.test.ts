@@ -14,7 +14,7 @@ import {
 
 describe('cluster replication', () => {
   it('detects local row changes and emits deterministic events', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     run(
       db,
@@ -43,8 +43,8 @@ describe('cluster replication', () => {
   });
 
   it('applies remote delta events into another node', async () => {
-    const sourceDb = createTestDatabase();
-    const targetDb = createTestDatabase();
+    const sourceDb = await createTestDatabase();
+    const targetDb = await createTestDatabase();
 
     run(
       sourceDb,
@@ -73,8 +73,8 @@ describe('cluster replication', () => {
   });
 
   it('replicates requirements including godmode flag', async () => {
-    const sourceDb = createTestDatabase();
-    const targetDb = createTestDatabase();
+    const sourceDb = await createTestDatabase();
+    const targetDb = await createTestDatabase();
 
     run(
       sourceDb,
@@ -103,7 +103,7 @@ describe('cluster replication', () => {
   });
 
   it('preserves existing godmode when applying legacy requirement events without godmode field', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
     const now = new Date().toISOString();
 
     run(
@@ -151,7 +151,7 @@ describe('cluster replication', () => {
   });
 
   it('merges similar duplicate stories into a canonical story', async () => {
-    const db = createTestDatabase();
+    const db = await createTestDatabase();
 
     run(
       db,
@@ -172,8 +172,8 @@ describe('cluster replication', () => {
     const merged = mergeSimilarStories(db, 0.8);
     expect(merged).toBe(1);
 
-    const stories = db.prepare(`SELECT id FROM stories ORDER BY id`).all() as { id: string }[];
-    const ids = stories.map(s => s.id);
+    const stories = db.exec(`SELECT id FROM stories ORDER BY id`);
+    const ids = stories[0]?.values.map(v => String(v[0])) || [];
     expect(ids).toEqual(['STORY-AAA001']);
 
     db.close();

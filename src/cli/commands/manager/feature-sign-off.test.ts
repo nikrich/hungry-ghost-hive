@@ -60,7 +60,7 @@ function makeCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheckCont
       e2e_tests: { path: './e2e' },
     } as unknown as HiveConfig,
     paths: {} as ManagerCheckContext['paths'],
-    db: { db: {} as never } as unknown as ManagerCheckContext['db'],
+    db: { db: {} as never, save: vi.fn() } as unknown as ManagerCheckContext['db'],
     scheduler: {
       spawnFeatureTest: vi.fn().mockResolvedValue({ id: 'team-1-feature-test-1' }),
     } as unknown as ManagerCheckContext['scheduler'],
@@ -222,7 +222,7 @@ describe('checkFeatureSignOff', () => {
       }
     );
     expect(ctx.counters.featureTestsSpawned).toBe(1);
-    expect(ctx.counters.featureTestsSpawned).toBeGreaterThanOrEqual(1);
+    expect(ctx.db.save).toHaveBeenCalled();
   });
 
   it('should create log entries on successful spawn', async () => {

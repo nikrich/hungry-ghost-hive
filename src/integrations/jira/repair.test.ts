@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
@@ -20,7 +20,7 @@ vi.mock('./stories.js');
 vi.mock('./transitions.js');
 
 describe('repairMissedAssignmentHooks', () => {
-  let db: Database.Database;
+  let db: Database;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -71,16 +71,16 @@ describe('repairMissedAssignmentHooks', () => {
   }
 
   beforeEach(async () => {
-    db = createTestDatabase();
+    db = await createTestDatabase();
     envDir = mkdtempSync(join(tmpdir(), 'hive-repair-test-'));
     // Create a manager agent for logging purposes
-    db.exec(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
     // Create a team
-    db.exec(
+    db.run(
       `INSERT INTO teams (id, repo_url, repo_path, name) VALUES ('team-test', 'https://github.com/test/test.git', 'repos/test', 'test-team')`
     );
     // Create a working agent
-    db.exec(
+    db.run(
       `INSERT INTO agents (id, type, status, team_id, tmux_session) VALUES ('agent-senior-1', 'senior', 'working', 'team-test', 'hive-senior-test-team')`
     );
     // Add missing Jira columns to test schema

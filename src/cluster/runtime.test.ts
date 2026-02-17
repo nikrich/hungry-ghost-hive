@@ -104,16 +104,16 @@ describe('cluster runtime helpers', () => {
       configBase
     );
 
-    db.db
-      .prepare(
-        `
+    db.db.run(
+      `
       INSERT INTO stories (id, requirement_id, team_id, title, description, status, created_at, updated_at)
       VALUES ('STORY-PERSIST', NULL, NULL, 'Persist me', 'Ensure durable raft metadata', 'planned', ?, ?)
-    `
-      )
-      .run(new Date().toISOString(), new Date().toISOString());
+    `,
+      [new Date().toISOString(), new Date().toISOString()]
+    );
 
     await runtimeA.sync(db.db);
+    db.save();
 
     const statusBefore = runtimeA.getStatus();
     expect(statusBefore.raft_last_log_index).toBeGreaterThan(0);

@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createAgent } from './agents.js';
 import { getStaleAgents, isAgentHeartbeatCurrent, updateAgentHeartbeat } from './heartbeat.js';
@@ -8,11 +8,11 @@ import { createTeam } from './teams.js';
 import { createTestDatabase } from './test-helpers.js';
 
 describe('heartbeat queries', () => {
-  let db: Database.Database;
+  let db: Database;
   let teamId: string;
 
   beforeEach(async () => {
-    db = createTestDatabase();
+    db = await createTestDatabase();
     const team = createTeam(db, {
       repoUrl: 'https://github.com/test/repo.git',
       repoPath: '/path/to/repo',
@@ -30,9 +30,11 @@ describe('heartbeat queries', () => {
 
       updateAgentHeartbeat(db, agent.id);
 
-      const afterUpdate = db
-        .prepare(`SELECT last_seen FROM agents WHERE id = ?`)
-        .all(agent.id) as any[];
+      const stmt = db.prepare(`SELECT last_seen FROM agents WHERE id = ?`);
+      stmt.bind([agent.id]);
+      const afterUpdate = [];
+      while (stmt.step()) afterUpdate.push(stmt.getAsObject());
+      stmt.free();
       const updatedLastSeen = afterUpdate[0]?.last_seen;
 
       expect(updatedLastSeen).toBeDefined();
@@ -49,7 +51,11 @@ describe('heartbeat queries', () => {
       updateAgentHeartbeat(db, agent.id);
       updateAgentHeartbeat(db, agent.id);
 
-      const result = db.prepare(`SELECT last_seen FROM agents WHERE id = ?`).all(agent.id) as any[];
+      const stmtResult = db.prepare(`SELECT last_seen FROM agents WHERE id = ?`);
+      stmtResult.bind([agent.id]);
+      const result = [];
+      while (stmtResult.step()) result.push(stmtResult.getAsObject());
+      stmtResult.free();
       const lastSeen = result[0]?.last_seen;
 
       expect(lastSeen).toBeDefined();
@@ -72,7 +78,7 @@ describe('heartbeat queries', () => {
 
       // Set last_seen to 30 seconds ago
       const oldTimestamp = new Date(Date.now() - 30000).toISOString();
-      db.prepare(`UPDATE agents SET last_seen = ? WHERE id = ?`).run(oldTimestamp, agent.id);
+      db.run(`UPDATE agents SET last_seen = ? WHERE id = ?`, [oldTimestamp, agent.id]);
 
       const staleAgents = getStaleAgents(db, 15);
 
@@ -102,7 +108,7 @@ describe('heartbeat queries', () => {
 
       // Set last_seen to 10 seconds ago
       const timestamp = new Date(Date.now() - 10000).toISOString();
-      db.prepare(`UPDATE agents SET last_seen = ? WHERE id = ?`).run(timestamp, agent.id);
+      db.run(`UPDATE agents SET last_seen = ? WHERE id = ?`, [timestamp, agent.id]);
 
       // With 5 second timeout, should be stale
       const staleWith5 = getStaleAgents(db, 5);
@@ -126,11 +132,11 @@ describe('heartbeat queries', () => {
 
       // Set both to old heartbeat
       const oldTimestamp = new Date(Date.now() - 30000).toISOString();
-      db.prepare(`UPDATE agents SET last_seen = ? WHERE id = ?`).run(oldTimestamp, workingAgent.id);
-      db.prepare(`UPDATE agents SET last_seen = ?, status = 'terminated' WHERE id = ?`).run(
+      db.run(`UPDATE agents SET last_seen = ? WHERE id = ?`, [oldTimestamp, workingAgent.id]);
+      db.run(`UPDATE agents SET last_seen = ?, status = 'terminated' WHERE id = ?`, [
         oldTimestamp,
-        terminatedAgent.id
-      );
+        terminatedAgent.id,
+      ]);
 
       const staleAgents = getStaleAgents(db, 15);
 
@@ -147,10 +153,10 @@ describe('heartbeat queries', () => {
 
       // Set last_seen to null and created_at to old timestamp (> 60 + timeout seconds ago)
       const oldCreatedAt = new Date(Date.now() - 90000).toISOString(); // 90 seconds ago
-      db.prepare(`UPDATE agents SET last_seen = NULL, created_at = ? WHERE id = ?`).run(
+      db.run(`UPDATE agents SET last_seen = NULL, created_at = ? WHERE id = ?`, [
         oldCreatedAt,
-        agent.id
-      );
+        agent.id,
+      ]);
 
       const staleAgents = getStaleAgents(db, 15);
 
@@ -165,7 +171,7 @@ describe('heartbeat queries', () => {
       });
 
       // Set last_seen to null but keep recent created_at
-      db.prepare(`UPDATE agents SET last_seen = NULL WHERE id = ?`).run(agent.id);
+      db.run(`UPDATE agents SET last_seen = NULL WHERE id = ?`, [agent.id]);
 
       const staleAgents = getStaleAgents(db, 15);
 
@@ -181,7 +187,7 @@ describe('heartbeat queries', () => {
 
       // Set last_seen to exactly 30 seconds ago
       const timestamp = new Date(Date.now() - 30000).toISOString();
-      db.prepare(`UPDATE agents SET last_seen = ? WHERE id = ?`).run(timestamp, agent.id);
+      db.run(`UPDATE agents SET last_seen = ? WHERE id = ?`, [timestamp, agent.id]);
 
       const staleAgents = getStaleAgents(db, 15);
 
@@ -198,12 +204,12 @@ describe('heartbeat queries', () => {
       const agent3 = createAgent(db, { type: 'junior', teamId });
 
       const oldTimestamp = new Date(Date.now() - 30000).toISOString();
-      db.prepare(`UPDATE agents SET last_seen = ? WHERE id IN (?, ?, ?)`).run(
+      db.run(`UPDATE agents SET last_seen = ? WHERE id IN (?, ?, ?)`, [
         oldTimestamp,
         agent1.id,
         agent2.id,
-        agent3.id
-      );
+        agent3.id,
+      ]);
 
       const staleAgents = getStaleAgents(db, 15);
 
@@ -233,7 +239,7 @@ describe('heartbeat queries', () => {
 
       // Set last_seen to 30 seconds ago
       const oldTimestamp = new Date(Date.now() - 30000).toISOString();
-      db.prepare(`UPDATE agents SET last_seen = ? WHERE id = ?`).run(oldTimestamp, agent.id);
+      db.run(`UPDATE agents SET last_seen = ? WHERE id = ?`, [oldTimestamp, agent.id]);
 
       const isCurrent = isAgentHeartbeatCurrent(db, agent.id, 15);
 
@@ -247,7 +253,7 @@ describe('heartbeat queries', () => {
       });
 
       // Set last_seen to null
-      db.prepare(`UPDATE agents SET last_seen = NULL WHERE id = ?`).run(agent.id);
+      db.run(`UPDATE agents SET last_seen = NULL WHERE id = ?`, [agent.id]);
 
       const isCurrent = isAgentHeartbeatCurrent(db, agent.id, 15);
 
@@ -262,7 +268,7 @@ describe('heartbeat queries', () => {
 
       // Set last_seen to 10 seconds ago
       const timestamp = new Date(Date.now() - 10000).toISOString();
-      db.prepare(`UPDATE agents SET last_seen = ? WHERE id = ?`).run(timestamp, agent.id);
+      db.run(`UPDATE agents SET last_seen = ? WHERE id = ?`, [timestamp, agent.id]);
 
       // With 5 second timeout, should be false
       expect(isAgentHeartbeatCurrent(db, agent.id, 5)).toBe(false);

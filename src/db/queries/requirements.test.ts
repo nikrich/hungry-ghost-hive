@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createRequirement,
@@ -14,10 +14,10 @@ import {
 import { createTestDatabase } from './test-helpers.js';
 
 describe('requirements queries', () => {
-  let db: Database.Database;
+  let db: Database;
 
   beforeEach(async () => {
-    db = createTestDatabase();
+    db = await createTestDatabase();
   });
 
   describe('createRequirement', () => {

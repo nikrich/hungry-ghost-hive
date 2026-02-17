@@ -88,9 +88,9 @@ export interface TableAdapter {
   selectSql: string;
   rowId: (row: Record<string, unknown>) => string;
   payload: (row: Record<string, unknown>) => Record<string, unknown>;
-  upsert: (db: Database.Database, payload: Record<string, unknown>) => void;
-  delete: (db: Database.Database, rowId: string) => void;
+  upsert: (db: Database, payload: Record<string, unknown>) => void;
+  delete: (db: Database, rowId: string) => void;
 }
 
 // Re-import Database type for TableAdapter interface
-import type Database from 'better-sqlite3';
+import type { Database } from 'sql.js';

@@ -35,6 +35,7 @@ export const approachCommand = new Command('approach')
           external_issue_key: story.external_issue_key,
         },
       });
+      db.save();
 
       console.log(chalk.green(`Approach logged for story ${storyId}`));
 
