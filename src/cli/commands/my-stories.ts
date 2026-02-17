@@ -16,9 +16,7 @@ export const myStoriesCommand = new Command('my-stories')
     await withReadOnlyHiveContext(async ({ db }) => {
       if (!session) {
         // Show all in-progress stories
-        const stories = queryAll<
-          StoryRow & { tmux_session?: string; target_branch?: string }
-        >(
+        const stories = queryAll<StoryRow & { tmux_session?: string; target_branch?: string }>(
           db.db,
           `
           SELECT s.*, a.tmux_session, r.target_branch
