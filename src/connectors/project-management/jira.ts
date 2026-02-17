@@ -44,7 +44,9 @@ export class JiraProjectManagementConnector implements IProjectManagementConnect
   private config?: JiraConfig;
   private tokenStore?: TokenStore;
   /** Cached JiraClient instance — shared across all operations to prevent lock contention */
-  private cachedClient?: InstanceType<typeof import('../../integrations/jira/client.js').JiraClient>;
+  private cachedClient?: InstanceType<
+    typeof import('../../integrations/jira/client.js').JiraClient
+  >;
 
   constructor(options?: JiraPMConnectorOptions) {
     if (options) {
