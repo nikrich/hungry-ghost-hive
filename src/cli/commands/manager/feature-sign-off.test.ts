@@ -173,14 +173,41 @@ describe('checkFeatureSignOff', () => {
     expect(ctx.counters.featureTestsSpawned).toBe(0);
   });
 
-  it('should skip requirements without feature_branch set', async () => {
+  it('should skip requirements without feature_branch and with default target_branch (main)', async () => {
     const ctx = makeCtx();
-    mockGetRequirementsByStatus.mockReturnValue([makeRequirement({ feature_branch: null })]);
+    mockGetRequirementsByStatus.mockReturnValue([
+      makeRequirement({ feature_branch: null, target_branch: 'main' }),
+    ]);
 
     await checkFeatureSignOff(ctx);
 
     expect(mockGetStoriesByRequirement).not.toHaveBeenCalled();
     expect(ctx.counters.featureTestsSpawned).toBe(0);
+  });
+
+  it('should process requirements with target_branch but no feature_branch', async () => {
+    const ctx = makeCtx();
+    const req = makeRequirement({ feature_branch: null, target_branch: 'feature/REQ-TEST1234' });
+    mockGetRequirementsByStatus.mockReturnValue([req]);
+    mockGetStoriesByRequirement.mockReturnValue([makeStory({ status: 'merged' })]);
+    mockGetAllTeams.mockReturnValue([makeTeam()]);
+
+    await checkFeatureSignOff(ctx);
+
+    const mockScheduler = (ctx as unknown as Record<string, unknown>)._mockScheduler as {
+      spawnFeatureTest: ReturnType<typeof vi.fn>;
+    };
+    expect(mockScheduler.spawnFeatureTest).toHaveBeenCalledWith(
+      'team-abc',
+      'team-abc',
+      'repos/team-abc',
+      {
+        featureBranch: 'feature/REQ-TEST1234',
+        requirementId: 'REQ-TEST1234',
+        e2eTestsPath: './e2e',
+      }
+    );
+    expect(ctx.counters.featureTestsSpawned).toBe(1);
   });
 
   it('should skip when not all stories are merged', async () => {
