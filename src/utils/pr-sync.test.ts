@@ -550,6 +550,7 @@ describe('closeStaleGitHubPRs', () => {
         {
           number: 10,
           headRefName: 'feature/no-story',
+          baseRefName: 'main',
           url: 'https://github.com/test/repo/pull/10',
           title: 'No story',
           createdAt: new Date().toISOString(),
@@ -578,6 +579,7 @@ describe('closeStaleGitHubPRs', () => {
         {
           number: 10,
           headRefName: 'feature/STORY-TST-001-work',
+          baseRefName: 'main',
           url: 'https://github.com/test/repo/pull/10',
           title: 'Test PR',
           createdAt: new Date().toISOString(),
@@ -613,6 +615,7 @@ describe('closeStaleGitHubPRs', () => {
           {
             number: 10,
             headRefName: 'feature/STORY-TST-002-v1',
+            baseRefName: 'main',
             url: 'https://github.com/test/repo/pull/10',
             title: 'Old PR',
             createdAt: new Date().toISOString(),
@@ -646,6 +649,7 @@ describe('closeStaleGitHubPRs', () => {
           {
             number: 15,
             headRefName: 'feature/STORY-TST-003-v1',
+            baseRefName: 'main',
             url: 'https://github.com/test/repo/pull/15',
             title: 'Old PR',
             createdAt: new Date().toISOString(),
@@ -682,6 +686,7 @@ describe('closeStaleGitHubPRs', () => {
           {
             number: 5,
             headRefName: 'feature/STORY-TST-004-v1',
+            baseRefName: 'main',
             url: 'https://github.com/test/repo/pull/5',
             title: 'Old PR',
             createdAt: new Date().toISOString(),
@@ -693,6 +698,101 @@ describe('closeStaleGitHubPRs', () => {
     const result = await closeStaleGitHubPRs('/root', db);
 
     // Non-fatal: result should be empty since close failed
+    expect(result).toHaveLength(0);
+  });
+
+  it('should skip PRs not targeting the configured base branch', async () => {
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-TST-005', 'Test', 'Test', 'in_progress')"
+    );
+    createPullRequest(db, {
+      storyId: 'STORY-TST-005',
+      branchName: 'feature/STORY-TST-005-v2',
+      githubPrNumber: 50,
+    });
+
+    // PR targets a feature branch, not main
+    mockExeca.mockResolvedValueOnce({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'feature/STORY-TST-005-v1',
+          baseRefName: 'feat/memento-refactor',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'Feature branch PR',
+          createdAt: new Date().toISOString(),
+        },
+      ]),
+    } as any);
+
+    const result = await closeStaleGitHubPRs('/root', db);
+
+    // Should not close PRs targeting non-main branches
+    expect(result).toHaveLength(0);
+    const closeCalls = mockExeca.mock.calls.filter(
+      call => call[0] === 'gh' && Array.isArray(call[1]) && call[1].includes('close')
+    );
+    expect(closeCalls).toHaveLength(0);
+  });
+
+  it('should only close PRs targeting the configured base branch when it is non-main', async () => {
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-TST-006', 'Test', 'Test', 'in_progress')"
+    );
+    createPullRequest(db, {
+      storyId: 'STORY-TST-006',
+      branchName: 'feature/STORY-TST-006-v2',
+      githubPrNumber: 60,
+    });
+
+    // Old PR targets the configured base branch (feat/memento-refactor)
+    mockExeca
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify([
+          {
+            number: 10,
+            headRefName: 'feature/STORY-TST-006-v1',
+            baseRefName: 'feat/memento-refactor',
+            url: 'https://github.com/test/repo/pull/10',
+            title: 'Old PR targeting feature base',
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+      } as any)
+      .mockResolvedValueOnce({ stdout: '' } as any);
+
+    const result = await closeStaleGitHubPRs('/root', db, 'feat/memento-refactor');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].closedPrNumber).toBe(10);
+  });
+
+  it('should not close PRs targeting main when configured base branch is feat/memento-refactor', async () => {
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-TST-007', 'Test', 'Test', 'in_progress')"
+    );
+    createPullRequest(db, {
+      storyId: 'STORY-TST-007',
+      branchName: 'feature/STORY-TST-007-v2',
+      githubPrNumber: 70,
+    });
+
+    // PR targets main but configured base branch is feat/memento-refactor
+    mockExeca.mockResolvedValueOnce({
+      stdout: JSON.stringify([
+        {
+          number: 10,
+          headRefName: 'feature/STORY-TST-007-v1',
+          baseRefName: 'main',
+          url: 'https://github.com/test/repo/pull/10',
+          title: 'Main-targeting PR',
+          createdAt: new Date().toISOString(),
+        },
+      ]),
+    } as any);
+
+    const result = await closeStaleGitHubPRs('/root', db, 'feat/memento-refactor');
+
     expect(result).toHaveLength(0);
   });
 });

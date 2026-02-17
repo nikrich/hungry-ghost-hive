@@ -1200,12 +1200,16 @@ async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
 
   // Phase 2: GitHub CLI calls (no lock)
   const GH_CLI_TIMEOUT_MS = 30000;
+  const baseBranch = ctx.config.github?.base_branch ?? 'main';
   const closed: import('../../../utils/pr-sync.js').ClosedPRInfo[] = [];
 
   for (const team of teamInfos) {
     try {
       const openGHPRs = await fetchOpenGitHubPRs(team.repoDir);
       for (const ghPR of openGHPRs) {
+        // Skip PRs that don't target the configured base branch
+        if (ghPR.baseRefName !== baseBranch) continue;
+
         const storyId = extractStoryIdFromBranch(ghPR.headRefName);
         if (!storyId) continue;
         const prsForStory = prsByStory.get(storyId);
