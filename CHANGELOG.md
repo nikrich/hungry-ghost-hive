@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.0...hungry-ghost-hive-v0.39.1) (2026-02-17)
+
+
+### Bug Fixes
+
+* handle corrupted database gracefully in nuke command ([#449](https://github.com/nikrich/hungry-ghost-hive/issues/449)) ([602d930](https://github.com/nikrich/hungry-ghost-hive/commit/602d93079b78328c994b9126db80bbfc172d7495))
+
 ## [0.39.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.38.0...hungry-ghost-hive-v0.39.0) (2026-02-17)
 
 
