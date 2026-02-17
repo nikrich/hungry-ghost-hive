@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPullRequest } from '../db/queries/pull-requests.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
@@ -14,13 +14,13 @@ import { execa } from 'execa';
 
 const mockExeca = vi.mocked(execa);
 
-let db: Database;
+let db: Database.Database;
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  db = await createTestDatabase();
+  db = createTestDatabase();
   // Create a 'manager' agent for logging (required by foreign key constraint)
-  db.run("INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')");
+  db.exec("INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')");
 });
 
 describe('getExistingPRIdentifiers', () => {
@@ -38,7 +38,7 @@ describe('getExistingPRIdentifiers', () => {
       githubPrNumber: 2,
     });
     // Manually set status to merged
-    db.run("UPDATE pull_requests SET status = 'merged' WHERE id = ?", [mergedPR.id]);
+    db.prepare("UPDATE pull_requests SET status = 'merged' WHERE id = ?").run(mergedPR.id);
 
     const { existingBranches } = getExistingPRIdentifiers(db, true);
 
@@ -56,8 +56,8 @@ describe('getExistingPRIdentifiers', () => {
       branchName: 'feature/closed',
       githubPrNumber: 3,
     });
-    db.run("UPDATE pull_requests SET status = 'merged' WHERE id = ?", [mergedPR.id]);
-    db.run("UPDATE pull_requests SET status = 'closed' WHERE id = ?", [closedPR.id]);
+    db.prepare("UPDATE pull_requests SET status = 'merged' WHERE id = ?").run(mergedPR.id);
+    db.prepare("UPDATE pull_requests SET status = 'closed' WHERE id = ?").run(closedPR.id);
 
     const { existingBranches } = getExistingPRIdentifiers(db, false);
 
@@ -200,8 +200,8 @@ describe('syncOpenGitHubPRs', () => {
     expect(existingBranches.has('feature/shared')).toBe(true);
     expect(existingPrNumbers.has(10)).toBe(true);
 
-    const countResult = db.exec('SELECT COUNT(*) as count FROM pull_requests');
-    expect(countResult[0].values[0][0]).toBe(1);
+    const countResult = db.prepare('SELECT COUNT(*) as count FROM pull_requests').get() as any;
+    expect(countResult.count).toBe(1);
   });
 
   it('should return empty results when no new PRs', async () => {
@@ -238,7 +238,7 @@ describe('syncOpenGitHubPRs', () => {
     } as any);
 
     // Create a team so foreign key is satisfied
-    db.run(
+    db.exec(
       "INSERT INTO teams (id, repo_url, repo_path, name) VALUES ('team-1', 'https://test', 'repo', 'Test')"
     );
 
@@ -246,13 +246,13 @@ describe('syncOpenGitHubPRs', () => {
 
     expect(result.synced).toBe(1);
     // Verify the PR was created with the team ID
-    const prs = db.exec('SELECT team_id FROM pull_requests');
-    expect(prs[0].values[0][0]).toBe('team-1');
+    const prs = db.prepare('SELECT team_id FROM pull_requests').get() as any;
+    expect(prs.team_id).toBe('team-1');
   });
 
   it('should extract story IDs from branch names that match the story ID pattern', async () => {
     // Create a story so the FK constraint is satisfied
-    db.run(
+    db.exec(
       "INSERT INTO stories (id, title, description, status) VALUES ('STORY-GOD-001', 'Test', 'Test', 'planned')"
     );
 
@@ -270,8 +270,8 @@ describe('syncOpenGitHubPRs', () => {
 
     await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set());
 
-    const prs = db.exec('SELECT story_id FROM pull_requests');
-    expect(prs[0].values[0][0]).toBe('STORY-GOD-001');
+    const prs = db.prepare('SELECT story_id FROM pull_requests').get() as any;
+    expect(prs.story_id).toBe('STORY-GOD-001');
   });
 
   it('should import PRs without story IDs (for manual/hotfix PRs)', async () => {
@@ -293,8 +293,8 @@ describe('syncOpenGitHubPRs', () => {
     expect(result.imported).toHaveLength(1);
 
     // Verify the PR was created with null story_id
-    const prs = db.exec('SELECT story_id FROM pull_requests');
-    expect(prs[0].values[0][0]).toBeNull();
+    const prs = db.prepare('SELECT story_id FROM pull_requests').get() as any;
+    expect(prs.story_id).toBeNull();
   });
 
   it('should skip PRs where story does not exist in database', async () => {
@@ -318,7 +318,7 @@ describe('syncOpenGitHubPRs', () => {
 
   it('should skip PRs where story status is merged', async () => {
     // Create a merged story
-    db.run(
+    db.exec(
       "INSERT INTO stories (id, title, description, status) VALUES ('STORY-MERGED-001', 'Merged Story', 'Test', 'merged')"
     );
 
@@ -342,7 +342,7 @@ describe('syncOpenGitHubPRs', () => {
 
   it('should import PRs with active (non-merged) stories', async () => {
     // Create an active story
-    db.run(
+    db.exec(
       "INSERT INTO stories (id, title, description, status) VALUES ('STORY-ACTIVE-001', 'Active Story', 'Test', 'in_progress')"
     );
 
@@ -367,10 +367,10 @@ describe('syncOpenGitHubPRs', () => {
 
   it('should filter mixed PRs - import active stories and PRs without story IDs', async () => {
     // Create stories with different statuses
-    db.run(
+    db.exec(
       "INSERT INTO stories (id, title, description, status) VALUES ('STORY-ACTIVE-001', 'Active', 'Test', 'planned')"
     );
-    db.run(
+    db.exec(
       "INSERT INTO stories (id, title, description, status) VALUES ('STORY-MERGED-001', 'Merged', 'Test', 'merged')"
     );
 
@@ -491,9 +491,8 @@ describe('syncOpenGitHubPRs', () => {
     await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set(), null, maxAgeHours);
 
     // Check that a log entry was created
-    const logs = db.exec("SELECT * FROM agent_logs WHERE event_type = 'PR_SYNC_SKIPPED'");
+    const logs = db.prepare("SELECT * FROM agent_logs WHERE event_type = 'PR_SYNC_SKIPPED'").all();
     expect(logs.length).toBeGreaterThan(0);
-    expect(logs[0].values.length).toBeGreaterThan(0);
   });
 
   it('should log PR_SYNC_SKIPPED events for inactive stories', async () => {
@@ -512,23 +511,22 @@ describe('syncOpenGitHubPRs', () => {
     await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set());
 
     // Check that a log entry was created
-    const logs = db.exec("SELECT * FROM agent_logs WHERE event_type = 'PR_SYNC_SKIPPED'");
+    const logs = db.prepare("SELECT * FROM agent_logs WHERE event_type = 'PR_SYNC_SKIPPED'").all();
     expect(logs.length).toBeGreaterThan(0);
-    expect(logs[0].values.length).toBeGreaterThan(0);
   });
 });
 
 describe('closeStaleGitHubPRs', () => {
   beforeEach(() => {
     // Insert a team so the function can iterate teams
-    db.run(
+    db.exec(
       "INSERT INTO teams (id, repo_url, repo_path, name) VALUES ('team-1', 'https://github.com/test/repo', 'repos/test', 'Test')"
     );
   });
 
   it('should return empty array when no teams exist', async () => {
     // Remove the team inserted in beforeEach
-    db.run("DELETE FROM teams WHERE id = 'team-1'");
+    db.exec("DELETE FROM teams WHERE id = 'team-1'");
 
     const result = await closeStaleGitHubPRs('/root', db);
 
@@ -563,7 +561,7 @@ describe('closeStaleGitHubPRs', () => {
   });
 
   it('should skip a GitHub PR that is already in the queue', async () => {
-    db.run(
+    db.exec(
       "INSERT INTO stories (id, title, description, status) VALUES ('STORY-TST-001', 'Test', 'Test', 'in_progress')"
     );
     const pr = createPullRequest(db, {
@@ -596,7 +594,7 @@ describe('closeStaleGitHubPRs', () => {
   });
 
   it('should close a stale GitHub PR and return ClosedPRInfo', async () => {
-    db.run(
+    db.exec(
       "INSERT INTO stories (id, title, description, status) VALUES ('STORY-TST-002', 'Test', 'Test', 'in_progress')"
     );
     // Queue PR has github_pr_number 20 (the newer one)
@@ -631,7 +629,7 @@ describe('closeStaleGitHubPRs', () => {
   });
 
   it('should include superseding PR number in the log message', async () => {
-    db.run(
+    db.exec(
       "INSERT INTO stories (id, title, description, status) VALUES ('STORY-TST-003', 'Test', 'Test', 'in_progress')"
     );
     createPullRequest(db, {
@@ -656,18 +654,20 @@ describe('closeStaleGitHubPRs', () => {
 
     await closeStaleGitHubPRs('/root', db);
 
-    const logs = db.exec("SELECT message, metadata FROM agent_logs WHERE event_type = 'PR_CLOSED'");
+    const logs = db
+      .prepare("SELECT message, metadata FROM agent_logs WHERE event_type = 'PR_CLOSED'")
+      .all() as Array<{ message: string; metadata: string }>;
     expect(logs.length).toBeGreaterThan(0);
-    const message = logs[0].values[0][0] as string;
+    const message = logs[0].message;
     expect(message).toContain('#15');
     expect(message).toContain('by PR #30');
 
-    const metadata = JSON.parse(logs[0].values[0][1] as string) as Record<string, unknown>;
+    const metadata = JSON.parse(logs[0].metadata) as Record<string, unknown>;
     expect(metadata.superseded_by_pr_number).toBe(30);
   });
 
   it('should not close if gh CLI throws and should not include in result', async () => {
-    db.run(
+    db.exec(
       "INSERT INTO stories (id, title, description, status) VALUES ('STORY-TST-004', 'Test', 'Test', 'in_progress')"
     );
     createPullRequest(db, {

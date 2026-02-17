@@ -1,10 +1,13 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import type Database from 'better-sqlite3';
 import blessed, { type Widgets } from 'blessed';
-import type { Database } from 'sql.js';
 import { getRecentLogs } from '../../../db/queries/logs.js';
 
-export function createActivityPanel(screen: Widgets.Screen, db: Database): Widgets.BoxElement {
+export function createActivityPanel(
+  screen: Widgets.Screen,
+  db: Database.Database
+): Widgets.BoxElement {
   const box = blessed.box({
     parent: screen,
     top: '55%+5',
@@ -34,7 +37,10 @@ export function createActivityPanel(screen: Widgets.Screen, db: Database): Widge
   return box;
 }
 
-export async function updateActivityPanel(box: Widgets.BoxElement, db: Database): Promise<void> {
+export async function updateActivityPanel(
+  box: Widgets.BoxElement,
+  db: Database.Database
+): Promise<void> {
   const logs = getRecentLogs(db, 50);
 
   const lines: string[] = [];

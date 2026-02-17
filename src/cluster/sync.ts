@@ -1,13 +1,13 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
 import { queryAll, queryOne, run } from '../db/client.js';
 import { ADAPTERS_BY_TABLE, REPLICATED_TABLES } from './adapters.js';
 import { emitLocalEvent, ensureClusterTables, fetchTableSnapshots } from './events.js';
 import type { ClusterEvent, RowVersionRow } from './types.js';
 import { compareVersion, hashPayload, setRowHash, stableStringify } from './utils.js';
 
-export function scanLocalChanges(db: Database, nodeId: string): number {
+export function scanLocalChanges(db: Database.Database, nodeId: string): number {
   ensureClusterTables(db, nodeId);
 
   let emitted = 0;
@@ -70,7 +70,11 @@ export function scanLocalChanges(db: Database, nodeId: string): number {
   return emitted;
 }
 
-export function applyRemoteEvents(db: Database, nodeId: string, events: ClusterEvent[]): number {
+export function applyRemoteEvents(
+  db: Database.Database,
+  nodeId: string,
+  events: ClusterEvent[]
+): number {
   ensureClusterTables(db, nodeId);
 
   let applied = 0;
@@ -147,7 +151,7 @@ export function applyRemoteEvents(db: Database, nodeId: string, events: ClusterE
   return applied;
 }
 
-function shouldApplyEvent(db: Database, event: ClusterEvent): boolean {
+function shouldApplyEvent(db: Database.Database, event: ClusterEvent): boolean {
   const existing = queryOne<RowVersionRow>(
     db,
     `

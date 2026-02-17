@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import type Database from 'better-sqlite3';
 import { execa } from 'execa';
-import type { Database } from 'sql.js';
 import type { HiveConfig } from '../config/schema.js';
 import { queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
@@ -55,14 +55,12 @@ export function isEligibleForFeatureBranch(
  * @param db - Database instance
  * @param repoPath - Full path to the repository
  * @param requirementId - The requirement ID (e.g., REQ-ABCD1234)
- * @param saveFn - Optional function to persist database changes
  * @returns The feature branch name, or null if creation failed
  */
 export async function createRequirementFeatureBranch(
-  db: Database,
+  db: Database.Database,
   repoPath: string,
-  requirementId: string,
-  saveFn?: () => void
+  requirementId: string
 ): Promise<string | null> {
   const requirement = getRequirementById(db, requirementId);
   if (!requirement) {
@@ -107,8 +105,6 @@ export async function createRequirementFeatureBranch(
       status: 'in_progress',
     });
 
-    if (saveFn) saveFn();
-
     createLog(db, {
       agentId: 'scheduler',
       eventType: 'FEATURE_BRANCH_CREATED',
@@ -131,7 +127,6 @@ export async function createRequirementFeatureBranch(
     // Still transition requirement to in_progress even if branch creation fails,
     // but without the feature branch. Stories will target main as fallback.
     updateRequirement(db, requirementId, { status: 'in_progress' });
-    if (saveFn) saveFn();
 
     return null;
   }
@@ -171,7 +166,7 @@ export async function createFeatureBranchPR(
  * is in 'planned' status and doesn't have a feature branch yet.
  */
 export function getRequirementsNeedingFeatureBranch(
-  db: Database,
+  db: Database.Database,
   storyIds: string[],
   hiveConfig: HiveConfig | undefined
 ): string[] {

@@ -302,7 +302,6 @@ async function markClassifierTimeoutForHumanIntervention(
         escalation_type: 'classifier_timeout',
       },
     });
-    ctx.db.save();
     ctx.counters.escalationsCreated++;
     ctx.escalatedSessions.add(sessionName);
   }
@@ -355,7 +354,6 @@ async function markDoneFalseForHumanIntervention(
         escalation_type: 'ai_done_false',
       },
     });
-    ctx.db.save();
     ctx.counters.escalationsCreated++;
     ctx.escalatedSessions.add(sessionName);
   }
@@ -619,13 +617,11 @@ managerCommand
         models: config.models,
         qa: config.qa,
         rootDir: root,
-        saveFn: () => db.save(),
         hiveConfig: config,
       });
 
       console.log(chalk.cyan('Running health check...'));
       const result = await scheduler.healthCheck();
-      db.save();
 
       if (result.terminated === 0) {
         console.log(chalk.green('All agents healthy - tmux sessions match database'));
@@ -639,7 +635,6 @@ managerCommand
       // Also check merge queue
       console.log(chalk.cyan('Checking merge queue...'));
       await scheduler.checkMergeQueue();
-      db.save();
       console.log(chalk.green('Done'));
     });
   });
@@ -728,7 +723,6 @@ async function managerCheck(
             }`
           )
         );
-        db.save();
         verboseLog(verbose, 'Cluster sync: follower mode skip');
         return;
       }
@@ -751,7 +745,6 @@ async function managerCheck(
         models: config.models,
         qa: config.qa,
         rootDir: root,
-        saveFn: () => db.save(),
         hiveConfig: config,
       }),
       hiveSessions: [],
@@ -843,7 +836,6 @@ async function backfillPRNumbers(ctx: ManagerCheckContext): Promise<void> {
   verboseLogCtx(ctx, `backfillPRNumbers: backfilled=${backfilled}`);
   if (backfilled > 0) {
     console.log(chalk.yellow(`  Backfilled ${backfilled} PR(s) with github_pr_number from URL`));
-    ctx.db.save();
   }
 }
 
@@ -862,7 +854,6 @@ async function runHealthCheck(ctx: ManagerCheckContext): Promise<void> {
     if (healthResult.revived.length > 0) {
       console.log(chalk.yellow(`  Stories returned to queue: ${healthResult.revived.join(', ')}`));
     }
-    ctx.db.save();
   }
 
   if (healthResult.orphanedRecovered.length > 0) {
@@ -871,7 +862,6 @@ async function runHealthCheck(ctx: ManagerCheckContext): Promise<void> {
         `  Recovered ${healthResult.orphanedRecovered.length} orphaned story(ies): ${healthResult.orphanedRecovered.join(', ')}`
       )
     );
-    ctx.db.save();
   }
 
   // If health/orphan recovery returned stories to planned, immediately re-assign
@@ -882,11 +872,9 @@ async function runHealthCheck(ctx: ManagerCheckContext): Promise<void> {
       ctx,
       `runHealthCheck.assignStories: assigned=${assignmentResult.assigned}, errors=${assignmentResult.errors.length}`
     );
-    ctx.db.save();
 
     if (assignmentResult.assigned > 0) {
       await ctx.scheduler.flushJiraQueue();
-      ctx.db.save();
       console.log(
         chalk.green(
           `  Recovered ${recoveredStoryIds.length} story(ies), auto-assigned ${assignmentResult.assigned}`
@@ -907,7 +895,6 @@ async function runHealthCheck(ctx: ManagerCheckContext): Promise<void> {
 async function checkMergeQueue(ctx: ManagerCheckContext): Promise<void> {
   await ctx.scheduler.checkMergeQueue();
   verboseLogCtx(ctx, 'checkMergeQueue: completed');
-  ctx.db.save();
 }
 
 async function runAutoMerge(ctx: ManagerCheckContext): Promise<void> {
@@ -915,12 +902,11 @@ async function runAutoMerge(ctx: ManagerCheckContext): Promise<void> {
   verboseLogCtx(ctx, `runAutoMerge: merged=${autoMerged}`);
   if (autoMerged > 0) {
     console.log(chalk.green(`  Auto-merged ${autoMerged} approved PR(s)`));
-    ctx.db.save();
   }
 }
 
 async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
-  const mergedSynced = await syncMergedPRsFromGitHub(ctx.root, ctx.db.db, () => ctx.db.save());
+  const mergedSynced = await syncMergedPRsFromGitHub(ctx.root, ctx.db.db);
   verboseLogCtx(ctx, `syncMergedPRs: synced=${mergedSynced}`);
   if (mergedSynced > 0) {
     console.log(chalk.green(`  Synced ${mergedSynced} merged story(ies) from GitHub`));
@@ -929,12 +915,11 @@ async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
 
 async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
   const maxAgeHours = ctx.config.merge_queue?.max_age_hours;
-  const syncedPRs = await syncAllTeamOpenPRs(ctx.root, ctx.db.db, () => ctx.db.save(), maxAgeHours);
+  const syncedPRs = await syncAllTeamOpenPRs(ctx.root, ctx.db.db, maxAgeHours);
   verboseLogCtx(ctx, `syncOpenPRs: synced=${syncedPRs}`);
   if (syncedPRs > 0) {
     console.log(chalk.yellow(`  Synced ${syncedPRs} GitHub PR(s) into merge queue`));
     await ctx.scheduler.checkMergeQueue();
-    ctx.db.save();
   }
 }
 
@@ -954,7 +939,6 @@ async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
         )
       );
     }
-    ctx.db.save();
   }
 }
 
@@ -965,8 +949,6 @@ async function syncJiraStatuses(ctx: ManagerCheckContext): Promise<void> {
     ctx.counters.jiraSynced = syncedStories;
     console.log(chalk.cyan(`  Synced ${syncedStories} story status(es) from Jira`));
   }
-  // Always save after Jira sync — syncFromJira now also pushes unsynced stories TO Jira
-  ctx.db.save();
 }
 
 function prepareSessionData(ctx: ManagerCheckContext): void {
@@ -1021,33 +1003,29 @@ function resolveStaleEscalations(ctx: ManagerCheckContext): void {
   if (staleEscalations.length === 0) return;
   verboseLogCtx(ctx, `resolveStaleEscalations: stale=${staleEscalations.length}`);
 
-  withTransaction(
-    ctx.db.db,
-    () => {
-      for (const stale of staleEscalations) {
-        updateEscalation(ctx.db.db, stale.escalation.id, {
-          status: 'resolved',
-          resolution: `Manager auto-resolved stale escalation: ${stale.reason}`,
-        });
-        if (stale.escalation.from_agent_id) {
-          ctx.escalatedSessions.delete(stale.escalation.from_agent_id);
-        }
-        ctx.counters.escalationsResolved++;
-        createLog(ctx.db.db, {
-          agentId: 'manager',
-          storyId: stale.escalation.story_id || undefined,
-          eventType: 'ESCALATION_RESOLVED',
-          message: `Auto-resolved stale escalation ${stale.escalation.id}`,
-          metadata: {
-            escalation_id: stale.escalation.id,
-            from_agent_id: stale.escalation.from_agent_id,
-            reason: stale.reason,
-          },
-        });
+  withTransaction(ctx.db.db, () => {
+    for (const stale of staleEscalations) {
+      updateEscalation(ctx.db.db, stale.escalation.id, {
+        status: 'resolved',
+        resolution: `Manager auto-resolved stale escalation: ${stale.reason}`,
+      });
+      if (stale.escalation.from_agent_id) {
+        ctx.escalatedSessions.delete(stale.escalation.from_agent_id);
       }
-    },
-    () => ctx.db.save()
-  );
+      ctx.counters.escalationsResolved++;
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        storyId: stale.escalation.story_id || undefined,
+        eventType: 'ESCALATION_RESOLVED',
+        message: `Auto-resolved stale escalation ${stale.escalation.id}`,
+        metadata: {
+          escalation_id: stale.escalation.id,
+          from_agent_id: stale.escalation.from_agent_id,
+          reason: stale.reason,
+        },
+      });
+    }
+  });
   console.log(chalk.yellow(`  Auto-cleared ${staleEscalations.length} stale escalation(s)`));
 }
 
@@ -1099,7 +1077,6 @@ function resolveOrphanedSessionEscalations(ctx: ManagerCheckContext): void {
 
   if (resolvedCount > 0) {
     ctx.counters.escalationsResolved += resolvedCount;
-    ctx.db.save();
     console.log(
       chalk.green(`  AUTO-RESOLVED: ${resolvedCount} stale escalation(s) from inactive sessions`)
     );
@@ -1328,7 +1305,6 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
                 ai_confidence: completionAssessment.confidence,
               },
             });
-            ctx.db.save();
           }
         }
       }
@@ -1356,7 +1332,6 @@ function batchMarkMessagesRead(ctx: ManagerCheckContext): void {
   verboseLogCtx(ctx, `batchMarkMessagesRead: count=${ctx.messagesToMarkRead.length}`);
   if (ctx.messagesToMarkRead.length > 0) {
     markMessagesRead(ctx.db.db, ctx.messagesToMarkRead);
-    ctx.db.save();
   }
 }
 
@@ -1390,23 +1365,19 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
     const nextPR = queuedPRs[dispatchCount];
     if (!nextPR) break;
 
-    await withTransaction(
-      ctx.db.db,
-      () => {
-        updatePullRequest(ctx.db.db, nextPR.id, {
-          status: 'reviewing',
-          reviewedBy: qa.name,
-        });
-        createLog(ctx.db.db, {
-          agentId: qa.name,
-          storyId: nextPR.story_id || undefined,
-          eventType: 'PR_REVIEW_STARTED',
-          message: `Manager assigned PR review: ${nextPR.id}`,
-          metadata: { pr_id: nextPR.id, branch: nextPR.branch_name },
-        });
-      },
-      () => ctx.db.save()
-    );
+    await withTransaction(ctx.db.db, () => {
+      updatePullRequest(ctx.db.db, nextPR.id, {
+        status: 'reviewing',
+        reviewedBy: qa.name,
+      });
+      createLog(ctx.db.db, {
+        agentId: qa.name,
+        storyId: nextPR.story_id || undefined,
+        eventType: 'PR_REVIEW_STARTED',
+        message: `Manager assigned PR review: ${nextPR.id}`,
+        metadata: { pr_id: nextPR.id, branch: nextPR.branch_name },
+      });
+    });
     dispatchCount++;
     verboseLogCtx(ctx, `notifyQAOfQueuedPRs: assigned pr=${nextPR.id} -> ${qa.name}`);
 
@@ -1446,19 +1417,15 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
   for (const pr of rejectedPRs) {
     if (pr.story_id) {
       const storyId = pr.story_id;
-      await withTransaction(
-        ctx.db.db,
-        () => {
-          updateStory(ctx.db.db, storyId, { status: 'qa_failed' });
-          createLog(ctx.db.db, {
-            agentId: 'manager',
-            eventType: 'STORY_QA_FAILED',
-            message: `Story ${storyId} QA failed: ${pr.review_notes || 'See review comments'}`,
-            storyId: storyId,
-          });
-        },
-        () => ctx.db.save()
-      );
+      await withTransaction(ctx.db.db, () => {
+        updateStory(ctx.db.db, storyId, { status: 'qa_failed' });
+        createLog(ctx.db.db, {
+          agentId: 'manager',
+          eventType: 'STORY_QA_FAILED',
+          message: `Story ${storyId} QA failed: ${pr.review_notes || 'See review comments'}`,
+          storyId: storyId,
+        });
+      });
 
       // Sync status change to Jira
       await syncStatusForStory(ctx.root, ctx.db.db, storyId, 'qa_failed');
@@ -1489,13 +1456,9 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
 
     // Mark as closed to prevent re-notification spam
     // Developer will create a new PR when they resubmit
-    await withTransaction(
-      ctx.db.db,
-      () => {
-        updatePullRequest(ctx.db.db, pr.id, { status: 'closed' });
-      },
-      () => ctx.db.save()
-    );
+    await withTransaction(ctx.db.db, () => {
+      updatePullRequest(ctx.db.db, pr.id, { status: 'closed' });
+    });
   }
 
   if (rejectedPRs.length > 0) {
@@ -1575,22 +1538,18 @@ async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext): Promi
   if (recoverableStories.length === 0) return;
   verboseLogCtx(ctx, `recoverUnassignedQAFailedStories: recovered=${recoverableStories.length}`);
 
-  await withTransaction(
-    ctx.db.db,
-    () => {
-      for (const story of recoverableStories) {
-        updateStory(ctx.db.db, story.id, { status: 'planned', assignedAgentId: null });
-        createLog(ctx.db.db, {
-          agentId: 'manager',
-          storyId: story.id,
-          eventType: 'ORPHANED_STORY_RECOVERED',
-          message: `Recovered QA-failed story ${story.id} (unassigned) back to planned`,
-          metadata: { from_status: 'qa_failed', to_status: 'planned' },
-        });
-      }
-    },
-    () => ctx.db.save()
-  );
+  await withTransaction(ctx.db.db, () => {
+    for (const story of recoverableStories) {
+      updateStory(ctx.db.db, story.id, { status: 'planned', assignedAgentId: null });
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        storyId: story.id,
+        eventType: 'ORPHANED_STORY_RECOVERED',
+        message: `Recovered QA-failed story ${story.id} (unassigned) back to planned`,
+        metadata: { from_status: 'qa_failed', to_status: 'planned' },
+      });
+    }
+  });
 
   for (const story of recoverableStories) {
     await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'planned');
@@ -1602,11 +1561,9 @@ async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext): Promi
     ctx,
     `recoverUnassignedQAFailedStories.assignStories: assigned=${assignmentResult.assigned}, errors=${assignmentResult.errors.length}`
   );
-  ctx.db.save();
 
   if (assignmentResult.assigned > 0) {
     await ctx.scheduler.flushJiraQueue();
-    ctx.db.save();
   }
 
   console.log(
@@ -1883,7 +1840,6 @@ async function autoProgressDoneStory(
           open_pr_count: openPRs.length,
         },
       });
-      ctx.db.save();
       await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'pr_submitted');
       verboseLogCtx(ctx, `autoProgressDoneStory: story=${story.id} status moved to pr_submitted`);
     }
@@ -1906,35 +1862,30 @@ async function autoProgressDoneStory(
     return false;
   }
 
-  await withTransaction(
-    ctx.db.db,
-    () => {
-      updateStory(ctx.db.db, story.id, { status: 'pr_submitted', branchName: branch });
-      createPullRequest(ctx.db.db, {
-        storyId: story.id,
-        teamId: story.team_id || null,
-        branchName: branch,
-        submittedBy: sessionName,
-      });
-      createLog(ctx.db.db, {
-        agentId: 'manager',
-        storyId: story.id,
-        eventType: 'PR_SUBMITTED',
-        message: `Auto-submitted PR for ${story.id} after AI completion inference`,
-        metadata: {
-          session_name: sessionName,
-          recovery: 'done_inference_auto_submit',
-          reason,
-          confidence,
-          branch,
-        },
-      });
-    },
-    () => ctx.db.save()
-  );
+  await withTransaction(ctx.db.db, () => {
+    updateStory(ctx.db.db, story.id, { status: 'pr_submitted', branchName: branch });
+    createPullRequest(ctx.db.db, {
+      storyId: story.id,
+      teamId: story.team_id || null,
+      branchName: branch,
+      submittedBy: sessionName,
+    });
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId: story.id,
+      eventType: 'PR_SUBMITTED',
+      message: `Auto-submitted PR for ${story.id} after AI completion inference`,
+      metadata: {
+        session_name: sessionName,
+        recovery: 'done_inference_auto_submit',
+        reason,
+        confidence,
+        branch,
+      },
+    });
+  });
   await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'pr_submitted');
   await ctx.scheduler.checkMergeQueue();
-  ctx.db.save();
   verboseLogCtx(
     ctx,
     `autoProgressDoneStory: story=${story.id} action=auto_submitted branch=${branch}`
@@ -2142,8 +2093,6 @@ async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<void> {
     updateAgent(ctx.db.db, techLead.id, {
       status: 'working',
     });
-
-    ctx.db.save();
 
     console.log(
       chalk.green(

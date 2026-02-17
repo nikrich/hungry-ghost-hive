@@ -58,7 +58,6 @@ export const nukeCommand = new Command('nuke')
           run(db.db, 'UPDATE escalations SET story_id = NULL');
           run(db.db, 'DELETE FROM story_dependencies');
           run(db.db, 'DELETE FROM stories');
-          db.save();
 
           console.log(chalk.green(`\nDeleted ${storyCount} stories.`));
         });
@@ -98,7 +97,6 @@ export const nukeCommand = new Command('nuke')
           run(db.db, 'DELETE FROM agent_logs');
           run(db.db, 'DELETE FROM escalations');
           run(db.db, 'DELETE FROM agents');
-          db.save();
 
           console.log(chalk.green(`\nDeleted ${agentCount} agents.`));
         });
@@ -147,7 +145,6 @@ export const nukeCommand = new Command('nuke')
           run(db.db, 'DELETE FROM story_dependencies');
           run(db.db, 'DELETE FROM stories');
           run(db.db, 'DELETE FROM requirements');
-          db.save();
 
           console.log(chalk.green(`\nDeleted ${reqCount} requirements and ${storyCount} stories.`));
         });
@@ -192,7 +189,6 @@ export const nukeCommand = new Command('nuke')
           run(db.db, 'DELETE FROM stories');
           run(db.db, 'DELETE FROM agents');
           run(db.db, 'DELETE FROM requirements');
-          db.save();
 
           console.log(chalk.green('\nAll data deleted.'));
         });

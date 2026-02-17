@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
 import { syncStatusForStory } from '../connectors/project-management/operations.js';
 import { createLog } from '../db/queries/logs.js';
 import {
@@ -13,7 +13,7 @@ import {
  * Detect and recover orphaned stories (assigned to terminated agents).
  * Returns the story IDs that were recovered.
  */
-export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): string[] {
+export function detectAndRecoverOrphanedStories(db: Database.Database, rootDir: string): string[] {
   const orphanedAssignments = getStoriesWithOrphanedAssignments(db);
   const staleInProgressStories = getStaleInProgressStoriesWithoutAssignment(db);
   const recovered: string[] = [];

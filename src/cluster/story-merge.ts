@@ -1,12 +1,12 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
 import { queryAll, queryOne, run } from '../db/client.js';
 import { STORY_STATUS_ORDER } from './adapters.js';
 import { ensureClusterTables } from './events.js';
 import type { StoryRecord } from './types.js';
 
-export function mergeSimilarStories(db: Database, similarityThreshold: number): number {
+export function mergeSimilarStories(db: Database.Database, similarityThreshold: number): number {
   ensureClusterTables(db, 'node-local');
 
   const stories = queryAll<StoryRecord>(
@@ -93,7 +93,11 @@ export function mergeSimilarStories(db: Database, similarityThreshold: number): 
   return merged;
 }
 
-function mergeStoryIntoCanonical(db: Database, canonicalId: string, duplicateId: string): boolean {
+function mergeStoryIntoCanonical(
+  db: Database.Database,
+  canonicalId: string,
+  duplicateId: string
+): boolean {
   const canonical = queryOne<StoryRecord>(db, 'SELECT * FROM stories WHERE id = ?', [canonicalId]);
   const duplicate = queryOne<StoryRecord>(db, 'SELECT * FROM stories WHERE id = ?', [duplicateId]);
 

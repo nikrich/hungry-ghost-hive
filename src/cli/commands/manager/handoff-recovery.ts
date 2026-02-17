@@ -107,7 +107,6 @@ async function nudgeTechLeadForStalledHandoff(
     message: `Nudged Tech Lead to unblock stalled planning handoff for ${requirementLabel}`,
     metadata: { requirement_id: requirementId, estimated_count: estimatedCount },
   });
-  ctx.db.save();
   return true;
 }
 
@@ -137,8 +136,6 @@ async function promoteEstimatedStoriesToPlanned(
     });
   });
 
-  ctx.db.save();
-
   // Sync status changes to Jira
   for (const story of stories) {
     await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'planned');
@@ -155,7 +152,6 @@ async function runAutoAssignmentAfterHandoff(ctx: ManagerCheckContext): Promise<
     ctx,
     `handoff: auto-assignment result assigned=${result.assigned} errors=${result.errors.length}`
   );
-  ctx.db.save();
 
   ctx.counters.handoffAutoAssigned += result.assigned;
 
@@ -174,7 +170,6 @@ async function runAutoAssignmentAfterHandoff(ctx: ManagerCheckContext): Promise<
       status: 'error',
       message: reason,
     });
-    ctx.db.save();
     console.log(
       chalk.red(`  Auto-assignment errors after handoff recovery (${result.errors.length})`)
     );

@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
-import initSqlJs from 'sql.js';
+import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryAll, queryOne } from '../db/client.js';
 import type { AgentRow } from '../db/queries/agents.js';
@@ -37,7 +36,7 @@ class TestAgent extends BaseAgent {
 }
 
 describe('BaseAgent', () => {
-  let db: Database;
+  let db: Database.Database;
   let provider: MockLLMProvider;
   let agentRow: AgentRow;
   let context: AgentContext;
@@ -71,10 +70,9 @@ CREATE TABLE IF NOT EXISTS agent_logs (
 `;
 
   beforeEach(async () => {
-    const SQL = await initSqlJs();
-    db = new SQL.Database();
-    db.run('PRAGMA foreign_keys = ON');
-    db.run(INITIAL_MIGRATION);
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(INITIAL_MIGRATION);
 
     provider = new MockLLMProvider();
 
@@ -95,12 +93,12 @@ CREATE TABLE IF NOT EXISTS agent_logs (
     };
 
     // Insert the agent into the database
-    db.run(`INSERT INTO agents (id, type, team_id, status) VALUES (?, ?, ?, ?)`, [
+    db.prepare(`INSERT INTO agents (id, type, team_id, status) VALUES (?, ?, ?, ?)`).run(
       agentRow.id,
       agentRow.type,
       agentRow.team_id,
-      agentRow.status,
-    ]);
+      agentRow.status
+    );
 
     context = {
       db,
@@ -147,10 +145,10 @@ CREATE TABLE IF NOT EXISTS agent_logs (
         checkpointTokens: 5000,
       };
       agentRow.memory_state = JSON.stringify(existingMemory);
-      db.run(`UPDATE agents SET memory_state = ? WHERE id = ?`, [
+      db.prepare(`UPDATE agents SET memory_state = ? WHERE id = ?`).run(
         agentRow.memory_state,
-        agentRow.id,
-      ]);
+        agentRow.id
+      );
 
       const agent = new TestAgent(context);
       const agentAny = agent as any;

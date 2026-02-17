@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
 import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import type { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
@@ -157,7 +157,7 @@ export async function tryMoveToActiveSprint(
  * and moves stories to the active sprint.
  */
 export async function syncRequirementToJira(
-  db: Database,
+  db: Database.Database,
   tokenStore: TokenStore,
   config: JiraConfig,
   requirement: RequirementRow,
@@ -350,7 +350,7 @@ export async function syncRequirementToJira(
  * Moves the story to the active sprint after creation.
  */
 export async function syncStoryToJira(
-  db: Database,
+  db: Database.Database,
   tokenStore: TokenStore,
   config: JiraConfig,
   story: StoryRow,

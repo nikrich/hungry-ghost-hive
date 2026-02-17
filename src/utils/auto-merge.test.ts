@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type Database from 'better-sqlite3';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgent, getAgentById, updateAgent } from '../db/queries/agents.js';
 import {
@@ -27,12 +27,12 @@ import { autoMergeApprovedPRs } from './auto-merge.js';
 const mockLoadConfig = vi.mocked(loadConfig);
 
 describe('auto-merge functionality', () => {
-  let db: Database;
+  let db: Database.Database;
   let teamId: string;
   let storyId: string;
 
   beforeEach(async () => {
-    db = await createTestDatabase();
+    db = createTestDatabase();
 
     const team = createTeam(db, {
       repoUrl: 'https://github.com/test/repo.git',

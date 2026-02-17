@@ -86,21 +86,17 @@ export async function autoMergeApprovedPRs(
       if (!pr.github_pr_number) continue;
 
       let claimed = false;
-      await withTransaction(
-        phaseDb.db,
-        () => {
-          const currentPR = queryOne<{ status: string }>(
-            phaseDb.db,
-            `SELECT status FROM pull_requests WHERE id = ?`,
-            [pr.id]
-          );
-          if (currentPR?.status === 'approved') {
-            updatePullRequest(phaseDb.db, pr.id, { status: 'queued' });
-            claimed = true;
-          }
-        },
-        () => phaseDb.save()
-      );
+      await withTransaction(phaseDb.db, () => {
+        const currentPR = queryOne<{ status: string }>(
+          phaseDb.db,
+          `SELECT status FROM pull_requests WHERE id = ?`,
+          [pr.id]
+        );
+        if (currentPR?.status === 'approved') {
+          updatePullRequest(phaseDb.db, pr.id, { status: 'queued' });
+          claimed = true;
+        }
+      });
 
       if (!claimed) continue;
 
@@ -235,46 +231,38 @@ export async function autoMergeApprovedPRs(
         case 'already_closed': {
           const prState = result.outcome.prState;
           const newStatus = prState.state === 'MERGED' ? 'merged' : 'closed';
-          await withTransaction(
-            phaseDb.db,
-            () => {
-              updatePullRequest(phaseDb.db, pr.id, { status: newStatus });
-              if (pr.story_id && prState.state === 'MERGED') {
-                const story = getStoryById(phaseDb.db, pr.story_id);
-                if (story?.assigned_agent_id) {
-                  const agent = getAgentById(phaseDb.db, story.assigned_agent_id);
-                  if (agent && agent.current_story_id === pr.story_id) {
-                    updateAgent(phaseDb.db, agent.id, { currentStoryId: null, status: 'idle' });
-                  }
+          await withTransaction(phaseDb.db, () => {
+            updatePullRequest(phaseDb.db, pr.id, { status: newStatus });
+            if (pr.story_id && prState.state === 'MERGED') {
+              const story = getStoryById(phaseDb.db, pr.story_id);
+              if (story?.assigned_agent_id) {
+                const agent = getAgentById(phaseDb.db, story.assigned_agent_id);
+                if (agent && agent.current_story_id === pr.story_id) {
+                  updateAgent(phaseDb.db, agent.id, { currentStoryId: null, status: 'idle' });
                 }
-                updateStory(phaseDb.db, pr.story_id, { status: 'merged', assignedAgentId: null });
-                createLog(phaseDb.db, {
-                  agentId: 'manager',
-                  storyId: pr.story_id,
-                  eventType: 'STORY_MERGED',
-                  message: `Story merged (PR #${pr.github_pr_number} was already merged on GitHub)`,
-                  metadata: { pr_id: pr.id },
-                });
-                postLifecycleComment(
-                  phaseDb.db,
-                  paths.hiveDir,
-                  config,
-                  pr.story_id,
-                  'merged'
-                ).catch(() => {
-                  /* non-fatal */
-                });
               }
+              updateStory(phaseDb.db, pr.story_id, { status: 'merged', assignedAgentId: null });
               createLog(phaseDb.db, {
                 agentId: 'manager',
-                storyId: pr.story_id || undefined,
-                eventType: 'PR_MERGE_SKIPPED',
-                message: `PR #${pr.github_pr_number} is already ${prState.state.toLowerCase()}, skipping merge`,
-                metadata: { pr_id: pr.id, github_state: prState.state },
+                storyId: pr.story_id,
+                eventType: 'STORY_MERGED',
+                message: `Story merged (PR #${pr.github_pr_number} was already merged on GitHub)`,
+                metadata: { pr_id: pr.id },
               });
-            },
-            () => phaseDb.save()
-          );
+              postLifecycleComment(phaseDb.db, paths.hiveDir, config, pr.story_id, 'merged').catch(
+                () => {
+                  /* non-fatal */
+                }
+              );
+            }
+            createLog(phaseDb.db, {
+              agentId: 'manager',
+              storyId: pr.story_id || undefined,
+              eventType: 'PR_MERGE_SKIPPED',
+              message: `PR #${pr.github_pr_number} is already ${prState.state.toLowerCase()}, skipping merge`,
+              metadata: { pr_id: pr.id, github_state: prState.state },
+            });
+          });
 
           if (pr.story_id && prState.state === 'MERGED') {
             syncStatusForStory(root, phaseDb.db, pr.story_id, 'merged');
@@ -296,36 +284,32 @@ export async function autoMergeApprovedPRs(
 
         case 'merged': {
           const storyId = pr.story_id;
-          await withTransaction(
-            phaseDb.db,
-            () => {
-              updatePullRequest(phaseDb.db, pr.id, { status: 'merged' });
-              if (storyId) {
-                updateStory(phaseDb.db, storyId, { status: 'merged' });
-                const story = getStoryById(phaseDb.db, storyId);
-                if (story?.assigned_agent_id) {
-                  const agent = getAgentById(phaseDb.db, story.assigned_agent_id);
-                  if (agent && agent.current_story_id === storyId) {
-                    updateAgent(phaseDb.db, agent.id, { currentStoryId: null, status: 'idle' });
-                  }
+          await withTransaction(phaseDb.db, () => {
+            updatePullRequest(phaseDb.db, pr.id, { status: 'merged' });
+            if (storyId) {
+              updateStory(phaseDb.db, storyId, { status: 'merged' });
+              const story = getStoryById(phaseDb.db, storyId);
+              if (story?.assigned_agent_id) {
+                const agent = getAgentById(phaseDb.db, story.assigned_agent_id);
+                if (agent && agent.current_story_id === storyId) {
+                  updateAgent(phaseDb.db, agent.id, { currentStoryId: null, status: 'idle' });
                 }
-                createLog(phaseDb.db, {
-                  agentId: 'manager',
-                  storyId,
-                  eventType: 'STORY_MERGED',
-                  message: `Story auto-merged from GitHub PR #${pr.github_pr_number}`,
-                });
-              } else {
-                createLog(phaseDb.db, {
-                  agentId: 'manager',
-                  eventType: 'PR_MERGED',
-                  message: `PR ${pr.id} auto-merged (GitHub PR #${pr.github_pr_number})`,
-                  metadata: { pr_id: pr.id },
-                });
               }
-            },
-            () => phaseDb.save()
-          );
+              createLog(phaseDb.db, {
+                agentId: 'manager',
+                storyId,
+                eventType: 'STORY_MERGED',
+                message: `Story auto-merged from GitHub PR #${pr.github_pr_number}`,
+              });
+            } else {
+              createLog(phaseDb.db, {
+                agentId: 'manager',
+                eventType: 'PR_MERGED',
+                message: `PR ${pr.id} auto-merged (GitHub PR #${pr.github_pr_number})`,
+                metadata: { pr_id: pr.id },
+              });
+            }
+          });
 
           mergedCount++;
 
@@ -339,21 +323,17 @@ export async function autoMergeApprovedPRs(
         }
 
         case 'merge_failed': {
-          await withTransaction(
-            phaseDb.db,
-            () => {
-              updatePullRequest(phaseDb.db, pr.id, { status: 'approved' });
-              createLog(phaseDb.db, {
-                agentId: 'manager',
-                storyId: pr.story_id || undefined,
-                eventType: 'PR_MERGE_FAILED',
-                status: 'error',
-                message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${result.outcome.type === 'merge_failed' ? result.outcome.error.message : 'Unknown error'}`,
-                metadata: { pr_id: pr.id },
-              });
-            },
-            () => phaseDb.save()
-          );
+          await withTransaction(phaseDb.db, () => {
+            updatePullRequest(phaseDb.db, pr.id, { status: 'approved' });
+            createLog(phaseDb.db, {
+              agentId: 'manager',
+              storyId: pr.story_id || undefined,
+              eventType: 'PR_MERGE_FAILED',
+              status: 'error',
+              message: `Failed to auto-merge PR ${pr.id} (GitHub PR #${pr.github_pr_number}): ${result.outcome.type === 'merge_failed' ? result.outcome.error.message : 'Unknown error'}`,
+              metadata: { pr_id: pr.id },
+            });
+          });
           break;
         }
       }
