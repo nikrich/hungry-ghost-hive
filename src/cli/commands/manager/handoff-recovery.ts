@@ -80,11 +80,16 @@ async function nudgeTechLeadForStalledHandoff(
   requirementId: string | null,
   estimatedCount: number
 ): Promise<boolean> {
-  const techLead = getTechLead(ctx.db.db);
-  const sessionName = techLead?.tmux_session || 'hive-tech-lead';
+  // Brief lock for DB read
+  const techLeadInfo = await ctx.withDb(async db => {
+    const techLead = getTechLead(db.db);
+    return techLead
+      ? { sessionName: techLead.tmux_session || 'hive-tech-lead', cliTool: (techLead.cli_tool || 'claude') as CLITool }
+      : { sessionName: 'hive-tech-lead', cliTool: 'claude' as CLITool };
+  });
 
-  if (!(await isTmuxSessionRunning(sessionName))) {
-    verboseLog(ctx, `handoff: tech-lead session not running (${sessionName})`);
+  if (!(await isTmuxSessionRunning(techLeadInfo.sessionName))) {
+    verboseLog(ctx, `handoff: tech-lead session not running (${techLeadInfo.sessionName})`);
     return false;
   }
 
@@ -92,22 +97,24 @@ async function nudgeTechLeadForStalledHandoff(
   const nudgeMessage = `# Manager intervention: planning handoff appears stalled for ${requirementLabel} (${estimatedCount} estimated story/ies).
 # Please move stories from estimated -> planned and run:
 # hive assign`;
-  const cliTool = (techLead?.cli_tool || 'claude') as CLITool;
 
-  await nudgeAgent(ctx.root, sessionName, nudgeMessage, undefined, undefined, cliTool);
+  await nudgeAgent(ctx.root, techLeadInfo.sessionName, nudgeMessage, undefined, undefined, techLeadInfo.cliTool);
   verboseLog(
     ctx,
-    `handoff: nudged tech-lead session=${sessionName} requirement=${requirementLabel} estimated=${estimatedCount}`
+    `handoff: nudged tech-lead session=${techLeadInfo.sessionName} requirement=${requirementLabel} estimated=${estimatedCount}`
   );
   ctx.counters.nudged++;
 
-  createLog(ctx.db.db, {
-    agentId: 'manager',
-    eventType: 'STORY_PROGRESS_UPDATE',
-    message: `Nudged Tech Lead to unblock stalled planning handoff for ${requirementLabel}`,
-    metadata: { requirement_id: requirementId, estimated_count: estimatedCount },
+  // Brief lock for log write
+  await ctx.withDb(async db => {
+    createLog(db.db, {
+      agentId: 'manager',
+      eventType: 'STORY_PROGRESS_UPDATE',
+      message: `Nudged Tech Lead to unblock stalled planning handoff for ${requirementLabel}`,
+      metadata: { requirement_id: requirementId, estimated_count: estimatedCount },
+    });
+    db.save();
   });
-  ctx.db.save();
   return true;
 }
 
@@ -117,106 +124,139 @@ async function promoteEstimatedStoriesToPlanned(
   stories: StoryRow[],
   reason: string
 ): Promise<number> {
-  let promoted = 0;
+  const promoted = await ctx.withDb(async db => {
+    let count = 0;
 
-  await withTransaction(ctx.db.db, () => {
-    for (const story of stories) {
-      updateStory(ctx.db.db, story.id, { status: 'planned' });
-      promoted++;
-    }
+    await withTransaction(db.db, () => {
+      for (const story of stories) {
+        updateStory(db.db, story.id, { status: 'planned' });
+        count++;
+      }
 
-    if (requirementId) {
-      updateRequirement(ctx.db.db, requirementId, { status: 'planned' });
-    }
+      if (requirementId) {
+        updateRequirement(db.db, requirementId, { status: 'planned' });
+      }
 
-    createLog(ctx.db.db, {
-      agentId: 'manager',
-      eventType: 'PLANNING_COMPLETED',
-      message: `Auto-promoted ${promoted} estimated story/ies to planned (${reason})`,
-      metadata: { requirement_id: requirementId, promoted, reason },
+      createLog(db.db, {
+        agentId: 'manager',
+        eventType: 'PLANNING_COMPLETED',
+        message: `Auto-promoted ${count} estimated story/ies to planned (${reason})`,
+        metadata: { requirement_id: requirementId, promoted: count, reason },
+      });
     });
+
+    db.save();
+
+    // Sync status changes to Jira
+    for (const story of stories) {
+      await syncStatusForStory(ctx.root, db.db, story.id, 'planned');
+    }
+
+    return count;
   });
-
-  ctx.db.save();
-
-  // Sync status changes to Jira
-  for (const story of stories) {
-    await syncStatusForStory(ctx.root, ctx.db.db, story.id, 'planned');
-  }
 
   return promoted;
 }
 
 async function runAutoAssignmentAfterHandoff(ctx: ManagerCheckContext): Promise<void> {
-  await ctx.scheduler.checkScaling();
-  await ctx.scheduler.checkMergeQueue();
-  const result = await ctx.scheduler.assignStories();
-  verboseLog(
-    ctx,
-    `handoff: auto-assignment result assigned=${result.assigned} errors=${result.errors.length}`
-  );
-  ctx.db.save();
-
-  ctx.counters.handoffAutoAssigned += result.assigned;
-
-  if (result.assigned > 0) {
-    console.log(
-      chalk.green(`  Auto-assigned ${result.assigned} story(ies) after handoff recovery`)
+  await ctx.withDb(async (db, scheduler) => {
+    await scheduler.checkScaling();
+    await scheduler.checkMergeQueue();
+    const result = await scheduler.assignStories();
+    verboseLog(
+      ctx,
+      `handoff: auto-assignment result assigned=${result.assigned} errors=${result.errors.length}`
     );
-  }
+    db.save();
 
-  if (result.errors.length > 0) {
-    const reason = `Manager auto-handoff recovered planning but assignment still has errors: ${result.errors.join('; ')}`;
-    createEscalation(ctx.db.db, { reason });
-    createLog(ctx.db.db, {
-      agentId: 'manager',
-      eventType: 'ESCALATION_CREATED',
-      status: 'error',
-      message: reason,
-    });
-    ctx.db.save();
-    console.log(
-      chalk.red(`  Auto-assignment errors after handoff recovery (${result.errors.length})`)
-    );
-  }
+    ctx.counters.handoffAutoAssigned += result.assigned;
+
+    if (result.assigned > 0) {
+      console.log(
+        chalk.green(`  Auto-assigned ${result.assigned} story(ies) after handoff recovery`)
+      );
+    }
+
+    if (result.errors.length > 0) {
+      const reason = `Manager auto-handoff recovered planning but assignment still has errors: ${result.errors.join('; ')}`;
+      createEscalation(db.db, { reason });
+      createLog(db.db, {
+        agentId: 'manager',
+        eventType: 'ESCALATION_CREATED',
+        status: 'error',
+        message: reason,
+      });
+      db.save();
+      console.log(
+        chalk.red(`  Auto-assignment errors after handoff recovery (${result.errors.length})`)
+      );
+    }
+  });
 }
 
 export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Promise<void> {
-  const estimatedStories = getStoriesByStatus(ctx.db.db, 'estimated');
-  verboseLog(ctx, `handoff: estimatedStories=${estimatedStories.length}`);
-  if (estimatedStories.length === 0) {
+  // Phase 1: Read estimated stories and evaluate handoff state (brief lock)
+  const { groupedStories, estimatedCount } = await ctx.withDb(async db => {
+    const estimatedStories = getStoriesByStatus(db.db, 'estimated');
+    verboseLog(ctx, `handoff: estimatedStories=${estimatedStories.length}`);
+
+    const grouped = new Map<string, { requirementId: string | null; stories: StoryRow[] }>();
+    for (const story of estimatedStories) {
+      const key = getRequirementKey(story.requirement_id);
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.stories.push(story);
+      } else {
+        grouped.set(key, { requirementId: story.requirement_id, stories: [story] });
+      }
+    }
+
+    // Pre-fetch pipeline counts for all groups
+    const groupsWithPipeline: Array<{
+      key: string;
+      requirementId: string | null;
+      stories: StoryRow[];
+      activePipelineCount: number;
+      latestUpdateMs: number;
+    }> = [];
+
+    for (const [key, group] of grouped) {
+      const activePipelineCount = getActivePipelineCountForRequirement(db.db, group.requirementId);
+      const latestUpdateMs = getLatestStoryUpdateMs(group.stories);
+      groupsWithPipeline.push({
+        key,
+        requirementId: group.requirementId,
+        stories: group.stories,
+        activePipelineCount,
+        latestUpdateMs,
+      });
+    }
+
+    return { groupedStories: groupsWithPipeline, estimatedCount: estimatedStories.length };
+  });
+
+  if (estimatedCount === 0) {
     planningHandoffState.clear();
     verboseLog(ctx, 'handoff: no estimated stories, cleared handoff tracker');
     return;
   }
 
-  const groupedStories = new Map<string, { requirementId: string | null; stories: StoryRow[] }>();
-  for (const story of estimatedStories) {
-    const key = getRequirementKey(story.requirement_id);
-    const existing = groupedStories.get(key);
-    if (existing) {
-      existing.stories.push(story);
-    } else {
-      groupedStories.set(key, { requirementId: story.requirement_id, stories: [story] });
-    }
-  }
-
+  // Phase 2: Evaluate and take action (tmux nudges outside lock, DB writes in brief locks)
   const activeKeys = new Set<string>();
   let promotedTotal = 0;
   let shouldRunAutoAssignment = false;
   const nowMs = Date.now();
   const stallThresholdMs = Math.max(1, ctx.config.manager.stuck_threshold_ms);
 
-  for (const [key, group] of groupedStories) {
-    activeKeys.add(key);
+  for (const group of groupedStories) {
+    activeKeys.add(group.key);
     verboseLog(
       ctx,
       `handoff: evaluating requirement=${formatRequirementLabel(group.requirementId)} estimated=${group.stories.length}`
     );
 
-    const latestUpdateMs = getLatestStoryUpdateMs(group.stories);
-    if (latestUpdateMs === 0 || nowMs - latestUpdateMs < stallThresholdMs) {
-      planningHandoffState.delete(key);
+    if (group.latestUpdateMs === 0 || nowMs - group.latestUpdateMs < stallThresholdMs) {
+      planningHandoffState.delete(group.key);
       verboseLog(
         ctx,
         `handoff: requirement=${formatRequirementLabel(group.requirementId)} skip=not_stale`
@@ -224,21 +264,17 @@ export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Pr
       continue;
     }
 
-    const activePipelineCount = getActivePipelineCountForRequirement(
-      ctx.db.db,
-      group.requirementId
-    );
-    if (activePipelineCount > 0) {
-      planningHandoffState.delete(key);
+    if (group.activePipelineCount > 0) {
+      planningHandoffState.delete(group.key);
       verboseLog(
         ctx,
-        `handoff: requirement=${formatRequirementLabel(group.requirementId)} skip=active_pipeline count=${activePipelineCount}`
+        `handoff: requirement=${formatRequirementLabel(group.requirementId)} skip=active_pipeline count=${group.activePipelineCount}`
       );
       continue;
     }
 
-    const signature = `${group.stories.length}:${latestUpdateMs}`;
-    const previous = planningHandoffState.get(key);
+    const signature = `${group.stories.length}:${group.latestUpdateMs}`;
+    const previous = planningHandoffState.get(group.key);
 
     // First intervention: nudge Tech Lead.
     if (!previous || previous.signature !== signature) {
@@ -248,7 +284,7 @@ export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Pr
         group.stories.length
       );
       if (nudged) {
-        planningHandoffState.set(key, { signature, lastNudgeAt: nowMs });
+        planningHandoffState.set(group.key, { signature, lastNudgeAt: nowMs });
         console.log(
           chalk.yellow(
             `  Nudged Tech Lead for stalled planning handoff (${formatRequirementLabel(group.requirementId)})`
@@ -291,7 +327,7 @@ export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Pr
         `handoff: requirement=${formatRequirementLabel(group.requirementId)} action=auto_promote promoted=${promoted}`
       );
     }
-    planningHandoffState.delete(key);
+    planningHandoffState.delete(group.key);
   }
 
   for (const key of Array.from(planningHandoffState.keys())) {

@@ -48,7 +48,7 @@ export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | 
   const lockAcquiredAt = Date.now();
   try {
     releaseLock = await acquireLock(dbLockPath, {
-      stale: 120000, // 120s stale timeout (increased from 30s to accommodate manager check)
+      stale: 30000, // 30s stale timeout (per-step locking keeps individual holds brief)
       retries: {
         retries: 20, // More retries for DB lock contention
         minTimeout: 50,
@@ -70,18 +70,18 @@ export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | 
     const lockHeldDurationSec = (lockHeldDurationMs / 1000).toFixed(2);
 
     // Log lock hold duration for telemetry
-    if (lockHeldDurationMs > 90000) {
-      // Warn if held for more than 90s (75% of stale timeout)
+    if (lockHeldDurationMs > 20000) {
+      // Warn if held for more than 20s (67% of stale timeout)
       console.warn(
         chalk.yellow(
-          `[TELEMETRY] DB lock held for ${lockHeldDurationSec}s (exceeds 90s warning threshold)`
+          `[TELEMETRY] DB lock held for ${lockHeldDurationSec}s (exceeds 20s warning threshold)`
         )
       );
-    } else if (lockHeldDurationMs > 60000) {
-      // Info if held for more than 60s
+    } else if (lockHeldDurationMs > 10000) {
+      // Info if held for more than 10s
       console.log(
         chalk.gray(
-          `[TELEMETRY] DB lock held for ${lockHeldDurationSec}s (exceeds 60s info threshold)`
+          `[TELEMETRY] DB lock held for ${lockHeldDurationSec}s (exceeds 10s info threshold)`
         )
       );
     }

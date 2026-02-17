@@ -62,7 +62,7 @@ interface ClaimedPR {
  */
 export async function autoMergeApprovedPRs(
   root: string,
-  db: DatabaseClient,
+  db: DatabaseClient | null,
   withLock?: WithLockFn
 ): Promise<number> {
   // Load config to check autonomy level
@@ -136,8 +136,10 @@ export async function autoMergeApprovedPRs(
 
   if (withLock) {
     await withLock(claimPhase);
-  } else {
+  } else if (db) {
     await claimPhase(db);
+  } else {
+    throw new Error('autoMergeApprovedPRs: either db or withLock must be provided');
   }
 
   if (claimedPRs.length === 0) return 0;
@@ -362,8 +364,10 @@ export async function autoMergeApprovedPRs(
 
   if (withLock) {
     await withLock(updatePhase);
-  } else {
+  } else if (db) {
     await updatePhase(db);
+  } else {
+    throw new Error('autoMergeApprovedPRs: either db or withLock must be provided');
   }
 
   return mergedCount;

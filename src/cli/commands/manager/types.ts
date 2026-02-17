@@ -55,8 +55,14 @@ export interface ManagerCheckContext {
   verbose: boolean;
   config: HiveConfig;
   paths: ReturnType<typeof getHivePaths>;
-  db: DatabaseClient;
-  scheduler: InstanceType<typeof Scheduler>;
+  /**
+   * Acquire a short-lived DB lock, open a fresh database, create a Scheduler,
+   * run the callback, then save/close/release.  Each call is independent so
+   * the lock is only held for the duration of `fn`.
+   */
+  withDb: <T>(
+    fn: (db: DatabaseClient, scheduler: InstanceType<typeof Scheduler>) => Promise<T> | T
+  ) => Promise<T>;
   hiveSessions: TmuxSession[];
   // Counters accumulated across helpers
   counters: {

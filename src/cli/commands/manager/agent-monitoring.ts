@@ -237,16 +237,18 @@ export async function handlePermissionPrompt(
   if (stateResult.state === AgentState.PERMISSION_REQUIRED && safetyMode === 'unsafe') {
     const approved = await autoApprovePermission(sessionName);
     if (approved) {
-      createLog(ctx.db.db, {
-        agentId: 'manager',
-        eventType: 'STORY_PROGRESS_UPDATE',
-        message: `Auto-approved permission prompt for ${sessionName}`,
-        metadata: {
-          session_name: sessionName,
-          detected_state: stateResult.state,
-        },
+      await ctx.withDb(async db => {
+        createLog(db.db, {
+          agentId: 'manager',
+          eventType: 'STORY_PROGRESS_UPDATE',
+          message: `Auto-approved permission prompt for ${sessionName}`,
+          metadata: {
+            session_name: sessionName,
+            detected_state: stateResult.state,
+          },
+        });
+        db.save();
       });
-      ctx.db.save();
       console.log(chalk.green(`  AUTO-APPROVED: ${sessionName} permission prompt`));
       return true;
     }
