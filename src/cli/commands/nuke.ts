@@ -28,7 +28,11 @@ async function runDbDeletions(
     return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('malformed') || message.includes('corrupt') || message.includes('disk image')) {
+    if (
+      message.includes('malformed') ||
+      message.includes('corrupt') ||
+      message.includes('disk image')
+    ) {
       console.error(chalk.red(`\nDatabase is corrupted: ${message}`));
       console.log(chalk.yellow(`Could not delete ${label} records from the database.`));
 
@@ -51,10 +55,14 @@ async function runDbDeletions(
               }
             }
           }
-          console.log(chalk.green('Deleted corrupted database. Run any hive command to reinitialize.'));
+          console.log(
+            chalk.green('Deleted corrupted database. Run any hive command to reinitialize.')
+          );
         }
       } else {
-        console.log(chalk.yellow('Database file kept. You can restore from .hive/hive.db.bak manually.'));
+        console.log(
+          chalk.yellow('Database file kept. You can restore from .hive/hive.db.bak manually.')
+        );
       }
       return false;
     }
@@ -134,11 +142,16 @@ export const nukeCommand = new Command('nuke')
       .action(async (options: { force?: boolean }) => {
         try {
           await withHiveContext(async ({ db }) => {
-            const count = queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM agents');
+            const count = queryOne<{ count: number }>(
+              db.db,
+              'SELECT COUNT(*) as count FROM agents'
+            );
             const agentCount = count?.count || 0;
 
             console.log(
-              chalk.yellow(`\nThis will kill all hive tmux sessions and delete ${agentCount} agents.`)
+              chalk.yellow(
+                `\nThis will kill all hive tmux sessions and delete ${agentCount} agents.`
+              )
             );
             console.log(chalk.red('This action cannot be undone.\n'));
 
@@ -175,12 +188,18 @@ export const nukeCommand = new Command('nuke')
         } catch (error) {
           // If the DB itself can't be opened (corruption during load), still kill tmux sessions
           const message = error instanceof Error ? error.message : String(error);
-          if (message.includes('malformed') || message.includes('corrupt') || message.includes('disk image')) {
+          if (
+            message.includes('malformed') ||
+            message.includes('corrupt') ||
+            message.includes('disk image')
+          ) {
             console.error(chalk.red(`\nDatabase is corrupted: ${message}`));
             console.log(chalk.yellow('Killing tmux sessions anyway...'));
             const killed = await killAllHiveSessions();
             console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
-            console.log(chalk.yellow('Agent records could not be deleted from the corrupted database.'));
+            console.log(
+              chalk.yellow('Agent records could not be deleted from the corrupted database.')
+            );
             console.log(chalk.yellow('You can delete .hive/hive.db manually to reset.'));
           } else {
             throw error;
@@ -239,7 +258,9 @@ export const nukeCommand = new Command('nuke')
           );
 
           if (success) {
-            console.log(chalk.green(`\nDeleted ${reqCount} requirements and ${storyCount} stories.`));
+            console.log(
+              chalk.green(`\nDeleted ${reqCount} requirements and ${storyCount} stories.`)
+            );
           }
         });
       })
@@ -297,12 +318,18 @@ export const nukeCommand = new Command('nuke')
         } catch (error) {
           // If the DB itself can't be opened (corruption during load), still kill tmux sessions
           const message = error instanceof Error ? error.message : String(error);
-          if (message.includes('malformed') || message.includes('corrupt') || message.includes('disk image')) {
+          if (
+            message.includes('malformed') ||
+            message.includes('corrupt') ||
+            message.includes('disk image')
+          ) {
             console.error(chalk.red(`\nDatabase is corrupted: ${message}`));
             console.log(chalk.yellow('Killing tmux sessions anyway...'));
             const killed = await killAllHiveSessions();
             console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
-            console.log(chalk.yellow('Data records could not be deleted from the corrupted database.'));
+            console.log(
+              chalk.yellow('Data records could not be deleted from the corrupted database.')
+            );
             console.log(chalk.yellow('You can delete .hive/hive.db manually to reset.'));
           } else {
             throw error;
