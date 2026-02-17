@@ -365,6 +365,13 @@ export async function syncMergedPRsFromGitHub(
   return storiesUpdated;
 }
 
+export interface ClosedPRInfo {
+  storyId: string;
+  closedPrNumber: number;
+  branch: string;
+  supersededByPrNumber: number | null;
+}
+
 /**
  * Close stale GitHub PRs that are superseded by newer PRs for the same story.
  *
@@ -373,13 +380,13 @@ export async function syncMergedPRsFromGitHub(
  *
  * @param root  - Root directory
  * @param db    - sql.js Database instance
- * @returns The number of stale PRs closed.
+ * @returns Array of ClosedPRInfo for each PR that was closed.
  */
-export async function closeStaleGitHubPRs(root: string, db: Database): Promise<number> {
+export async function closeStaleGitHubPRs(root: string, db: Database): Promise<ClosedPRInfo[]> {
   const teams = getAllTeams(db);
-  if (teams.length === 0) return 0;
+  if (teams.length === 0) return [];
 
-  let prsClosed = 0;
+  const closed: ClosedPRInfo[] = [];
 
   for (const team of teams) {
     if (!team.repo_path) continue;
@@ -414,6 +421,12 @@ export async function closeStaleGitHubPRs(root: string, db: Database): Promise<n
 
           // If this PR is not in the queue, it's stale and should be closed
           if (!isInQueue) {
+            // Find the newest queue PR number to include in the log message
+            const supersededByPrNumber =
+              prsForStory.find(pr => pr.github_pr_number !== null)?.github_pr_number ?? null;
+            const supersededByDesc =
+              supersededByPrNumber !== null ? ` by PR #${supersededByPrNumber}` : '';
+
             try {
               await execa('gh', ['pr', 'close', String(ghPR.number)], {
                 cwd: repoDir,
@@ -423,14 +436,20 @@ export async function closeStaleGitHubPRs(root: string, db: Database): Promise<n
                 agentId: 'manager',
                 storyId,
                 eventType: 'PR_CLOSED',
-                message: `Auto-closed stale GitHub PR #${ghPR.number} (${ghPR.headRefName}) - superseded by newer PR`,
+                message: `Auto-closed stale GitHub PR #${ghPR.number} (${ghPR.headRefName}) - superseded${supersededByDesc}`,
                 metadata: {
                   github_pr_number: ghPR.number,
                   branch: ghPR.headRefName,
                   reason: 'stale',
+                  superseded_by_pr_number: supersededByPrNumber,
                 },
               });
-              prsClosed++;
+              closed.push({
+                storyId,
+                closedPrNumber: ghPR.number,
+                branch: ghPR.headRefName,
+                supersededByPrNumber,
+              });
             } catch {
               // Non-fatal - PR might already be closed or gh CLI issue
             }
@@ -443,5 +462,5 @@ export async function closeStaleGitHubPRs(root: string, db: Database): Promise<n
     }
   }
 
-  return prsClosed;
+  return closed;
 }
