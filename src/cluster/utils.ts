@@ -2,7 +2,6 @@
 
 import { createHash } from 'crypto';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { queryAll, queryOne, run } from '../db/client.js';
 import type { ClusterEventVersion, ReplicatedTable } from './types.js';
 

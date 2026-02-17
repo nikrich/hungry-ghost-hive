@@ -4,7 +4,6 @@ import blessed, { type Widgets } from 'blessed';
 import { spawnSync } from 'child_process';
 import { appendFileSync } from 'fs';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { loadConfig } from '../../../config/loader.js';
 import type { ModelsConfig } from '../../../config/schema.js';
 import { getActiveAgents, type AgentRow } from '../../../db/queries/agents.js';

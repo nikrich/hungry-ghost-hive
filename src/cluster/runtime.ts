@@ -3,7 +3,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
 import { join } from 'path';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import type { ClusterConfig, ClusterPeerConfig } from '../config/schema.js';
 import { RaftMetadataStore } from './raft-store.js';
 import {

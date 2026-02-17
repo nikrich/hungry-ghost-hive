@@ -2,7 +2,6 @@
 
 import blessed, { type Widgets } from 'blessed';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { getMergeQueue, type PullRequestRow } from '../../../db/queries/pull-requests.js';
 
 export function createMergeQueuePanel(

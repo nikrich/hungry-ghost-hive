@@ -4,7 +4,6 @@ import blessed from 'blessed';
 import { appendFileSync, existsSync, renameSync, statSync } from 'fs';
 import { join } from 'path';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { getReadOnlyDatabase, type ReadOnlyDatabaseClient } from '../../db/client.js';
 import { getAllRequirements } from '../../db/queries/requirements.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';

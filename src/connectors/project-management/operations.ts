@@ -11,7 +11,6 @@
 
 import { join } from 'path';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import type { HiveConfig } from '../../config/schema.js';
 import { queryOne } from '../../db/client.js';
 import type { StoryRow } from '../../db/queries/stories.js';

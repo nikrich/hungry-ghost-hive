@@ -2,7 +2,6 @@
 
 import { execa } from 'execa';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import type { HiveConfig } from '../config/schema.js';
 import { queryAll } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';

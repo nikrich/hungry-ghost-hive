@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { queryAll, queryOne, run } from '../db/client.js';
 import { STORY_STATUS_ORDER } from './adapters.js';
 import { ensureClusterTables } from './events.js';

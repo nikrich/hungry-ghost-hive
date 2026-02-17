@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { beforeEach, describe, expect, it } from 'vitest';
 import { run } from '../client.js';
 import {

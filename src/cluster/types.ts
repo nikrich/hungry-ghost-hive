@@ -94,4 +94,3 @@ export interface TableAdapter {
 
 // Re-import Database type for TableAdapter interface
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;

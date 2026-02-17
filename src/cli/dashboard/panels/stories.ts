@@ -2,7 +2,6 @@
 
 import blessed, { type Widgets } from 'blessed';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { queryAll, type StoryRow } from '../../../db/client.js';
 
 export function createStoriesPanel(screen: Widgets.Screen, db: Database.Database): Widgets.ListTableElement {

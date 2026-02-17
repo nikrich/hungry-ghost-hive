@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import type { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';

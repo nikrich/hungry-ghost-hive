@@ -2,7 +2,6 @@
 
 import blessed, { type Widgets } from 'blessed';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { getStoryCounts } from '../../../db/queries/stories.js';
 
 export function createPipelinePanel(screen: Widgets.Screen, db: Database.Database): Widgets.BoxElement {

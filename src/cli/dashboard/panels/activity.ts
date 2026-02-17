@@ -2,7 +2,6 @@
 
 import blessed, { type Widgets } from 'blessed';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { getRecentLogs } from '../../../db/queries/logs.js';
 
 export function createActivityPanel(screen: Widgets.Screen, db: Database.Database): Widgets.BoxElement {

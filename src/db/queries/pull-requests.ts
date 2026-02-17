@@ -2,7 +2,6 @@
 
 import { nanoid } from 'nanoid';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { extractPRNumber } from '../../utils/github.js';
 import { queryAll, queryOne, run, type PullRequestRow, type StoryRow } from '../client.js';
 

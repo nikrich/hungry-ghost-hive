@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { syncStatusForStory } from '../connectors/project-management/operations.js';
 import { createLog } from '../db/queries/logs.js';
 import {

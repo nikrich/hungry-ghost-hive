@@ -2,7 +2,6 @@
 
 import { execa } from 'execa';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { syncStatusForStory } from '../connectors/project-management/operations.js';
 import { queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';

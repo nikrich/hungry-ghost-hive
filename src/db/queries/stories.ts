@@ -2,7 +2,6 @@
 
 import { nanoid } from 'nanoid';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { queryAll, queryOne, run, type StoryRow } from '../client.js';
 
 export type { StoryRow };

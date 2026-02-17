@@ -3,7 +3,6 @@
 import blessed, { type Widgets } from 'blessed';
 import { spawnSync } from 'child_process';
 import type Database from 'better-sqlite3';
-// @ts-ignore Database.Database type;
 import { getPendingEscalations, type EscalationRow } from '../../../db/queries/escalations.js';
 
 // Store escalations for selection lookup
