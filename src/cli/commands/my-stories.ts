@@ -16,12 +16,13 @@ export const myStoriesCommand = new Command('my-stories')
     await withReadOnlyHiveContext(async ({ db }) => {
       if (!session) {
         // Show all in-progress stories
-        const stories = queryAll<StoryRow & { tmux_session?: string }>(
+        const stories = queryAll<StoryRow & { tmux_session?: string; target_branch?: string }>(
           db.db,
           `
-          SELECT s.*, a.tmux_session
+          SELECT s.*, a.tmux_session, r.target_branch
           FROM stories s
           LEFT JOIN agents a ON s.assigned_agent_id = a.id
+          LEFT JOIN requirements r ON s.requirement_id = r.id
           WHERE s.status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed')
           ORDER BY s.status, s.created_at
         `
@@ -34,7 +35,7 @@ export const myStoriesCommand = new Command('my-stories')
 
         console.log(chalk.bold('\nActive Stories:\n'));
         for (const story of stories) {
-          printStory(story, story.tmux_session);
+          printStory(story, story.tmux_session, story.target_branch);
         }
         return;
       }
@@ -59,35 +60,39 @@ export const myStoriesCommand = new Command('my-stories')
         process.exit(1);
       }
 
-      let stories: StoryRow[];
+      let stories: (StoryRow & { target_branch?: string })[];
       if (options.all && agent.team_id) {
         // Show all team stories
-        stories = queryAll<StoryRow>(
+        stories = queryAll<StoryRow & { target_branch?: string }>(
           db.db,
           `
-          SELECT * FROM stories
-          WHERE team_id = ?
+          SELECT s.*, r.target_branch
+          FROM stories s
+          LEFT JOIN requirements r ON s.requirement_id = r.id
+          WHERE s.team_id = ?
           ORDER BY
-            CASE status
+            CASE s.status
               WHEN 'in_progress' THEN 1
               WHEN 'planned' THEN 2
               WHEN 'review' THEN 3
               WHEN 'qa' THEN 4
               ELSE 5
             END,
-            complexity_score DESC
+            s.complexity_score DESC
         `,
           [agent.team_id]
         );
       } else {
         // Show only assigned active stories (exclude merged/terminal states)
-        stories = queryAll<StoryRow>(
+        stories = queryAll<StoryRow & { target_branch?: string }>(
           db.db,
           `
-          SELECT * FROM stories
-          WHERE assigned_agent_id = ?
-          AND status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')
-          ORDER BY created_at
+          SELECT s.*, r.target_branch
+          FROM stories s
+          LEFT JOIN requirements r ON s.requirement_id = r.id
+          WHERE s.assigned_agent_id = ?
+          AND s.status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')
+          ORDER BY s.created_at
         `,
           [agent.id]
         );
@@ -106,7 +111,7 @@ export const myStoriesCommand = new Command('my-stories')
       console.log(chalk.bold(`\nStories for ${session}${options.all ? ' (all team)' : ''}:\n`));
 
       for (const story of stories) {
-        printStory(story);
+        printStory(story, undefined, story.target_branch);
       }
     });
   });
@@ -308,10 +313,11 @@ myStoriesCommand
     }
   );
 
-function printStory(story: StoryRow, assignedSession?: string): void {
+function printStory(story: StoryRow, assignedSession?: string, targetBranch?: string): void {
   console.log(chalk.cyan(`[${story.id}]`) + ` ${story.title}`);
+  const branchInfo = targetBranch && targetBranch !== 'main' ? ` | Target: ${targetBranch}` : '';
   console.log(
-    `  Status: ${story.status.toUpperCase()} | Complexity: ${story.complexity_score || '?'}`
+    `  Status: ${story.status.toUpperCase()} | Complexity: ${story.complexity_score || '?'}${branchInfo}`
   );
   if (assignedSession) {
     console.log(`  Assigned: ${assignedSession}`);

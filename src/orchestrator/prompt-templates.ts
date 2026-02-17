@@ -68,7 +68,10 @@ hive my-stories ${sessionName}
 Mark story complete:
 \`\`\`bash
 hive my-stories complete <story-id>
-\`\`\``;
+\`\`\`
+
+### Target Branch Recovery
+If your context has been compacted and you are unsure which branch to target for PRs, run \`hive my-stories ${sessionName}\` — the output includes the target branch for each story (when it differs from main). Always use this to verify the correct base branch before creating PRs.`;
 }
 
 function prSubmissionSection(sessionName: string, targetBranch: string): string {
