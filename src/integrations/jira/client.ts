@@ -41,6 +41,8 @@ export class JiraClient {
   private readonly clientSecret: string;
   private readonly maxRetries: number;
   private readonly baseDelayMs: number;
+  /** In-flight token refresh promise — deduplicates concurrent 401 refreshes */
+  private refreshPromise: Promise<string> | null = null;
 
   constructor(options: JiraClientOptions) {
     this.tokenStore = options.tokenStore;
@@ -111,10 +113,10 @@ export class JiraClient {
       headers,
     });
 
-    // 401 Unauthorized — attempt one token refresh
+    // 401 Unauthorized — attempt one token refresh (deduplicated)
     if (response.status === 401 && !tokenRefreshed) {
       logger.debug('Jira API returned 401, refreshing access token');
-      await autoRefreshToken(this.tokenStore, this.clientId, this.clientSecret);
+      await this.refreshTokenOnce();
       return this.executeWithRetry<T>(path, options, attempt, true);
     }
 
@@ -155,6 +157,26 @@ export class JiraClient {
       return undefined as T;
     }
     return JSON.parse(text) as T;
+  }
+
+  /**
+   * Deduplicated token refresh: if a refresh is already in flight,
+   * reuse the same promise instead of starting a concurrent refresh.
+   * This prevents multiple requests that hit 401 simultaneously from
+   * each independently refreshing the token and fighting over the .env lock.
+   */
+  private async refreshTokenOnce(): Promise<string> {
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = autoRefreshToken(this.tokenStore, this.clientId, this.clientSecret);
+
+    try {
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
   }
 }
 

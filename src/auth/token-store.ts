@@ -21,6 +21,10 @@ interface TokenData {
  * TokenStore manages API tokens and credentials with atomic file operations.
  * Supports loading from .env files and storing tokens safely with file locking.
  */
+/** Default lock retry settings */
+const LOCK_MAX_RETRIES = 5;
+const LOCK_BASE_DELAY_MS = 100;
+
 export class TokenStore {
   private tokens: TokenData = {};
   private envPath: string;
@@ -40,8 +44,8 @@ export class TokenStore {
 
     let release: (() => Promise<void>) | null = null;
     try {
-      // Acquire lock before reading
-      release = await lock.lock(filePath);
+      // Acquire lock before reading (with retry for contention)
+      release = await this.acquireLockWithRetry(filePath);
       const content = readFileSync(filePath, 'utf-8');
       this.parseEnvContent(content);
     } finally {
@@ -126,6 +130,30 @@ export class TokenStore {
   }
 
   /**
+   * Acquire a file lock with exponential backoff retry.
+   * Retries up to LOCK_MAX_RETRIES times when the lock is already held,
+   * preventing immediate failure during concurrent Jira operations.
+   */
+  private async acquireLockWithRetry(
+    filePath: string,
+    options?: { realpath?: boolean }
+  ): Promise<() => Promise<void>> {
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= LOCK_MAX_RETRIES; attempt++) {
+      try {
+        return await lock.lock(filePath, options);
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < LOCK_MAX_RETRIES) {
+          const delay = LOCK_BASE_DELAY_MS * Math.pow(2, attempt);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  /**
    * Parse .env file content and populate tokens
    */
   private parseEnvContent(content: string): void {
@@ -169,8 +197,8 @@ export class TokenStore {
 
     let release: (() => Promise<void>) | null = null;
     try {
-      // Acquire lock before writing
-      release = await lock.lock(this.envPath, { realpath: false });
+      // Acquire lock before writing (with retry for contention)
+      release = await this.acquireLockWithRetry(this.envPath, { realpath: false });
 
       // Read existing file to preserve any other variables
       let existingContent = '';

@@ -43,6 +43,8 @@ export class JiraProjectManagementConnector implements IProjectManagementConnect
 
   private config?: JiraConfig;
   private tokenStore?: TokenStore;
+  /** Cached JiraClient instance — shared across all operations to prevent lock contention */
+  private cachedClient?: InstanceType<typeof import('../../integrations/jira/client.js').JiraClient>;
 
   constructor(options?: JiraPMConnectorOptions) {
     if (options) {
@@ -81,16 +83,21 @@ export class JiraProjectManagementConnector implements IProjectManagementConnect
   }
 
   private async getClient() {
+    if (this.cachedClient) {
+      return this.cachedClient;
+    }
+
     const { loadEnvIntoProcess } = await import('../../auth/env-store.js');
     const { JiraClient } = await import('../../integrations/jira/client.js');
     const { tokenStore } = await this.loadConfigAndTokenStore();
 
     loadEnvIntoProcess();
-    return new JiraClient({
+    this.cachedClient = new JiraClient({
       tokenStore,
       clientId: process.env.JIRA_CLIENT_ID || '',
       clientSecret: process.env.JIRA_CLIENT_SECRET || '',
     });
+    return this.cachedClient;
   }
 
   async fetchEpic(issueKeyOrUrl: string): Promise<ConnectorEpic> {

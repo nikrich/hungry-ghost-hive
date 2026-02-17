@@ -11,6 +11,7 @@
 
 import { join } from 'path';
 import type { Database } from 'sql.js';
+import type { TokenStore } from '../../auth/token-store.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { queryOne } from '../../db/client.js';
 import type { StoryRow } from '../../db/queries/stories.js';
@@ -23,6 +24,24 @@ import type {
 } from '../common-types.js';
 import { registry } from '../registry.js';
 import type { IProjectManagementConnector } from './types.js';
+
+/**
+ * Cached TokenStore instances keyed by envPath.
+ * Sharing a single TokenStore per env file prevents concurrent lock contention
+ * when multiple Jira operations run in the same process.
+ */
+const tokenStoreCache = new Map<string, TokenStore>();
+
+async function getOrCreateTokenStore(envPath: string): Promise<TokenStore> {
+  let store = tokenStoreCache.get(envPath);
+  if (store) return store;
+
+  const { TokenStore } = await import('../../auth/token-store.js');
+  store = new TokenStore(envPath);
+  await store.loadFromEnv(envPath);
+  tokenStoreCache.set(envPath, store);
+  return store;
+}
 
 /**
  * Ensure the PM connector for the given provider is registered and return it.
@@ -218,12 +237,10 @@ export async function syncStoryToProvider(
   const { pmConfig, paths } = resolved;
 
   if (pmConfig.provider === 'jira' && pmConfig.jira) {
-    const { TokenStore } = await import('../../auth/token-store.js');
     const { syncStoryToJira } = await import('../../integrations/jira/stories.js');
 
     const envPath = join(paths.hiveDir, '.env');
-    const tokenStore = new TokenStore(envPath);
-    await tokenStore.loadFromEnv(envPath);
+    const tokenStore = await getOrCreateTokenStore(envPath);
 
     const result = await syncStoryToJira(db, tokenStore, pmConfig.jira, story, teamName);
     if (!result) return null;
@@ -256,12 +273,10 @@ export async function syncRequirementToProvider(
   const { pmConfig, paths } = resolved;
 
   if (pmConfig.provider === 'jira' && pmConfig.jira) {
-    const { TokenStore } = await import('../../auth/token-store.js');
     const { syncRequirementToJira } = await import('../../integrations/jira/stories.js');
 
     const envPath = join(paths.hiveDir, '.env');
-    const tokenStore = new TokenStore(envPath);
-    await tokenStore.loadFromEnv(envPath);
+    const tokenStore = await getOrCreateTokenStore(envPath);
 
     const result = await syncRequirementToJira(
       db,
