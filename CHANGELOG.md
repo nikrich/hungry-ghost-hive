@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.3...hungry-ghost-hive-v0.39.4) (2026-02-18)
+
+
+### Bug Fixes
+
+* resolve tmux Ctrl+B,D double-press and dashboard rendering glitch ([#459](https://github.com/nikrich/hungry-ghost-hive/issues/459)) ([c45c9a2](https://github.com/nikrich/hungry-ghost-hive/commit/c45c9a2f66dd6c6ae2ed8cf57ba2bbc0e90f0fb1)), closes [#451](https://github.com/nikrich/hungry-ghost-hive/issues/451)
+
 ## [0.39.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.2...hungry-ghost-hive-v0.39.3) (2026-02-18)
 
 
