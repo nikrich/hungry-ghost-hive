@@ -403,14 +403,14 @@ hive-manager            # The micromanager daemon
 
 ### Agent Types
 
-| Type | Default Model | CLI Tool | Role |
-|------|--------------|----------|------|
-| Tech Lead | Claude Opus | claude | Requirement analysis, story creation, cross-team coordination |
-| Senior | Claude Opus | claude | Complex stories (6+), estimation, team leadership, blockers |
-| Intermediate | Claude Sonnet | claude | Medium stories (4-5), implementation and testing |
-| Junior | Claude Haiku | claude | Simple stories (1-3), supervised implementation |
-| QA | Claude Sonnet | claude | PR review, quality checks, acceptance criteria validation |
-| Feature Test | Claude Sonnet | claude | E2E test execution for feature sign-off |
+| Type         | Default Model | CLI Tool | Role                                                          |
+| ------------ | ------------- | -------- | ------------------------------------------------------------- |
+| Tech Lead    | Claude Opus   | claude   | Requirement analysis, story creation, cross-team coordination |
+| Senior       | Claude Opus   | claude   | Complex stories (6+), estimation, team leadership, blockers   |
+| Intermediate | Claude Sonnet | claude   | Medium stories (4-5), implementation and testing              |
+| Junior       | Claude Haiku  | claude   | Simple stories (1-3), supervised implementation               |
+| QA           | Claude Sonnet | claude   | PR review, quality checks, acceptance criteria validation     |
+| Feature Test | Claude Sonnet | claude   | E2E test execution for feature sign-off                       |
 
 ### Story States
 
@@ -455,8 +455,8 @@ models:
   tech_lead:
     provider: anthropic
     model: claude-opus-4-20250514
-    cli_tool: claude          # claude | codex | gemini
-    safety_mode: unsafe       # safe = human approvals, unsafe = full automation
+    cli_tool: claude # claude | codex | gemini
+    safety_mode: unsafe # safe = human approvals, unsafe = full automation
   senior:
     provider: anthropic
     model: claude-opus-4-20250514
@@ -485,12 +485,12 @@ models:
 
 # Complexity thresholds for delegation
 scaling:
-  junior_max_complexity: 3       # 1-3 -> Junior
+  junior_max_complexity: 3 # 1-3 -> Junior
   intermediate_max_complexity: 5 # 4-5 -> Intermediate
-  senior_capacity: 20            # Story points before scaling up
+  senior_capacity: 20 # Story points before scaling up
   refactor:
     enabled: true
-    capacity_percent: 10         # Reserve up to 10% of feature capacity for refactor stories
+    capacity_percent: 10 # Reserve up to 10% of feature capacity for refactor stories
     allow_without_feature_work: true
 
 # QA configuration
@@ -501,22 +501,22 @@ qa:
   build_command: npm run build
   test_command: npm test
   scaling:
-    pending_per_agent: 2.5       # PRs per QA agent before scaling
-    max_agents: 5                # Maximum concurrent QA agents
+    pending_per_agent: 2.5 # PRs per QA agent before scaling
+    max_agents: 5 # Maximum concurrent QA agents
 
 # Manager daemon tuning
 manager:
-  stuck_threshold: 300000        # 5 min before stuck detection
-  nudge_cooldown: 600000         # 10 min between nudges
+  stuck_threshold: 300000 # 5 min before stuck detection
+  nudge_cooldown: 600000 # 10 min between nudges
   max_stuck_nudges_per_story: 1
   screen_static_inactivity_threshold: 600000
 
 # Merge queue
 merge_queue:
-  max_age_hours: 1               # Stale PR threshold
+  max_age_hours: 1 # Stale PR threshold
 
 # E2E testing for feature sign-off
-e2e_test_path: tests/e2e         # Optional: enables feature sign-off
+e2e_test_path: tests/e2e # Optional: enables feature sign-off
 
 # Optional distributed mode (HTTP + peer replication)
 cluster:
