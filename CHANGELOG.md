@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.2...hungry-ghost-hive-v0.39.3) (2026-02-18)
+
+
+### Bug Fixes
+
+* use agent.id instead of session name for escalation FK fields ([#458](https://github.com/nikrich/hungry-ghost-hive/issues/458)) ([1f68017](https://github.com/nikrich/hungry-ghost-hive/commit/1f680179750f307495b6cb30faa4c1868ad8ae55))
+
 ## [0.39.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.1...hungry-ghost-hive-v0.39.2) (2026-02-18)
 
 
