@@ -307,13 +307,15 @@ export async function handleEscalationAndNudge(
       : undefined,
   };
 
+  const agentId = agent?.id ?? null;
   const hasRecentEscalation =
     ctx.escalatedSessions.has(sessionName) ||
-    (await ctx.withDb(
-      async db =>
-        getRecentEscalationsForAgent(db.db, sessionName, RECENT_ESCALATION_LOOKBACK_MINUTES)
-          .length > 0
-    ));
+    (agentId !== null &&
+      (await ctx.withDb(
+        async db =>
+          getRecentEscalationsForAgent(db.db, agentId, RECENT_ESCALATION_LOOKBACK_MINUTES)
+            .length > 0
+      )));
   verboseLog(ctx, `escalationCheck: ${sessionName} hasRecentEscalation=${hasRecentEscalation}`);
 
   if (waitingInfo.needsHuman && !hasRecentEscalation) {
@@ -330,7 +332,7 @@ export async function handleEscalationAndNudge(
     await ctx.withDb(async db => {
       const escalation = createEscalation(db.db, {
         storyId,
-        fromAgentId: sessionName,
+        fromAgentId: agentId,
         toAgentId: null,
         reason: escalationReason,
       });
@@ -360,7 +362,7 @@ export async function handleEscalationAndNudge(
     interruptionRecoveryAttempts.delete(sessionName);
     // Agent recovered - auto-resolve active escalations
     const resolvedCount = await ctx.withDb(async db => {
-      const activeEscalations = getActiveEscalationsForAgent(db.db, sessionName);
+      const activeEscalations = agentId ? getActiveEscalationsForAgent(db.db, agentId) : [];
       for (const escalation of activeEscalations) {
         updateEscalation(db.db, escalation.id, {
           status: 'resolved',

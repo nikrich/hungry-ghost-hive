@@ -214,7 +214,8 @@ async function applyHumanInterventionStateOverride(
   ctx: ManagerCheckContext,
   sessionName: string,
   storyId: string | null,
-  stateResult: ReturnType<typeof detectAgentState>
+  stateResult: ReturnType<typeof detectAgentState>,
+  agentId: string | null = null
 ): Promise<ReturnType<typeof detectAgentState>> {
   const timeoutIntervention = classifierTimeoutInterventionsBySession.get(sessionName);
   if (timeoutIntervention && (!storyId || storyId !== timeoutIntervention.storyId)) {
@@ -237,7 +238,7 @@ async function applyHumanInterventionStateOverride(
       ? null
       : await ctx.withDb(async db => {
           return (
-            getActiveEscalationsForAgent(db.db, sessionName).find(
+            (agentId ? getActiveEscalationsForAgent(db.db, agentId) : []).find(
               escalation =>
                 escalation.story_id === storyId &&
                 (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
@@ -277,7 +278,8 @@ async function markClassifierTimeoutForHumanIntervention(
   ctx: ManagerCheckContext,
   sessionName: string,
   storyId: string,
-  reason: string
+  reason: string,
+  agentId: string | null = null
 ): Promise<void> {
   const escalationReason = formatClassifierTimeoutEscalationReason(storyId, reason);
   classifierTimeoutInterventionsBySession.set(sessionName, {
@@ -287,13 +289,13 @@ async function markClassifierTimeoutForHumanIntervention(
   });
 
   await ctx.withDb(async db => {
-    const activeTimeoutEscalation = getActiveEscalationsForAgent(db.db, sessionName).some(
-      escalation => escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX)
-    );
+    const activeTimeoutEscalation = (
+      agentId ? getActiveEscalationsForAgent(db.db, agentId) : []
+    ).some(escalation => escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX));
     if (!activeTimeoutEscalation) {
       const escalation = createEscalation(db.db, {
         storyId,
-        fromAgentId: sessionName,
+        fromAgentId: agentId,
         toAgentId: null,
         reason: escalationReason,
       });
@@ -332,7 +334,8 @@ async function markDoneFalseForHumanIntervention(
   ctx: ManagerCheckContext,
   sessionName: string,
   storyId: string,
-  reason: string
+  reason: string,
+  agentId: string | null = null
 ): Promise<void> {
   const escalationReason = formatDoneFalseEscalationReason(storyId, reason);
   aiDoneFalseInterventionsBySession.set(sessionName, {
@@ -342,13 +345,13 @@ async function markDoneFalseForHumanIntervention(
   });
 
   await ctx.withDb(async db => {
-    const hasActiveEscalation = getActiveEscalationsForAgent(db.db, sessionName).some(escalation =>
-      escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX)
-    );
+    const hasActiveEscalation = (
+      agentId ? getActiveEscalationsForAgent(db.db, agentId) : []
+    ).some(escalation => escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX));
     if (!hasActiveEscalation) {
       const escalation = createEscalation(db.db, {
         storyId,
-        fromAgentId: sessionName,
+        fromAgentId: agentId,
         toAgentId: null,
         reason: escalationReason,
       });
@@ -1489,7 +1492,8 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
       ctx,
       session.name,
       agent?.current_story_id || null,
-      stateResult
+      stateResult,
+      agent?.id ?? null
     );
     const staticStatus = updateScreenStaticTracking(
       session.name,
@@ -1575,7 +1579,8 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
               ctx,
               session.name,
               storyId,
-              completionAssessment.reason
+              completionAssessment.reason,
+              agent?.id ?? null
             );
             actionNotes.push('classifier_timeout_escalation');
             verboseLogCtx(ctx, `Agent ${session.name}: action=classifier_timeout_escalation`);
@@ -1615,7 +1620,8 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
                 ctx,
                 session.name,
                 storyId,
-                completionAssessment.reason
+                completionAssessment.reason,
+                agent?.id ?? null
               );
               verboseLogCtx(
                 ctx,
@@ -2169,7 +2175,8 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
           ctx,
           sessionName,
           story.id,
-          completionAssessment.reason
+          completionAssessment.reason,
+          agent.id
         );
         verboseLogCtx(
           ctx,
@@ -2201,7 +2208,8 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
             ctx,
             sessionName,
             story.id,
-            completionAssessment.reason
+            completionAssessment.reason,
+            agent.id
           );
           verboseLogCtx(
             ctx,
