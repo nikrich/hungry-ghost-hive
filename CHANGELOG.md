@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.39.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.1...hungry-ghost-hive-v0.39.2) (2026-02-18)
+
+
+### Bug Fixes
+
+* complete nuke cleanup by adding missing tables and worktree removal ([#456](https://github.com/nikrich/hungry-ghost-hive/issues/456)) ([effd50f](https://github.com/nikrich/hungry-ghost-hive/commit/effd50fa2edba7d55b6fafbe27341d0b20f023a4))
+* handle plain text acceptance_criteria in Jira sync ([#455](https://github.com/nikrich/hungry-ghost-hive/issues/455)) ([c1e72e7](https://github.com/nikrich/hungry-ghost-hive/commit/c1e72e733d84a2bcdde8581ca924db40ef17eba3))
+
 ## [0.39.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.0...hungry-ghost-hive-v0.39.1) (2026-02-17)
 
 
