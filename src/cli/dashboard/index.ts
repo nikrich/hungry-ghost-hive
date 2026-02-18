@@ -99,7 +99,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
     width: '100%',
     height: 1,
     content:
-      ' Tab: Switch panels | ↑↓: Navigate | Enter: Attach to tmux | Ctrl+B,D: Detach | Q: Quit',
+      ' Tab: Switch panels | ↑↓: Navigate | Enter: Attach to agent | Q/Ctrl+C: Quit | Ctrl+B,D: Detach tmux',
     style: {
       bg: 'blue',
       fg: 'white',
@@ -162,7 +162,10 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   scheduleRefresh();
 
   // Key bindings
-  screen.key(['q', 'C-c', 'escape'], () => {
+  // Note: 'escape' is intentionally excluded — tmux Ctrl+B prefix can generate
+  // escape sequences that blessed may misinterpret as an ESC keypress, which
+  // would cause the dashboard to exit unexpectedly (the "double press" bug).
+  screen.key(['q', 'C-c'], () => {
     if (currentTimeout) clearTimeout(currentTimeout);
     try {
       db.db.close();

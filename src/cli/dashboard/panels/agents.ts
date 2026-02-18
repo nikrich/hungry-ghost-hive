@@ -45,7 +45,7 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
   });
 
   // Handle Enter key to attach to tmux session
-  list.key(['enter'], () => {
+  list.key(['enter'], async () => {
     const selectedIndex = (list as unknown as { selected: number }).selected;
     // Index 0 is the header, so subtract 1 for agent index
     const agentIndex = selectedIndex - 1;
@@ -71,12 +71,15 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
           // spawnSync blocks the event loop so the refresh timer cannot fire and
           // the captured `db` reference remains valid.
           resumeScreen();
-          // Force full redraw — after tmux detach the terminal buffer is clobbered
-          // so blessed's incremental render would show a corrupt screen.
-          screen.alloc();
-          void updateAgentsPanel(list, db).catch(err =>
-            debugLog(`Failed to refresh agents panel after tmux detach: ${err}`)
-          );
+          // Force full redraw — after tmux detach the terminal buffer is clobbered.
+          // Use realloc() (dirty=true) so every cell is marked for redraw, preventing
+          // partial-update artifacts from blessed's incremental renderer.
+          screen.realloc();
+          try {
+            await updateAgentsPanel(list, db);
+          } catch (err) {
+            debugLog(`Failed to refresh agents panel after tmux detach: ${err}`);
+          }
           screen.render();
         }
 
