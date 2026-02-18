@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.4...hungry-ghost-hive-v0.40.0) (2026-02-18)
+
+
+### Features
+
+* generate descriptive Jira epic titles using AI instead of raw prompt ([#463](https://github.com/nikrich/hungry-ghost-hive/issues/463)) ([fdb4d42](https://github.com/nikrich/hungry-ghost-hive/commit/fdb4d422b37065f81dece818027be4b573e16d22))
+
 ## [0.39.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.3...hungry-ghost-hive-v0.39.4) (2026-02-18)
 
 
