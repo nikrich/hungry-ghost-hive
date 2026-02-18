@@ -8,6 +8,7 @@ import type { StoryRow } from '../../db/client.js';
 import { createSyncRecord, getSyncRecordByEntity } from '../../db/queries/integration-sync.js';
 import { updateRequirement, type RequirementRow } from '../../db/queries/requirements.js';
 import { getStoryById, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
+import { AnthropicProvider } from '../../llm/anthropic.js';
 import * as logger from '../../utils/logger.js';
 import { JiraClient } from './client.js';
 import { createIssue, createIssueLink } from './issues.js';
@@ -46,6 +47,49 @@ function textToAdf(text: string): AdfDocument {
   }));
 
   return { version: 1, type: 'doc', content };
+}
+
+/**
+ * Generate a concise, descriptive Jira epic title using an AI model.
+ * Falls back to the original title if generation fails or produces an empty result.
+ * Exported for testing.
+ */
+export async function generateEpicTitle(title: string, description: string): Promise<string> {
+  try {
+    const provider = new AnthropicProvider({
+      model: 'claude-haiku-4-5-20251001',
+      maxTokens: 50,
+      temperature: 0.3,
+    });
+
+    const truncatedDescription = description ? description.substring(0, 500) : '';
+    const prompt = `Generate a concise, descriptive Jira epic title (maximum 100 characters) for a software feature.
+
+Title hint: ${title}
+Description: ${truncatedDescription}
+
+Rules:
+- Return ONLY the title text, no explanation or quotes
+- Be specific and descriptive about what the feature does
+- Use title case
+- Maximum 100 characters`;
+
+    const result = await provider.complete([{ role: 'user', content: prompt }], {
+      maxTokens: 50,
+      timeoutMs: 10000,
+    });
+
+    const generated = result.content.trim().replace(/^["']|["']$/g, '');
+    if (generated.length > 0) {
+      return generated.substring(0, 255);
+    }
+  } catch (err) {
+    logger.warn(
+      `Failed to generate epic title via AI, using original: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  return title;
 }
 
 /**
@@ -200,10 +244,11 @@ export async function syncRequirementToJira(
     // Create a new Jira Epic
     let epic: CreateIssueResponse | null = null;
     try {
+      const epicTitle = await generateEpicTitle(requirement.title, requirement.description);
       epic = await createIssue(client, {
         fields: {
           project: { key: config.project_key },
-          summary: requirement.title,
+          summary: epicTitle,
           issuetype: { name: 'Epic' },
           description: textToAdf(requirement.description),
           labels,
