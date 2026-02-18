@@ -345,9 +345,9 @@ async function markDoneFalseForHumanIntervention(
   });
 
   await ctx.withDb(async db => {
-    const hasActiveEscalation = (
-      agentId ? getActiveEscalationsForAgent(db.db, agentId) : []
-    ).some(escalation => escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX));
+    const hasActiveEscalation = (agentId ? getActiveEscalationsForAgent(db.db, agentId) : []).some(
+      escalation => escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX)
+    );
     if (!hasActiveEscalation) {
       const escalation = createEscalation(db.db, {
         storyId,

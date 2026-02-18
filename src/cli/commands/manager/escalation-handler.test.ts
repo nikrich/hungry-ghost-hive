@@ -160,9 +160,8 @@ describe('handleEscalationAndNudge — fromAgentId FK fix', () => {
   }
 
   it('uses agent.id (not session name) as fromAgentId when creating an escalation', async () => {
-    const { createEscalation, getRecentEscalationsForAgent } = await import(
-      '../../../db/queries/escalations.js'
-    );
+    const { createEscalation, getRecentEscalationsForAgent } =
+      await import('../../../db/queries/escalations.js');
     vi.mocked(getRecentEscalationsForAgent).mockReturnValue([]);
     vi.mocked(createEscalation).mockReturnValue({
       id: 'ESC-TEST',
@@ -203,9 +202,8 @@ describe('handleEscalationAndNudge — fromAgentId FK fix', () => {
   });
 
   it('uses null as fromAgentId when agent is undefined', async () => {
-    const { createEscalation, getRecentEscalationsForAgent } = await import(
-      '../../../db/queries/escalations.js'
-    );
+    const { createEscalation, getRecentEscalationsForAgent } =
+      await import('../../../db/queries/escalations.js');
     vi.mocked(getRecentEscalationsForAgent).mockReturnValue([]);
     vi.mocked(createEscalation).mockReturnValue({
       id: 'ESC-NULL',

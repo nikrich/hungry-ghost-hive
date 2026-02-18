@@ -313,8 +313,8 @@ export async function handleEscalationAndNudge(
     (agentId !== null &&
       (await ctx.withDb(
         async db =>
-          getRecentEscalationsForAgent(db.db, agentId, RECENT_ESCALATION_LOOKBACK_MINUTES)
-            .length > 0
+          getRecentEscalationsForAgent(db.db, agentId, RECENT_ESCALATION_LOOKBACK_MINUTES).length >
+          0
       )));
   verboseLog(ctx, `escalationCheck: ${sessionName} hasRecentEscalation=${hasRecentEscalation}`);
 
