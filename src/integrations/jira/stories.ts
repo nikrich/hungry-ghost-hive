@@ -76,6 +76,7 @@ function acceptanceCriteriaToAdf(description: string, criteria: string[]): AdfDo
 /**
  * Safely parse acceptance_criteria JSON string.
  * Returns empty array if parsing fails or if result is not an array.
+ * Falls back to plain-text parsing (e.g. markdown bullet lists) if JSON parsing fails.
  * Exported for testing.
  */
 export function safelyParseAcceptanceCriteria(
@@ -95,11 +96,13 @@ export function safelyParseAcceptanceCriteria(
       return [];
     }
     return parsed as string[];
-  } catch (err) {
-    logger.warn(
-      `Failed to parse acceptance_criteria for story ${storyId}: ${err instanceof Error ? err.message : String(err)}`
-    );
-    return [];
+  } catch {
+    // Not valid JSON — treat as plain text (e.g. markdown bullet list)
+    const lines = acceptanceCriteriaJson
+      .split('\n')
+      .map(line => line.replace(/^[-*]\s*/, '').trim())
+      .filter(line => line.length > 0);
+    return lines;
   }
 }
 

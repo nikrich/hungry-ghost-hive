@@ -93,16 +93,34 @@ describe('Jira Story Creation', () => {
       expect(result).toEqual(['criterion 1', 'criterion 2']);
     });
 
-    it('should return empty array for malformed JSON and log warning', () => {
-      const warnSpy = vi.spyOn(logger, 'warn');
+    it('should parse malformed JSON as plain text', () => {
       const malformedJson = '{"invalid json';
       const result = safelyParseAcceptanceCriteria(malformedJson, 'story-123');
+      expect(result).toEqual(['{"invalid json']);
+    });
 
-      expect(result).toEqual([]);
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to parse acceptance_criteria for story story-123')
-      );
-      warnSpy.mockRestore();
+    it('should parse plain text markdown bullet list', () => {
+      const plainText = '- criterion 1\n- criterion 2\n- criterion 3';
+      const result = safelyParseAcceptanceCriteria(plainText, 'story-123');
+      expect(result).toEqual(['criterion 1', 'criterion 2', 'criterion 3']);
+    });
+
+    it('should parse plain text with asterisk bullets', () => {
+      const plainText = '* criterion A\n* criterion B';
+      const result = safelyParseAcceptanceCriteria(plainText, 'story-123');
+      expect(result).toEqual(['criterion A', 'criterion B']);
+    });
+
+    it('should parse plain text without bullet prefixes', () => {
+      const plainText = 'criterion 1\ncriterion 2';
+      const result = safelyParseAcceptanceCriteria(plainText, 'story-123');
+      expect(result).toEqual(['criterion 1', 'criterion 2']);
+    });
+
+    it('should filter empty lines when parsing plain text', () => {
+      const plainText = '- criterion 1\n\n- criterion 2\n\n';
+      const result = safelyParseAcceptanceCriteria(plainText, 'story-123');
+      expect(result).toEqual(['criterion 1', 'criterion 2']);
     });
 
     it('should return empty array for non-array JSON and log warning', () => {
