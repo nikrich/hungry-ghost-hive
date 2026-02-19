@@ -8,6 +8,7 @@ import type { StoryRow } from '../../db/client.js';
 import { createSyncRecord, getSyncRecordByEntity } from '../../db/queries/integration-sync.js';
 import { updateRequirement, type RequirementRow } from '../../db/queries/requirements.js';
 import { getStoryById, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
+import { AnthropicProvider } from '../../llm/anthropic.js';
 import * as logger from '../../utils/logger.js';
 import { JiraClient } from './client.js';
 import { createIssue, createIssueLink } from './issues.js';
@@ -49,6 +50,49 @@ function textToAdf(text: string): AdfDocument {
 }
 
 /**
+ * Generate a concise, descriptive Jira epic title using an AI model.
+ * Falls back to the original title if generation fails or produces an empty result.
+ * Exported for testing.
+ */
+export async function generateEpicTitle(title: string, description: string): Promise<string> {
+  try {
+    const provider = new AnthropicProvider({
+      model: 'claude-haiku-4-5-20251001',
+      maxTokens: 50,
+      temperature: 0.3,
+    });
+
+    const truncatedDescription = description ? description.substring(0, 500) : '';
+    const prompt = `Generate a concise, descriptive Jira epic title (maximum 100 characters) for a software feature.
+
+Title hint: ${title}
+Description: ${truncatedDescription}
+
+Rules:
+- Return ONLY the title text, no explanation or quotes
+- Be specific and descriptive about what the feature does
+- Use title case
+- Maximum 100 characters`;
+
+    const result = await provider.complete([{ role: 'user', content: prompt }], {
+      maxTokens: 50,
+      timeoutMs: 10000,
+    });
+
+    const generated = result.content.trim().replace(/^["']|["']$/g, '');
+    if (generated.length > 0) {
+      return generated.substring(0, 255);
+    }
+  } catch (err) {
+    logger.warn(
+      `Failed to generate epic title via AI, using original: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  return title;
+}
+
+/**
  * Convert description + acceptance criteria to ADF with a bulleted list.
  */
 function acceptanceCriteriaToAdf(description: string, criteria: string[]): AdfDocument {
@@ -76,6 +120,7 @@ function acceptanceCriteriaToAdf(description: string, criteria: string[]): AdfDo
 /**
  * Safely parse acceptance_criteria JSON string.
  * Returns empty array if parsing fails or if result is not an array.
+ * Falls back to plain-text parsing (e.g. markdown bullet lists) if JSON parsing fails.
  * Exported for testing.
  */
 export function safelyParseAcceptanceCriteria(
@@ -95,11 +140,13 @@ export function safelyParseAcceptanceCriteria(
       return [];
     }
     return parsed as string[];
-  } catch (err) {
-    logger.warn(
-      `Failed to parse acceptance_criteria for story ${storyId}: ${err instanceof Error ? err.message : String(err)}`
-    );
-    return [];
+  } catch {
+    // Not valid JSON — treat as plain text (e.g. markdown bullet list)
+    const lines = acceptanceCriteriaJson
+      .split('\n')
+      .map(line => line.replace(/^[-*]\s*/, '').trim())
+      .filter(line => line.length > 0);
+    return lines;
   }
 }
 
@@ -197,10 +244,11 @@ export async function syncRequirementToJira(
     // Create a new Jira Epic
     let epic: CreateIssueResponse | null = null;
     try {
+      const epicTitle = await generateEpicTitle(requirement.title, requirement.description);
       epic = await createIssue(client, {
         fields: {
           project: { key: config.project_key },
-          summary: requirement.title,
+          summary: epicTitle,
           issuetype: { name: 'Epic' },
           description: textToAdf(requirement.description),
           labels,

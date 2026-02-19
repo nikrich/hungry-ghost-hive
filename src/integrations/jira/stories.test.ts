@@ -9,15 +9,17 @@ import { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
 import { createStory } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
+import { AnthropicProvider } from '../../llm/anthropic.js';
 import { generateTechLeadJiraInstructions } from '../../orchestrator/prompt-templates.js';
 import * as logger from '../../utils/logger.js';
 import { JiraClient } from './client.js';
 import { createIssue } from './issues.js';
-import { safelyParseAcceptanceCriteria, syncStoryToJira } from './stories.js';
+import { generateEpicTitle, safelyParseAcceptanceCriteria, syncStoryToJira } from './stories.js';
 
 // Mock Jira client and issues
 vi.mock('./client.js');
 vi.mock('./issues.js');
+vi.mock('../../llm/anthropic.js');
 vi.mock('./sprints.js', () => ({
   getActiveSprintForProject: vi.fn().mockResolvedValue(null),
   moveIssuesToSprint: vi.fn().mockResolvedValue(undefined),
@@ -76,6 +78,121 @@ describe('Jira Story Creation', () => {
     });
   });
 
+  describe('generateEpicTitle', () => {
+    beforeEach(() => {
+      vi.mocked(AnthropicProvider).mockClear();
+    });
+
+    it('should return AI-generated title when LLM call succeeds', async () => {
+      const mockComplete = vi.fn().mockResolvedValue({
+        content: 'User Authentication with OAuth2 Integration',
+        stopReason: 'end_turn',
+        usage: { inputTokens: 50, outputTokens: 10 },
+      });
+      vi.mocked(AnthropicProvider).mockImplementation(
+        () => ({ complete: mockComplete, name: 'anthropic' }) as any
+      );
+
+      const result = await generateEpicTitle(
+        'Build auth system with OAuth2',
+        'Allow users to log in with Google and GitHub accounts'
+      );
+
+      expect(result).toBe('User Authentication with OAuth2 Integration');
+      expect(mockComplete).toHaveBeenCalledOnce();
+    });
+
+    it('should fall back to original title when LLM call throws', async () => {
+      const warnSpy = vi.spyOn(logger, 'warn');
+      vi.mocked(AnthropicProvider).mockImplementation(
+        () =>
+          ({
+            complete: vi.fn().mockRejectedValue(new Error('API key missing')),
+            name: 'anthropic',
+          }) as any
+      );
+
+      const result = await generateEpicTitle('Raw prompt title', 'Some description');
+
+      expect(result).toBe('Raw prompt title');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to generate epic title via AI')
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('should fall back to original title when LLM returns empty content', async () => {
+      vi.mocked(AnthropicProvider).mockImplementation(
+        () =>
+          ({
+            complete: vi.fn().mockResolvedValue({
+              content: '   ',
+              stopReason: 'end_turn',
+              usage: { inputTokens: 50, outputTokens: 1 },
+            }),
+            name: 'anthropic',
+          }) as any
+      );
+
+      const result = await generateEpicTitle('Original Title', 'Description');
+
+      expect(result).toBe('Original Title');
+    });
+
+    it('should strip surrounding quotes from generated title', async () => {
+      vi.mocked(AnthropicProvider).mockImplementation(
+        () =>
+          ({
+            complete: vi.fn().mockResolvedValue({
+              content: '"User Management System"',
+              stopReason: 'end_turn',
+              usage: { inputTokens: 50, outputTokens: 8 },
+            }),
+            name: 'anthropic',
+          }) as any
+      );
+
+      const result = await generateEpicTitle('user management', 'Manage users');
+
+      expect(result).toBe('User Management System');
+    });
+
+    it('should truncate generated title to 255 characters', async () => {
+      const longTitle = 'A'.repeat(300);
+      vi.mocked(AnthropicProvider).mockImplementation(
+        () =>
+          ({
+            complete: vi.fn().mockResolvedValue({
+              content: longTitle,
+              stopReason: 'end_turn',
+              usage: { inputTokens: 50, outputTokens: 300 },
+            }),
+            name: 'anthropic',
+          }) as any
+      );
+
+      const result = await generateEpicTitle('title', 'desc');
+
+      expect(result.length).toBe(255);
+    });
+
+    it('should handle empty description gracefully', async () => {
+      const mockComplete = vi.fn().mockResolvedValue({
+        content: 'Generated Title',
+        stopReason: 'end_turn',
+        usage: { inputTokens: 20, outputTokens: 5 },
+      });
+      vi.mocked(AnthropicProvider).mockImplementation(
+        () => ({ complete: mockComplete, name: 'anthropic' }) as any
+      );
+
+      const result = await generateEpicTitle('title hint', '');
+
+      expect(result).toBe('Generated Title');
+      expect(mockComplete).toHaveBeenCalledOnce();
+    });
+  });
+
   describe('safelyParseAcceptanceCriteria', () => {
     it('should return empty array for null input', () => {
       const result = safelyParseAcceptanceCriteria(null, 'story-123');
@@ -93,16 +210,34 @@ describe('Jira Story Creation', () => {
       expect(result).toEqual(['criterion 1', 'criterion 2']);
     });
 
-    it('should return empty array for malformed JSON and log warning', () => {
-      const warnSpy = vi.spyOn(logger, 'warn');
+    it('should parse malformed JSON as plain text', () => {
       const malformedJson = '{"invalid json';
       const result = safelyParseAcceptanceCriteria(malformedJson, 'story-123');
+      expect(result).toEqual(['{"invalid json']);
+    });
 
-      expect(result).toEqual([]);
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to parse acceptance_criteria for story story-123')
-      );
-      warnSpy.mockRestore();
+    it('should parse plain text markdown bullet list', () => {
+      const plainText = '- criterion 1\n- criterion 2\n- criterion 3';
+      const result = safelyParseAcceptanceCriteria(plainText, 'story-123');
+      expect(result).toEqual(['criterion 1', 'criterion 2', 'criterion 3']);
+    });
+
+    it('should parse plain text with asterisk bullets', () => {
+      const plainText = '* criterion A\n* criterion B';
+      const result = safelyParseAcceptanceCriteria(plainText, 'story-123');
+      expect(result).toEqual(['criterion A', 'criterion B']);
+    });
+
+    it('should parse plain text without bullet prefixes', () => {
+      const plainText = 'criterion 1\ncriterion 2';
+      const result = safelyParseAcceptanceCriteria(plainText, 'story-123');
+      expect(result).toEqual(['criterion 1', 'criterion 2']);
+    });
+
+    it('should filter empty lines when parsing plain text', () => {
+      const plainText = '- criterion 1\n\n- criterion 2\n\n';
+      const result = safelyParseAcceptanceCriteria(plainText, 'story-123');
+      expect(result).toEqual(['criterion 1', 'criterion 2']);
     });
 
     it('should return empty array for non-array JSON and log warning', () => {

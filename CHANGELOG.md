@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.40.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.4...hungry-ghost-hive-v0.40.0) (2026-02-18)
+
+
+### Features
+
+* generate descriptive Jira epic titles using AI instead of raw prompt ([#463](https://github.com/nikrich/hungry-ghost-hive/issues/463)) ([fdb4d42](https://github.com/nikrich/hungry-ghost-hive/commit/fdb4d422b37065f81dece818027be4b573e16d22))
+
+## [0.39.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.3...hungry-ghost-hive-v0.39.4) (2026-02-18)
+
+
+### Bug Fixes
+
+* resolve tmux Ctrl+B,D double-press and dashboard rendering glitch ([#459](https://github.com/nikrich/hungry-ghost-hive/issues/459)) ([c45c9a2](https://github.com/nikrich/hungry-ghost-hive/commit/c45c9a2f66dd6c6ae2ed8cf57ba2bbc0e90f0fb1)), closes [#451](https://github.com/nikrich/hungry-ghost-hive/issues/451)
+
+## [0.39.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.2...hungry-ghost-hive-v0.39.3) (2026-02-18)
+
+
+### Bug Fixes
+
+* use agent.id instead of session name for escalation FK fields ([#458](https://github.com/nikrich/hungry-ghost-hive/issues/458)) ([1f68017](https://github.com/nikrich/hungry-ghost-hive/commit/1f680179750f307495b6cb30faa4c1868ad8ae55))
+
+## [0.39.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.1...hungry-ghost-hive-v0.39.2) (2026-02-18)
+
+
+### Bug Fixes
+
+* complete nuke cleanup by adding missing tables and worktree removal ([#456](https://github.com/nikrich/hungry-ghost-hive/issues/456)) ([effd50f](https://github.com/nikrich/hungry-ghost-hive/commit/effd50fa2edba7d55b6fafbe27341d0b20f023a4))
+* handle plain text acceptance_criteria in Jira sync ([#455](https://github.com/nikrich/hungry-ghost-hive/issues/455)) ([c1e72e7](https://github.com/nikrich/hungry-ghost-hive/commit/c1e72e733d84a2bcdde8581ca924db40ef17eba3))
+
 ## [0.39.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.0...hungry-ghost-hive-v0.39.1) (2026-02-17)
 
 

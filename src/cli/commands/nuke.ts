@@ -5,7 +5,8 @@ import { Command } from 'commander';
 import { existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import readline from 'readline';
-import { queryOne, run } from '../../db/client.js';
+import { queryAll, queryOne, run } from '../../db/client.js';
+import { removeWorktree } from '../../git/worktree.js';
 import { killAllHiveSessions } from '../../tmux/manager.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
@@ -85,6 +86,37 @@ async function confirm(message: string): Promise<boolean> {
   });
 }
 
+/**
+ * Remove all git worktrees associated with agents in the database.
+ * Must be called before agents are deleted from the DB.
+ */
+async function removeAgentWorktrees(
+  root: string,
+  db: { db: Parameters<typeof queryAll>[0] }
+): Promise<number> {
+  const agents = queryAll<{ worktree_path: string | null }>(
+    db.db,
+    'SELECT worktree_path FROM agents WHERE worktree_path IS NOT NULL'
+  );
+  let removed = 0;
+  for (const agent of agents) {
+    if (agent.worktree_path) {
+      const result = removeWorktree(root, agent.worktree_path);
+      if (result.success) {
+        removed++;
+      } else {
+        console.log(
+          chalk.yellow(`Warning: Could not remove worktree ${agent.worktree_path}: ${result.error}`)
+        );
+      }
+    }
+  }
+  if (removed > 0) {
+    console.log(chalk.gray(`Removed ${removed} agent worktree(s).`));
+  }
+  return removed;
+}
+
 export const nukeCommand = new Command('nuke')
   .description('Delete data (use with caution)')
   .addCommand(
@@ -121,6 +153,7 @@ export const nukeCommand = new Command('nuke')
           const success = await runDbDeletions(
             db,
             [
+              "DELETE FROM integration_sync WHERE entity_type IN ('story', 'pull_request')",
               'DELETE FROM pull_requests',
               'UPDATE escalations SET story_id = NULL',
               'DELETE FROM story_dependencies',
@@ -141,7 +174,7 @@ export const nukeCommand = new Command('nuke')
       .option('--force', 'Skip confirmation')
       .action(async (options: { force?: boolean }) => {
         try {
-          await withHiveContext(async ({ db }) => {
+          await withHiveContext(async ({ db, root }) => {
             const count = queryOne<{ count: number }>(
               db.db,
               'SELECT COUNT(*) as count FROM agents'
@@ -169,6 +202,9 @@ export const nukeCommand = new Command('nuke')
             const killed = await killAllHiveSessions();
             console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
 
+            // Remove agent worktrees from filesystem before deleting agents from DB
+            await removeAgentWorktrees(root, db);
+
             // Clear agent references and delete from database
             const success = await runDbDeletions(
               db,
@@ -176,6 +212,7 @@ export const nukeCommand = new Command('nuke')
                 'UPDATE stories SET assigned_agent_id = NULL',
                 'DELETE FROM agent_logs',
                 'DELETE FROM escalations',
+                'DELETE FROM messages',
                 'DELETE FROM agents',
               ],
               'agent'
@@ -248,6 +285,7 @@ export const nukeCommand = new Command('nuke')
           const success = await runDbDeletions(
             db,
             [
+              'DELETE FROM integration_sync',
               'DELETE FROM pull_requests',
               'UPDATE escalations SET story_id = NULL',
               'DELETE FROM story_dependencies',
@@ -271,14 +309,17 @@ export const nukeCommand = new Command('nuke')
       .option('--force', 'Skip confirmation')
       .action(async (options: { force?: boolean }) => {
         try {
-          await withHiveContext(async ({ db }) => {
+          await withHiveContext(async ({ db, root }) => {
             console.log(chalk.red('\nThis will:'));
             console.log(chalk.yellow('  - Kill all hive tmux sessions'));
+            console.log(chalk.yellow('  - Remove all agent git worktrees'));
             console.log(chalk.yellow('  - Delete all stories and dependencies'));
             console.log(chalk.yellow('  - Delete all agents and logs'));
             console.log(chalk.yellow('  - Delete all requirements'));
             console.log(chalk.yellow('  - Delete all escalations'));
             console.log(chalk.yellow('  - Delete all pull requests'));
+            console.log(chalk.yellow('  - Delete all messages'));
+            console.log(chalk.yellow('  - Delete all integration sync records'));
             console.log(chalk.red('\nThis action cannot be undone.\n'));
 
             if (!options.force) {
@@ -295,14 +336,19 @@ export const nukeCommand = new Command('nuke')
             const killed = await killAllHiveSessions();
             console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
 
+            // Remove agent worktrees from filesystem before deleting agents from DB
+            await removeAgentWorktrees(root, db);
+
             // Clear foreign key references first, then delete in order
             const success = await runDbDeletions(
               db,
               [
                 'UPDATE stories SET assigned_agent_id = NULL',
+                'DELETE FROM integration_sync',
                 'DELETE FROM pull_requests',
                 'DELETE FROM escalations',
                 'DELETE FROM agent_logs',
+                'DELETE FROM messages',
                 'DELETE FROM story_dependencies',
                 'DELETE FROM stories',
                 'DELETE FROM agents',

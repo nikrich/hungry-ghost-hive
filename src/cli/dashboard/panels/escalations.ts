@@ -47,7 +47,7 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Wi
   });
 
   // Handle Enter key to open escalation details
-  list.key(['enter'], () => {
+  list.key(['enter'], async () => {
     const selectedIndex = (list as unknown as { selected: number }).selected;
 
     if (selectedIndex >= 0 && selectedIndex < currentEscalations.length) {
@@ -92,11 +92,15 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Wi
       } finally {
         // Restore dashboard in the same process (do not spawn nested dashboards).
         resumeScreen();
-        // Force full redraw — after tmux detach the terminal buffer is clobbered
-        screen.alloc();
-        void updateEscalationsPanel(list, db).catch(err =>
-          console.error('Failed to update escalations panel:', err)
-        );
+        // Force full redraw — after tmux detach the terminal buffer is clobbered.
+        // Use realloc() (dirty=true) so every cell is marked for redraw, preventing
+        // partial-update artifacts from blessed's incremental renderer.
+        screen.realloc();
+        try {
+          await updateEscalationsPanel(list, db);
+        } catch (err) {
+          console.error('Failed to update escalations panel:', err);
+        }
         screen.render();
       }
 
