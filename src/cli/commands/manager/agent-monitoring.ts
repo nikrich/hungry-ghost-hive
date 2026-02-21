@@ -300,6 +300,8 @@ export async function nudgeAgent(
 ): Promise<void> {
   if (customMessage) {
     await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(customMessage));
+    await new Promise(resolve => setTimeout(resolve, POST_NUDGE_DELAY_MS));
+    await sendEnterToTmuxSession(sessionName);
     return;
   }
 
