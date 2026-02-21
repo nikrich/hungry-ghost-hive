@@ -298,6 +298,7 @@ describe('ensureQueueGitHubPRLinks', () => {
     const result = await ensureQueueGitHubPRLinks('/root', db);
 
     expect(result.linked).toBe(1);
+    expect(result.autoClosedNoDiff).toBe(0);
     expect(result.failed).toHaveLength(0);
     const updated = db.exec(
       `SELECT github_pr_number, github_pr_url FROM pull_requests WHERE id = '${localPr.id}'`
@@ -336,6 +337,7 @@ describe('ensureQueueGitHubPRLinks', () => {
     const result = await ensureQueueGitHubPRLinks('/root', db);
 
     expect(result.linked).toBe(1);
+    expect(result.autoClosedNoDiff).toBe(0);
     expect(result.failed).toHaveLength(0);
     const updated = db.exec(
       `SELECT github_pr_number, github_pr_url FROM pull_requests WHERE id = '${localPr.id}'`
@@ -360,6 +362,7 @@ describe('ensureQueueGitHubPRLinks', () => {
     const result = await ensureQueueGitHubPRLinks('/root', db);
 
     expect(result.linked).toBe(0);
+    expect(result.autoClosedNoDiff).toBe(0);
     expect(result.failed).toHaveLength(1);
     expect(result.failed[0].prId).toBe(localPr.id);
     const updated = db.exec(
@@ -367,5 +370,43 @@ describe('ensureQueueGitHubPRLinks', () => {
     );
     expect(updated[0].values[0][0]).toBeNull();
     expect(updated[0].values[0][1]).toBeNull();
+  });
+
+  it('auto-closes queued PR and reopens story when branch has no commits ahead of main', async () => {
+    db.run(
+      "INSERT INTO teams (id, repo_url, repo_path, name) VALUES ('team-1', 'https://github.com/test/repo', 'repos/test-repo', 'Test')"
+    );
+    db.run(
+      "INSERT INTO stories (id, title, description, status) VALUES ('STORY-123', 'Story', 'desc', 'pr_submitted')"
+    );
+    const localPr = createPullRequest(db, {
+      storyId: 'STORY-123',
+      teamId: 'team-1',
+      branchName: 'feature/no-commits',
+    });
+
+    const noCommitsErr = Object.assign(
+      new Error('could not find any commits between origin/main and feature/no-commits'),
+      { stderr: 'could not find any commits between origin/main and feature/no-commits' }
+    );
+
+    mockExeca
+      .mockResolvedValueOnce({ stdout: 'origin/main', stderr: '' } as any)
+      .mockRejectedValueOnce(noCommitsErr);
+
+    const result = await ensureQueueGitHubPRLinks('/root', db);
+
+    expect(result.linked).toBe(0);
+    expect(result.autoClosedNoDiff).toBe(1);
+    expect(result.failed).toHaveLength(0);
+
+    const prRow = db.exec(
+      `SELECT status, review_notes FROM pull_requests WHERE id = '${localPr.id}'`
+    );
+    expect(prRow[0].values[0][0]).toBe('closed');
+    expect(String(prRow[0].values[0][1])).toContain('auto-closed:no-commits');
+
+    const storyRow = db.exec("SELECT status FROM stories WHERE id = 'STORY-123'");
+    expect(storyRow[0].values[0][0]).toBe('in_progress');
   });
 });

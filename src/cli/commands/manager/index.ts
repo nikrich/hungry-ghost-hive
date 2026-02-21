@@ -844,13 +844,20 @@ async function ensureQueuedPRGitHubLinks(ctx: ManagerCheckContext): Promise<void
   const result = await ensureQueueGitHubPRLinks(ctx.root, ctx.db.db);
   verboseLogCtx(
     ctx,
-    `ensureQueuedPRGitHubLinks: linked=${result.linked}, failed=${result.failed.length}`
+    `ensureQueuedPRGitHubLinks: linked=${result.linked}, autoClosedNoDiff=${result.autoClosedNoDiff}, failed=${result.failed.length}`
   );
-  if (result.linked > 0 || result.failed.length > 0) {
+  if (result.linked > 0 || result.autoClosedNoDiff > 0 || result.failed.length > 0) {
     ctx.db.save();
   }
   if (result.linked > 0) {
     console.log(chalk.yellow(`  Auto-linked ${result.linked} queued PR(s) to GitHub`));
+  }
+  if (result.autoClosedNoDiff > 0) {
+    console.log(
+      chalk.yellow(
+        `  Auto-closed ${result.autoClosedNoDiff} queued PR(s) with no commits ahead of origin/main`
+      )
+    );
   }
   if (result.failed.length > 0) {
     console.log(chalk.red(`  Failed linking ${result.failed.length} queued PR(s) to GitHub`));

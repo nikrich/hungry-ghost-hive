@@ -52,6 +52,7 @@ interface ExistingPRNumberRow {
 interface UnlinkedQueuePRRow {
   id: string;
   team_id: string | null;
+  story_id: string | null;
   branch_name: string;
 }
 
@@ -63,6 +64,7 @@ export interface QueueGitHubPRLinkFailure {
 
 export interface EnsureQueueGitHubPRLinksResult {
   linked: number;
+  autoClosedNoDiff: number;
   failed: QueueGitHubPRLinkFailure[];
 }
 
@@ -314,7 +316,7 @@ export async function ensureQueueGitHubPRLinks(
   const unlinkedPRs = queryAll<UnlinkedQueuePRRow>(
     db,
     `
-    SELECT id, team_id, branch_name
+    SELECT id, team_id, story_id, branch_name
     FROM pull_requests
     WHERE status IN ('queued', 'reviewing', 'approved')
       AND github_pr_number IS NULL
@@ -324,7 +326,7 @@ export async function ensureQueueGitHubPRLinks(
   );
 
   if (unlinkedPRs.length === 0) {
-    return { linked: 0, failed: [] };
+    return { linked: 0, autoClosedNoDiff: 0, failed: [] };
   }
 
   const teamRepoById = new Map<string, string>();
@@ -337,6 +339,7 @@ export async function ensureQueueGitHubPRLinks(
 
   const failed: QueueGitHubPRLinkFailure[] = [];
   let linked = 0;
+  let autoClosedNoDiff = 0;
 
   for (const pr of unlinkedPRs) {
     const repoDir = pr.team_id ? (teamRepoById.get(pr.team_id) ?? root) : root;
@@ -374,6 +377,32 @@ export async function ensureQueueGitHubPRLinks(
       linked++;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
+
+      if (/could not find any commits between/i.test(reason)) {
+        updatePullRequest(db, pr.id, {
+          status: 'closed',
+          reviewNotes:
+            '[auto-closed:no-commits] Branch has no commits ahead of origin/main; story returned to in_progress',
+        });
+        if (pr.story_id) {
+          updateStory(db, pr.story_id, { status: 'in_progress' });
+        }
+        createLog(db, {
+          agentId: 'manager',
+          storyId: pr.story_id || undefined,
+          eventType: 'PR_CLOSED',
+          message: `Auto-closed queue PR ${pr.id} (${pr.branch_name}): no commits ahead of origin/main`,
+          metadata: {
+            pr_id: pr.id,
+            story_id: pr.story_id,
+            branch: pr.branch_name,
+            reason: 'no_commits_ahead',
+          },
+        });
+        autoClosedNoDiff++;
+        continue;
+      }
+
       failed.push({
         prId: pr.id,
         branch: pr.branch_name,
@@ -393,7 +422,7 @@ export async function ensureQueueGitHubPRLinks(
     }
   }
 
-  return { linked, failed };
+  return { linked, autoClosedNoDiff, failed };
 }
 
 /**
