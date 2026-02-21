@@ -299,6 +299,7 @@ describe('ensureQueueGitHubPRLinks', () => {
 
     expect(result.linked).toBe(1);
     expect(result.autoClosedNoDiff).toBe(0);
+    expect(result.reopenedStories).toEqual([]);
     expect(result.failed).toHaveLength(0);
     const updated = db.exec(
       `SELECT github_pr_number, github_pr_url FROM pull_requests WHERE id = '${localPr.id}'`
@@ -338,6 +339,7 @@ describe('ensureQueueGitHubPRLinks', () => {
 
     expect(result.linked).toBe(1);
     expect(result.autoClosedNoDiff).toBe(0);
+    expect(result.reopenedStories).toEqual([]);
     expect(result.failed).toHaveLength(0);
     const updated = db.exec(
       `SELECT github_pr_number, github_pr_url FROM pull_requests WHERE id = '${localPr.id}'`
@@ -363,6 +365,7 @@ describe('ensureQueueGitHubPRLinks', () => {
 
     expect(result.linked).toBe(0);
     expect(result.autoClosedNoDiff).toBe(0);
+    expect(result.reopenedStories).toEqual([]);
     expect(result.failed).toHaveLength(1);
     expect(result.failed[0].prId).toBe(localPr.id);
     const updated = db.exec(
@@ -398,6 +401,7 @@ describe('ensureQueueGitHubPRLinks', () => {
 
     expect(result.linked).toBe(0);
     expect(result.autoClosedNoDiff).toBe(1);
+    expect(result.reopenedStories).toEqual(['STORY-123']);
     expect(result.failed).toHaveLength(0);
 
     const prRow = db.exec(

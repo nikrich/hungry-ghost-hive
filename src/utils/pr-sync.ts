@@ -65,6 +65,7 @@ export interface QueueGitHubPRLinkFailure {
 export interface EnsureQueueGitHubPRLinksResult {
   linked: number;
   autoClosedNoDiff: number;
+  reopenedStories: string[];
   failed: QueueGitHubPRLinkFailure[];
 }
 
@@ -326,7 +327,7 @@ export async function ensureQueueGitHubPRLinks(
   );
 
   if (unlinkedPRs.length === 0) {
-    return { linked: 0, autoClosedNoDiff: 0, failed: [] };
+    return { linked: 0, autoClosedNoDiff: 0, reopenedStories: [], failed: [] };
   }
 
   const teamRepoById = new Map<string, string>();
@@ -338,6 +339,7 @@ export async function ensureQueueGitHubPRLinks(
   }
 
   const failed: QueueGitHubPRLinkFailure[] = [];
+  const reopenedStories: string[] = [];
   let linked = 0;
   let autoClosedNoDiff = 0;
 
@@ -386,6 +388,7 @@ export async function ensureQueueGitHubPRLinks(
         });
         if (pr.story_id) {
           updateStory(db, pr.story_id, { status: 'in_progress' });
+          reopenedStories.push(pr.story_id);
         }
         createLog(db, {
           agentId: 'manager',
@@ -422,7 +425,12 @@ export async function ensureQueueGitHubPRLinks(
     }
   }
 
-  return { linked, autoClosedNoDiff, failed };
+  return {
+    linked,
+    autoClosedNoDiff,
+    reopenedStories: Array.from(new Set(reopenedStories)),
+    failed,
+  };
 }
 
 /**

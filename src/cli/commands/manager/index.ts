@@ -90,6 +90,7 @@ const DONE_INFERENCE_CONFIDENCE_THRESHOLD = 0.82;
 const SCREEN_STATIC_AI_RECHECK_MS = 5 * 60 * 1000;
 const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_STUCK_NUDGES_PER_STORY = 1;
+const NO_DIFF_RECOVERY_NUDGE_COOLDOWN_MS = 15 * 60 * 1000;
 const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
 const AI_DONE_FALSE_REASON_PREFIX = 'AI done=false escalation';
 
@@ -116,6 +117,7 @@ interface ScreenStaticStatus {
 const screenStaticBySession = new Map<string, ScreenStaticTracking>();
 const classifierTimeoutInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
 const aiDoneFalseInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
+const noDiffRecoveryNudgeByStory = new Map<string, number>();
 
 function verboseLog(verbose: boolean, message: string): void {
   if (!verbose) return;
@@ -844,7 +846,7 @@ async function ensureQueuedPRGitHubLinks(ctx: ManagerCheckContext): Promise<void
   const result = await ensureQueueGitHubPRLinks(ctx.root, ctx.db.db);
   verboseLogCtx(
     ctx,
-    `ensureQueuedPRGitHubLinks: linked=${result.linked}, autoClosedNoDiff=${result.autoClosedNoDiff}, failed=${result.failed.length}`
+    `ensureQueuedPRGitHubLinks: linked=${result.linked}, autoClosedNoDiff=${result.autoClosedNoDiff}, reopenedStories=${result.reopenedStories.length}, failed=${result.failed.length}`
   );
   if (result.linked > 0 || result.autoClosedNoDiff > 0 || result.failed.length > 0) {
     ctx.db.save();
@@ -861,6 +863,55 @@ async function ensureQueuedPRGitHubLinks(ctx: ManagerCheckContext): Promise<void
   }
   if (result.failed.length > 0) {
     console.log(chalk.red(`  Failed linking ${result.failed.length} queued PR(s) to GitHub`));
+  }
+
+  if (result.reopenedStories.length > 0) {
+    await nudgeRecoveredNoDiffStories(ctx, result.reopenedStories);
+  }
+}
+
+async function nudgeRecoveredNoDiffStories(
+  ctx: ManagerCheckContext,
+  reopenedStories: string[]
+): Promise<void> {
+  const now = Date.now();
+
+  for (const storyId of reopenedStories) {
+    const lastNudge = noDiffRecoveryNudgeByStory.get(storyId) ?? 0;
+    if (now - lastNudge < NO_DIFF_RECOVERY_NUDGE_COOLDOWN_MS) {
+      continue;
+    }
+
+    const story = getStoryById(ctx.db.db, storyId);
+    if (!story?.assigned_agent_id) continue;
+
+    const agent = getAgentById(ctx.db.db, story.assigned_agent_id);
+    if (!agent) continue;
+
+    const sessionName = agent.tmux_session || `hive-${agent.id}`;
+    if (!(await isTmuxSessionRunning(sessionName))) {
+      continue;
+    }
+
+    await nudgeAgent(
+      sessionName,
+      withManagerNudgeEnvelope(
+        `Recovery mode for ${storyId}: your previous PR branch had no commits ahead of origin/main, but your existing worktree state should be reused. Do not restart or rewrite work. Continue from current files, commit your existing changes, run validation, and submit with:\nhive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${storyId} --from ${sessionName}\nThen mark complete.`
+      )
+    );
+    noDiffRecoveryNudgeByStory.set(storyId, now);
+    ctx.counters.nudged++;
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId,
+      eventType: 'STORY_PROGRESS_UPDATE',
+      message: `Recovery nudge sent after no-diff PR auto-close to ${sessionName}`,
+      metadata: {
+        story_id: storyId,
+        session: sessionName,
+        reason: 'no_diff_pr_auto_close',
+      },
+    });
   }
 }
 
