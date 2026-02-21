@@ -4,6 +4,7 @@ import { execa } from 'execa';
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, isAbsolute, join, resolve } from 'path';
+import { isLocked } from '../db/lock.js';
 
 // --- Named constants (extracted from inline magic numbers) ---
 
@@ -37,6 +38,10 @@ const DEFAULT_APPROVE_MAX_RETRIES = 3;
 const POST_APPROVAL_DELAY_MS = 500;
 /** Default manager check interval in seconds */
 const DEFAULT_MANAGER_INTERVAL = 60;
+/** Delay in ms to verify manager startup result in tmux */
+const MANAGER_STARTUP_CHECK_DELAY_MS = 800;
+/** Number of pane lines to inspect for manager startup status */
+const MANAGER_STARTUP_CAPTURE_LINES = 80;
 
 export interface TmuxSessionOptions {
   sessionName: string;
@@ -525,6 +530,11 @@ export async function startManager(interval = DEFAULT_MANAGER_INTERVAL): Promise
   }
 
   const workDir = findHiveRootFromDir(process.cwd()) || process.cwd();
+  const managerLockPath = join(workDir, '.hive', 'manager.lock');
+  if (await isLocked(managerLockPath)) {
+    return false;
+  }
+
   const sessionEnv = buildTmuxSessionEnv(workDir);
 
   // Start the manager in a detached tmux session
@@ -536,7 +546,15 @@ export async function startManager(interval = DEFAULT_MANAGER_INTERVAL): Promise
   const managerCommand = `${buildHiveInvokeCommand()} manager start -i ${interval}`;
   await execa('tmux', ['send-keys', '-t', MANAGER_SESSION, managerCommand, 'Enter']);
 
-  return true;
+  // Validate startup and clean up failed boot attempts.
+  await new Promise(resolve => setTimeout(resolve, MANAGER_STARTUP_CHECK_DELAY_MS));
+  const startupOutput = await captureTmuxPane(MANAGER_SESSION, MANAGER_STARTUP_CAPTURE_LINES);
+  if (/failed to acquire manager lock/i.test(startupOutput)) {
+    await killTmuxSession(MANAGER_SESSION);
+    return false;
+  }
+
+  return isTmuxSessionRunning(MANAGER_SESSION);
 }
 
 export async function stopManager(): Promise<boolean> {
