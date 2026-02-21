@@ -75,6 +75,7 @@ import { handleStalledPlanningHandoff } from './handoff-recovery.js';
 import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
 import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
+import { findStoryStateEscalationsToResolve, type StoryStateSnapshot } from './story-state-escalations.js';
 import { findStaleSessionEscalations } from './stale-escalations.js';
 import type { ManagerCheckContext } from './types.js';
 import {
@@ -795,6 +796,8 @@ async function managerCheck(
     prepareSessionData(ctx);
     verboseLogCtx(ctx, 'Step: resolve stale escalations');
     resolveStaleEscalations(ctx);
+    verboseLogCtx(ctx, 'Step: resolve story-state escalations');
+    resolveStoryStateEscalations(ctx);
 
     if (ctx.hiveSessions.length === 0) {
       console.log(chalk.gray('  No agent sessions found'));
@@ -1022,6 +1025,66 @@ function resolveStaleEscalations(ctx: ManagerCheckContext): void {
 
   ctx.db.save();
   console.log(chalk.yellow(`  Auto-cleared ${staleEscalations.length} stale escalation(s)`));
+}
+
+function resolveStoryStateEscalations(ctx: ManagerCheckContext): void {
+  const pendingEscalations = getPendingEscalations(ctx.db.db);
+  verboseLogCtx(ctx, `resolveStoryStateEscalations: pending=${pendingEscalations.length}`);
+  if (pendingEscalations.length === 0) return;
+
+  const storyIds = [
+    ...new Set(
+      pendingEscalations
+        .map(escalation => escalation.story_id)
+        .filter((storyId): storyId is string => typeof storyId === 'string' && storyId.length > 0)
+    ),
+  ];
+  const storyById = new Map<string, StoryStateSnapshot>();
+
+  for (const storyId of storyIds) {
+    const story = getStoryById(ctx.db.db, storyId);
+    if (!story) continue;
+    const assignedAgent = story.assigned_agent_id ? getAgentById(ctx.db.db, story.assigned_agent_id) : null;
+    const assignedSessionName = assignedAgent?.tmux_session ?? (assignedAgent ? `hive-${assignedAgent.id}` : null);
+    storyById.set(storyId, {
+      id: story.id,
+      status: story.status,
+      assignedSessionName,
+    });
+  }
+
+  const resolvable = findStoryStateEscalationsToResolve({
+    pendingEscalations,
+    storyById,
+  });
+  if (resolvable.length === 0) return;
+  verboseLogCtx(ctx, `resolveStoryStateEscalations: resolvable=${resolvable.length}`);
+
+  for (const candidate of resolvable) {
+    updateEscalation(ctx.db.db, candidate.escalation.id, {
+      status: 'resolved',
+      resolution: `Manager auto-resolved story-state escalation: ${candidate.reason}`,
+    });
+    if (candidate.escalation.from_agent_id) {
+      ctx.escalatedSessions.delete(candidate.escalation.from_agent_id);
+    }
+    ctx.counters.escalationsResolved++;
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId: candidate.escalation.story_id || undefined,
+      eventType: 'ESCALATION_RESOLVED',
+      message: `Auto-resolved story-state escalation ${candidate.escalation.id}`,
+      metadata: {
+        escalation_id: candidate.escalation.id,
+        from_agent_id: candidate.escalation.from_agent_id,
+        reason: candidate.reason,
+        recovery: 'story_state_escalation',
+      },
+    });
+  }
+
+  ctx.db.save();
+  console.log(chalk.green(`  AUTO-RESOLVED: ${resolvable.length} story-state escalation(s)`));
 }
 
 function resolveOrphanedSessionEscalations(ctx: ManagerCheckContext): void {
