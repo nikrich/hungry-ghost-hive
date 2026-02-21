@@ -6,6 +6,7 @@ import {
   buildHumanApprovalReason,
   buildInterruptionRecoveryPrompt,
   buildRateLimitRecoveryPrompt,
+  shouldRetryInterruptionEnter,
   shouldAutoResolveEscalationsAfterRecovery,
 } from './escalation-handler.js';
 
@@ -173,5 +174,31 @@ describe('shouldAutoResolveEscalationsAfterRecovery', () => {
         AgentState.USER_DECLINED
       )
     ).toBe(false);
+  });
+});
+
+describe('shouldRetryInterruptionEnter', () => {
+  it('returns true when interruption banner is still present in user-declined state', () => {
+    const output = `
+■ Conversation interrupted - tell the model what to do differently.
+Hit /feedback to report the issue.
+`;
+    expect(shouldRetryInterruptionEnter(output, AgentState.USER_DECLINED)).toBe(true);
+  });
+
+  it('returns false when interruption banner is not present', () => {
+    const output = `
+# [HIVE_MANAGER_NUDGE_START]
+continue
+# [HIVE_MANAGER_NUDGE_END]
+`;
+    expect(shouldRetryInterruptionEnter(output, AgentState.USER_DECLINED)).toBe(false);
+  });
+
+  it('returns false for non-user-declined states', () => {
+    const output = `
+■ Conversation interrupted - tell the model what to do differently.
+`;
+    expect(shouldRetryInterruptionEnter(output, AgentState.IDLE_AT_PROMPT)).toBe(false);
   });
 });

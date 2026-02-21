@@ -14,6 +14,8 @@ import {
   AgentState,
   agentStates,
   buildAutoRecoveryReminder,
+  captureTmuxPane,
+  detectAgentState,
   describeAgentState,
   isRateLimitPrompt,
   sendToTmuxSession,
@@ -25,6 +27,9 @@ import { RECENT_ESCALATION_LOOKBACK_MINUTES } from './types.js';
 
 const INTERRUPTION_FIRST_RECOVERY_COMMAND = 'continue';
 const INTERRUPTION_HARD_RESET_ATTEMPTS = 3;
+const INTERRUPTION_ENTER_RETRY_ATTEMPTS = 2;
+const INTERRUPTION_ENTER_RETRY_DELAY_MS = 800;
+const INTERRUPTION_RETRY_CAPTURE_LINES = 120;
 const RATE_LIMIT_INITIAL_BACKOFF_MS = 90000;
 const RATE_LIMIT_MAX_BACKOFF_MS = 300000;
 const interruptionRecoveryAttempts = new Map<string, number>();
@@ -34,6 +39,36 @@ const INTERRUPTION_PROMPT_PATTERN =
 
 function isInterruptionPrompt(output: string): boolean {
   return INTERRUPTION_PROMPT_PATTERN.test(output);
+}
+
+export function shouldRetryInterruptionEnter(
+  output: string,
+  state: import('../../../state-detectors/types.js').AgentState
+): boolean {
+  return state === AgentState.USER_DECLINED && isInterruptionPrompt(output);
+}
+
+async function sendInterruptionEnterRetriesIfNeeded(
+  ctx: Pick<ManagerCheckContext, 'verbose'>,
+  sessionName: string,
+  agentCliTool: CLITool
+): Promise<number> {
+  let retries = 0;
+  for (let attempt = 0; attempt < INTERRUPTION_ENTER_RETRY_ATTEMPTS; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, INTERRUPTION_ENTER_RETRY_DELAY_MS));
+    const updatedOutput = await captureTmuxPane(sessionName, INTERRUPTION_RETRY_CAPTURE_LINES);
+    const updatedState = detectAgentState(updatedOutput, agentCliTool).state;
+    if (!shouldRetryInterruptionEnter(updatedOutput, updatedState)) {
+      break;
+    }
+    await sendEnterToTmuxSession(sessionName);
+    retries++;
+    verboseLog(
+      ctx,
+      `escalationCheck: ${sessionName} action=retry_interruption_enter attempt=${attempt + 1}`
+    );
+  }
+  return retries;
 }
 
 function verboseLog(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string): void {
@@ -277,6 +312,7 @@ export async function handleEscalationAndNudge(
         : buildInterruptionRecoveryPrompt(sessionName, agent?.current_story_id);
     await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(prompt));
     await sendEnterToTmuxSession(sessionName);
+    const enterRetries = await sendInterruptionEnterRetriesIfNeeded(ctx, sessionName, agentCliTool);
     interruptionRecoveryAttempts.set(sessionName, attempts + 1);
     ctx.counters.nudged++;
 
@@ -302,6 +338,7 @@ export async function handleEscalationAndNudge(
         detected_state: stateResult.state,
         recovery: 'conversation_interrupted',
         attempt: attempts + 1,
+        enter_retries: enterRetries,
       },
     });
     ctx.db.save();
