@@ -129,6 +129,10 @@ function verboseLog(verbose: boolean, message: string): void {
 }
 
 function isConcurrencyError(error: unknown): boolean {
+  if (error instanceof Error && /failed to acquire lock|lock file is already being held/i.test(error.message)) {
+    return true;
+  }
+
   return (
     typeof error === 'object' &&
     error !== null &&
