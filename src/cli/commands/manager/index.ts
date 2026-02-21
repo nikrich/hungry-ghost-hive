@@ -1979,13 +1979,27 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       continue;
     }
 
+    const stuckNudgesSent = trackedState?.storyStuckNudgeCount || 0;
+    const bypassStaticWindowForInference =
+      stateResult.state === AgentState.IDLE_AT_PROMPT ||
+      stuckNudgesSent >= maxStuckNudgesPerStory;
     const sessionUnchangedForMs = getSessionStaticUnchangedForMs(agentSession.name, now);
-    if (sessionUnchangedForMs < staticInactivityThresholdMs) {
+    if (sessionUnchangedForMs < staticInactivityThresholdMs && !bypassStaticWindowForInference) {
       verboseLogCtx(
         ctx,
         `nudgeStuckStories: story=${story.id} skip=done_inference_static_window remainingMs=${staticInactivityThresholdMs - sessionUnchangedForMs}`
       );
     } else {
+      if (sessionUnchangedForMs < staticInactivityThresholdMs && bypassStaticWindowForInference) {
+        const bypassReason =
+          stateResult.state === AgentState.IDLE_AT_PROMPT
+            ? `idle_at_prompt`
+            : `stuck_nudge_limit reached=${stuckNudgesSent}/${maxStuckNudgesPerStory}`;
+        verboseLogCtx(
+          ctx,
+          `nudgeStuckStories: story=${story.id} override=done_inference_static_window reason=${bypassReason}`
+        );
+      }
       const completionAssessment = await assessCompletionFromOutput(
         ctx.config,
         agentSession.name,
@@ -2030,7 +2044,6 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
         }
         verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} auto_progress_failed`);
       } else {
-        const stuckNudgesSent = trackedState?.storyStuckNudgeCount || 0;
         if (stuckNudgesSent >= maxStuckNudgesPerStory) {
           await markDoneFalseForHumanIntervention(
             ctx,
@@ -2047,7 +2060,6 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       }
     }
 
-    const stuckNudgesSent = trackedState?.storyStuckNudgeCount || 0;
     if (stuckNudgesSent >= maxStuckNudgesPerStory) {
       verboseLogCtx(
         ctx,
