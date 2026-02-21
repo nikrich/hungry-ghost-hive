@@ -2,8 +2,17 @@
 
 import type { Command } from 'commander';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getPullRequestById, updatePullRequest } from '../../db/queries/pull-requests.js';
+import {
+  createPullRequest,
+  getPullRequestById,
+  updatePullRequest,
+} from '../../db/queries/pull-requests.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
+import { execa } from 'execa';
+
+vi.mock('execa', () => ({
+  execa: vi.fn(),
+}));
 
 // Mock dependencies
 vi.mock('../../cluster/runtime.js', () => ({
@@ -24,7 +33,21 @@ vi.mock('../../db/queries/logs.js', () => ({
 }));
 
 vi.mock('../../db/queries/pull-requests.js', () => ({
-  createPullRequest: vi.fn(() => ({ id: 'pr-1', branch_name: 'test-branch', story_id: 'TEST-1' })),
+  createPullRequest: vi.fn((_db, input) => ({
+    id: 'pr-1',
+    branch_name: input.branchName,
+    story_id: input.storyId ?? null,
+    team_id: input.teamId ?? null,
+    github_pr_number: input.githubPrNumber ?? null,
+    github_pr_url: input.githubPrUrl ?? null,
+    submitted_by: input.submittedBy ?? null,
+    reviewed_by: null,
+    status: 'queued',
+    review_notes: null,
+    created_at: '2026-02-14T00:00:00.000Z',
+    updated_at: '2026-02-14T00:00:00.000Z',
+    reviewed_at: null,
+  })),
   getMergeQueue: vi.fn(() => []),
   getNextInQueue: vi.fn(),
   getOpenPullRequestsByStory: vi.fn(() => []),
@@ -42,12 +65,9 @@ vi.mock('../../db/queries/teams.js', () => ({
   getTeamById: vi.fn(),
 }));
 
-vi.mock('../../integrations/jira/comments.js', () => ({
-  postJiraLifecycleComment: vi.fn(),
-}));
-
-vi.mock('../../integrations/jira/transitions.js', () => ({
-  syncStatusToJira: vi.fn(),
+vi.mock('../../connectors/project-management/operations.js', () => ({
+  postLifecycleComment: vi.fn(),
+  syncStatusForStory: vi.fn(),
 }));
 
 vi.mock('../../orchestrator/scheduler.js', () => ({
@@ -88,6 +108,9 @@ vi.mock('../../utils/with-hive-context.js', () => ({
 import { prCommand } from './pr.js';
 
 describe('pr command', () => {
+  const execaResult = (stdout = '', stderr = ''): Awaited<ReturnType<typeof execa>> =>
+    ({ stdout, stderr } as Awaited<ReturnType<typeof execa>>);
+
   const resetCommandOptions = (command: Command): void => {
     for (const option of command.options) {
       command.setOptionValue(option.attributeName(), undefined);
@@ -204,6 +227,81 @@ describe('pr command', () => {
       const submitCmd = prCommand.commands.find(cmd => cmd.name() === 'submit');
       const fromOpt = submitCmd?.options.find(opt => opt.long === '--from');
       expect(fromOpt).toBeDefined();
+    });
+
+    it('auto-creates a GitHub PR when submit has no --pr-url/--pr-number', async () => {
+      vi.mocked(execa)
+        .mockResolvedValueOnce(execaResult('origin/main'))
+        .mockResolvedValueOnce(execaResult('https://github.com/test/repo/pull/123'));
+
+      await run('submit', '--branch', 'feature/test', '--story', 'TEST-1');
+
+      expect(createPullRequest).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          branchName: 'feature/test',
+          githubPrNumber: 123,
+          githubPrUrl: 'https://github.com/test/repo/pull/123',
+        })
+      );
+      expect(execa).toHaveBeenNthCalledWith(
+        2,
+        'gh',
+        ['pr', 'create', '--head', 'feature/test', '--fill', '--base', 'main'],
+        expect.objectContaining({ cwd: '/tmp' })
+      );
+    });
+
+    it('links existing GitHub PR when create reports already exists', async () => {
+      const alreadyExistsError = Object.assign(
+        new Error('a pull request for branch "feature/test" already exists'),
+        { stderr: 'a pull request for branch "feature/test" already exists' }
+      );
+
+      vi.mocked(execa)
+        .mockResolvedValueOnce(execaResult('origin/main'))
+        .mockRejectedValueOnce(alreadyExistsError)
+        .mockResolvedValueOnce(
+          execaResult(JSON.stringify({ number: 456, url: 'https://github.com/test/repo/pull/456' }))
+        );
+
+      await run('submit', '--branch', 'feature/test', '--story', 'TEST-1');
+
+      expect(createPullRequest).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          branchName: 'feature/test',
+          githubPrNumber: 456,
+          githubPrUrl: 'https://github.com/test/repo/pull/456',
+        })
+      );
+      expect(execa).toHaveBeenNthCalledWith(
+        3,
+        'gh',
+        ['pr', 'view', 'feature/test', '--json', 'number,url'],
+        expect.objectContaining({ cwd: '/tmp' })
+      );
+    });
+
+    it('aborts submit when GitHub PR cannot be created or found', async () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit');
+      });
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      vi.mocked(execa)
+        .mockResolvedValueOnce(execaResult('origin/main'))
+        .mockRejectedValueOnce(new Error('gh auth failed'))
+        .mockRejectedValueOnce(new Error('no PR found'));
+
+      await expect(run('submit', '--branch', 'feature/test', '--story', 'TEST-1')).rejects.toThrow(
+        'process.exit'
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(createPullRequest).not.toHaveBeenCalled();
+
+      exitSpy.mockRestore();
+      consoleSpy.mockRestore();
     });
   });
 

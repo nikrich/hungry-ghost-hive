@@ -25,12 +25,111 @@ import { getTeamById } from '../../db/queries/teams.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
+import { extractPRNumber } from '../../utils/github.js';
 import { markManualMergeRequired } from '../../utils/manual-merge.js';
 import { getExistingPRIdentifiers, syncOpenGitHubPRs } from '../../utils/pr-sync.js';
 import { extractStoryIdFromBranch, normalizeStoryId } from '../../utils/story-id.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const prCommand = new Command('pr').description('Manage pull requests and merge queue');
+
+const GITHUB_PR_URL_REGEX = /https?:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+/i;
+
+function extractGitHubPrUrl(text: string): string | null {
+  const match = text.match(GITHUB_PR_URL_REGEX);
+  return match ? match[0] : null;
+}
+
+function getCommandOutput(error: unknown): string {
+  if (!(typeof error === 'object' && error !== null)) {
+    return String(error);
+  }
+
+  const parts: string[] = [];
+  const commandError = error as {
+    shortMessage?: unknown;
+    message?: unknown;
+    stdout?: unknown;
+    stderr?: unknown;
+  };
+
+  if (typeof commandError.shortMessage === 'string') parts.push(commandError.shortMessage);
+  if (typeof commandError.message === 'string') parts.push(commandError.message);
+  if (typeof commandError.stdout === 'string') parts.push(commandError.stdout);
+  if (typeof commandError.stderr === 'string') parts.push(commandError.stderr);
+
+  return parts.join('\n').trim();
+}
+
+async function getDefaultBaseBranch(repoCwd: string): Promise<string | null> {
+  try {
+    const result = await execa('git', ['symbolic-ref', 'refs/remotes/origin/HEAD', '--short'], {
+      cwd: repoCwd,
+    });
+    const remoteRef = result.stdout.trim();
+    const parts = remoteRef.split('/');
+    const base = parts[parts.length - 1];
+    return base || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getExistingGitHubPrForBranch(
+  repoCwd: string,
+  branch: string
+): Promise<{ number: number | null; url: string | null } | null> {
+  try {
+    const result = await execa('gh', ['pr', 'view', branch, '--json', 'number,url'], { cwd: repoCwd });
+    const parsed = JSON.parse(result.stdout) as { number?: number; url?: string };
+    if (!parsed.url) return null;
+    return {
+      number: typeof parsed.number === 'number' ? parsed.number : extractPRNumber(parsed.url) || null,
+      url: parsed.url,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function createOrFindGitHubPr(
+  repoCwd: string,
+  branch: string
+): Promise<{ number: number | null; url: string | null }> {
+  const baseBranch = await getDefaultBaseBranch(repoCwd);
+  const createArgs = ['pr', 'create', '--head', branch, '--fill'];
+  if (baseBranch) {
+    createArgs.push('--base', baseBranch);
+  }
+
+  try {
+    const result = await execa('gh', createArgs, { cwd: repoCwd });
+    const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
+    const prUrl = extractGitHubPrUrl(output);
+    if (!prUrl) {
+      const existingPr = await getExistingGitHubPrForBranch(repoCwd, branch);
+      if (existingPr) return existingPr;
+      throw new Error('gh pr create completed but no PR URL could be determined');
+    }
+    return { number: extractPRNumber(prUrl) || null, url: prUrl };
+  } catch (error) {
+    const output = getCommandOutput(error);
+    const prUrl = extractGitHubPrUrl(output);
+    if (prUrl) {
+      return { number: extractPRNumber(prUrl) || null, url: prUrl };
+    }
+
+    if (
+      /already exists|already has an open pull request|already open/i.test(output) ||
+      /a pull request for branch .* already exists/i.test(output)
+    ) {
+      const existingPr = await getExistingGitHubPrForBranch(repoCwd, branch);
+      if (existingPr) return existingPr;
+    }
+
+    throw new Error(output || 'Unknown gh pr create error');
+  }
+}
 
 // Submit a PR to the merge queue
 prCommand
@@ -64,6 +163,13 @@ prCommand
         }
 
         teamId = story.team_id;
+        let repoCwd = root;
+        if (teamId) {
+          const team = getTeamById(db.db, teamId);
+          if (team?.repo_path) {
+            repoCwd = join(root, team.repo_path);
+          }
+        }
 
         // Auto-close any existing open PRs for this story
         const existingPRs = getOpenPullRequestsByStory(db.db, storyId);
@@ -80,14 +186,6 @@ prCommand
           // Close the PR on GitHub if it has a PR number
           if (existingPR.github_pr_number) {
             try {
-              // Determine repo directory for gh CLI
-              let repoCwd = root;
-              if (teamId) {
-                const team = getTeamById(db.db, teamId);
-                if (team?.repo_path) {
-                  repoCwd = join(root, team.repo_path);
-                }
-              }
               await execa('gh', ['pr', 'close', String(existingPR.github_pr_number)], {
                 cwd: repoCwd,
               });
@@ -107,22 +205,51 @@ prCommand
           }
         }
 
-        // Update story status
-        updateStory(db.db, storyId, { status: 'pr_submitted' });
+        let githubPrNumber = options.prNumber ? parseInt(options.prNumber, 10) : null;
+        let githubPrUrl = options.prUrl || null;
 
-        // Sync status change to Jira
-        await syncStatusForStory(root, db.db, storyId, 'pr_submitted');
+        if (!githubPrNumber && !githubPrUrl) {
+          try {
+            const linkedPr = await createOrFindGitHubPr(repoCwd, options.branch);
+            githubPrNumber = linkedPr.number;
+            githubPrUrl = linkedPr.url;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(
+              chalk.red(`Failed to create or locate GitHub PR for branch ${options.branch}: ${message}`)
+            );
+            process.exit(1);
+          }
+        }
+
+        if (!githubPrNumber && !githubPrUrl) {
+          console.error(
+            chalk.red(`No GitHub PR linked for branch ${options.branch}. Aborting queue submission.`)
+          );
+          process.exit(1);
+        }
+
+        const prNumberFromUrl = githubPrUrl ? extractPRNumber(githubPrUrl) : null;
+        if (!githubPrNumber && prNumberFromUrl) {
+          githubPrNumber = prNumberFromUrl;
+        }
 
         const pr = createPullRequest(db.db, {
           storyId,
           teamId,
           branchName: options.branch,
-          githubPrNumber: options.prNumber ? parseInt(options.prNumber, 10) : null,
-          githubPrUrl: options.prUrl || null,
+          githubPrNumber,
+          githubPrUrl,
           submittedBy: options.from || null,
         });
 
+        // Update story status after PR is successfully linked in queue
+        updateStory(db.db, storyId, { status: 'pr_submitted' });
+
         db.save();
+
+        // Sync status change to Jira
+        await syncStatusForStory(root, db.db, storyId, 'pr_submitted');
 
         const position = getQueuePosition(db.db, pr.id);
 
