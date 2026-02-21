@@ -16,10 +16,13 @@ const COMPLETION_CANDIDATE_PATTERNS = [
   /worked for \d+/i,
   /testing:\s*(?:not run|pass|fail)/i,
   /next steps:/i,
+  /implementation summary/i,
   /implementation complete/i,
   /ready for review/i,
   /summary/i,
   /pull request|pr submitted/i,
+  /story is done/i,
+  /final report state/i,
   /all requested code changes.*(?:done|complete|finished)/i,
   /(?:implementation|templates?|tests?).*(?:done|complete|finished).*(?:locally)?/i,
   /pending.*(?:pr submission|submit(?:ting)? (?:a )?pr)/i,
@@ -37,7 +40,6 @@ const NON_COMPLETION_PATTERNS = [
   /waiting for .*files?/i,
   /needs? .*restored/i,
   /\b(?:choose|select|approve|deny)\b/i,
-  /\?\s*$/,
 ];
 
 export interface CompletionAssessment {
@@ -172,12 +174,37 @@ function parseAssessmentJson(rawContent: string): CompletionAssessment | null {
 }
 
 function reasonIndicatesPostWorkCompletion(reason: string): boolean {
-  return (
-    /post-work\s+(?:summary|report)\s+state/i.test(reason) ||
-    /final report/i.test(reason) ||
-    /completed implementation summary/i.test(reason) ||
-    /completed implementation/i.test(reason)
-  );
+  const positiveSignals = [
+    /post-work\s+(?:summary|report)(?:\s+state)?/i,
+    /completed implementation summary/i,
+    /implementation summary with completed changes/i,
+    /clear implementation summary/i,
+    /final implementation summary/i,
+    /completed changes and test status/i,
+    /indicating post-work/i,
+    /confirmation that (?:the )?story is done/i,
+    /agent is in final report state/i,
+    /despite (?:the )?prompt still being shown/i,
+  ];
+  return positiveSignals.some(pattern => pattern.test(reason));
+}
+
+function reasonIndicatesIncompleteWork(reason: string): boolean {
+  const incompleteSignals = [
+    /not (?:a )?final (?:completion|summary|report)/i,
+    /does not clearly indicate/i,
+    /still in the workflow/i,
+    /ongoing work/i,
+    /incomplete/i,
+    /blocked/i,
+    /failing tests?/i,
+    /required next step/i,
+    /awaiting/i,
+    /request to run \/review/i,
+    /interactive prompt/i,
+    /not at a final post-work report/i,
+  ];
+  return incompleteSignals.some(pattern => pattern.test(reason));
 }
 
 function reconcileAssessmentWithHeuristics(
@@ -192,7 +219,10 @@ function reconcileAssessmentWithHeuristics(
   const recent = getRecentOutput(output);
   const hasStrongNonCompletionSignal = NON_COMPLETION_PATTERNS.some(pattern => pattern.test(recent));
 
-  if (reasonIndicatesPostWorkCompletion(aiAssessment.reason)) {
+  if (
+    reasonIndicatesPostWorkCompletion(aiAssessment.reason) &&
+    !reasonIndicatesIncompleteWork(aiAssessment.reason)
+  ) {
     return {
       done: true,
       confidence: Math.max(HEURISTIC_DONE_CONFIDENCE, aiAssessment.confidence),
@@ -229,7 +259,9 @@ function buildCompletionClassifierPrompt(
       'Classify whether the agent is done and should move to PR submission workflow.\n' +
       'Rules:\n' +
       '- done=true only when output indicates completed implementation summary/final report.\n' +
+      '- done=true for post-work completion summaries even if trailing CLI prompt/shortcuts text remains on screen.\n' +
       '- done=false if output is planning, blocked, asking for approval, or still executing.\n' +
+      '- done=false when output explicitly asks to run /review or says not final/incomplete.\n' +
       '- Confidence must be between 0 and 1.\n' +
       'Respond with exactly:\n' +
       '{"done": boolean, "confidence": number, "reason": string}\n' +

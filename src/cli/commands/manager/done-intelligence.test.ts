@@ -34,6 +34,20 @@ Next steps:
 1. Submit PR to merge queue
 2. Mark story complete`;
 
+const FINAL_SUMMARY_WITH_PROMPT_OUTPUT = `Implemented operator wiring and language templates.
+
+Changes:
+- Added runtime operator and tests.
+- Updated template renderers.
+
+Testing: pass.
+
+Next steps:
+1. Submit PR to merge queue
+2. Mark story complete
+
+? for shortcuts`;
+
 const BLOCKED_OUTPUT = `No other work can proceed until missing proto files are restored.
 Story remains IN_PROGRESS and blocked.`;
 
@@ -156,6 +170,41 @@ describe('done intelligence', () => {
     expect(result.reason).toContain('overriding conflicting AI done=false classification');
   });
 
+  it('overrides done=false for broader post-work report phrasing', async () => {
+    mockExeca.mockResolvedValue({
+      stdout:
+        '{"done":false,"confidence":0.61,"reason":"Output shows an implementation summary with completed changes and test status, indicating post-work report rather than ongoing execution or planning."}',
+    });
+
+    const result = await assessCompletionFromOutput(
+      mockConfig,
+      'hive-intermediate-team-10',
+      'STORY-779',
+      FINAL_SUMMARY_OUTPUT
+    );
+
+    expect(result.done).toBe(true);
+    expect(result.confidence).toBeGreaterThanOrEqual(0.84);
+    expect(result.reason).toContain('overriding conflicting AI done=false classification');
+  });
+
+  it('does not override done=false when AI reason explicitly says output is not final', async () => {
+    mockExeca.mockResolvedValue({
+      stdout:
+        '{"done":false,"confidence":0.86,"reason":"Output includes a request to run /review and does not clearly indicate a final implementation summary completion state by the agent."}',
+    });
+
+    const result = await assessCompletionFromOutput(
+      mockConfig,
+      'hive-junior-team-11',
+      'STORY-780',
+      FINAL_SUMMARY_OUTPUT
+    );
+
+    expect(result.done).toBe(false);
+    expect(result.confidence).toBe(0.86);
+  });
+
   it('keeps done=false when AI reason indicates active incomplete work', async () => {
     mockExeca.mockResolvedValue({
       stdout:
@@ -171,5 +220,19 @@ describe('done intelligence', () => {
 
     expect(result.done).toBe(false);
     expect(result.confidence).toBe(0.88);
+  });
+
+  it('keeps heuristic done for final summaries with trailing shortcut prompt text', async () => {
+    mockExeca.mockRejectedValue(new Error('classifier unavailable'));
+
+    const result = await assessCompletionFromOutput(
+      mockConfig,
+      'hive-junior-team-12',
+      'STORY-781',
+      FINAL_SUMMARY_WITH_PROMPT_OUTPUT
+    );
+
+    expect(result.done).toBe(true);
+    expect(result.reason).toContain('local classifier unavailable');
   });
 });
