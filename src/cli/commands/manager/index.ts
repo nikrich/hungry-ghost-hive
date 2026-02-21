@@ -74,6 +74,7 @@ import { assessCompletionFromOutput } from './done-intelligence.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
 import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
+import { findOrphanedReviewAssignments } from './review-assignment-recovery.js';
 import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
 import { findStoryStateEscalationsToResolve, type StoryStateSnapshot } from './story-state-escalations.js';
@@ -799,6 +800,8 @@ async function managerCheck(
 
     verboseLogCtx(ctx, 'Step: prepare session data');
     prepareSessionData(ctx);
+    verboseLogCtx(ctx, 'Step: recover orphaned reviewing PR assignments');
+    await recoverOrphanedReviewAssignments(ctx);
     verboseLogCtx(ctx, 'Step: resolve stale escalations');
     resolveStaleEscalations(ctx);
     verboseLogCtx(ctx, 'Step: resolve story-state escalations');
@@ -1046,6 +1049,46 @@ function prepareSessionData(ctx: ManagerCheckContext): void {
     ctx,
     `prepareSessionData: escalations=${existingEscalations.length}, agentsIndexed=${bySessionName.size}`
   );
+}
+
+async function recoverOrphanedReviewAssignments(ctx: ManagerCheckContext): Promise<void> {
+  const openPRs = getMergeQueue(ctx.db.db);
+  const orphaned = findOrphanedReviewAssignments({
+    openPRs,
+    liveSessionNames: new Set(ctx.hiveSessions.map(session => session.name)),
+    agentsBySessionName: ctx.agentsBySessionName,
+  });
+  verboseLogCtx(ctx, `recoverOrphanedReviewAssignments: orphaned=${orphaned.length}`);
+  if (orphaned.length === 0) return;
+
+  withTransaction(ctx.db.db, () => {
+    for (const candidate of orphaned) {
+      updatePullRequest(ctx.db.db, candidate.pr.id, {
+        status: 'queued',
+        reviewedBy: null,
+      });
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        storyId: candidate.pr.story_id || undefined,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Requeued orphaned PR review ${candidate.pr.id}`,
+        metadata: {
+          pr_id: candidate.pr.id,
+          story_id: candidate.pr.story_id,
+          previous_reviewer: candidate.pr.reviewed_by,
+          reason: candidate.reason,
+          recovery: 'orphaned_review_assignment',
+        },
+      });
+    }
+  });
+  ctx.db.save();
+
+  // Immediately re-run QA scaling so a reviewer can be (re)spawned in this cycle.
+  await ctx.scheduler.checkMergeQueue();
+  ctx.db.save();
+
+  console.log(chalk.yellow(`  Re-queued ${orphaned.length} orphaned reviewing PR(s)`));
 }
 
 function resolveStaleEscalations(ctx: ManagerCheckContext): void {

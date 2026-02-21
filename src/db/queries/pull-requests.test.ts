@@ -2,6 +2,7 @@
 
 import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { createAgent } from './agents.js';
 import {
   createPullRequest,
   deletePullRequest,
@@ -547,6 +548,21 @@ describe('pull-requests queries', () => {
       });
 
       expect(isAgentReviewingPR(db, 'qa-agent-1')).toBe(true);
+    });
+
+    it('should treat reviewing PR assigned to agent tmux session as active review', () => {
+      const qaAgent = createAgent(db, {
+        type: 'qa',
+        teamId,
+        tmuxSession: 'hive-qa-team-1',
+      });
+      const pr = createPullRequest(db, { branchName: 'test-session-review' });
+      updatePullRequest(db, pr.id, {
+        status: 'reviewing',
+        reviewedBy: 'hive-qa-team-1',
+      });
+
+      expect(isAgentReviewingPR(db, qaAgent.id)).toBe(true);
     });
   });
 

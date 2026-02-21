@@ -283,10 +283,16 @@ export function isAgentReviewingPR(db: Database, agentId: string): boolean {
   const result = queryOne<{ count: number }>(
     db,
     `
-    SELECT COUNT(*) as count FROM pull_requests
-    WHERE reviewed_by = ? AND status = 'reviewing'
+    SELECT COUNT(*) as count
+    FROM pull_requests pr
+    LEFT JOIN agents a ON a.id = ?
+    WHERE pr.status = 'reviewing'
+      AND (
+        pr.reviewed_by = ?
+        OR (a.tmux_session IS NOT NULL AND pr.reviewed_by = a.tmux_session)
+      )
   `,
-    [agentId]
+    [agentId, agentId]
   );
   return (result?.count || 0) > 0;
 }
