@@ -5,12 +5,14 @@ import type { Database } from 'sql.js';
 import { syncStatusForStory } from '../connectors/project-management/operations.js';
 import { queryAll, withTransaction } from '../db/client.js';
 import { createLog } from '../db/queries/logs.js';
-import { createPullRequest } from '../db/queries/pull-requests.js';
+import { createPullRequest, updatePullRequest } from '../db/queries/pull-requests.js';
 import { updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
+import { extractPRNumber } from './github.js';
 import { extractStoryIdFromBranch } from './story-id.js';
 
 const GITHUB_PR_LIST_LIMIT = 20;
+const GITHUB_PR_URL_REGEX = /https?:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+/i;
 
 /**
  * Extract 'owner/repo' slug from a GitHub URL for use with `gh -R`.
@@ -45,6 +47,119 @@ interface ExistingPRBranchRow {
 
 interface ExistingPRNumberRow {
   github_pr_number: number;
+}
+
+interface UnlinkedQueuePRRow {
+  id: string;
+  team_id: string | null;
+  branch_name: string;
+}
+
+export interface QueueGitHubPRLinkFailure {
+  prId: string;
+  branch: string;
+  reason: string;
+}
+
+export interface EnsureQueueGitHubPRLinksResult {
+  linked: number;
+  failed: QueueGitHubPRLinkFailure[];
+}
+
+function extractGitHubPrUrl(text: string): string | null {
+  const match = text.match(GITHUB_PR_URL_REGEX);
+  return match ? match[0] : null;
+}
+
+function getCommandOutput(error: unknown): string {
+  if (!(typeof error === 'object' && error !== null)) {
+    return String(error);
+  }
+
+  const parts: string[] = [];
+  const commandError = error as {
+    shortMessage?: unknown;
+    message?: unknown;
+    stdout?: unknown;
+    stderr?: unknown;
+  };
+
+  if (typeof commandError.shortMessage === 'string') parts.push(commandError.shortMessage);
+  if (typeof commandError.message === 'string') parts.push(commandError.message);
+  if (typeof commandError.stdout === 'string') parts.push(commandError.stdout);
+  if (typeof commandError.stderr === 'string') parts.push(commandError.stderr);
+
+  return parts.join('\n').trim();
+}
+
+async function getDefaultBaseBranch(repoDir: string): Promise<string | null> {
+  try {
+    const result = await execa('git', ['symbolic-ref', 'refs/remotes/origin/HEAD', '--short'], {
+      cwd: repoDir,
+    });
+    const remoteRef = result.stdout.trim();
+    const parts = remoteRef.split('/');
+    const base = parts[parts.length - 1];
+    return base || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getExistingGitHubPrForBranch(
+  repoDir: string,
+  branch: string
+): Promise<{ number: number | null; url: string | null } | null> {
+  try {
+    const result = await execa('gh', ['pr', 'view', branch, '--json', 'number,url'], { cwd: repoDir });
+    const parsed = JSON.parse(result.stdout) as { number?: number; url?: string };
+    if (!parsed.url) return null;
+    return {
+      number: typeof parsed.number === 'number' ? parsed.number : extractPRNumber(parsed.url) || null,
+      url: parsed.url,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function createOrFindGitHubPr(
+  repoDir: string,
+  branch: string
+): Promise<{ number: number | null; url: string | null }> {
+  const baseBranch = await getDefaultBaseBranch(repoDir);
+  const createArgs = ['pr', 'create', '--head', branch, '--fill'];
+  if (baseBranch) {
+    createArgs.push('--base', baseBranch);
+  }
+
+  try {
+    const result = await execa('gh', createArgs, { cwd: repoDir });
+    const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
+    const prUrl = extractGitHubPrUrl(output);
+    if (!prUrl) {
+      const existingPr = await getExistingGitHubPrForBranch(repoDir, branch);
+      if (existingPr) return existingPr;
+      throw new Error('gh pr create completed but no PR URL could be determined');
+    }
+    return { number: extractPRNumber(prUrl) || null, url: prUrl };
+  } catch (error) {
+    const output = getCommandOutput(error);
+    const prUrl = extractGitHubPrUrl(output);
+    if (prUrl) {
+      return { number: extractPRNumber(prUrl) || null, url: prUrl };
+    }
+
+    if (
+      /already exists|already has an open pull request|already open/i.test(output) ||
+      /a pull request for branch .* already exists/i.test(output)
+    ) {
+      const existingPr = await getExistingGitHubPrForBranch(repoDir, branch);
+      if (existingPr) return existingPr;
+    }
+
+    throw new Error(output || 'Unknown gh pr create error');
+  }
 }
 
 /**
@@ -186,6 +301,99 @@ export async function syncAllTeamOpenPRs(
   }
 
   return totalSynced;
+}
+
+/**
+ * Ensure queued/reviewing/approved PR rows are linked to a real GitHub PR.
+ * Useful for recovering from local-only queue submissions.
+ */
+export async function ensureQueueGitHubPRLinks(
+  root: string,
+  db: Database
+): Promise<EnsureQueueGitHubPRLinksResult> {
+  const unlinkedPRs = queryAll<UnlinkedQueuePRRow>(
+    db,
+    `
+    SELECT id, team_id, branch_name
+    FROM pull_requests
+    WHERE status IN ('queued', 'reviewing', 'approved')
+      AND github_pr_number IS NULL
+      AND github_pr_url IS NULL
+    ORDER BY created_at ASC
+  `
+  );
+
+  if (unlinkedPRs.length === 0) {
+    return { linked: 0, failed: [] };
+  }
+
+  const teamRepoById = new Map<string, string>();
+  const teams = getAllTeams(db);
+  for (const team of teams) {
+    if (team.id && team.repo_path) {
+      teamRepoById.set(team.id, `${root}/${team.repo_path}`);
+    }
+  }
+
+  const failed: QueueGitHubPRLinkFailure[] = [];
+  let linked = 0;
+
+  for (const pr of unlinkedPRs) {
+    const repoDir = pr.team_id ? (teamRepoById.get(pr.team_id) ?? root) : root;
+
+    try {
+      const linkedPr = await createOrFindGitHubPr(repoDir, pr.branch_name);
+      let githubPrNumber = linkedPr.number;
+      const githubPrUrl = linkedPr.url;
+
+      if (!githubPrNumber && githubPrUrl) {
+        githubPrNumber = extractPRNumber(githubPrUrl) || null;
+      }
+
+      if (!githubPrNumber && !githubPrUrl) {
+        throw new Error('No GitHub PR metadata returned');
+      }
+
+      updatePullRequest(db, pr.id, {
+        githubPrNumber,
+        githubPrUrl,
+      });
+
+      createLog(db, {
+        agentId: 'manager',
+        storyId: undefined,
+        eventType: 'PR_LINKED',
+        message: `Linked queue PR ${pr.id} (${pr.branch_name}) to GitHub`,
+        metadata: {
+          pr_id: pr.id,
+          branch: pr.branch_name,
+          github_pr_number: githubPrNumber,
+          github_pr_url: githubPrUrl,
+        },
+      });
+      linked++;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failed.push({
+        prId: pr.id,
+        branch: pr.branch_name,
+        reason,
+      });
+      createLog(db, {
+        agentId: 'manager',
+        storyId: undefined,
+        eventType: 'PR_LINK_FAILED',
+        message: `Failed linking queue PR ${pr.id} (${pr.branch_name}) to GitHub: ${reason}`,
+        metadata: {
+          pr_id: pr.id,
+          branch: pr.branch_name,
+          reason,
+        },
+      });
+    }
+  }
+
+  return { linked, failed };
 }
 
 /**

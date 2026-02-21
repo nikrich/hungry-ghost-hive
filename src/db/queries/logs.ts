@@ -48,6 +48,8 @@ export type EventType =
   | 'PR_MERGED'
   | 'PR_REJECTED'
   | 'PR_CLOSED'
+  | 'PR_LINKED'
+  | 'PR_LINK_FAILED'
   | 'PR_MERGE_FAILED'
   | 'PR_MERGE_SKIPPED'
   | 'JIRA_SYNC_STARTED'

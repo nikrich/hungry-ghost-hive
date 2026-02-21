@@ -4,7 +4,7 @@ import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPullRequest } from '../db/queries/pull-requests.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
-import { getExistingPRIdentifiers, syncOpenGitHubPRs } from './pr-sync.js';
+import { ensureQueueGitHubPRLinks, getExistingPRIdentifiers, syncOpenGitHubPRs } from './pr-sync.js';
 
 vi.mock('execa', () => ({
   execa: vi.fn(),
@@ -275,5 +275,97 @@ describe('syncOpenGitHubPRs', () => {
 
     const prs = db.exec('SELECT story_id FROM pull_requests');
     expect(prs[0].values[0][0]).toBeNull();
+  });
+});
+
+describe('ensureQueueGitHubPRLinks', () => {
+  it('links local queued PRs by creating GitHub PRs', async () => {
+    db.run(
+      "INSERT INTO teams (id, repo_url, repo_path, name) VALUES ('team-1', 'https://github.com/test/repo', 'repos/test-repo', 'Test')"
+    );
+    const localPr = createPullRequest(db, {
+      teamId: 'team-1',
+      branchName: 'feature/auto-link',
+    });
+
+    mockExeca
+      .mockResolvedValueOnce({ stdout: 'origin/main', stderr: '' } as any)
+      .mockResolvedValueOnce({
+        stdout: 'https://github.com/test/repo/pull/321',
+        stderr: '',
+      } as any);
+
+    const result = await ensureQueueGitHubPRLinks('/root', db);
+
+    expect(result.linked).toBe(1);
+    expect(result.failed).toHaveLength(0);
+    const updated = db.exec(
+      `SELECT github_pr_number, github_pr_url FROM pull_requests WHERE id = '${localPr.id}'`
+    );
+    expect(updated[0].values[0][0]).toBe(321);
+    expect(updated[0].values[0][1]).toBe('https://github.com/test/repo/pull/321');
+    expect(mockExeca).toHaveBeenNthCalledWith(
+      2,
+      'gh',
+      ['pr', 'create', '--head', 'feature/auto-link', '--fill', '--base', 'main'],
+      { cwd: '/root/repos/test-repo' }
+    );
+  });
+
+  it('links local queued PRs by falling back to gh pr view when PR already exists', async () => {
+    db.run(
+      "INSERT INTO teams (id, repo_url, repo_path, name) VALUES ('team-1', 'https://github.com/test/repo', 'repos/test-repo', 'Test')"
+    );
+    const localPr = createPullRequest(db, {
+      teamId: 'team-1',
+      branchName: 'feature/existing',
+    });
+
+    const createErr = Object.assign(new Error('already exists'), {
+      stderr: 'a pull request for branch "feature/existing" already exists',
+    });
+
+    mockExeca
+      .mockResolvedValueOnce({ stdout: 'origin/main', stderr: '' } as any)
+      .mockRejectedValueOnce(createErr)
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify({ number: 456, url: 'https://github.com/test/repo/pull/456' }),
+        stderr: '',
+      } as any);
+
+    const result = await ensureQueueGitHubPRLinks('/root', db);
+
+    expect(result.linked).toBe(1);
+    expect(result.failed).toHaveLength(0);
+    const updated = db.exec(
+      `SELECT github_pr_number, github_pr_url FROM pull_requests WHERE id = '${localPr.id}'`
+    );
+    expect(updated[0].values[0][0]).toBe(456);
+    expect(updated[0].values[0][1]).toBe('https://github.com/test/repo/pull/456');
+  });
+
+  it('reports failures when linking a local queued PR fails', async () => {
+    db.run(
+      "INSERT INTO teams (id, repo_url, repo_path, name) VALUES ('team-1', 'https://github.com/test/repo', 'repos/test-repo', 'Test')"
+    );
+    const localPr = createPullRequest(db, {
+      teamId: 'team-1',
+      branchName: 'feature/fails',
+    });
+
+    mockExeca
+      .mockResolvedValueOnce({ stdout: 'origin/main', stderr: '' } as any)
+      .mockRejectedValueOnce(new Error('gh auth failed'));
+
+    const result = await ensureQueueGitHubPRLinks('/root', db);
+
+    expect(result.linked).toBe(0);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].prId).toBe(localPr.id);
+    const updated = db.exec(
+      `SELECT github_pr_number, github_pr_url FROM pull_requests WHERE id = '${localPr.id}'`
+    );
+    expect(updated[0].values[0][0]).toBeNull();
+    expect(updated[0].values[0][1]).toBeNull();
   });
 });

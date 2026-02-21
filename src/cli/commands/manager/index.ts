@@ -53,6 +53,7 @@ import { autoMergeApprovedPRs } from '../../../utils/auto-merge.js';
 import type { CLITool } from '../../../utils/cli-commands.js';
 import {
   closeStaleGitHubPRs,
+  ensureQueueGitHubPRLinks,
   syncAllTeamOpenPRs,
   syncMergedPRsFromGitHub,
 } from '../../../utils/pr-sync.js';
@@ -768,6 +769,8 @@ async function managerCheck(
 
     verboseLogCtx(ctx, 'Step: backfill PR numbers');
     await backfillPRNumbers(ctx);
+    verboseLogCtx(ctx, 'Step: ensure queued PRs are linked to GitHub');
+    await ensureQueuedPRGitHubLinks(ctx);
     verboseLogCtx(ctx, 'Step: health check');
     await runHealthCheck(ctx);
     verboseLogCtx(ctx, 'Step: merge queue check');
@@ -834,6 +837,23 @@ async function backfillPRNumbers(ctx: ManagerCheckContext): Promise<void> {
   if (backfilled > 0) {
     console.log(chalk.yellow(`  Backfilled ${backfilled} PR(s) with github_pr_number from URL`));
     ctx.db.save();
+  }
+}
+
+async function ensureQueuedPRGitHubLinks(ctx: ManagerCheckContext): Promise<void> {
+  const result = await ensureQueueGitHubPRLinks(ctx.root, ctx.db.db);
+  verboseLogCtx(
+    ctx,
+    `ensureQueuedPRGitHubLinks: linked=${result.linked}, failed=${result.failed.length}`
+  );
+  if (result.linked > 0 || result.failed.length > 0) {
+    ctx.db.save();
+  }
+  if (result.linked > 0) {
+    console.log(chalk.yellow(`  Auto-linked ${result.linked} queued PR(s) to GitHub`));
+  }
+  if (result.failed.length > 0) {
+    console.log(chalk.red(`  Failed linking ${result.failed.length} queued PR(s) to GitHub`));
   }
 }
 
