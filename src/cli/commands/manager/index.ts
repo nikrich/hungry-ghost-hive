@@ -600,7 +600,15 @@ managerCommand
       }
     }
 
-    await managerCheck(root, config, undefined, options.verbose === true);
+    try {
+      await managerCheck(root, config, undefined, options.verbose === true);
+    } catch (err) {
+      if (isConcurrencyError(err)) {
+        console.log(chalk.yellow('Manager check skipped: database lock is busy.'));
+        return;
+      }
+      throw err;
+    }
   });
 
 // Run health check to sync agents with tmux
