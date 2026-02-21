@@ -6,6 +6,7 @@ import {
   buildHumanApprovalReason,
   buildInterruptionRecoveryPrompt,
   buildRateLimitRecoveryPrompt,
+  shouldAutoResolveEscalationsAfterRecovery,
 } from './escalation-handler.js';
 
 describe('buildHumanApprovalReason', () => {
@@ -110,5 +111,67 @@ describe('buildRateLimitRecoveryPrompt', () => {
     expect(prompt).toContain(
       'hive pr submit -b <branch> -s <story-id> --from hive-junior-grigora-11'
     );
+  });
+});
+
+describe('shouldAutoResolveEscalationsAfterRecovery', () => {
+  it('returns true when agent is active and no longer needs human input', () => {
+    expect(
+      shouldAutoResolveEscalationsAfterRecovery(
+        {
+          isWaiting: false,
+          needsHuman: false,
+        },
+        AgentState.TOOL_RUNNING
+      )
+    ).toBe(true);
+  });
+
+  it('returns true for idle-at-prompt when no human input is needed', () => {
+    expect(
+      shouldAutoResolveEscalationsAfterRecovery(
+        {
+          isWaiting: true,
+          needsHuman: false,
+        },
+        AgentState.IDLE_AT_PROMPT
+      )
+    ).toBe(true);
+  });
+
+  it('returns true for work-complete waiting state when no human input is needed', () => {
+    expect(
+      shouldAutoResolveEscalationsAfterRecovery(
+        {
+          isWaiting: true,
+          needsHuman: false,
+        },
+        AgentState.WORK_COMPLETE
+      )
+    ).toBe(true);
+  });
+
+  it('returns false when agent still needs human input', () => {
+    expect(
+      shouldAutoResolveEscalationsAfterRecovery(
+        {
+          isWaiting: true,
+          needsHuman: true,
+        },
+        AgentState.ASKING_QUESTION
+      )
+    ).toBe(false);
+  });
+
+  it('returns false for waiting non-blocked states that are not idle/work-complete', () => {
+    expect(
+      shouldAutoResolveEscalationsAfterRecovery(
+        {
+          isWaiting: true,
+          needsHuman: false,
+        },
+        AgentState.USER_DECLINED
+      )
+    ).toBe(false);
   });
 });

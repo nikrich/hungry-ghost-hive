@@ -121,6 +121,26 @@ export function buildRateLimitRecoveryPrompt(
   return `Manager auto-recovery: rate limit detected (HTTP 429). Pause before retrying to reduce API pressure. Run: sleep ${backoffSeconds}. After the pause, continue ${storyLabel} from your last checkpoint and batch work to reduce requests. When done, submit with: hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}.`;
 }
 
+export function shouldAutoResolveEscalationsAfterRecovery(
+  waitingInfo: {
+    isWaiting: boolean;
+    needsHuman: boolean;
+  },
+  state: AgentState
+): boolean {
+  if (waitingInfo.needsHuman) {
+    return false;
+  }
+
+  if (!waitingInfo.isWaiting) {
+    return true;
+  }
+
+  // Idle-at-prompt and work-complete are waiting states, but not human-blocked.
+  // Resolve prior human-approval escalations once these states are reached.
+  return state === AgentState.IDLE_AT_PROMPT || state === AgentState.WORK_COMPLETE;
+}
+
 export async function handleEscalationAndNudge(
   ctx: ManagerCheckContext,
   sessionName: string,
@@ -345,14 +365,14 @@ export async function handleEscalationAndNudge(
 
     console.log(chalk.red(`  ESCALATION: ${sessionName} needs human input`));
     verboseLog(ctx, `escalationCheck: ${sessionName} action=create_escalation`);
-  } else if (!waitingInfo.isWaiting && !waitingInfo.needsHuman) {
+  } else if (shouldAutoResolveEscalationsAfterRecovery(waitingInfo, stateResult.state)) {
     interruptionRecoveryAttempts.delete(sessionName);
     // Agent recovered - auto-resolve active escalations
     const activeEscalations = getActiveEscalationsForAgent(ctx.db.db, sessionName);
     for (const escalation of activeEscalations) {
       updateEscalation(ctx.db.db, escalation.id, {
         status: 'resolved',
-        resolution: `Agent recovered: no longer in waiting state`,
+        resolution: `Agent recovered: no longer blocked on human input`,
       });
       ctx.counters.escalationsResolved++;
     }
