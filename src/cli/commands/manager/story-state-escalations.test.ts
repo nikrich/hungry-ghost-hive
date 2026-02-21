@@ -89,4 +89,63 @@ describe('findStoryStateEscalationsToResolve', () => {
     expect(result).toHaveLength(1);
     expect(result[0].reason).toContain('source hive-junior-team-1 is outdated');
   });
+
+  it('resolves stale done-false escalation when same assigned session is actively running', () => {
+    const escalations = [
+      buildEscalation({
+        created_at: '2026-02-21T10:00:00.000Z',
+      }),
+    ];
+    const storyById = new Map<string, StoryStateSnapshot>([['STORY-123', buildStory()]]);
+
+    const result = findStoryStateEscalationsToResolve({
+      pendingEscalations: escalations,
+      storyById,
+      liveSessionNames: new Set(['hive-junior-team-1']),
+      nowMs: Date.parse('2026-02-21T10:10:00.000Z'),
+      minActiveAgeMs: 60_000,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].reason).toContain('pending done=false escalation is stale');
+  });
+
+  it('does not resolve fresh done-false escalation before active-age threshold', () => {
+    const escalations = [
+      buildEscalation({
+        created_at: '2026-02-21T10:09:30.000Z',
+      }),
+    ];
+    const storyById = new Map<string, StoryStateSnapshot>([['STORY-123', buildStory()]]);
+
+    const result = findStoryStateEscalationsToResolve({
+      pendingEscalations: escalations,
+      storyById,
+      liveSessionNames: new Set(['hive-junior-team-1']),
+      nowMs: Date.parse('2026-02-21T10:10:00.000Z'),
+      minActiveAgeMs: 60_000,
+    });
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('does not auto-resolve classifier-timeout escalation in same active session', () => {
+    const escalations = [
+      buildEscalation({
+        reason: 'Classifier timeout: manager completion classifier timed out for STORY-123',
+        created_at: '2026-02-21T10:00:00.000Z',
+      }),
+    ];
+    const storyById = new Map<string, StoryStateSnapshot>([['STORY-123', buildStory()]]);
+
+    const result = findStoryStateEscalationsToResolve({
+      pendingEscalations: escalations,
+      storyById,
+      liveSessionNames: new Set(['hive-junior-team-1']),
+      nowMs: Date.parse('2026-02-21T10:10:00.000Z'),
+      minActiveAgeMs: 60_000,
+    });
+
+    expect(result).toHaveLength(0);
+  });
 });

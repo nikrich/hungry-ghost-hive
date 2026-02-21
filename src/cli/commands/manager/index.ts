@@ -1134,6 +1134,9 @@ function resolveStoryStateEscalations(ctx: ManagerCheckContext): void {
   const resolvable = findStoryStateEscalationsToResolve({
     pendingEscalations,
     storyById,
+    liveSessionNames: new Set(ctx.hiveSessions.map(session => session.name)),
+    nowMs: Date.now(),
+    minActiveAgeMs: Math.max(1, ctx.config.manager.nudge_cooldown_ms),
   });
   if (resolvable.length === 0) return;
   verboseLogCtx(ctx, `resolveStoryStateEscalations: resolvable=${resolvable.length}`);
