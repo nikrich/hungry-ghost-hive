@@ -1053,16 +1053,77 @@ function prepareSessionData(ctx: ManagerCheckContext): void {
 
 async function recoverOrphanedReviewAssignments(ctx: ManagerCheckContext): Promise<void> {
   const openPRs = getMergeQueue(ctx.db.db);
+  const staleMergedStoryPRs = openPRs.filter(pr => {
+    if (!pr.story_id) return false;
+    const story = getStoryById(ctx.db.db, pr.story_id);
+    return story?.status === 'merged';
+  });
   const orphaned = findOrphanedReviewAssignments({
     openPRs,
     liveSessionNames: new Set(ctx.hiveSessions.map(session => session.name)),
     agentsBySessionName: ctx.agentsBySessionName,
   });
-  verboseLogCtx(ctx, `recoverOrphanedReviewAssignments: orphaned=${orphaned.length}`);
-  if (orphaned.length === 0) return;
+  verboseLogCtx(
+    ctx,
+    `recoverOrphanedReviewAssignments: orphaned=${orphaned.length}, staleMerged=${staleMergedStoryPRs.length}`
+  );
+  if (orphaned.length === 0 && staleMergedStoryPRs.length === 0) return;
+
+  let requeued = 0;
+  let closed = 0;
+  const closedPrIds = new Set<string>();
 
   await withTransaction(ctx.db.db, () => {
+    for (const pr of staleMergedStoryPRs) {
+      updatePullRequest(ctx.db.db, pr.id, {
+        status: 'closed',
+        reviewedBy: null,
+        reviewNotes: '[auto-closed:story-merged] Queue entry belongs to already merged story',
+      });
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        storyId: pr.story_id || undefined,
+        eventType: 'PR_CLOSED',
+        message: `Auto-closed queue PR ${pr.id}: story already merged`,
+        metadata: {
+          pr_id: pr.id,
+          story_id: pr.story_id,
+          previous_reviewer: pr.reviewed_by,
+          recovery: 'stale_queue_pr_merged_story',
+        },
+      });
+      closed++;
+      closedPrIds.add(pr.id);
+    }
+
     for (const candidate of orphaned) {
+      if (closedPrIds.has(candidate.pr.id)) {
+        continue;
+      }
+      const story = candidate.pr.story_id ? getStoryById(ctx.db.db, candidate.pr.story_id) : null;
+      if (story?.status === 'merged') {
+        updatePullRequest(ctx.db.db, candidate.pr.id, {
+          status: 'closed',
+          reviewedBy: null,
+          reviewNotes: '[auto-closed:story-merged] Orphaned review assignment for already merged story',
+        });
+        createLog(ctx.db.db, {
+          agentId: 'manager',
+          storyId: candidate.pr.story_id || undefined,
+          eventType: 'PR_CLOSED',
+          message: `Auto-closed orphaned reviewing PR ${candidate.pr.id}: story already merged`,
+          metadata: {
+            pr_id: candidate.pr.id,
+            story_id: candidate.pr.story_id,
+            previous_reviewer: candidate.pr.reviewed_by,
+            reason: candidate.reason,
+            recovery: 'orphaned_review_assignment_merged_story',
+          },
+        });
+        closed++;
+        continue;
+      }
+
       updatePullRequest(ctx.db.db, candidate.pr.id, {
         status: 'queued',
         reviewedBy: null,
@@ -1080,15 +1141,23 @@ async function recoverOrphanedReviewAssignments(ctx: ManagerCheckContext): Promi
           recovery: 'orphaned_review_assignment',
         },
       });
+      requeued++;
     }
   });
   ctx.db.save();
 
-  // Immediately re-run QA scaling so a reviewer can be (re)spawned in this cycle.
-  await ctx.scheduler.checkMergeQueue();
-  ctx.db.save();
+  // Immediately re-run QA scaling only if we actually re-queued reviews.
+  if (requeued > 0) {
+    await ctx.scheduler.checkMergeQueue();
+    ctx.db.save();
+  }
 
-  console.log(chalk.yellow(`  Re-queued ${orphaned.length} orphaned reviewing PR(s)`));
+  if (requeued > 0) {
+    console.log(chalk.yellow(`  Re-queued ${requeued} orphaned reviewing PR(s)`));
+  }
+  if (closed > 0) {
+    console.log(chalk.yellow(`  Auto-closed ${closed} orphaned reviewing PR(s) for merged stories`));
+  }
 }
 
 async function resolveStaleEscalations(ctx: ManagerCheckContext): Promise<void> {
