@@ -69,6 +69,11 @@ export interface ManagerCheckContext {
     handoffPromoted: number;
     handoffAutoAssigned: number;
     jiraSynced: number;
+    observedAgents: number;
+    waitingAgents: number;
+    idleAtPromptAgents: number;
+    needsHumanAgents: number;
+    thinkingAgents: number;
   };
   // Shared state for dedup
   escalatedSessions: Set<string | null>;

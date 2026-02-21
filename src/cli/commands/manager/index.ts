@@ -793,6 +793,11 @@ async function managerCheck(
         handoffPromoted: 0,
         handoffAutoAssigned: 0,
         jiraSynced: 0,
+        observedAgents: 0,
+        waitingAgents: 0,
+        idleAtPromptAgents: 0,
+        needsHumanAgents: 0,
+        thinkingAgents: 0,
       },
       escalatedSessions: new Set(),
       agentsBySessionName: new Map(),
@@ -1440,6 +1445,11 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
     );
 
     updateAgentStateTracking(session.name, stateResult, now);
+    ctx.counters.observedAgents++;
+    if (stateResult.isWaiting) ctx.counters.waitingAgents++;
+    if (stateResult.state === AgentState.IDLE_AT_PROMPT) ctx.counters.idleAtPromptAgents++;
+    if (stateResult.needsHuman) ctx.counters.needsHumanAgents++;
+    if (stateResult.state === AgentState.THINKING) ctx.counters.thinkingAgents++;
     if (!stateResult.isWaiting) {
       const tracked = agentStates.get(session.name);
       if (tracked && (tracked.storyStuckNudgeCount || 0) > 0) {
@@ -2285,6 +2295,11 @@ function printSummary(ctx: ManagerCheckContext): void {
     handoffPromoted,
     handoffAutoAssigned,
     jiraSynced,
+    observedAgents,
+    waitingAgents,
+    idleAtPromptAgents,
+    needsHumanAgents,
+    thinkingAgents,
   } = ctx.counters;
   const summary = [];
 
@@ -2301,7 +2316,29 @@ function printSummary(ctx: ManagerCheckContext): void {
   if (summary.length > 0) {
     console.log(chalk.yellow(`  ${summary.join(', ')}`));
   } else {
-    console.log(chalk.green('  All agents productive'));
+    if (observedAgents === 0) {
+      console.log(chalk.gray('  No active agents observed'));
+    } else if (idleAtPromptAgents > 0) {
+      const humanSuffix =
+        needsHumanAgents > 0 ? ` (${needsHumanAgents} awaiting human input)` : '';
+      console.log(
+        chalk.yellow(
+          `  No manager actions: ${idleAtPromptAgents}/${observedAgents} agents idle at prompt${humanSuffix}`
+        )
+      );
+    } else if (waitingAgents > 0) {
+      const humanSuffix =
+        needsHumanAgents > 0 ? ` (${needsHumanAgents} awaiting human input)` : '';
+      console.log(
+        chalk.yellow(
+          `  No manager actions: ${waitingAgents}/${observedAgents} agents waiting${humanSuffix}`
+        )
+      );
+    } else if (thinkingAgents === observedAgents) {
+      console.log(chalk.green(`  All ${observedAgents} active agents are thinking`));
+    } else {
+      console.log(chalk.green('  All active agents productive'));
+    }
   }
 }
 
