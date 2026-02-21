@@ -22,7 +22,7 @@ import {
   getPendingEscalations,
   updateEscalation,
 } from '../../../db/queries/escalations.js';
-import { createLog } from '../../../db/queries/logs.js';
+import { countQaFailuresByStory, createLog } from '../../../db/queries/logs.js';
 import {
   getAllPendingMessages,
   markMessagesRead,
@@ -99,6 +99,8 @@ const REVIEWING_QUEUE_BLOCK_NUDGE_COOLDOWN_MS = 2 * 60 * 1000;
 const STALE_REVIEWING_REQUEUE_TIMEOUT_MS = 10 * 60 * 1000;
 const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
 const AI_DONE_FALSE_REASON_PREFIX = 'AI done=false escalation';
+const QA_FAILURE_ESCALATION_REASON_PREFIX = 'Repeated QA failure escalation';
+const QA_FAILURE_ESCALATION_THRESHOLD = 3;
 const CLASSIFIER_TIMEOUT_AUTO_RECOVERY_ATTEMPTS = 5;
 const DONE_FALSE_AUTO_RECOVERY_ATTEMPTS = 5;
 const INTERVENTION_AUTO_RECOVERY_COOLDOWN_MS = 60000;
@@ -217,6 +219,29 @@ function summarizeOutputForVerbose(output: string): string {
     .join(' | ');
   if (compact.length <= 180) return compact;
   return `${compact.slice(0, 177)}...`;
+}
+
+function getPendingQaFailureEscalatedStoryIds(ctx: Pick<ManagerCheckContext, 'db'>): Set<string> {
+  const pendingEscalations = getPendingEscalations(ctx.db.db);
+  return new Set(
+    pendingEscalations
+      .filter(
+        escalation =>
+          escalation.story_id &&
+          escalation.reason.startsWith(QA_FAILURE_ESCALATION_REASON_PREFIX)
+      )
+      .map(escalation => escalation.story_id as string)
+  );
+}
+
+function formatRepeatedQaFailureEscalationReason(
+  storyId: string,
+  qaFailureCount: number,
+  latestReviewNotes: string | null | undefined
+): string {
+  const detail = (latestReviewNotes || 'No QA review details were provided').replace(/\s+/g, ' ').trim();
+  const shortDetail = detail.length > 240 ? `${detail.slice(0, 237)}...` : detail;
+  return `${QA_FAILURE_ESCALATION_REASON_PREFIX}: ${storyId} has failed QA ${qaFailureCount} times. Automatic retry loop stopped; manual human intervention is required. Latest QA feedback: ${shortDetail}`;
 }
 
 function formatDuration(ms: number): string {
@@ -2053,8 +2078,12 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
   const rejectedPRs = getPullRequestsByStatus(ctx.db.db, 'rejected');
   verboseLogCtx(ctx, `handleRejectedPRs: rejected=${rejectedPRs.length}`);
   let rejectionNotified = 0;
+  let pauseNotified = 0;
+  let qaFailureEscalationsCreated = 0;
+  const qaFailureEscalatedStories = getPendingQaFailureEscalatedStoryIds(ctx);
 
   for (const pr of rejectedPRs) {
+    let storyEscalatedForQaFailures = false;
     if (pr.story_id) {
       const storyId = pr.story_id;
       await withTransaction(ctx.db.db, () => {
@@ -2069,28 +2098,80 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
 
       // Sync status change to Jira
       await syncStatusForStory(ctx.root, ctx.db.db, storyId, 'qa_failed');
+
+      const qaFailureCount = countQaFailuresByStory(ctx.db.db, storyId);
+      verboseLogCtx(
+        ctx,
+        `handleRejectedPRs: story=${storyId} qaFailureCount=${qaFailureCount} threshold=${QA_FAILURE_ESCALATION_THRESHOLD}`
+      );
+      if (qaFailureCount >= QA_FAILURE_ESCALATION_THRESHOLD) {
+        storyEscalatedForQaFailures = true;
+        if (!qaFailureEscalatedStories.has(storyId)) {
+          const escalationReason = formatRepeatedQaFailureEscalationReason(
+            storyId,
+            qaFailureCount,
+            pr.review_notes
+          );
+          const escalation = createEscalation(ctx.db.db, {
+            storyId,
+            fromAgentId: pr.submitted_by || 'manager',
+            toAgentId: null,
+            reason: escalationReason,
+          });
+          createLog(ctx.db.db, {
+            agentId: 'manager',
+            storyId,
+            eventType: 'ESCALATION_CREATED',
+            status: 'error',
+            message: `Escalated ${storyId} after ${qaFailureCount} QA failures`,
+            metadata: {
+              escalation_id: escalation.id,
+              story_id: storyId,
+              qa_failure_count: qaFailureCount,
+              threshold: QA_FAILURE_ESCALATION_THRESHOLD,
+              escalation_type: 'repeated_qa_failure',
+            },
+          });
+          ctx.counters.escalationsCreated++;
+          qaFailureEscalationsCreated++;
+          qaFailureEscalatedStories.add(storyId);
+        }
+      }
     }
 
     if (pr.submitted_by) {
       const devSession = ctx.hiveSessions.find(s => s.name === pr.submitted_by);
       if (devSession) {
-        verboseLogCtx(
-          ctx,
-          `handleRejectedPRs: notifying ${devSession.name} for pr=${pr.id}, story=${pr.story_id || '-'}`
-        );
-        await sendToTmuxSession(
-          devSession.name,
-          withManagerNudgeEnvelope(
-            `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
+        if (storyEscalatedForQaFailures && pr.story_id) {
+          await sendToTmuxSession(
+            devSession.name,
+            withManagerNudgeEnvelope(
+              `# QA failure threshold reached for ${pr.story_id} (${QA_FAILURE_ESCALATION_THRESHOLD}+ failures).
+# Automatic retry loop has been paused and the story was escalated for human intervention.
+# Do not submit another PR for this story until human guidance is provided.`
+            )
+          );
+          await sendEnterToTmuxSession(devSession.name);
+          pauseNotified++;
+        } else {
+          verboseLogCtx(
+            ctx,
+            `handleRejectedPRs: notifying ${devSession.name} for pr=${pr.id}, story=${pr.story_id || '-'}`
+          );
+          await sendToTmuxSession(
+            devSession.name,
+            withManagerNudgeEnvelope(
+              `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
 # Story: ${pr.story_id || 'Unknown'}
 # Reason: ${pr.review_notes || 'See review comments'}
 #
 # You MUST fix this issue before doing anything else.
 # Fix the issues and resubmit: hive pr submit -b ${pr.branch_name} -s ${pr.story_id || 'STORY-ID'} --from ${devSession.name}`
-          )
-        );
-        await sendEnterToTmuxSession(devSession.name);
-        rejectionNotified++;
+            )
+          );
+          await sendEnterToTmuxSession(devSession.name);
+          rejectionNotified++;
+        }
       }
     }
 
@@ -2103,17 +2184,32 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
 
   if (rejectedPRs.length > 0) {
     ctx.db.save();
-    console.log(chalk.yellow(`  Notified ${rejectionNotified} developer(s) of PR rejection(s)`));
+    if (qaFailureEscalationsCreated > 0) {
+      console.log(
+        chalk.red(`  Escalated ${qaFailureEscalationsCreated} story(ies) after repeated QA failures`)
+      );
+    }
+    console.log(
+      chalk.yellow(
+        `  Notified ${rejectionNotified} developer(s) of PR rejection(s)` +
+          (pauseNotified > 0 ? `, paused ${pauseNotified} after QA-failure escalation` : '')
+      )
+    );
   }
 }
 
 async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
+  const qaFailureEscalatedStories = getPendingQaFailureEscalatedStoryIds(ctx);
   const qaFailedStories = getStoriesByStatus(ctx.db.db, 'qa_failed').filter(
     story => !['merged', 'completed'].includes(story.status)
   );
   verboseLogCtx(ctx, `nudgeQAFailedStories: candidates=${qaFailedStories.length}`);
 
   for (const story of qaFailedStories) {
+    if (qaFailureEscalatedStories.has(story.id)) {
+      verboseLogCtx(ctx, `nudgeQAFailedStories: story=${story.id} skip=repeated_qa_failure_escalated`);
+      continue;
+    }
     if (!story.assigned_agent_id) {
       verboseLogCtx(ctx, `nudgeQAFailedStories: story=${story.id} skip=no_assigned_agent`);
       continue;
@@ -2167,6 +2263,7 @@ hive pr queue`
 }
 
 async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
+  const qaFailureEscalatedStories = getPendingQaFailureEscalatedStoryIds(ctx);
   const recoverableStories = queryAll<StoryRow>(
     ctx.db.db,
     `
@@ -2174,7 +2271,7 @@ async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext): Promi
     WHERE status = 'qa_failed'
       AND assigned_agent_id IS NULL
   `
-  );
+  ).filter(story => !qaFailureEscalatedStories.has(story.id));
 
   if (recoverableStories.length === 0) return;
   verboseLogCtx(ctx, `recoverUnassignedQAFailedStories: recovered=${recoverableStories.length}`);
