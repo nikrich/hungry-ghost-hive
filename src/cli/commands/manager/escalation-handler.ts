@@ -32,8 +32,11 @@ const INTERRUPTION_ENTER_RETRY_DELAY_MS = 800;
 const INTERRUPTION_RETRY_CAPTURE_LINES = 120;
 const RATE_LIMIT_INITIAL_BACKOFF_MS = 90000;
 const RATE_LIMIT_MAX_BACKOFF_MS = 300000;
+const HUMAN_BLOCK_AUTO_RECOVERY_ATTEMPTS = 5;
+const HUMAN_BLOCK_AUTO_RECOVERY_COOLDOWN_MS = 60000;
 const interruptionRecoveryAttempts = new Map<string, number>();
 const rateLimitRecoveryAttempts = new Map<string, number>();
+const humanBlockRecoveryAttempts = new Map<string, { attempts: number; lastAttemptMs: number }>();
 const INTERRUPTION_PROMPT_PATTERN =
   /conversation interrupted|tell the model what to do differently|hit [`'"]?\/feedback[`'"]? to report the issue/i;
 
@@ -156,6 +159,30 @@ export function buildRateLimitRecoveryPrompt(
   return `Manager auto-recovery: rate limit detected (HTTP 429). Pause before retrying to reduce API pressure. Run: sleep ${backoffSeconds}. After the pause, continue ${storyLabel} from your last checkpoint and batch work to reduce requests. When done, submit with: hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}.`;
 }
 
+export function buildAutonomousUnblockPrompt(
+  sessionName: string,
+  state: AgentState,
+  storyId?: string | null
+): string {
+  const storyLabel = storyId || 'your assigned story';
+  const submitStory = storyId || '<story-id>';
+
+  switch (state) {
+    case AgentState.PERMISSION_REQUIRED:
+      return `Manager auto-recovery: do not wait for human approval. Approve the permission gate in-session now (prefer the "don't ask again" option when shown), continue ${storyLabel}, then submit with: hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}.`;
+    case AgentState.AWAITING_SELECTION:
+      return `Manager auto-recovery: do not ask a human to choose. Pick the safest option that keeps ${storyLabel} moving, continue implementation/tests, then submit with: hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}.`;
+    case AgentState.PLAN_APPROVAL:
+      return `Manager auto-recovery: approve the plan and proceed immediately. Do not wait for human confirmation. Continue ${storyLabel}, run validation, then submit with: hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}.`;
+    case AgentState.ASKING_QUESTION:
+      return `Manager auto-recovery: do not pause for human answers. Make the best reasonable assumption, note it in your summary, continue ${storyLabel}, and submit with: hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}.`;
+    case AgentState.USER_DECLINED:
+      return buildInterruptionRecoveryPrompt(sessionName, storyId);
+    default:
+      return `Manager auto-recovery: do not wait for human input. Continue ${storyLabel} autonomously, run tests/validation, then submit with: hive pr submit -b <branch> -s ${submitStory} --from ${sessionName}.`;
+  }
+}
+
 export function shouldAutoResolveEscalationsAfterRecovery(
   waitingInfo: {
     isWaiting: boolean;
@@ -206,6 +233,9 @@ export async function handleEscalationAndNudge(
   }
   if (!rateLimited) {
     rateLimitRecoveryAttempts.delete(sessionName);
+  }
+  if (!stateResult.needsHuman) {
+    humanBlockRecoveryAttempts.delete(sessionName);
   }
 
   if (rateLimited) {
@@ -365,15 +395,86 @@ export async function handleEscalationAndNudge(
   verboseLog(ctx, `escalationCheck: ${sessionName} hasRecentEscalation=${hasRecentEscalation}`);
 
   if (waitingInfo.needsHuman && !hasRecentEscalation) {
+    const attemptsInfo = humanBlockRecoveryAttempts.get(sessionName) || {
+      attempts: 0,
+      lastAttemptMs: 0,
+    };
+    const recoveryCooldownMs = Math.max(
+      ctx.config.manager.nudge_cooldown_ms,
+      HUMAN_BLOCK_AUTO_RECOVERY_COOLDOWN_MS
+    );
+    const timeSinceLastRecovery = now - attemptsInfo.lastAttemptMs;
+
+    if (
+      attemptsInfo.attempts < HUMAN_BLOCK_AUTO_RECOVERY_ATTEMPTS &&
+      timeSinceLastRecovery >= recoveryCooldownMs
+    ) {
+      const nextAttempt = attemptsInfo.attempts + 1;
+      const recoveryPrompt = buildAutonomousUnblockPrompt(
+        sessionName,
+        stateResult.state,
+        agent?.current_story_id
+      );
+      await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(recoveryPrompt));
+      await sendEnterToTmuxSession(sessionName);
+      humanBlockRecoveryAttempts.set(sessionName, {
+        attempts: nextAttempt,
+        lastAttemptMs: now,
+      });
+      ctx.counters.nudged++;
+
+      if (currentTrackedState) {
+        currentTrackedState.lastEscalationNudgeTime = now;
+      } else {
+        agentStates.set(sessionName, {
+          lastState: stateResult.state,
+          lastStateChangeTime: now,
+          lastNudgeTime: 0,
+          storyStuckNudgeCount: 0,
+          lastEscalationNudgeTime: now,
+        });
+      }
+
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        storyId: agent?.current_story_id || undefined,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Auto-recovery sent for human-blocked prompt in ${sessionName} (attempt ${nextAttempt}/${HUMAN_BLOCK_AUTO_RECOVERY_ATTEMPTS})`,
+        metadata: {
+          session_name: sessionName,
+          detected_state: stateResult.state,
+          recovery: 'human_block_auto_recovery',
+          attempt: nextAttempt,
+          max_attempts: HUMAN_BLOCK_AUTO_RECOVERY_ATTEMPTS,
+        },
+      });
+      ctx.db.save();
+      console.log(
+        chalk.yellow(
+          `  AUTO-RECOVERY: ${sessionName} blocked prompt retry ${nextAttempt}/${HUMAN_BLOCK_AUTO_RECOVERY_ATTEMPTS}`
+        )
+      );
+      verboseLog(
+        ctx,
+        `escalationCheck: ${sessionName} action=human_block_auto_recovery attempt=${nextAttempt}`
+      );
+      return;
+    }
+
     // Create escalation for human attention
     const storyId = agent?.current_story_id || null;
-    const escalationReason = buildHumanApprovalReason(
-      sessionName,
-      waitingInfo.reason,
-      stateResult.state,
-      agentCliTool,
-      output
-    );
+    const exhaustionSuffix =
+      attemptsInfo.attempts >= HUMAN_BLOCK_AUTO_RECOVERY_ATTEMPTS
+        ? ` Auto-recovery attempts exhausted (${attemptsInfo.attempts}/${HUMAN_BLOCK_AUTO_RECOVERY_ATTEMPTS}).`
+        : '';
+    const escalationReason =
+      buildHumanApprovalReason(
+        sessionName,
+        waitingInfo.reason,
+        stateResult.state,
+        agentCliTool,
+        output
+      ) + exhaustionSuffix;
 
     const escalation = createEscalation(ctx.db.db, {
       storyId,
@@ -396,6 +497,7 @@ export async function handleEscalationAndNudge(
     ctx.db.save();
     ctx.counters.escalationsCreated++;
     ctx.escalatedSessions.add(sessionName);
+    humanBlockRecoveryAttempts.delete(sessionName);
 
     const reminder = buildAutoRecoveryReminder(sessionName, agentCliTool);
     await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(reminder));
@@ -404,6 +506,7 @@ export async function handleEscalationAndNudge(
     verboseLog(ctx, `escalationCheck: ${sessionName} action=create_escalation`);
   } else if (shouldAutoResolveEscalationsAfterRecovery(waitingInfo, stateResult.state)) {
     interruptionRecoveryAttempts.delete(sessionName);
+    humanBlockRecoveryAttempts.delete(sessionName);
     // Agent recovered - auto-resolve active escalations
     const activeEscalations = getActiveEscalationsForAgent(ctx.db.db, sessionName);
     for (const escalation of activeEscalations) {

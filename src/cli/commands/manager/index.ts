@@ -97,6 +97,9 @@ const MANAGER_DB_LOCK_MIN_TIMEOUT_MS = 100;
 const MANAGER_DB_LOCK_MAX_TIMEOUT_MS = 1000;
 const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
 const AI_DONE_FALSE_REASON_PREFIX = 'AI done=false escalation';
+const CLASSIFIER_TIMEOUT_AUTO_RECOVERY_ATTEMPTS = 5;
+const DONE_FALSE_AUTO_RECOVERY_ATTEMPTS = 5;
+const INTERVENTION_AUTO_RECOVERY_COOLDOWN_MS = 60000;
 
 interface ClassifierTimeoutIntervention {
   storyId: string;
@@ -118,10 +121,17 @@ interface ScreenStaticStatus {
   shouldRunFullAiDetection: boolean;
 }
 
+interface InterventionRecoveryAttempt {
+  attempts: number;
+  lastAttemptMs: number;
+}
+
 const screenStaticBySession = new Map<string, ScreenStaticTracking>();
 const classifierTimeoutInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
 const aiDoneFalseInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
 const noDiffRecoveryNudgeByStory = new Map<string, number>();
+const classifierTimeoutRecoveryAttemptsByKey = new Map<string, InterventionRecoveryAttempt>();
+const doneFalseRecoveryAttemptsByKey = new Map<string, InterventionRecoveryAttempt>();
 
 function verboseLog(verbose: boolean, message: string): void {
   if (!verbose) return;
@@ -167,6 +177,23 @@ function formatDuration(ms: number): string {
 
 function buildOutputFingerprint(output: string): string {
   return createHash('sha256').update(output).digest('hex');
+}
+
+function interventionRecoveryKey(sessionName: string, storyId: string): string {
+  return `${sessionName}::${storyId}`;
+}
+
+function clearInterventionRecoveryAttemptsForSession(sessionName: string): void {
+  for (const key of classifierTimeoutRecoveryAttemptsByKey.keys()) {
+    if (key.startsWith(`${sessionName}::`)) {
+      classifierTimeoutRecoveryAttemptsByKey.delete(key);
+    }
+  }
+  for (const key of doneFalseRecoveryAttemptsByKey.keys()) {
+    if (key.startsWith(`${sessionName}::`)) {
+      doneFalseRecoveryAttemptsByKey.delete(key);
+    }
+  }
 }
 
 function stripManagerNudgeBlocks(output: string): string {
@@ -276,6 +303,31 @@ function applyHumanInterventionStateOverride(
 function clearHumanIntervention(sessionName: string): void {
   classifierTimeoutInterventionsBySession.delete(sessionName);
   aiDoneFalseInterventionsBySession.delete(sessionName);
+  clearInterventionRecoveryAttemptsForSession(sessionName);
+}
+
+function buildClassifierTimeoutAutoRecoveryPrompt(
+  sessionName: string,
+  storyId: string,
+  reason: string,
+  attempt: number
+): string {
+  return `Manager auto-recovery (${attempt}/${CLASSIFIER_TIMEOUT_AUTO_RECOVERY_ATTEMPTS}): completion classifier timed out for ${storyId}. Continue ${storyId} autonomously from current state, do not pause for human input, and avoid status-only replies. If complete, run:
+hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${storyId} --from ${sessionName}
+hive my-stories complete ${storyId}
+Classifier detail: ${reason}`;
+}
+
+function buildDoneFalseAutoRecoveryPrompt(
+  sessionName: string,
+  storyId: string,
+  reason: string,
+  attempt: number
+): string {
+  return `Manager auto-recovery (${attempt}/${DONE_FALSE_AUTO_RECOVERY_ATTEMPTS}): AI assessed ${storyId} as not complete. Do not ask for human help; continue implementation/tests immediately and close remaining items. When complete, run:
+hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${storyId} --from ${sessionName}
+hive my-stories complete ${storyId}
+Assessment detail: ${reason}`;
 }
 
 async function markClassifierTimeoutForHumanIntervention(
@@ -284,6 +336,49 @@ async function markClassifierTimeoutForHumanIntervention(
   storyId: string,
   reason: string
 ): Promise<void> {
+  const key = interventionRecoveryKey(sessionName, storyId);
+  const attemptsInfo = classifierTimeoutRecoveryAttemptsByKey.get(key) || {
+    attempts: 0,
+    lastAttemptMs: 0,
+  };
+  const cooldownMs = Math.max(
+    ctx.config.manager.nudge_cooldown_ms,
+    INTERVENTION_AUTO_RECOVERY_COOLDOWN_MS
+  );
+  const now = Date.now();
+  const timeSinceLastAttempt = now - attemptsInfo.lastAttemptMs;
+  if (attemptsInfo.attempts < CLASSIFIER_TIMEOUT_AUTO_RECOVERY_ATTEMPTS) {
+    if (timeSinceLastAttempt < cooldownMs) {
+      return;
+    }
+    const nextAttempt = attemptsInfo.attempts + 1;
+    await nudgeAgent(
+      ctx.root,
+      sessionName,
+      buildClassifierTimeoutAutoRecoveryPrompt(sessionName, storyId, reason, nextAttempt)
+    );
+    classifierTimeoutRecoveryAttemptsByKey.set(key, {
+      attempts: nextAttempt,
+      lastAttemptMs: now,
+    });
+    ctx.counters.nudged++;
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId,
+      eventType: 'STORY_PROGRESS_UPDATE',
+      message: `Auto-recovery retry for classifier timeout on ${storyId} (${nextAttempt}/${CLASSIFIER_TIMEOUT_AUTO_RECOVERY_ATTEMPTS})`,
+      metadata: {
+        session_name: sessionName,
+        recovery: 'classifier_timeout_auto_recovery',
+        attempt: nextAttempt,
+        max_attempts: CLASSIFIER_TIMEOUT_AUTO_RECOVERY_ATTEMPTS,
+      },
+    });
+    ctx.db.save();
+    return;
+  }
+
+  classifierTimeoutRecoveryAttemptsByKey.delete(key);
   const escalationReason = formatClassifierTimeoutEscalationReason(storyId, reason);
   classifierTimeoutInterventionsBySession.set(sessionName, {
     storyId,
@@ -341,6 +436,49 @@ async function markDoneFalseForHumanIntervention(
   storyId: string,
   reason: string
 ): Promise<void> {
+  const key = interventionRecoveryKey(sessionName, storyId);
+  const attemptsInfo = doneFalseRecoveryAttemptsByKey.get(key) || {
+    attempts: 0,
+    lastAttemptMs: 0,
+  };
+  const cooldownMs = Math.max(
+    ctx.config.manager.nudge_cooldown_ms,
+    INTERVENTION_AUTO_RECOVERY_COOLDOWN_MS
+  );
+  const now = Date.now();
+  const timeSinceLastAttempt = now - attemptsInfo.lastAttemptMs;
+  if (attemptsInfo.attempts < DONE_FALSE_AUTO_RECOVERY_ATTEMPTS) {
+    if (timeSinceLastAttempt < cooldownMs) {
+      return;
+    }
+    const nextAttempt = attemptsInfo.attempts + 1;
+    await nudgeAgent(
+      ctx.root,
+      sessionName,
+      buildDoneFalseAutoRecoveryPrompt(sessionName, storyId, reason, nextAttempt)
+    );
+    doneFalseRecoveryAttemptsByKey.set(key, {
+      attempts: nextAttempt,
+      lastAttemptMs: now,
+    });
+    ctx.counters.nudged++;
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId,
+      eventType: 'STORY_PROGRESS_UPDATE',
+      message: `Auto-recovery retry for done=false assessment on ${storyId} (${nextAttempt}/${DONE_FALSE_AUTO_RECOVERY_ATTEMPTS})`,
+      metadata: {
+        session_name: sessionName,
+        recovery: 'done_false_auto_recovery',
+        attempt: nextAttempt,
+        max_attempts: DONE_FALSE_AUTO_RECOVERY_ATTEMPTS,
+      },
+    });
+    ctx.db.save();
+    return;
+  }
+
+  doneFalseRecoveryAttemptsByKey.delete(key);
   const escalationReason = formatDoneFalseEscalationReason(storyId, reason);
   aiDoneFalseInterventionsBySession.set(sessionName, {
     storyId,

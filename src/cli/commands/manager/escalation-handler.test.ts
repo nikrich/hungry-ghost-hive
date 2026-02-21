@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { AgentState } from '../../../state-detectors/types.js';
 import {
+  buildAutonomousUnblockPrompt,
   buildHumanApprovalReason,
   buildInterruptionRecoveryPrompt,
   buildRateLimitRecoveryPrompt,
@@ -111,6 +112,36 @@ describe('buildRateLimitRecoveryPrompt', () => {
     expect(prompt).toContain('continue your assigned story from your last checkpoint');
     expect(prompt).toContain(
       'hive pr submit -b <branch> -s <story-id> --from hive-junior-grigora-11'
+    );
+  });
+});
+
+describe('buildAutonomousUnblockPrompt', () => {
+  it('includes approve-and-continue instructions for permission-required state', () => {
+    const prompt = buildAutonomousUnblockPrompt(
+      'hive-junior-team-4',
+      AgentState.PERMISSION_REQUIRED,
+      'STORY-044'
+    );
+
+    expect(prompt).toContain('do not wait for human approval');
+    expect(prompt).toContain('Approve the permission gate');
+    expect(prompt).toContain(
+      'hive pr submit -b <branch> -s STORY-044 --from hive-junior-team-4'
+    );
+  });
+
+  it('falls back to best-assumption guidance for asking-question state', () => {
+    const prompt = buildAutonomousUnblockPrompt(
+      'hive-intermediate-team-2',
+      AgentState.ASKING_QUESTION,
+      'STORY-031'
+    );
+
+    expect(prompt).toContain('do not pause for human answers');
+    expect(prompt).toContain('Make the best reasonable assumption');
+    expect(prompt).toContain(
+      'hive pr submit -b <branch> -s STORY-031 --from hive-intermediate-team-2'
     );
   });
 });
