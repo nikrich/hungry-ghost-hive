@@ -310,6 +310,10 @@ function formatDoneFalseEscalationReason(storyId: string, reason: string): strin
   return `${AI_DONE_FALSE_REASON_PREFIX}: manager AI assessment returned done=false for ${storyId} after nudge limit reached. Manual human intervention required. Detail: ${shortReason}`;
 }
 
+function isStoryEligibleForDoneInference(story: StoryRow | null | undefined): boolean {
+  return Boolean(story && story.status === 'in_progress');
+}
+
 async function markDoneFalseForHumanIntervention(
   ctx: ManagerCheckContext,
   sessionName: string,
@@ -1188,10 +1192,10 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
         verboseLogCtx(ctx, `Agent ${session.name}: full-ai skipped (no current story)`);
       } else {
         const story = getStoryById(ctx.db.db, storyId);
-        if (!story || ['merged', 'completed'].includes(story.status)) {
+        if (!story || !isStoryEligibleForDoneInference(story)) {
           verboseLogCtx(
             ctx,
-            `Agent ${session.name}: full-ai skipped (story unavailable or closed: ${storyId})`
+            `Agent ${session.name}: full-ai skipped (story unavailable or not in_progress: ${storyId}, status=${story?.status ?? 'missing'})`
           );
         } else {
           const completionAssessment = await assessCompletionFromOutput(

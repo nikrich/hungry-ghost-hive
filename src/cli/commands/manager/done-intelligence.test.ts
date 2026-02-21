@@ -22,6 +22,18 @@ Need to inspect additional files before finishing.`;
 const DONE_LOCALLY_PENDING_SUBMIT_OUTPUT = `Story STORY-014 still IN_PROGRESS; all requested code changes are done locally.
 Next required steps: run tests, submit PR via hive pr submit, and mark story complete.`;
 
+const FINAL_SUMMARY_OUTPUT = `Implemented operator wiring and language templates.
+
+Changes:
+- Added runtime operator and tests.
+- Updated template renderers.
+
+Testing: not run (missing proto files in workspace).
+
+Next steps:
+1. Submit PR to merge queue
+2. Mark story complete`;
+
 const BLOCKED_OUTPUT = `No other work can proceed until missing proto files are restored.
 Story remains IN_PROGRESS and blocked.`;
 
@@ -124,5 +136,40 @@ describe('done intelligence', () => {
     expect(result.done).toBe(false);
     expect(result.confidence).toBe(0);
     expect(result.reason).toContain('Local classifier unavailable');
+  });
+
+  it('overrides contradictory AI done=false result when reason indicates post-work summary', async () => {
+    mockExeca.mockResolvedValue({
+      stdout:
+        '{"done":false,"confidence":0.48,"reason":"Output includes a completed implementation summary with tests and next steps, indicating post-work summary state."}',
+    });
+
+    const result = await assessCompletionFromOutput(
+      mockConfig,
+      'hive-intermediate-team-9',
+      'STORY-777',
+      FINAL_SUMMARY_OUTPUT
+    );
+
+    expect(result.done).toBe(true);
+    expect(result.confidence).toBeGreaterThanOrEqual(0.84);
+    expect(result.reason).toContain('overriding conflicting AI done=false classification');
+  });
+
+  it('keeps done=false when AI reason indicates active incomplete work', async () => {
+    mockExeca.mockResolvedValue({
+      stdout:
+        '{"done":false,"confidence":0.88,"reason":"Output includes ongoing work, stated next steps, and incomplete Python/Kotlin updates; not a final completion summary ready for PR submission."}',
+    });
+
+    const result = await assessCompletionFromOutput(
+      mockConfig,
+      'hive-junior-team-9',
+      'STORY-778',
+      IN_PROGRESS_OUTPUT
+    );
+
+    expect(result.done).toBe(false);
+    expect(result.confidence).toBe(0.88);
   });
 });

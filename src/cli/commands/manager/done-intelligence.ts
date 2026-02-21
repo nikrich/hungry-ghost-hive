@@ -10,6 +10,7 @@ import type { CLITool } from '../../../utils/cli-commands.js';
 
 const COMPLETION_ANALYSIS_WINDOW_LINES = 180;
 const COMPLETION_AI_CACHE_MS = 5 * 60 * 1000;
+const HEURISTIC_DONE_CONFIDENCE = 0.84;
 
 const COMPLETION_CANDIDATE_PATTERNS = [
   /worked for \d+/i,
@@ -79,6 +80,17 @@ function assessCompletionHeuristically(output: string): CompletionAssessment {
   const hasStrongNonCompletionSignal = NON_COMPLETION_PATTERNS.some(pattern =>
     pattern.test(recent)
   );
+  const hasTestingSection = /testing:\s*(?:not run|pass|fail|passed|failed)/i.test(recent);
+  const hasNextStepsSection = /next steps:/i.test(recent);
+  const hasSummarySection =
+    /\bsummary\b/i.test(recent) ||
+    /\bchanges\b/i.test(recent) ||
+    /implementation complete/i.test(recent);
+
+  // Strong signal: post-work final summary shape commonly emitted at task completion.
+  const hasFinalSummaryShape =
+    (hasTestingSection && hasNextStepsSection && hasSummarySection) ||
+    (/worked for \d+/i.test(recent) && hasTestingSection && hasNextStepsSection);
 
   // Strong signal: implementation appears done locally but agent is looping on "pending PR/tests".
   const doneLocallyPendingSubmit =
@@ -87,10 +99,19 @@ function assessCompletionHeuristically(output: string): CompletionAssessment {
       recent
     );
 
+  if (hasFinalSummaryShape && !hasStrongNonCompletionSignal) {
+    return {
+      done: true,
+      confidence: HEURISTIC_DONE_CONFIDENCE,
+      reason: 'Heuristic: post-work implementation summary detected',
+      usedAi: false,
+    };
+  }
+
   if (doneLocallyPendingSubmit && !hasStrongNonCompletionSignal) {
     return {
       done: true,
-      confidence: 0.84,
+      confidence: HEURISTIC_DONE_CONFIDENCE,
       reason: 'Heuristic: implementation appears complete and stalled at PR-submission workflow',
       usedAi: false,
     };
@@ -148,6 +169,48 @@ function parseAssessmentJson(rawContent: string): CompletionAssessment | null {
   } catch {
     return null;
   }
+}
+
+function reasonIndicatesPostWorkCompletion(reason: string): boolean {
+  return (
+    /post-work\s+(?:summary|report)\s+state/i.test(reason) ||
+    /final report/i.test(reason) ||
+    /completed implementation summary/i.test(reason) ||
+    /completed implementation/i.test(reason)
+  );
+}
+
+function reconcileAssessmentWithHeuristics(
+  aiAssessment: CompletionAssessment,
+  heuristicAssessment: CompletionAssessment,
+  output: string
+): CompletionAssessment {
+  if (aiAssessment.done) {
+    return aiAssessment;
+  }
+
+  const recent = getRecentOutput(output);
+  const hasStrongNonCompletionSignal = NON_COMPLETION_PATTERNS.some(pattern => pattern.test(recent));
+
+  if (reasonIndicatesPostWorkCompletion(aiAssessment.reason)) {
+    return {
+      done: true,
+      confidence: Math.max(HEURISTIC_DONE_CONFIDENCE, aiAssessment.confidence),
+      reason: `Reason indicates post-work completion; overriding conflicting AI done=false classification (${aiAssessment.reason})`,
+      usedAi: aiAssessment.usedAi,
+    };
+  }
+
+  if (!hasStrongNonCompletionSignal && heuristicAssessment.done) {
+    return {
+      done: true,
+      confidence: Math.max(heuristicAssessment.confidence, aiAssessment.confidence),
+      reason: `${heuristicAssessment.reason}; overriding conflicting AI done=false classification (${aiAssessment.reason})`,
+      usedAi: aiAssessment.usedAi,
+    };
+  }
+
+  return aiAssessment;
 }
 
 function buildCompletionClassifierPrompt(
@@ -313,7 +376,7 @@ export async function assessCompletionFromOutput(
     );
 
     const parsed = parseAssessmentJson(responseContent);
-    const assessment: CompletionAssessment =
+    const parsedAssessment: CompletionAssessment =
       parsed ||
       ({
         done: false,
@@ -321,6 +384,11 @@ export async function assessCompletionFromOutput(
         reason: 'Could not parse local CLI classifier response as JSON',
         usedAi: true,
       } satisfies CompletionAssessment);
+    const assessment = reconcileAssessmentWithHeuristics(
+      parsedAssessment,
+      heuristicAssessment,
+      recentOutput
+    );
 
     completionAssessmentCache.set(cacheKey, {
       fingerprint,
