@@ -92,6 +92,9 @@ const SCREEN_STATIC_AI_RECHECK_MS = 5 * 60 * 1000;
 const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_STUCK_NUDGES_PER_STORY = 1;
 const NO_DIFF_RECOVERY_NUDGE_COOLDOWN_MS = 15 * 60 * 1000;
+const MANAGER_DB_LOCK_RETRIES = 80;
+const MANAGER_DB_LOCK_MIN_TIMEOUT_MS = 100;
+const MANAGER_DB_LOCK_MAX_TIMEOUT_MS = 1000;
 const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
 const AI_DONE_FALSE_REASON_PREFIX = 'AI done=false escalation';
 
@@ -123,6 +126,15 @@ const noDiffRecoveryNudgeByStory = new Map<string, number>();
 function verboseLog(verbose: boolean, message: string): void {
   if (!verbose) return;
   console.log(chalk.gray(`  [verbose] ${message}`));
+}
+
+function isConcurrencyError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === 'CONCURRENCY_ERROR'
+  );
 }
 
 function verboseLogCtx(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string): void {
@@ -498,7 +510,11 @@ managerCommand
       try {
         await managerCheck(root, config, clusterRuntime, verbose);
       } catch (err) {
-        console.error(chalk.red('Manager error:'), err);
+        if (isConcurrencyError(err)) {
+          console.log(chalk.yellow('Manager check skipped: database lock is busy.'));
+        } else {
+          console.error(chalk.red('Manager error:'), err);
+        }
       } finally {
         checkInProgress = false;
         if (checkQueued) {
@@ -695,11 +711,12 @@ async function managerCheck(
   const timestamp = new Date().toLocaleTimeString();
   console.log(chalk.gray(`[${timestamp}] Manager checking...`));
 
-  await withHiveContext(async ({ paths, db }) => {
-    // Load config if not provided (for backwards compatibility)
-    if (!config) {
-      config = loadConfig(paths.hiveDir);
-    }
+  await withHiveContext(
+    async ({ paths, db }) => {
+      // Load config if not provided (for backwards compatibility)
+      if (!config) {
+        config = loadConfig(paths.hiveDir);
+      }
 
     if (clusterRuntime?.isEnabled()) {
       verboseLog(verbose, 'Cluster sync: start');
@@ -833,7 +850,16 @@ async function managerCheck(
     verboseLogCtx(ctx, 'Step: notify seniors about unassigned stories');
     await notifyUnassignedStories(ctx);
     printSummary(ctx);
-  });
+    },
+    {
+      suppressLockErrors: true,
+      lockRetries: {
+        retries: MANAGER_DB_LOCK_RETRIES,
+        minTimeout: MANAGER_DB_LOCK_MIN_TIMEOUT_MS,
+        maxTimeout: MANAGER_DB_LOCK_MAX_TIMEOUT_MS,
+      },
+    }
+  );
 }
 
 async function backfillPRNumbers(ctx: ManagerCheckContext): Promise<void> {

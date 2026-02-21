@@ -28,6 +28,16 @@ export interface HiveRootContext {
   paths: HivePaths;
 }
 
+export interface WithHiveContextOptions {
+  suppressLockErrors?: boolean;
+  lockRetries?: {
+    retries?: number;
+    minTimeout?: number;
+    maxTimeout?: number;
+  };
+  lockStaleMs?: number;
+}
+
 function resolveRoot(): { root: string; paths: HivePaths } {
   const root = findHiveRoot();
   if (!root) {
@@ -38,7 +48,10 @@ function resolveRoot(): { root: string; paths: HivePaths } {
   return { root, paths };
 }
 
-export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | T): Promise<T> {
+export async function withHiveContext<T>(
+  fn: (ctx: HiveContext) => Promise<T> | T,
+  options: WithHiveContextOptions = {}
+): Promise<T> {
   const { root, paths } = resolveRoot();
   const dbLockPath = join(paths.hiveDir, 'db');
 
@@ -47,17 +60,19 @@ export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | 
   let releaseLock: (() => Promise<void>) | null = null;
   try {
     releaseLock = await acquireLock(dbLockPath, {
-      stale: 30000, // 30s stale timeout
-      retries: {
+      stale: options.lockStaleMs ?? 30000, // 30s stale timeout
+      retries: options.lockRetries ?? {
         retries: 20, // More retries for DB lock contention
         minTimeout: 50,
         maxTimeout: 500,
       },
     });
   } catch (err) {
-    console.error(
-      chalk.red('Failed to acquire database lock. Another process may be accessing the database.')
-    );
+    if (!options.suppressLockErrors) {
+      console.error(
+        chalk.red('Failed to acquire database lock. Another process may be accessing the database.')
+      );
+    }
     throw err;
   }
 
