@@ -95,6 +95,7 @@ const NO_DIFF_RECOVERY_NUDGE_COOLDOWN_MS = 15 * 60 * 1000;
 const MANAGER_DB_LOCK_RETRIES = 80;
 const MANAGER_DB_LOCK_MIN_TIMEOUT_MS = 100;
 const MANAGER_DB_LOCK_MAX_TIMEOUT_MS = 1000;
+const REVIEWING_QUEUE_BLOCK_NUDGE_COOLDOWN_MS = 2 * 60 * 1000;
 const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
 const AI_DONE_FALSE_REASON_PREFIX = 'AI done=false escalation';
 const CLASSIFIER_TIMEOUT_AUTO_RECOVERY_ATTEMPTS = 5;
@@ -130,6 +131,7 @@ const screenStaticBySession = new Map<string, ScreenStaticTracking>();
 const classifierTimeoutInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
 const aiDoneFalseInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
 const noDiffRecoveryNudgeByStory = new Map<string, number>();
+const reviewingQueueBlockNudgeBySession = new Map<string, number>();
 const classifierTimeoutRecoveryAttemptsByKey = new Map<string, InterventionRecoveryAttempt>();
 const doneFalseRecoveryAttemptsByKey = new Map<string, InterventionRecoveryAttempt>();
 
@@ -1844,6 +1846,52 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
       await sendToTmuxSession(
         qa.name,
         withManagerNudgeEnvelope(`# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`)
+      );
+    }
+
+    const now = Date.now();
+    const reviewingBySession = new Map<string, typeof openPRs>();
+    for (const pr of openPRs) {
+      if (pr.status !== 'reviewing' || !pr.reviewed_by) continue;
+      const existing = reviewingBySession.get(pr.reviewed_by) || [];
+      existing.push(pr);
+      reviewingBySession.set(pr.reviewed_by, existing);
+    }
+
+    for (const [reviewerSession, activeReviews] of reviewingBySession.entries()) {
+      if (!ctx.hiveSessions.some(session => session.name === reviewerSession)) continue;
+      const lastNudge = reviewingQueueBlockNudgeBySession.get(reviewerSession) || 0;
+      if (now - lastNudge < REVIEWING_QUEUE_BLOCK_NUDGE_COOLDOWN_MS) continue;
+
+      const reviewList = activeReviews.map(pr => pr.id).join(', ');
+      await sendToTmuxSession(
+        reviewerSession,
+        withManagerNudgeEnvelope(
+          `# Queue is blocked behind your active review(s): ${reviewList}
+# ${queuedPRs.length} additional PR(s) are waiting.
+# Finish your current review now with one of:
+#   hive pr approve <pr-id>
+#   hive pr reject <pr-id> -r "reason"
+# Then run: hive pr queue`
+        )
+      );
+      reviewingQueueBlockNudgeBySession.set(reviewerSession, now);
+      ctx.counters.nudged++;
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Nudged reviewer ${reviewerSession} to unblock PR queue`,
+        metadata: {
+          reviewer_session: reviewerSession,
+          reviewing_prs: activeReviews.map(pr => pr.id),
+          queued_count: queuedPRs.length,
+          recovery: 'review_queue_block_nudge',
+        },
+      });
+      ctx.db.save();
+      verboseLogCtx(
+        ctx,
+        `notifyQAOfQueuedPRs: nudged reviewer=${reviewerSession} activeReviews=${activeReviews.length}`
       );
     }
   }
