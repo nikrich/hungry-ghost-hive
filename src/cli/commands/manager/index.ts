@@ -12,7 +12,7 @@ import {
   syncFromProvider,
   syncStatusForStory,
 } from '../../../connectors/project-management/operations.js';
-import type { StoryRow } from '../../../db/client.js';
+import type { PullRequestRow, StoryRow } from '../../../db/client.js';
 import { queryAll, withTransaction } from '../../../db/client.js';
 import { acquireLock } from '../../../db/lock.js';
 import { getAgentById, getAllAgents } from '../../../db/queries/agents.js';
@@ -96,6 +96,7 @@ const MANAGER_DB_LOCK_RETRIES = 80;
 const MANAGER_DB_LOCK_MIN_TIMEOUT_MS = 100;
 const MANAGER_DB_LOCK_MAX_TIMEOUT_MS = 1000;
 const REVIEWING_QUEUE_BLOCK_NUDGE_COOLDOWN_MS = 2 * 60 * 1000;
+const STALE_REVIEWING_REQUEUE_TIMEOUT_MS = 10 * 60 * 1000;
 const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
 const AI_DONE_FALSE_REASON_PREFIX = 'AI done=false escalation';
 const CLASSIFIER_TIMEOUT_AUTO_RECOVERY_ATTEMPTS = 5;
@@ -155,6 +156,56 @@ function isConcurrencyError(error: unknown): boolean {
 
 function verboseLogCtx(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string): void {
   verboseLog(ctx.verbose, message);
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return String(error);
+}
+
+function isTmuxTargetMissingError(error: unknown): boolean {
+  const message = getErrorMessage(error);
+  return /can't find (?:session|pane)|unknown target|no server running on/i.test(message);
+}
+
+async function autoRequeueReviewAssignments(
+  ctx: ManagerCheckContext,
+  prs: PullRequestRow[],
+  reviewerSession: string,
+  recoveryTag: string,
+  reason: string,
+  metadata: Record<string, unknown> = {}
+): Promise<number> {
+  let requeued = 0;
+  await withTransaction(ctx.db.db, () => {
+    for (const pr of prs) {
+      updatePullRequest(ctx.db.db, pr.id, {
+        status: 'queued',
+        reviewedBy: null,
+        reviewNotes: `[auto-requeued:${recoveryTag}] ${reason}`,
+      });
+      createLog(ctx.db.db, {
+        agentId: 'manager',
+        storyId: pr.story_id || undefined,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Auto-requeued reviewing PR ${pr.id}`,
+        metadata: {
+          pr_id: pr.id,
+          reviewer_session: reviewerSession,
+          recovery: recoveryTag,
+          reason,
+          ...metadata,
+        },
+      });
+      requeued++;
+    }
+  });
+  if (requeued > 0) {
+    reviewingQueueBlockNudgeBySession.delete(reviewerSession);
+    ctx.db.save();
+  }
+  return requeued;
 }
 
 function summarizeOutputForVerbose(output: string): string {
@@ -1777,14 +1828,70 @@ function batchMarkMessagesRead(ctx: ManagerCheckContext): void {
 }
 
 async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
-  const openPRs = getMergeQueue(ctx.db.db);
+  let openPRs = getMergeQueue(ctx.db.db);
   ctx.counters.queuedPRCount = openPRs.length;
   verboseLogCtx(ctx, `notifyQAOfQueuedPRs: open=${openPRs.length}`);
 
-  const queuedPRs = openPRs.filter(pr => pr.status === 'queued');
+  let queuedPRs = openPRs.filter(pr => pr.status === 'queued');
   verboseLogCtx(ctx, `notifyQAOfQueuedPRs: queued=${queuedPRs.length}`);
   if (queuedPRs.length === 0) {
     return;
+  }
+
+  let staleRequeued = 0;
+  let runtimeRequeued = 0;
+  const nowMs = Date.now();
+  for (const pr of openPRs) {
+    if (pr.status !== 'reviewing' || !pr.reviewed_by) continue;
+    const updatedAtMs = Date.parse(pr.updated_at);
+    if (!Number.isFinite(updatedAtMs)) continue;
+    if (nowMs - updatedAtMs < STALE_REVIEWING_REQUEUE_TIMEOUT_MS) continue;
+    const reviewerSession = pr.reviewed_by;
+    const reviewerLive = ctx.hiveSessions.some(session => session.name === reviewerSession);
+    if (!reviewerLive) continue;
+
+    const reviewer = ctx.agentsBySessionName.get(reviewerSession);
+    const reviewerCliTool = (reviewer?.cli_tool || 'claude') as CLITool;
+    const reviewerOutput = await captureTmuxPane(reviewerSession, TMUX_CAPTURE_LINES_SHORT);
+    const staleForMs = nowMs - updatedAtMs;
+    const outputMissing = reviewerOutput.trim().length === 0;
+    if (!outputMissing) {
+      const reviewerState = detectAgentState(reviewerOutput, reviewerCliTool);
+      if (reviewerState.needsHuman || !reviewerState.isWaiting) {
+        continue;
+      }
+      if (![AgentState.IDLE_AT_PROMPT, AgentState.WORK_COMPLETE].includes(reviewerState.state)) {
+        continue;
+      }
+    }
+
+    staleRequeued += await autoRequeueReviewAssignments(
+      ctx,
+      [pr],
+      reviewerSession,
+      'stale-review',
+      outputMissing
+        ? 'review timed out and reviewer output could not be captured'
+        : 'review timed out while reviewer was idle at prompt',
+      { stale_for_ms: staleForMs }
+    );
+  }
+
+  if (staleRequeued > 0) {
+    ctx.db.save();
+    await ctx.scheduler.checkMergeQueue();
+    ctx.db.save();
+    console.log(chalk.yellow(`  Re-queued ${staleRequeued} stale reviewing PR(s)`));
+    openPRs = getMergeQueue(ctx.db.db);
+    queuedPRs = openPRs.filter(pr => pr.status === 'queued');
+    ctx.counters.queuedPRCount = openPRs.length;
+    verboseLogCtx(
+      ctx,
+      `notifyQAOfQueuedPRs: after stale-requeue open=${openPRs.length}, queued=${queuedPRs.length}`
+    );
+    if (queuedPRs.length === 0) {
+      return;
+    }
   }
 
   const reviewingSessions = new Set(
@@ -1819,23 +1926,40 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
         metadata: { pr_id: nextPR.id, branch: nextPR.branch_name },
       });
     });
-    dispatchCount++;
     verboseLogCtx(ctx, `notifyQAOfQueuedPRs: assigned pr=${nextPR.id} -> ${qa.name}`);
     ctx.db.save();
 
     const githubLine = nextPR.github_pr_url ? `\n# GitHub: ${nextPR.github_pr_url}` : '';
-    await sendToTmuxSession(
-      qa.name,
-      withManagerNudgeEnvelope(
-        `# You are assigned PR review ${nextPR.id} (${nextPR.story_id || 'no-story'}).${githubLine}
+    try {
+      await sendToTmuxSession(
+        qa.name,
+        withManagerNudgeEnvelope(
+          `# You are assigned PR review ${nextPR.id} (${nextPR.story_id || 'no-story'}).${githubLine}
 # Execute now:
 #   hive pr show ${nextPR.id}
 #   hive pr approve ${nextPR.id}
 # (If manual merge is required in this repo, use --no-merge.)
 # or reject:
 #   hive pr reject ${nextPR.id} -r "reason"`
-      )
-    );
+        )
+      );
+    } catch (error) {
+      if (!isTmuxTargetMissingError(error)) throw error;
+      verboseLogCtx(
+        ctx,
+        `notifyQAOfQueuedPRs: requeue pr=${nextPR.id} reviewer=${qa.name} reason=tmux_target_missing`
+      );
+      runtimeRequeued += await autoRequeueReviewAssignments(
+        ctx,
+        [nextPR],
+        qa.name,
+        'qa-assign-send-failed',
+        'manager could not deliver review assignment nudge to reviewer session',
+        { tmux_error: getErrorMessage(error) }
+      );
+      continue;
+    }
+    dispatchCount++;
   }
 
   // Fallback nudge if PRs are still queued but all QA sessions are busy/unavailable.
@@ -1843,10 +1967,15 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
     verboseLogCtx(ctx, 'notifyQAOfQueuedPRs: no idle QA, sent queue nudge fallback');
     const qaSessions = ctx.hiveSessions.filter(s => s.name.includes('-qa-'));
     for (const qa of qaSessions) {
-      await sendToTmuxSession(
-        qa.name,
-        withManagerNudgeEnvelope(`# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`)
-      );
+      try {
+        await sendToTmuxSession(
+          qa.name,
+          withManagerNudgeEnvelope(`# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`)
+        );
+      } catch (error) {
+        if (!isTmuxTargetMissingError(error)) throw error;
+        verboseLogCtx(ctx, `notifyQAOfQueuedPRs: skip fallback nudge for missing target ${qa.name}`);
+      }
     }
 
     const now = Date.now();
@@ -1864,17 +1993,34 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
       if (now - lastNudge < REVIEWING_QUEUE_BLOCK_NUDGE_COOLDOWN_MS) continue;
 
       const reviewList = activeReviews.map(pr => pr.id).join(', ');
-      await sendToTmuxSession(
-        reviewerSession,
-        withManagerNudgeEnvelope(
-          `# Queue is blocked behind your active review(s): ${reviewList}
+      try {
+        await sendToTmuxSession(
+          reviewerSession,
+          withManagerNudgeEnvelope(
+            `# Queue is blocked behind your active review(s): ${reviewList}
 # ${queuedPRs.length} additional PR(s) are waiting.
 # Finish your current review now with one of:
 #   hive pr approve <pr-id>
 #   hive pr reject <pr-id> -r "reason"
 # Then run: hive pr queue`
-        )
-      );
+          )
+        );
+      } catch (error) {
+        if (!isTmuxTargetMissingError(error)) throw error;
+        verboseLogCtx(
+          ctx,
+          `notifyQAOfQueuedPRs: reviewer=${reviewerSession} unreachable while queue blocked; requeueing ${activeReviews.length} review(s)`
+        );
+        runtimeRequeued += await autoRequeueReviewAssignments(
+          ctx,
+          activeReviews,
+          reviewerSession,
+          'reviewer-unreachable',
+          'queue was blocked and reviewer session became unreachable',
+          { tmux_error: getErrorMessage(error) }
+        );
+        continue;
+      }
       reviewingQueueBlockNudgeBySession.set(reviewerSession, now);
       ctx.counters.nudged++;
       createLog(ctx.db.db, {
@@ -1894,6 +2040,12 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
         `notifyQAOfQueuedPRs: nudged reviewer=${reviewerSession} activeReviews=${activeReviews.length}`
       );
     }
+  }
+
+  if (runtimeRequeued > 0) {
+    await ctx.scheduler.checkMergeQueue();
+    ctx.db.save();
+    console.log(chalk.yellow(`  Re-queued ${runtimeRequeued} reviewer-assignment PR(s) after tmux/session errors`));
   }
 }
 
