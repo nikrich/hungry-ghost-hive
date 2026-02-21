@@ -803,7 +803,7 @@ async function managerCheck(
     verboseLogCtx(ctx, 'Step: recover orphaned reviewing PR assignments');
     await recoverOrphanedReviewAssignments(ctx);
     verboseLogCtx(ctx, 'Step: resolve stale escalations');
-    resolveStaleEscalations(ctx);
+    await resolveStaleEscalations(ctx);
     verboseLogCtx(ctx, 'Step: resolve story-state escalations');
     resolveStoryStateEscalations(ctx);
 
@@ -1061,7 +1061,7 @@ async function recoverOrphanedReviewAssignments(ctx: ManagerCheckContext): Promi
   verboseLogCtx(ctx, `recoverOrphanedReviewAssignments: orphaned=${orphaned.length}`);
   if (orphaned.length === 0) return;
 
-  withTransaction(ctx.db.db, () => {
+  await withTransaction(ctx.db.db, () => {
     for (const candidate of orphaned) {
       updatePullRequest(ctx.db.db, candidate.pr.id, {
         status: 'queued',
@@ -1091,7 +1091,7 @@ async function recoverOrphanedReviewAssignments(ctx: ManagerCheckContext): Promi
   console.log(chalk.yellow(`  Re-queued ${orphaned.length} orphaned reviewing PR(s)`));
 }
 
-function resolveStaleEscalations(ctx: ManagerCheckContext): void {
+async function resolveStaleEscalations(ctx: ManagerCheckContext): Promise<void> {
   const staleAfterMs = Math.max(
     1,
     ctx.config.manager.nudge_cooldown_ms,
@@ -1120,7 +1120,7 @@ function resolveStaleEscalations(ctx: ManagerCheckContext): void {
   if (staleEscalations.length === 0) return;
   verboseLogCtx(ctx, `resolveStaleEscalations: stale=${staleEscalations.length}`);
 
-  withTransaction(ctx.db.db, () => {
+  await withTransaction(ctx.db.db, () => {
     for (const stale of staleEscalations) {
       updateEscalation(ctx.db.db, stale.escalation.id, {
         status: 'resolved',
