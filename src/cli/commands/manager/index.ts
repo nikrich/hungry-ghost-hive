@@ -935,10 +935,9 @@ async function nudgeRecoveredNoDiffStories(
     }
 
     await nudgeAgent(
+      ctx.root,
       sessionName,
-      withManagerNudgeEnvelope(
-        `Recovery mode for ${storyId}: your previous PR branch had no commits ahead of origin/main, but your existing worktree state should be reused. Do not restart or rewrite work. Continue from current files, commit your existing changes, run validation, and submit with:\nhive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${storyId} --from ${sessionName}\nThen mark complete.`
-      )
+      `Recovery mode for ${storyId}: your previous PR branch had no commits ahead of origin/main, but your existing worktree state should be reused. Do not restart or rewrite work. Continue from current files, commit your existing changes, run validation, and submit with:\nhive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${storyId} --from ${sessionName}\nThen mark complete.`
     );
     noDiffRecoveryNudgeByStory.set(storyId, now);
     ctx.counters.nudged++;
