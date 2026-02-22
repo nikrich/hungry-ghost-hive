@@ -100,10 +100,13 @@ const STALE_REVIEWING_REQUEUE_TIMEOUT_MS = 10 * 60 * 1000;
 const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
 const AI_DONE_FALSE_REASON_PREFIX = 'AI done=false escalation';
 const QA_FAILURE_ESCALATION_REASON_PREFIX = 'Repeated QA failure escalation';
+const NO_DIFF_LOOP_ESCALATION_REASON_PREFIX = 'No-diff PR loop escalation';
 const QA_FAILURE_ESCALATION_THRESHOLD = 3;
 const CLASSIFIER_TIMEOUT_AUTO_RECOVERY_ATTEMPTS = 5;
 const DONE_FALSE_AUTO_RECOVERY_ATTEMPTS = 5;
 const INTERVENTION_AUTO_RECOVERY_COOLDOWN_MS = 60000;
+const NO_DIFF_LOOP_ESCALATION_THRESHOLD = 3;
+const NO_DIFF_LOOP_ESCALATION_WINDOW_MS = 60 * 60 * 1000;
 
 interface ClassifierTimeoutIntervention {
   storyId: string;
@@ -130,10 +133,16 @@ interface InterventionRecoveryAttempt {
   lastAttemptMs: number;
 }
 
+interface NoDiffLoopTracking {
+  count: number;
+  lastClosedMs: number;
+}
+
 const screenStaticBySession = new Map<string, ScreenStaticTracking>();
 const classifierTimeoutInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
 const aiDoneFalseInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
 const noDiffRecoveryNudgeByStory = new Map<string, number>();
+const noDiffLoopByStory = new Map<string, NoDiffLoopTracking>();
 const reviewingQueueBlockNudgeBySession = new Map<string, number>();
 const classifierTimeoutRecoveryAttemptsByKey = new Map<string, InterventionRecoveryAttempt>();
 const doneFalseRecoveryAttemptsByKey = new Map<string, InterventionRecoveryAttempt>();
@@ -261,6 +270,14 @@ function interventionRecoveryKey(sessionName: string, storyId: string): string {
   return `${sessionName}::${storyId}`;
 }
 
+function isInterventionEscalationReason(reason: string): boolean {
+  return (
+    reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
+    reason.startsWith(AI_DONE_FALSE_REASON_PREFIX) ||
+    reason.startsWith(NO_DIFF_LOOP_ESCALATION_REASON_PREFIX)
+  );
+}
+
 function clearInterventionRecoveryAttemptsForSession(sessionName: string): void {
   for (const key of classifierTimeoutRecoveryAttemptsByKey.keys()) {
     if (key.startsWith(`${sessionName}::`)) {
@@ -352,14 +369,12 @@ function applyHumanInterventionStateOverride(
       : (getActiveEscalationsForAgent(ctx.db.db, sessionName).find(
           escalation =>
             escalation.story_id === storyId &&
-            (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
-              escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
+            isInterventionEscalationReason(escalation.reason)
         ) ??
         getPendingEscalations(ctx.db.db).find(
           escalation =>
             escalation.story_id === storyId &&
-            (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
-              escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
+            isInterventionEscalationReason(escalation.reason)
         ) ??
         null);
 
@@ -379,9 +394,13 @@ function applyHumanInterventionStateOverride(
 }
 
 function clearHumanIntervention(sessionName: string): void {
+  clearHumanInterventionFlags(sessionName);
+  clearInterventionRecoveryAttemptsForSession(sessionName);
+}
+
+function clearHumanInterventionFlags(sessionName: string): void {
   classifierTimeoutInterventionsBySession.delete(sessionName);
   aiDoneFalseInterventionsBySession.delete(sessionName);
-  clearInterventionRecoveryAttemptsForSession(sessionName);
 }
 
 function buildClassifierTimeoutAutoRecoveryPrompt(
@@ -1128,8 +1147,105 @@ async function ensureQueuedPRGitHubLinks(ctx: ManagerCheckContext): Promise<void
   }
 
   if (result.reopenedStories.length > 0) {
-    await nudgeRecoveredNoDiffStories(ctx, result.reopenedStories);
+    const escalatedStoryIds = await escalateNoDiffLoopStories(ctx, result.reopenedStories);
+    const recoverableStories = result.reopenedStories.filter(
+      storyId => !escalatedStoryIds.has(storyId)
+    );
+    if (recoverableStories.length > 0) {
+      await nudgeRecoveredNoDiffStories(ctx, recoverableStories);
+    }
   }
+}
+
+async function escalateNoDiffLoopStories(
+  ctx: ManagerCheckContext,
+  reopenedStories: string[]
+): Promise<Set<string>> {
+  const escalatedStories = new Set<string>();
+  const now = Date.now();
+  const uniqueStoryIds = [...new Set(reopenedStories)];
+  const pendingEscalations = getPendingEscalations(ctx.db.db);
+
+  for (const storyId of uniqueStoryIds) {
+    const existing = noDiffLoopByStory.get(storyId);
+    const withinWindow = existing && now - existing.lastClosedMs <= NO_DIFF_LOOP_ESCALATION_WINDOW_MS;
+    const nextCount = withinWindow ? existing.count + 1 : 1;
+    noDiffLoopByStory.set(storyId, {
+      count: nextCount,
+      lastClosedMs: now,
+    });
+
+    verboseLogCtx(
+      ctx,
+      `noDiffLoop: story=${storyId} count=${nextCount}/${NO_DIFF_LOOP_ESCALATION_THRESHOLD}`
+    );
+    if (nextCount < NO_DIFF_LOOP_ESCALATION_THRESHOLD) {
+      continue;
+    }
+
+    const alreadyPending = pendingEscalations.some(
+      escalation =>
+        escalation.story_id === storyId &&
+        escalation.reason.startsWith(NO_DIFF_LOOP_ESCALATION_REASON_PREFIX)
+    );
+    if (alreadyPending) {
+      escalatedStories.add(storyId);
+      continue;
+    }
+
+    const story = getStoryById(ctx.db.db, storyId);
+    const agent = story?.assigned_agent_id ? getAgentById(ctx.db.db, story.assigned_agent_id) : null;
+    const sessionName = agent?.tmux_session || (agent ? `hive-${agent.id}` : 'manager');
+    const reason = `${NO_DIFF_LOOP_ESCALATION_REASON_PREFIX}: ${storyId} auto-closed ${nextCount} PR attempts for having no commits ahead of origin/main within ${Math.round(NO_DIFF_LOOP_ESCALATION_WINDOW_MS / 60000)} minutes. AI auto-recovery nudges were exhausted; human intervention is required.`;
+    const escalation = createEscalation(ctx.db.db, {
+      storyId,
+      fromAgentId: sessionName,
+      toAgentId: null,
+      reason,
+    });
+    createLog(ctx.db.db, {
+      agentId: 'manager',
+      storyId,
+      eventType: 'ESCALATION_CREATED',
+      status: 'error',
+      message: `Escalated ${storyId} after repeated no-diff PR auto-close loop`,
+      metadata: {
+        escalation_id: escalation.id,
+        story_id: storyId,
+        escalation_type: 'no_diff_loop',
+        no_diff_count: nextCount,
+        threshold: NO_DIFF_LOOP_ESCALATION_THRESHOLD,
+      },
+    });
+    ctx.counters.escalationsCreated++;
+    ctx.escalatedSessions.add(sessionName);
+    aiDoneFalseInterventionsBySession.set(sessionName, {
+      storyId,
+      reason,
+      createdAtMs: now,
+    });
+    escalatedStories.add(storyId);
+
+    if (agent?.tmux_session && (await isTmuxSessionRunning(agent.tmux_session))) {
+      await nudgeAgent(
+        ctx.root,
+        agent.tmux_session,
+        `Stop retrying PR submission for ${storyId}. This no-diff loop has been escalated to a human. Pause further retries until guidance is provided.`
+      );
+      ctx.counters.nudged++;
+    }
+  }
+
+  if (escalatedStories.size > 0) {
+    ctx.db.save();
+    console.log(
+      chalk.red(
+        `  Escalated ${escalatedStories.size} story(ies) after repeated no-diff PR auto-close loops`
+      )
+    );
+  }
+
+  return escalatedStories;
 }
 
 async function nudgeRecoveredNoDiffStories(
@@ -1738,7 +1854,9 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
             verboseLogCtx(ctx, `Agent ${session.name}: action=classifier_timeout_escalation`);
             continue;
           }
-          clearHumanIntervention(session.name);
+          // Preserve recovery attempt counters during periodic completion inference.
+          // Otherwise done=false retries reset to 1 every cycle and never escalate.
+          clearHumanInterventionFlags(session.name);
 
           const aiSaysDone =
             completionAssessment.done &&
@@ -2461,7 +2579,9 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
         );
         continue;
       }
-      clearHumanIntervention(agentSession.name);
+      // Preserve recovery attempt counters during periodic completion inference.
+      // Otherwise done=false retries reset to 1 every cycle and never escalate.
+      clearHumanInterventionFlags(agentSession.name);
 
       if (aiSaysDone) {
         const progressed = await autoProgressDoneStory(
