@@ -79,6 +79,7 @@ import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
 import { findStoryStateEscalationsToResolve, type StoryStateSnapshot } from './story-state-escalations.js';
 import { findStaleSessionEscalations } from './stale-escalations.js';
+import { isImmediateHumanBlockerReason } from './intervention-reasons.js';
 import type { ManagerCheckContext } from './types.js';
 import {
   MANAGER_NUDGE_END_MARKER,
@@ -531,8 +532,10 @@ async function markDoneFalseForHumanIntervention(
   ctx: ManagerCheckContext,
   sessionName: string,
   storyId: string,
-  reason: string
+  reason: string,
+  options?: { immediate?: boolean }
 ): Promise<void> {
+  const immediateEscalation = options?.immediate === true || isImmediateHumanBlockerReason(reason);
   const key = interventionRecoveryKey(sessionName, storyId);
   const attemptsInfo = doneFalseRecoveryAttemptsByKey.get(key) || {
     attempts: 0,
@@ -544,7 +547,7 @@ async function markDoneFalseForHumanIntervention(
   );
   const now = Date.now();
   const timeSinceLastAttempt = now - attemptsInfo.lastAttemptMs;
-  if (attemptsInfo.attempts < DONE_FALSE_AUTO_RECOVERY_ATTEMPTS) {
+  if (!immediateEscalation && attemptsInfo.attempts < DONE_FALSE_AUTO_RECOVERY_ATTEMPTS) {
     if (timeSinceLastAttempt < cooldownMs) {
       return;
     }
@@ -1883,6 +1886,18 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
               }
             }
           } else {
+            if (isImmediateHumanBlockerReason(completionAssessment.reason)) {
+              await markDoneFalseForHumanIntervention(
+                ctx,
+                session.name,
+                storyId,
+                completionAssessment.reason,
+                { immediate: true }
+              );
+              actionNotes.push('done_false_immediate_escalation');
+              verboseLogCtx(ctx, `Agent ${session.name}: action=done_false_immediate_escalation`);
+              continue;
+            }
             const tracked = agentStates.get(session.name);
             const stuckNudgesSent = tracked?.storyStuckNudgeCount || 0;
             if (stuckNudgesSent >= maxStuckNudgesPerStory) {
@@ -2599,6 +2614,20 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
         }
         verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} auto_progress_failed`);
       } else {
+        if (isImmediateHumanBlockerReason(completionAssessment.reason)) {
+          await markDoneFalseForHumanIntervention(
+            ctx,
+            agentSession.name,
+            story.id,
+            completionAssessment.reason,
+            { immediate: true }
+          );
+          verboseLogCtx(
+            ctx,
+            `nudgeStuckStories: story=${story.id} action=done_false_immediate_escalation session=${agentSession.name}`
+          );
+          continue;
+        }
         if (stuckNudgesSent >= maxStuckNudgesPerStory) {
           await markDoneFalseForHumanIntervention(
             ctx,
