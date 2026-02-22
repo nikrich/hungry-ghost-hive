@@ -90,30 +90,10 @@ describe('findStoryStateEscalationsToResolve', () => {
     expect(result[0].reason).toContain('source hive-junior-team-1 is outdated');
   });
 
-  it('resolves stale done-false escalation when same assigned session is actively running', () => {
+  it('does not auto-resolve stale done-false escalation while story remains in_progress', () => {
     const escalations = [
       buildEscalation({
         created_at: '2026-02-21T10:00:00.000Z',
-      }),
-    ];
-    const storyById = new Map<string, StoryStateSnapshot>([['STORY-123', buildStory()]]);
-
-    const result = findStoryStateEscalationsToResolve({
-      pendingEscalations: escalations,
-      storyById,
-      liveSessionNames: new Set(['hive-junior-team-1']),
-      nowMs: Date.parse('2026-02-21T10:10:00.000Z'),
-      minActiveAgeMs: 60_000,
-    });
-
-    expect(result).toHaveLength(1);
-    expect(result[0].reason).toContain('pending done=false escalation is stale');
-  });
-
-  it('does not resolve fresh done-false escalation before active-age threshold', () => {
-    const escalations = [
-      buildEscalation({
-        created_at: '2026-02-21T10:09:30.000Z',
       }),
     ];
     const storyById = new Map<string, StoryStateSnapshot>([['STORY-123', buildStory()]]);
@@ -147,5 +127,22 @@ describe('findStoryStateEscalationsToResolve', () => {
     });
 
     expect(result).toHaveLength(0);
+  });
+
+  it('treats no-diff loop escalation as story-state escalation and resolves when status advances', () => {
+    const escalations = [
+      buildEscalation({
+        reason:
+          'No-diff PR loop escalation: STORY-123 auto-closed 3 PR attempts for having no commits ahead of origin/main',
+      }),
+    ];
+    const storyById = new Map<string, StoryStateSnapshot>([
+      ['STORY-123', buildStory({ status: 'qa_failed' })],
+    ]);
+
+    const result = findStoryStateEscalationsToResolve({ pendingEscalations: escalations, storyById });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].reason).toContain('status advanced to qa_failed');
   });
 });
