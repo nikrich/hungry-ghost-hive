@@ -131,6 +131,7 @@ export function getRecentEscalationsForAgent(
     `
     SELECT * FROM escalations
     WHERE from_agent_id = ?
+    AND status IN ('pending', 'acknowledged')
     AND created_at > datetime('now', ?)
     ORDER BY created_at DESC
   `,

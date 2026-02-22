@@ -418,6 +418,18 @@ describe('escalations queries', () => {
       expect(recent.map(e => e.id)).toContain(esc1.id);
       expect(recent.map(e => e.id)).toContain(esc2.id);
     });
+
+    it('should not include resolved escalations', () => {
+      const pending = createEscalation(db, { fromAgentId: agentId, reason: 'Pending' });
+      const resolved = createEscalation(db, { fromAgentId: agentId, reason: 'Resolved' });
+      updateEscalation(db, resolved.id, { status: 'resolved', resolution: 'Handled' });
+
+      const recent = getRecentEscalationsForAgent(db, agentId, 30);
+
+      expect(recent).toHaveLength(1);
+      expect(recent[0].id).toBe(pending.id);
+      expect(recent.map(e => e.id)).not.toContain(resolved.id);
+    });
   });
 
   describe('getActiveEscalationsForAgent', () => {
