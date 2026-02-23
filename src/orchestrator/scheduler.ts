@@ -878,6 +878,7 @@ export class Scheduler {
     if (!(await isTmuxSessionRunning(sessionName))) {
       // Build the initial prompt for this agent type
       const team = getTeamById(this.db, teamId);
+      const includeProgressUpdates = this.shouldIncludeProgressUpdates();
       let prompt: string;
 
       if (type === 'senior') {
@@ -887,7 +888,8 @@ export class Scheduler {
           team?.repo_url || '',
           worktreePath,
           stories,
-          targetBranch
+          targetBranch,
+          { includeProgressUpdates }
         );
       } else if (type === 'intermediate') {
         prompt = generateIntermediatePrompt(
@@ -895,7 +897,8 @@ export class Scheduler {
           team?.repo_url || '',
           worktreePath,
           sessionName,
-          targetBranch
+          targetBranch,
+          { includeProgressUpdates }
         );
       } else if (type === 'junior') {
         prompt = generateJuniorPrompt(
@@ -903,7 +906,8 @@ export class Scheduler {
           team?.repo_url || '',
           worktreePath,
           sessionName,
-          targetBranch
+          targetBranch,
+          { includeProgressUpdates }
         );
       } else if (type === 'feature_test' && featureTestContext) {
         prompt = generateFeatureTestPrompt(
@@ -913,7 +917,8 @@ export class Scheduler {
           sessionName,
           featureTestContext.featureBranch,
           featureTestContext.requirementId,
-          featureTestContext.e2eTestsPath
+          featureTestContext.e2eTestsPath,
+          { includeProgressUpdates }
         );
       } else {
         prompt = generateQAPrompt(
@@ -974,6 +979,13 @@ export class Scheduler {
    */
   private getRuntimeModel(modelId: string, cliTool: 'claude' | 'codex' | 'gemini'): string {
     return resolveRuntimeModelForCli(modelId, cliTool);
+  }
+
+  private shouldIncludeProgressUpdates(): boolean {
+    const provider = this.config.hiveConfig?.integrations?.project_management?.provider;
+    // Default to enabled when running with older config/test setups that do not
+    // pass full hiveConfig into Scheduler.
+    return provider !== 'none';
   }
 
   private async spawnQA(

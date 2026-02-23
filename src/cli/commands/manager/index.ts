@@ -147,6 +147,10 @@ function summarizeOutputForVerbose(output: string): string {
   return `${compact.slice(0, 177)}...`;
 }
 
+function shouldIncludeProgressUpdates(config: HiveConfig): boolean {
+  return config.integrations?.project_management?.provider !== 'none';
+}
+
 function formatDuration(ms: number): string {
   if (ms <= 0) return 'now';
   const totalSeconds = Math.ceil(ms / 1000);
@@ -2234,15 +2238,25 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
         ctx,
         `nudgeStuckStories: story=${story.id} action=mandatory_completion_signal session=${sessionName}`
       );
+      const completionSignalLines = [
+        `# MANDATORY COMPLETION SIGNAL: execute now for ${story.id}`,
+        `hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${story.id} --from ${sessionName}`,
+        `hive my-stories complete ${story.id}`,
+      ];
+      if (shouldIncludeProgressUpdates(ctx.config)) {
+        completionSignalLines.push(
+          `hive progress ${story.id} -m "PR submitted to merge queue" --from ${sessionName} --done`
+        );
+      } else {
+        completionSignalLines.push(
+          '# project_management.provider is none; skip hive progress in this workspace.'
+        );
+      }
+      completionSignalLines.push('# Do not stop at a summary. Completion requires the commands above.');
+
       await sendToTmuxSession(
         sessionName,
-        withManagerNudgeEnvelope(
-          `# MANDATORY COMPLETION SIGNAL: execute now for ${story.id}
-hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${story.id} --from ${sessionName}
-hive my-stories complete ${story.id}
-hive progress ${story.id} -m "PR submitted to merge queue" --from ${sessionName} --done
-# Do not stop at a summary. Completion requires the commands above.`
-        )
+        withManagerNudgeEnvelope(completionSignalLines.join('\n'))
       );
       await sendEnterToTmuxSession(sessionName);
       ctx.counters.nudged++;
