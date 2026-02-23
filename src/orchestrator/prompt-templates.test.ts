@@ -174,6 +174,17 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('--done');
     });
 
+    it('should skip progress command instructions when progress updates are disabled', () => {
+      const stories: StoryRow[] = [];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories, 'main', {
+        includeProgressUpdates: false,
+      });
+
+      expect(prompt).toContain('Do NOT run `hive progress`');
+      expect(prompt).not.toContain('## Jira Progress Updates');
+      expect(prompt).not.toContain('hive progress <story-id>');
+    });
+
     it('should include multiple stories', () => {
       const stories: StoryRow[] = [
         {
@@ -306,6 +317,16 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('Jira Progress Updates');
       expect(prompt).toContain('--done');
     });
+
+    it('should skip progress command instructions when progress updates are disabled', () => {
+      const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName, 'main', {
+        includeProgressUpdates: false,
+      });
+
+      expect(prompt).toContain('Do NOT run `hive progress`');
+      expect(prompt).not.toContain('## Jira Progress Updates');
+      expect(prompt).not.toContain('hive progress <story-id>');
+    });
   });
 
   describe('generateJuniorPrompt', () => {
@@ -369,6 +390,16 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('hive progress');
       expect(prompt).toContain('Jira Progress Updates');
       expect(prompt).toContain('--done');
+    });
+
+    it('should skip progress command instructions when progress updates are disabled', () => {
+      const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName, 'main', {
+        includeProgressUpdates: false,
+      });
+
+      expect(prompt).toContain('Do NOT run `hive progress`');
+      expect(prompt).not.toContain('## Jira Progress Updates');
+      expect(prompt).not.toContain('hive progress <story-id>');
     });
   });
 
@@ -545,6 +576,24 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('E2E tests PASSED');
       expect(prompt).toContain('E2E tests FAILED');
       expect(prompt).toContain('hive progress');
+    });
+
+    it('should report to tech lead instead of hive progress when progress updates are disabled', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        featureBranch,
+        requirementId,
+        e2eTestsPath,
+        { includeProgressUpdates: false }
+      );
+
+      expect(prompt).toContain('do NOT run `hive progress`');
+      expect(prompt).toContain('hive msg send hive-tech-lead "E2E tests PASSED');
+      expect(prompt).toContain('hive msg send hive-tech-lead "E2E tests FAILED');
+      expect(prompt).not.toContain(`hive progress ${requirementId}`);
     });
 
     it('should include instructions not to modify code', () => {

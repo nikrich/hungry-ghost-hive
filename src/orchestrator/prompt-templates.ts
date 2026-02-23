@@ -2,6 +2,10 @@
 
 import type { StoryRow } from '../db/client.js';
 
+export interface AgentPromptOptions {
+  includeProgressUpdates?: boolean;
+}
+
 /**
  * Generate Jira-specific instructions for the Tech Lead prompt.
  * Returns empty string if Jira is not enabled.
@@ -50,6 +54,10 @@ The command will:
 /** Format the senior developer session name from a team name. */
 export function formatSeniorSessionName(teamName: string): string {
   return `hive-senior-${teamName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+}
+
+function shouldIncludeProgressUpdates(options?: AgentPromptOptions): boolean {
+  return options?.includeProgressUpdates ?? true;
 }
 
 function repositorySection(repoPath: string, repoUrl: string): string {
@@ -120,7 +128,18 @@ hive my-stories refactor --session ${sessionName} --title "<short title>" --desc
 Include affected files and rationale in the description. Refactor stories are scheduled using the team's configured refactor capacity budget.`;
 }
 
-function progressUpdatesSection(sessionName: string, targetBranch: string): string {
+function progressUpdatesSection(
+  sessionName: string,
+  targetBranch: string,
+  includeProgressUpdates: boolean
+): string {
+  if (!includeProgressUpdates) {
+    return `## Progress Updates
+No external project management provider is configured for this workspace.
+Do NOT run \`hive progress\` in this environment.
+Share milestone updates through commit messages, PR descriptions, and direct messages to the Tech Lead when blocked.`;
+  }
+
   return `## Jira Progress Updates — Be Verbose!
 You MUST post frequent, detailed progress updates to your Jira subtask. The team relies on these comments to understand what you're doing and why. Post an update for EVERY significant decision or milestone:
 \`\`\`bash
@@ -163,7 +182,23 @@ If NO story is assigned to you:
 - Re-check every 60 seconds: \`hive my-stories ${sessionName}\``;
 }
 
-function autonomousWorkflowSection(sessionName: string): string {
+function autonomousWorkflowSection(sessionName: string, includeProgressUpdates: boolean): string {
+  if (!includeProgressUpdates) {
+    return `## Autonomous Workflow
+You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
+After completing a story, you MUST emit an explicit completion signal by running these commands in order:
+1. \`hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s <story-id> --from ${sessionName}\`
+2. \`hive my-stories complete <story-id>\`
+Do NOT run \`hive progress\` when \`project_management.provider\` is \`none\`.
+Do NOT stop at a text summary. A story is not done until these commands run successfully.
+
+After signaling completion:
+1. Run \`hive my-stories ${sessionName}\` to get your next assignment
+2. If no stories assigned, WAIT — do not self-assign or claim work
+
+Start by running \`hive my-stories ${sessionName}\`. If you have an assigned story, begin working on it. If not, WAIT for assignment.`;
+  }
+
   return `## Autonomous Workflow
 You are an autonomous agent. DO NOT ask "Is there anything else?" or wait for instructions.
 After completing a story, you MUST emit an explicit completion signal by running these commands in order:
@@ -191,8 +226,10 @@ export function generateSeniorPrompt(
   repoUrl: string,
   repoPath: string,
   stories: StoryRow[],
-  targetBranch: string = 'main'
+  targetBranch: string = 'main',
+  options?: AgentPromptOptions
 ): string {
+  const includeProgressUpdates = shouldIncludeProgressUpdates(options);
   const storyList = stories
     .map(s => {
       const externalInfo = s.external_subtask_key
@@ -255,7 +292,7 @@ hive msg outbox ${sessionName}
 
 ${refactoringSection(sessionName)}
 
-${progressUpdatesSection(sessionName, targetBranch)}
+${progressUpdatesSection(sessionName, targetBranch, includeProgressUpdates)}
 
 ## Guidelines
 - Follow existing code patterns in the repository
@@ -265,7 +302,7 @@ ${progressUpdatesSection(sessionName, targetBranch)}
 
 ${noAssignmentRule(sessionName)}
 
-${autonomousWorkflowSection(sessionName)}`;
+${autonomousWorkflowSection(sessionName, includeProgressUpdates)}`;
 }
 
 /**
@@ -276,8 +313,10 @@ export function generateIntermediatePrompt(
   repoUrl: string,
   repoPath: string,
   sessionName: string,
-  targetBranch: string = 'main'
+  targetBranch: string = 'main',
+  options?: AgentPromptOptions
 ): string {
+  const includeProgressUpdates = shouldIncludeProgressUpdates(options);
   const seniorSession = formatSeniorSessionName(teamName);
 
   return `You are an Intermediate Developer on Team ${teamName}.
@@ -324,7 +363,7 @@ hive msg outbox ${sessionName}
 
 ${refactoringSection(sessionName)}
 
-${progressUpdatesSection(sessionName, targetBranch)}
+${progressUpdatesSection(sessionName, targetBranch, includeProgressUpdates)}
 
 ## Guidelines
 - Follow existing code patterns
@@ -334,7 +373,7 @@ ${progressUpdatesSection(sessionName, targetBranch)}
 
 ${noAssignmentRule(sessionName)}
 
-${autonomousWorkflowSection(sessionName)}`;
+${autonomousWorkflowSection(sessionName, includeProgressUpdates)}`;
 }
 
 /**
@@ -345,8 +384,10 @@ export function generateJuniorPrompt(
   repoUrl: string,
   repoPath: string,
   sessionName: string,
-  targetBranch: string = 'main'
+  targetBranch: string = 'main',
+  options?: AgentPromptOptions
 ): string {
+  const includeProgressUpdates = shouldIncludeProgressUpdates(options);
   const seniorSession = formatSeniorSessionName(teamName);
 
   return `You are a Junior Developer on Team ${teamName}.
@@ -393,7 +434,7 @@ hive msg outbox ${sessionName}
 
 ${refactoringSection(sessionName)}
 
-${progressUpdatesSection(sessionName, targetBranch)}
+${progressUpdatesSection(sessionName, targetBranch, includeProgressUpdates)}
 
 ## Guidelines
 - Follow existing patterns exactly
@@ -403,7 +444,7 @@ ${progressUpdatesSection(sessionName, targetBranch)}
 
 ${noAssignmentRule(sessionName)}
 
-${autonomousWorkflowSection(sessionName)}`;
+${autonomousWorkflowSection(sessionName, includeProgressUpdates)}`;
 }
 
 /**
@@ -504,8 +545,33 @@ export function generateFeatureTestPrompt(
   sessionName: string,
   featureBranch: string,
   requirementId: string,
-  e2eTestsPath: string
+  e2eTestsPath: string,
+  options?: AgentPromptOptions
 ): string {
+  const includeProgressUpdates = shouldIncludeProgressUpdates(options);
+  const reportResultsSection = includeProgressUpdates
+    ? `**If all tests pass:**
+\`\`\`bash
+hive progress ${requirementId} -m "E2E tests PASSED for ${featureBranch}. [Include test summary: X passed, 0 failed. Total time: Xs]" --from ${sessionName}
+\`\`\`
+
+**If any tests fail:**
+\`\`\`bash
+hive progress ${requirementId} -m "E2E tests FAILED for ${featureBranch}. [Include failure details: X passed, Y failed. Failed tests: list. Error details: summary]" --from ${sessionName}
+\`\`\``
+    : `No external project management provider is configured, so do NOT run \`hive progress\`.
+Report results directly to the Tech Lead:
+
+**If all tests pass:**
+\`\`\`bash
+hive msg send hive-tech-lead "E2E tests PASSED for ${requirementId} on ${featureBranch}. [Include test summary: X passed, 0 failed. Total time: Xs]" --from ${sessionName}
+\`\`\`
+
+**If any tests fail:**
+\`\`\`bash
+hive msg send hive-tech-lead "E2E tests FAILED for ${requirementId} on ${featureBranch}. [Include failure details: X passed, Y failed. Failed tests: list. Error details: summary]" --from ${sessionName}
+\`\`\``;
+
   return `You are a Feature Test Agent on Team ${teamName}.
 Your tmux session: ${sessionName}
 
@@ -552,15 +618,7 @@ Execute the test suite as described in TESTING.md. Capture all output including:
 ### 5. Report results
 After running the tests, report the results:
 
-**If all tests pass:**
-\`\`\`bash
-hive progress ${requirementId} -m "E2E tests PASSED for ${featureBranch}. [Include test summary: X passed, 0 failed. Total time: Xs]" --from ${sessionName}
-\`\`\`
-
-**If any tests fail:**
-\`\`\`bash
-hive progress ${requirementId} -m "E2E tests FAILED for ${featureBranch}. [Include failure details: X passed, Y failed. Failed tests: list. Error details: summary]" --from ${sessionName}
-\`\`\`
+${reportResultsSection}
 
 ## Communication
 If you encounter issues running the tests, message the Tech Lead:

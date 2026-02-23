@@ -8,17 +8,41 @@ import {
   transitionSubtaskStatus,
 } from '../../connectors/project-management/operations.js';
 import { queryOne } from '../../db/client.js';
+import { createLog } from '../../db/queries/logs.js';
 import type { StoryRow } from '../../db/queries/stories.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const progressCommand = new Command('progress')
-  .description('Post a progress update to the Jira subtask for a story')
+  .description('Post a progress update to the configured project management provider')
   .argument('<story-id>', 'Story ID to update')
   .requiredOption('-m, --message <text>', 'Progress update message')
   .option('--from <session>', 'Agent tmux session name')
   .option('--done', 'Also transition the subtask to Done')
   .action(async (storyId: string, options: { message: string; from?: string; done?: boolean }) => {
     await withHiveContext(async ({ root, db, paths }) => {
+      const config = loadConfig(paths.hiveDir);
+      const pmProvider = config.integrations?.project_management?.provider || 'none';
+
+      if (pmProvider === 'none') {
+        createLog(db.db, {
+          agentId: options.from || 'manager',
+          storyId,
+          eventType: 'STORY_PROGRESS_UPDATE',
+          status: options.done ? 'done' : 'in_progress',
+          message: options.message,
+          metadata: {
+            provider: 'none',
+            external_sync: false,
+            done: !!options.done,
+          },
+        });
+
+        console.log(
+          chalk.yellow('No project management provider configured; recorded progress locally only.')
+        );
+        return;
+      }
+
       const story = queryOne<StoryRow>(db.db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
 
       if (!story) {
@@ -27,8 +51,14 @@ export const progressCommand = new Command('progress')
       }
 
       if (!story.external_subtask_key) {
-        console.error(chalk.red(`Story ${storyId} has no Jira subtask.`));
-        console.log(chalk.gray('Jira subtask is created when a story is assigned to an agent.'));
+        console.error(
+          chalk.red(`Story ${storyId} has no external subtask for provider "${pmProvider}".`)
+        );
+        console.log(
+          chalk.gray(
+            'External subtasks are created after story assignment when PM sync is enabled.'
+          )
+        );
         process.exit(1);
       }
 
@@ -45,7 +75,6 @@ export const progressCommand = new Command('progress')
         }
       }
 
-      const config = loadConfig(paths.hiveDir);
       await postProgressUpdate(db.db, paths.hiveDir, config, storyId, options.message, agentName);
 
       console.log(chalk.green(`Posted progress update to subtask ${story.external_subtask_key}`));

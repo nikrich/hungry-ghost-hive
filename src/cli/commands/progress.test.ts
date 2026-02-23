@@ -1,5 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import type { Command } from 'commander';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies
@@ -28,6 +29,10 @@ vi.mock('../../db/client.js', () => ({
   queryOne: vi.fn(() => ({ id: 'TEST-1', external_subtask_key: 'JIRA-123' })),
 }));
 
+vi.mock('../../db/queries/logs.js', () => ({
+  createLog: vi.fn(),
+}));
+
 vi.mock('../../integrations/jira/client.js', () => ({
   JiraClient: vi.fn(),
 }));
@@ -39,15 +44,25 @@ vi.mock('../../integrations/jira/comments.js', () => ({
 
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(callback =>
-    callback({ db: { db: {} }, paths: { hiveDir: '/tmp/.hive' } })
+    callback({ root: '/tmp', db: { db: {} }, paths: { hiveDir: '/tmp/.hive' } })
   ),
 }));
 
+import { loadConfig } from '../../config/loader.js';
+import { queryOne } from '../../db/client.js';
+import { createLog } from '../../db/queries/logs.js';
 import { progressCommand } from './progress.js';
 
 describe('progress command', () => {
+  const resetCommandOptions = (command: Command): void => {
+    for (const option of command.options) {
+      command.setOptionValue(option.attributeName(), undefined);
+    }
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    resetCommandOptions(progressCommand);
   });
 
   describe('command structure', () => {
@@ -78,6 +93,35 @@ describe('progress command', () => {
     it('should have --done option', () => {
       const doneOpt = progressCommand.options.find(opt => opt.long === '--done');
       expect(doneOpt).toBeDefined();
+    });
+  });
+
+  describe('provider-aware behavior', () => {
+    it('should record progress locally when project management provider is none', async () => {
+      vi.mocked(loadConfig).mockReturnValue({
+        integrations: {
+          project_management: {
+            provider: 'none',
+          },
+        },
+      } as any);
+
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await progressCommand.parseAsync(['STORY-123', '-m', 'Implemented fix'], { from: 'user' });
+
+      expect(createLog).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          storyId: 'STORY-123',
+          eventType: 'STORY_PROGRESS_UPDATE',
+          message: 'Implemented fix',
+        })
+      );
+      expect(queryOne).not.toHaveBeenCalled();
+      expect(String(logSpy.mock.calls[0]?.[0] || '')).toContain(
+        'No project management provider configured'
+      );
     });
   });
 });
