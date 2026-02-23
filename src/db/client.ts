@@ -27,8 +27,23 @@ export interface ReadOnlyDatabaseClient {
  * @returns SQL content of the migration file
  */
 function loadMigration(migrationName: string): string {
-  const migrationPath = join(__dirname, 'migrations', migrationName);
-  return readFileSync(migrationPath, 'utf-8');
+  const candidatePaths = [
+    join(__dirname, 'migrations', migrationName),
+    // Legacy build bug could nest migrations under dist/db/migrations/migrations.
+    join(__dirname, 'migrations', 'migrations', migrationName),
+    // Fallback for developer checkouts where src is present but dist is stale.
+    join(__dirname, '..', '..', 'src', 'db', 'migrations', migrationName),
+  ];
+
+  for (const migrationPath of candidatePaths) {
+    if (existsSync(migrationPath)) {
+      return readFileSync(migrationPath, 'utf-8');
+    }
+  }
+
+  throw new InitializationError(
+    `Migration file not found: ${migrationName}. Checked: ${candidatePaths.join(', ')}`
+  );
 }
 
 let SQL: Awaited<ReturnType<typeof initSqlJs>> | null = null;
