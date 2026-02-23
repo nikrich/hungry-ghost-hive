@@ -34,9 +34,7 @@ describe('autoAssignPlannedStories', () => {
     let callCount = 0;
     const withDb = vi.fn(async (fn: (db: typeof mockDb, scheduler: any) => unknown) => {
       callCount += 1;
-      vi.mocked(queryAll).mockReturnValueOnce([
-        { count: options?.plannedUnassigned ?? 0 },
-      ] as never);
+      vi.mocked(queryAll).mockReturnValueOnce([{ count: options?.plannedUnassigned ?? 0 }] as never);
       return fn(mockDb, scheduler);
     });
 
@@ -48,15 +46,7 @@ describe('autoAssignPlannedStories', () => {
       },
     } as any;
 
-    return {
-      ctx,
-      withDb,
-      checkScaling,
-      checkMergeQueue,
-      assignStories,
-      save,
-      getCallCount: () => callCount,
-    };
+    return { ctx, withDb, checkScaling, checkMergeQueue, assignStories, save, getCallCount: () => callCount };
   }
 
   it('skips assignment when there are no planned unassigned stories', async () => {

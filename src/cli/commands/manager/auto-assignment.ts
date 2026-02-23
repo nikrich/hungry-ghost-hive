@@ -46,9 +46,7 @@ export async function autoAssignPlannedStories(ctx: ManagerCheckContext): Promis
   }
 
   if (assignmentResult.errors.length > 0) {
-    console.log(
-      chalk.yellow(`  Auto-assignment encountered ${assignmentResult.errors.length} error(s)`)
-    );
+    console.log(chalk.yellow(`  Auto-assignment encountered ${assignmentResult.errors.length} error(s)`));
     for (const err of assignmentResult.errors) {
       verboseLog(ctx, `autoAssignPlannedStories.error: ${err}`);
     }

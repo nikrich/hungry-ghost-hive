@@ -79,9 +79,9 @@ import {
   updateAgentStateTracking,
   withManagerNudgeEnvelope,
 } from './agent-monitoring.js';
-import { autoAssignPlannedStories } from './auto-assignment.js';
 import { assessCompletionFromOutput } from './done-intelligence.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
+import { autoAssignPlannedStories } from './auto-assignment.js';
 import { checkFeatureSignOff } from './feature-sign-off.js';
 import { checkFeatureTestResult } from './feature-test-result.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
@@ -2654,8 +2654,7 @@ function printSummary(ctx: ManagerCheckContext): void {
   if (queuedPRCount > 0) summary.push(`${queuedPRCount} PRs queued`);
   if (handoffPromoted > 0) summary.push(`${handoffPromoted} auto-promoted from estimated`);
   if (handoffAutoAssigned > 0) summary.push(`${handoffAutoAssigned} auto-assigned after recovery`);
-  if (plannedAutoAssigned > 0)
-    summary.push(`${plannedAutoAssigned} planned story(ies) auto-assigned`);
+  if (plannedAutoAssigned > 0) summary.push(`${plannedAutoAssigned} planned story(ies) auto-assigned`);
   if (jiraSynced > 0) summary.push(`${jiraSynced} synced from Jira`);
   if (featureTestsSpawned > 0) summary.push(`${featureTestsSpawned} feature test(s) spawned`);
 
