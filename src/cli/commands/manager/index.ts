@@ -81,6 +81,7 @@ import {
 } from './agent-monitoring.js';
 import { assessCompletionFromOutput } from './done-intelligence.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
+import { autoAssignPlannedStories } from './auto-assignment.js';
 import { checkFeatureSignOff } from './feature-sign-off.js';
 import { checkFeatureTestResult } from './feature-test-result.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
@@ -797,6 +798,7 @@ async function managerCheck(
       queuedPRCount: 0,
       handoffPromoted: 0,
       handoffAutoAssigned: 0,
+      plannedAutoAssigned: 0,
       jiraSynced: 0,
       featureTestsSpawned: 0,
     },
@@ -853,6 +855,8 @@ async function managerCheck(
   await handleRejectedPRs(ctx);
   verboseLogCtx(ctx, 'Step: recover unassigned qa_failed stories');
   await recoverUnassignedQAFailedStories(ctx);
+  verboseLogCtx(ctx, 'Step: auto-assign planned stories');
+  await autoAssignPlannedStories(ctx);
   verboseLogCtx(ctx, 'Step: nudge qa_failed stories');
   await nudgeQAFailedStories(ctx);
   verboseLogCtx(ctx, 'Step: spin down merged agents');
@@ -2636,6 +2640,7 @@ function printSummary(ctx: ManagerCheckContext): void {
     queuedPRCount,
     handoffPromoted,
     handoffAutoAssigned,
+    plannedAutoAssigned,
     jiraSynced,
     featureTestsSpawned,
   } = ctx.counters;
@@ -2649,6 +2654,7 @@ function printSummary(ctx: ManagerCheckContext): void {
   if (queuedPRCount > 0) summary.push(`${queuedPRCount} PRs queued`);
   if (handoffPromoted > 0) summary.push(`${handoffPromoted} auto-promoted from estimated`);
   if (handoffAutoAssigned > 0) summary.push(`${handoffAutoAssigned} auto-assigned after recovery`);
+  if (plannedAutoAssigned > 0) summary.push(`${plannedAutoAssigned} planned story(ies) auto-assigned`);
   if (jiraSynced > 0) summary.push(`${jiraSynced} synced from Jira`);
   if (featureTestsSpawned > 0) summary.push(`${featureTestsSpawned} feature test(s) spawned`);
 

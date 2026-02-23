@@ -74,6 +74,7 @@ export interface ManagerCheckContext {
     queuedPRCount: number;
     handoffPromoted: number;
     handoffAutoAssigned: number;
+    plannedAutoAssigned: number;
     jiraSynced: number;
     featureTestsSpawned: number;
   };
