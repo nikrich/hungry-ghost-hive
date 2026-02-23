@@ -80,6 +80,7 @@ function makeCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheckCont
       queuedPRCount: 0,
       handoffPromoted: 0,
       handoffAutoAssigned: 0,
+      plannedAutoAssigned: 0,
       jiraSynced: 0,
       featureTestsSpawned: 0,
     },
