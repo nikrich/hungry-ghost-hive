@@ -2252,7 +2252,9 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
           '# project_management.provider is none; skip hive progress in this workspace.'
         );
       }
-      completionSignalLines.push('# Do not stop at a summary. Completion requires the commands above.');
+      completionSignalLines.push(
+        '# Do not stop at a summary. Completion requires the commands above.'
+      );
 
       await sendToTmuxSession(
         sessionName,

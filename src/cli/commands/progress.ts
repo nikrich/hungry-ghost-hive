@@ -38,9 +38,7 @@ export const progressCommand = new Command('progress')
         });
 
         console.log(
-          chalk.yellow(
-            'No project management provider configured; recorded progress locally only.'
-          )
+          chalk.yellow('No project management provider configured; recorded progress locally only.')
         );
         return;
       }
@@ -53,9 +51,13 @@ export const progressCommand = new Command('progress')
       }
 
       if (!story.external_subtask_key) {
-        console.error(chalk.red(`Story ${storyId} has no external subtask for provider "${pmProvider}".`));
+        console.error(
+          chalk.red(`Story ${storyId} has no external subtask for provider "${pmProvider}".`)
+        );
         console.log(
-          chalk.gray('External subtasks are created after story assignment when PM sync is enabled.')
+          chalk.gray(
+            'External subtasks are created after story assignment when PM sync is enabled.'
+          )
         );
         process.exit(1);
       }
