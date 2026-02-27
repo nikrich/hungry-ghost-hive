@@ -546,6 +546,29 @@ When you select Jira during `hive init`, the setup wizard will:
 4. **Select a board** — picks the board used for sprint operations
 5. **Detect story points field** — auto-detects the correct custom field for story points (varies between classic and next-gen projects)
 
+#### Setting up your Atlassian OAuth app
+
+Before running `hive init`, you must configure an OAuth 2.0 (3LO) app in the Atlassian Developer Console:
+
+1. Go to [developer.atlassian.com/console/myapps](https://developer.atlassian.com/console/myapps/) and create a new app
+2. Under **Authorization** → **OAuth 2.0 (3LO)**, add the following callback URL:
+   ```
+   http://127.0.0.1:9876/callback
+   ```
+   > **Important:** Use `127.0.0.1` — not `localhost`. Hive constructs the redirect URI with `127.0.0.1` explicitly, and Atlassian validates it character-for-character.
+3. Under **Permissions**, add the following scopes:
+
+   | API | Scopes |
+   |-----|--------|
+   | Jira API | `read:jira-work`, `write:jira-work`, `read:jira-user` |
+   | Jira Software API | `read:board-scope:jira-software`, `write:board-scope:jira-software`, `read:sprint:jira-software`, `write:sprint:jira-software` |
+   | Confluence API | `read:confluence-content.all` |
+   | User Identity API | `offline_access` |
+
+4. Save your changes, then copy the **Client ID** and **Client Secret** from the app's settings page — the `hive init` wizard will prompt you for these
+
+> **Prerequisite:** Your Atlassian account must have an active Jira Cloud site. If you don't have one, create a free site at [atlassian.com](https://www.atlassian.com) before proceeding.
+
 Configuration is saved to `.hive/hive.config.yaml`:
 
 ```yaml
