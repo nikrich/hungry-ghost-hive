@@ -18,12 +18,16 @@ export interface InitWizardOptions {
   sourceControl?: string;
   projectManagement?: string;
   autonomy?: string;
+  agentRuntime?: string;
   jiraProject?: string;
   e2eTestPath?: string;
 }
 
+export type AgentRuntime = 'claude' | 'codex';
+
 export interface InitWizardResult {
   integrations: IntegrationsConfig;
+  agent_runtime: AgentRuntime;
   e2e_tests?: E2ETestsConfig;
 }
 
@@ -86,7 +90,17 @@ export async function runInitWizard(options: InitWizardOptions = {}): Promise<In
     default: 'full',
   });
 
-  // Step 4: E2E testing configuration (optional)
+  // Step 4: Agent runtime
+  const agentRuntime = await select({
+    message: 'Agent runtime',
+    choices: [
+      { name: 'Claude', value: 'claude' },
+      { name: 'Codex', value: 'codex' },
+    ],
+    default: 'claude',
+  });
+
+  // Step 5: E2E testing configuration (optional)
   const wantsE2E = await confirm({
     message: 'Configure E2E testing?',
     default: false,
@@ -122,6 +136,7 @@ export async function runInitWizard(options: InitWizardOptions = {}): Promise<In
     sourceControl as 'github' | 'bitbucket' | 'gitlab',
     projectManagement as 'none' | 'jira',
     autonomy as 'full' | 'partial',
+    agentRuntime as AgentRuntime,
     options,
     e2eTestPath
   );
@@ -131,6 +146,7 @@ async function runNonInteractive(options: InitWizardOptions): Promise<InitWizard
   const sourceControl = validateSourceControl(options.sourceControl ?? 'github');
   const projectManagement = validateProjectManagement(options.projectManagement ?? 'none');
   const autonomy = validateAutonomy(options.autonomy ?? 'full');
+  const agentRuntime = validateAgentRuntime(options.agentRuntime ?? 'claude');
 
   let e2eTestPath: string | undefined;
   if (options.e2eTestPath) {
@@ -153,7 +169,14 @@ async function runNonInteractive(options: InitWizardOptions): Promise<InitWizard
     e2eTestPath = options.e2eTestPath;
   }
 
-  return buildResult(sourceControl, projectManagement, autonomy, options, e2eTestPath);
+  return buildResult(
+    sourceControl,
+    projectManagement,
+    autonomy,
+    agentRuntime,
+    options,
+    e2eTestPath
+  );
 }
 
 function validateSourceControl(value: string): string {
@@ -190,10 +213,19 @@ function validateAutonomy(value: string): 'full' | 'partial' {
   return value as 'full' | 'partial';
 }
 
+function validateAgentRuntime(value: string): AgentRuntime {
+  const valid: AgentRuntime[] = ['claude', 'codex'];
+  if (!valid.includes(value as AgentRuntime)) {
+    throw new Error(`Invalid agent runtime: "${value}". Valid options: ${valid.join(', ')}`);
+  }
+  return value as AgentRuntime;
+}
+
 async function buildResult(
   sourceControl: string,
   projectManagement: string,
   autonomy: 'full' | 'partial',
+  agentRuntime: AgentRuntime,
   options: InitWizardOptions = {},
   e2eTestPath?: string
 ): Promise<InitWizardResult> {
@@ -278,7 +310,7 @@ async function buildResult(
     }
   }
 
-  const result: InitWizardResult = { integrations };
+  const result: InitWizardResult = { integrations, agent_runtime: agentRuntime };
   if (e2eTestPath) {
     result.e2e_tests = { path: e2eTestPath };
   }

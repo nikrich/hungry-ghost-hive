@@ -6,8 +6,10 @@ import { existsSync, mkdirSync } from 'fs';
 import ora from 'ora';
 import { join } from 'path';
 import { createDefaultConfig, loadConfig, saveConfig } from '../../config/loader.js';
+import type { HiveConfig } from '../../config/schema.js';
 import { createDatabase } from '../../db/client.js';
 import { getHivePaths, isHiveWorkspace } from '../../utils/paths.js';
+import type { AgentRuntime } from '../wizard/init-wizard.js';
 import { runInitWizard } from '../wizard/init-wizard.js';
 
 export const initCommand = new Command('init')
@@ -17,6 +19,7 @@ export const initCommand = new Command('init')
   .option('--source-control <provider>', 'Source control provider (github, gitlab, bitbucket)')
   .option('--project-management <tool>', 'Project management tool (none, jira)')
   .option('--autonomy <level>', 'Agent autonomy level (full, partial)')
+  .option('--agent-runtime <runtime>', 'Agent runtime (claude, codex)')
   .option('--jira-project <key>', 'Jira project key (for non-interactive mode)')
   .option('--e2e-test-path <path>', 'Path to E2E tests directory')
   .action(
@@ -26,6 +29,7 @@ export const initCommand = new Command('init')
       sourceControl?: string;
       projectManagement?: string;
       autonomy?: string;
+      agentRuntime?: string;
       jiraProject?: string;
       e2eTestPath?: string;
     }) => {
@@ -73,6 +77,7 @@ export const initCommand = new Command('init')
           sourceControl: options.sourceControl,
           projectManagement: options.projectManagement,
           autonomy: options.autonomy,
+          agentRuntime: options.agentRuntime,
           jiraProject: options.jiraProject,
           e2eTestPath: options.e2eTestPath,
         });
@@ -80,6 +85,7 @@ export const initCommand = new Command('init')
         // Update config with wizard selections
         const config = loadConfig(paths.hiveDir);
         config.integrations = wizardResult.integrations;
+        applyAgentRuntimePreset(config, wizardResult.agent_runtime);
         if (wizardResult.e2e_tests) {
           config.e2e_tests = wizardResult.e2e_tests;
         }
@@ -101,3 +107,27 @@ export const initCommand = new Command('init')
       }
     }
   );
+
+function applyAgentRuntimePreset(config: HiveConfig, agentRuntime: AgentRuntime): void {
+  const provider = agentRuntime === 'codex' ? 'openai' : 'anthropic';
+  const cliTool = agentRuntime;
+
+  const advancedModel = agentRuntime === 'codex' ? 'gpt-5.2-codex' : 'claude-opus-4-6';
+  const standardModel =
+    agentRuntime === 'codex' ? 'gpt-5.2-codex' : 'claude-sonnet-4-5-20250929';
+
+  const advancedRoles: Array<keyof HiveConfig['models']> = ['tech_lead', 'senior', 'feature_test'];
+  const standardRoles: Array<keyof HiveConfig['models']> = ['intermediate', 'junior', 'qa'];
+
+  for (const role of advancedRoles) {
+    config.models[role].provider = provider;
+    config.models[role].cli_tool = cliTool;
+    config.models[role].model = advancedModel;
+  }
+
+  for (const role of standardRoles) {
+    config.models[role].provider = provider;
+    config.models[role].cli_tool = cliTool;
+    config.models[role].model = standardModel;
+  }
+}

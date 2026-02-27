@@ -1436,10 +1436,10 @@ describe('Scheduler Story Assignment Prevention', () => {
     expect(runtimeModel).toBe('sonnet');
   });
 
-  it('should preserve configured model for codex and gemini runtimes', () => {
+  it('should remap unsupported codex mini model and preserve gemini runtime model', () => {
     const codexModel = (scheduler as any).getRuntimeModel('gpt-4o-mini', 'codex');
     const geminiModel = (scheduler as any).getRuntimeModel('gemini-2.5-pro', 'gemini');
-    expect(codexModel).toBe('gpt-4o-mini');
+    expect(codexModel).toBe('gpt-5.2-codex');
     expect(geminiModel).toBe('gemini-2.5-pro');
   });
 

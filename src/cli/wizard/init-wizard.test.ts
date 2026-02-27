@@ -61,6 +61,7 @@ describe('Init Wizard', () => {
           project_management: { provider: 'none' },
           autonomy: { level: 'full' },
         },
+        agent_runtime: 'claude',
       });
     });
 
@@ -96,6 +97,7 @@ describe('Init Wizard', () => {
       expect(result.integrations.source_control).toEqual({ provider: 'github' });
       expect(result.integrations.project_management.provider).toBe('jira');
       expect(result.integrations.autonomy).toEqual({ level: 'partial' });
+      expect(result.agent_runtime).toBe('claude');
     });
 
     it('should throw on invalid source control provider', async () => {
@@ -121,6 +123,12 @@ describe('Init Wizard', () => {
         'Invalid autonomy level: "auto"'
       );
     });
+
+    it('should throw on invalid agent runtime', async () => {
+      await expect(runInitWizard({ nonInteractive: true, agentRuntime: 'gemini' })).rejects.toThrow(
+        'Invalid agent runtime: "gemini". Valid options: claude, codex'
+      );
+    });
   });
 
   describe('interactive mode', () => {
@@ -129,11 +137,12 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+      mockSelect.mockResolvedValueOnce('claude');
       vi.mocked(confirm).mockResolvedValueOnce(false);
 
       const result = await runInitWizard();
 
-      expect(mockSelect).toHaveBeenCalledTimes(3);
+      expect(mockSelect).toHaveBeenCalledTimes(4);
       expect(confirm).toHaveBeenCalledTimes(1);
       expect(result).toEqual({
         integrations: {
@@ -141,6 +150,7 @@ describe('Init Wizard', () => {
           project_management: { provider: 'none' },
           autonomy: { level: 'full' },
         },
+        agent_runtime: 'claude',
       });
     });
 
@@ -149,6 +159,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+      mockSelect.mockResolvedValueOnce('claude');
       vi.mocked(confirm).mockResolvedValueOnce(true);
       vi.mocked(input).mockResolvedValueOnce('./e2e');
 
@@ -162,6 +173,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+      mockSelect.mockResolvedValueOnce('claude');
       vi.mocked(confirm).mockResolvedValueOnce(false);
 
       const result = await runInitWizard();
@@ -174,6 +186,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('jira');
       mockSelect.mockResolvedValueOnce('partial');
+      mockSelect.mockResolvedValueOnce('codex');
       vi.mocked(confirm).mockResolvedValueOnce(false);
 
       const mockInput = vi.mocked(input);
@@ -202,6 +215,7 @@ describe('Init Wizard', () => {
       expect(result.integrations.source_control).toEqual({ provider: 'github' });
       expect(result.integrations.project_management.provider).toBe('jira');
       expect(result.integrations.autonomy).toEqual({ level: 'partial' });
+      expect(result.agent_runtime).toBe('codex');
     });
 
     it('should configure source control prompt with choices from registry', async () => {
@@ -209,6 +223,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+      mockSelect.mockResolvedValueOnce('claude');
       vi.mocked(confirm).mockResolvedValueOnce(false);
 
       // Mock registry to return available providers
@@ -226,6 +241,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+      mockSelect.mockResolvedValueOnce('claude');
       vi.mocked(confirm).mockResolvedValueOnce(false);
 
       // Mock registry to return available providers
@@ -246,6 +262,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
+      mockSelect.mockResolvedValueOnce('claude');
       vi.mocked(confirm).mockResolvedValueOnce(false);
 
       await runInitWizard();
@@ -258,6 +275,27 @@ describe('Init Wizard', () => {
       expect(thirdCall.choices).toHaveLength(2);
       expect(thirdCall.choices[0].value).toBe('full');
       expect(thirdCall.choices[1].value).toBe('partial');
+    });
+
+    it('should configure agent runtime prompt with claude/codex choices', async () => {
+      const mockSelect = vi.mocked(select);
+      mockSelect.mockResolvedValueOnce('github');
+      mockSelect.mockResolvedValueOnce('none');
+      mockSelect.mockResolvedValueOnce('full');
+      mockSelect.mockResolvedValueOnce('claude');
+      vi.mocked(confirm).mockResolvedValueOnce(false);
+
+      await runInitWizard();
+
+      const fourthCall = mockSelect.mock.calls[3][0] as {
+        message: string;
+        choices: { name: string; value: string }[];
+      };
+      expect(fourthCall.message).toBe('Agent runtime');
+      expect(fourthCall.choices).toEqual([
+        { name: 'Claude', value: 'claude' },
+        { name: 'Codex', value: 'codex' },
+      ]);
     });
   });
 

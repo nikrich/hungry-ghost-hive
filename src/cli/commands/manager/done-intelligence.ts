@@ -5,6 +5,7 @@ import { execa } from 'execa';
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { resolveRuntimeModelForCli } from '../../../cli-runtimes/index.js';
 import type { HiveConfig } from '../../../config/schema.js';
 import type { CLITool } from '../../../utils/cli-commands.js';
 
@@ -273,7 +274,7 @@ async function runGeminiClassifier(
 async function runLocalCompletionClassifier(config: HiveConfig, prompt: string): Promise<string> {
   const classifierConfig = config.manager.completion_classifier;
   const cliTool = classifierConfig.cli_tool as CLITool;
-  const model = classifierConfig.model;
+  const model = resolveRuntimeModelForCli(classifierConfig.model, cliTool);
   const timeoutMs = classifierConfig.timeout_ms;
 
   switch (cliTool) {
