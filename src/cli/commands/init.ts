@@ -83,6 +83,14 @@ export const initCommand = new Command('init')
         if (wizardResult.e2e_tests) {
           config.e2e_tests = wizardResult.e2e_tests;
         }
+        if (wizardResult.personas) {
+          for (const [agentType, personas] of Object.entries(wizardResult.personas)) {
+            const modelKey = agentType as keyof typeof config.models;
+            if (config.models[modelKey]) {
+              config.models[modelKey].personas = personas;
+            }
+          }
+        }
         saveConfig(paths.hiveDir, config);
 
         console.log();

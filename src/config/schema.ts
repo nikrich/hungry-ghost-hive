@@ -2,6 +2,12 @@
 
 import { z } from 'zod';
 
+// Persona configuration for agent personality
+const PersonaSchema = z.object({
+  name: z.string(),
+  persona: z.string(),
+});
+
 // Model configuration for each agent type
 const ModelConfigSchema = z.object({
   provider: z.enum(['anthropic', 'openai']),
@@ -10,6 +16,7 @@ const ModelConfigSchema = z.object({
   temperature: z.number().min(0).max(2).default(0.5),
   cli_tool: z.enum(['claude', 'codex', 'gemini']).optional().default('claude'),
   safety_mode: z.enum(['safe', 'unsafe']).optional().default('unsafe'),
+  personas: z.array(PersonaSchema).optional().default([]),
 });
 
 // Models configuration for all agent types
@@ -324,6 +331,7 @@ export const HiveConfigSchema = z.object({
 });
 
 // Export types
+export type PersonaConfig = z.infer<typeof PersonaSchema>;
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 export type ModelsConfig = z.infer<typeof ModelsConfigSchema>;
 export type ScalingConfig = z.infer<typeof ScalingConfigSchema>;
@@ -385,6 +393,8 @@ models:
     cli_tool: claude
     # Runtime safety policy (safe = approval prompts, unsafe = full automation)
     safety_mode: unsafe
+    # Agent personas can be configured during 'hive init'.
+    # Re-run 'hive init --force' to reconfigure.
 
   senior:
     provider: anthropic
@@ -393,6 +403,8 @@ models:
     temperature: 0.5
     cli_tool: claude
     safety_mode: unsafe
+    # Agent personas can be configured during 'hive init'.
+    # Re-run 'hive init --force' to reconfigure.
 
   intermediate:
     provider: anthropic
@@ -401,6 +413,8 @@ models:
     temperature: 0.3
     cli_tool: claude
     safety_mode: unsafe
+    # Agent personas can be configured during 'hive init'.
+    # Re-run 'hive init --force' to reconfigure.
 
   junior:
     provider: anthropic
@@ -409,6 +423,8 @@ models:
     temperature: 0.2
     cli_tool: claude
     safety_mode: unsafe
+    # Agent personas can be configured during 'hive init'.
+    # Re-run 'hive init --force' to reconfigure.
 
   qa:
     provider: anthropic
@@ -417,6 +433,8 @@ models:
     temperature: 0.2
     cli_tool: claude
     safety_mode: unsafe
+    # Agent personas can be configured during 'hive init'.
+    # Re-run 'hive init --force' to reconfigure.
 
   feature_test:
     provider: anthropic
@@ -425,6 +443,8 @@ models:
     temperature: 0.3
     cli_tool: claude
     safety_mode: unsafe
+    # Agent personas can be configured during 'hive init'.
+    # Re-run 'hive init --force' to reconfigure.
 
 # Team scaling rules
 scaling:

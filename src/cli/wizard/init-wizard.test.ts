@@ -129,12 +129,12 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
-      vi.mocked(confirm).mockResolvedValueOnce(false);
+      vi.mocked(confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
 
       const result = await runInitWizard();
 
       expect(mockSelect).toHaveBeenCalledTimes(3);
-      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(confirm).toHaveBeenCalledTimes(2);
       expect(result).toEqual({
         integrations: {
           source_control: { provider: 'github' },
@@ -149,7 +149,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
-      vi.mocked(confirm).mockResolvedValueOnce(true);
+      vi.mocked(confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
       vi.mocked(input).mockResolvedValueOnce('./e2e');
 
       const result = await runInitWizard();
@@ -162,7 +162,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
-      vi.mocked(confirm).mockResolvedValueOnce(false);
+      vi.mocked(confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
 
       const result = await runInitWizard();
 
@@ -174,7 +174,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('jira');
       mockSelect.mockResolvedValueOnce('partial');
-      vi.mocked(confirm).mockResolvedValueOnce(false);
+      vi.mocked(confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
 
       const mockInput = vi.mocked(input);
       mockInput.mockResolvedValueOnce('test-client-id');
@@ -209,7 +209,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
-      vi.mocked(confirm).mockResolvedValueOnce(false);
+      vi.mocked(confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
 
       // Mock registry to return available providers
       vi.mocked(registry.listSourceControlProviders).mockReturnValueOnce(['github']);
@@ -226,7 +226,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
-      vi.mocked(confirm).mockResolvedValueOnce(false);
+      vi.mocked(confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
 
       // Mock registry to return available providers
       vi.mocked(registry.listProjectManagementProviders).mockReturnValueOnce(['jira']);
@@ -246,7 +246,7 @@ describe('Init Wizard', () => {
       mockSelect.mockResolvedValueOnce('github');
       mockSelect.mockResolvedValueOnce('none');
       mockSelect.mockResolvedValueOnce('full');
-      vi.mocked(confirm).mockResolvedValueOnce(false);
+      vi.mocked(confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
 
       await runInitWizard();
 
@@ -258,6 +258,48 @@ describe('Init Wizard', () => {
       expect(thirdCall.choices).toHaveLength(2);
       expect(thirdCall.choices[0].value).toBe('full');
       expect(thirdCall.choices[1].value).toBe('partial');
+    });
+    it('should configure personas when user opts in', async () => {
+      const mockSelect = vi.mocked(select);
+      mockSelect.mockResolvedValueOnce('github');
+      mockSelect.mockResolvedValueOnce('none');
+      mockSelect.mockResolvedValueOnce('full');
+      // personas=yes, E2E=no
+      vi.mocked(confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      const mockInput = vi.mocked(input);
+      // tech_lead: 1 persona
+      mockInput.mockResolvedValueOnce('1');
+      mockInput.mockResolvedValueOnce('Ava');
+      mockInput.mockResolvedValueOnce('Strategic thinker');
+      // senior: 0
+      mockInput.mockResolvedValueOnce('0');
+      // intermediate: 0
+      mockInput.mockResolvedValueOnce('0');
+      // junior: 0
+      mockInput.mockResolvedValueOnce('0');
+      // qa: 0
+      mockInput.mockResolvedValueOnce('0');
+      // feature_test: 0
+      mockInput.mockResolvedValueOnce('0');
+
+      const result = await runInitWizard();
+
+      expect(result.personas).toEqual({
+        tech_lead: [{ name: 'Ava', persona: 'Strategic thinker' }],
+      });
+    });
+
+    it('should not include personas when user declines', async () => {
+      const mockSelect = vi.mocked(select);
+      mockSelect.mockResolvedValueOnce('github');
+      mockSelect.mockResolvedValueOnce('none');
+      mockSelect.mockResolvedValueOnce('full');
+      // personas=no, E2E=no
+      vi.mocked(confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+
+      const result = await runInitWizard();
+
+      expect(result.personas).toBeUndefined();
     });
   });
 
