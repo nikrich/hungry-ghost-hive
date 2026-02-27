@@ -6,7 +6,7 @@ import { existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { startJiraOAuthFlow, storeJiraTokens } from '../../auth/jira-oauth.js';
 import { TokenStore } from '../../auth/token-store.js';
-import type { E2ETestsConfig, IntegrationsConfig } from '../../config/schema.js';
+import type { E2ETestsConfig, IntegrationsConfig, PersonaConfig } from '../../config/schema.js';
 import { bootstrapConnectors } from '../../connectors/bootstrap.js';
 import { registry } from '../../connectors/registry.js';
 import { openBrowser } from '../../utils/open-browser.js';
@@ -29,6 +29,7 @@ export interface InitWizardResult {
   integrations: IntegrationsConfig;
   agent_runtime: AgentRuntime;
   e2e_tests?: E2ETestsConfig;
+  personas?: Record<string, PersonaConfig[]>;
 }
 
 export async function runInitWizard(options: InitWizardOptions = {}): Promise<InitWizardResult> {
@@ -100,7 +101,63 @@ export async function runInitWizard(options: InitWizardOptions = {}): Promise<In
     default: 'claude',
   });
 
-  // Step 5: E2E testing configuration (optional)
+  // Step 5: Agent personas (optional)
+  const agentTypes: { key: string; label: string }[] = [
+    { key: 'tech_lead', label: 'Tech Lead' },
+    { key: 'senior', label: 'Senior Developer' },
+    { key: 'intermediate', label: 'Intermediate Developer' },
+    { key: 'junior', label: 'Junior Developer' },
+    { key: 'qa', label: 'QA Engineer' },
+    { key: 'feature_test', label: 'Feature Test Agent' },
+  ];
+
+  let personas: Record<string, PersonaConfig[]> | undefined;
+
+  const wantsPersonas = await confirm({
+    message: 'Configure agent personas?',
+    default: false,
+  });
+
+  if (wantsPersonas) {
+    personas = {};
+    for (const { key, label } of agentTypes) {
+      const countStr = await input({
+        message: `How many personas for ${label}? (0 to skip)`,
+        default: '0',
+        validate: (value: string) => {
+          const n = parseInt(value, 10);
+          if (isNaN(n) || n < 0 || !Number.isInteger(n)) {
+            return 'Enter a non-negative integer';
+          }
+          return true;
+        },
+      });
+
+      const count = parseInt(countStr, 10);
+      if (count > 0) {
+        const agentPersonas: PersonaConfig[] = [];
+        for (let i = 1; i <= count; i++) {
+          const name = await input({
+            message: `Name for ${label} persona #${i}`,
+            validate: (value: string) => (value.length > 0 ? true : 'Name is required'),
+          });
+          const persona = await input({
+            message: `Personality description for ${name}`,
+            validate: (value: string) => (value.length > 0 ? true : 'Description is required'),
+          });
+          agentPersonas.push({ name, persona });
+        }
+        personas[key] = agentPersonas;
+      }
+    }
+
+    // Only keep personas if at least one agent type has entries
+    if (Object.keys(personas).length === 0) {
+      personas = undefined;
+    }
+  }
+
+  // Step 6: E2E testing configuration (optional)
   const wantsE2E = await confirm({
     message: 'Configure E2E testing?',
     default: false,
@@ -138,7 +195,8 @@ export async function runInitWizard(options: InitWizardOptions = {}): Promise<In
     autonomy as 'full' | 'partial',
     agentRuntime as AgentRuntime,
     options,
-    e2eTestPath
+    e2eTestPath,
+    personas
   );
 }
 
@@ -227,7 +285,8 @@ async function buildResult(
   autonomy: 'full' | 'partial',
   agentRuntime: AgentRuntime,
   options: InitWizardOptions = {},
-  e2eTestPath?: string
+  e2eTestPath?: string,
+  personas?: Record<string, PersonaConfig[]>
 ): Promise<InitWizardResult> {
   const integrations: IntegrationsConfig = {
     source_control: { provider: sourceControl },
@@ -313,6 +372,9 @@ async function buildResult(
   const result: InitWizardResult = { integrations, agent_runtime: agentRuntime };
   if (e2eTestPath) {
     result.e2e_tests = { path: e2eTestPath };
+  }
+  if (personas) {
+    result.personas = personas;
   }
   return result;
 }
