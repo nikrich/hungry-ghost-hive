@@ -105,3 +105,52 @@ describe('Message Forwarding with Delivery Confirmation', () => {
     expect(sendMessageWithConfirmation).toBeDefined();
   });
 });
+
+describe('No-action manager summary classification', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should flag pending stories when there are no active worker agents', async () => {
+    const { classifyNoActionSummary } = await import('./index.js');
+    const result = classifyNoActionSummary({
+      pendingEscalations: 0,
+      pendingStories: 5,
+      activeWorkerAgents: 0,
+      liveWorkerSessions: 0,
+    });
+
+    expect(result.color).toBe('red');
+    expect(result.message).toContain('5 pending story(ies)');
+  });
+
+  it('should prioritize pending escalations over productivity status', async () => {
+    const { classifyNoActionSummary } = await import('./index.js');
+    const result = classifyNoActionSummary({
+      pendingEscalations: 2,
+      pendingStories: 0,
+      activeWorkerAgents: 3,
+      liveWorkerSessions: 3,
+    });
+
+    expect(result).toEqual({
+      color: 'yellow',
+      message: '2 pending escalation(s)',
+    });
+  });
+
+  it('should report productive only when work and coverage look healthy', async () => {
+    const { classifyNoActionSummary } = await import('./index.js');
+    const result = classifyNoActionSummary({
+      pendingEscalations: 0,
+      pendingStories: 3,
+      activeWorkerAgents: 2,
+      liveWorkerSessions: 2,
+    });
+
+    expect(result).toEqual({
+      color: 'green',
+      message: 'All agents productive',
+    });
+  });
+});

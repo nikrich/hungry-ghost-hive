@@ -128,6 +128,46 @@ interface ScreenStaticStatus {
   shouldRunFullAiDetection: boolean;
 }
 
+interface NoActionSummarySnapshot {
+  pendingEscalations: number;
+  pendingStories: number;
+  activeWorkerAgents: number;
+  liveWorkerSessions: number;
+}
+
+interface SummaryLine {
+  color: 'green' | 'yellow' | 'red' | 'gray';
+  message: string;
+}
+
+export function classifyNoActionSummary(snapshot: NoActionSummarySnapshot): SummaryLine {
+  if (snapshot.pendingEscalations > 0) {
+    return {
+      color: 'yellow',
+      message: `${snapshot.pendingEscalations} pending escalation(s)`,
+    };
+  }
+
+  if (
+    snapshot.pendingStories > 0 &&
+    (snapshot.activeWorkerAgents === 0 || snapshot.liveWorkerSessions === 0)
+  ) {
+    return {
+      color: 'red',
+      message: `${snapshot.pendingStories} pending story(ies), ${snapshot.activeWorkerAgents} active worker agent(s), ${snapshot.liveWorkerSessions} live worker session(s)`,
+    };
+  }
+
+  if (snapshot.pendingStories === 0 && snapshot.activeWorkerAgents === 0) {
+    return {
+      color: 'gray',
+      message: 'No pending work and no active worker agents',
+    };
+  }
+
+  return { color: 'green', message: 'All agents productive' };
+}
+
 const screenStaticBySession = new Map<string, ScreenStaticTracking>();
 const classifierTimeoutInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
 const aiDoneFalseInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
@@ -873,6 +913,7 @@ async function managerCheck(
 
   if (ctx.hiveSessions.length === 0) {
     console.log(chalk.gray('  No agent sessions found'));
+    await printSummary(ctx);
     return;
   }
 
@@ -902,7 +943,7 @@ async function managerCheck(
   await nudgeStuckStories(ctx);
   verboseLogCtx(ctx, 'Step: notify seniors about unassigned stories');
   await notifyUnassignedStories(ctx);
-  printSummary(ctx);
+  await printSummary(ctx);
 }
 
 async function backfillPRNumbers(ctx: ManagerCheckContext): Promise<void> {
@@ -2888,7 +2929,7 @@ async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<void> {
   }
 }
 
-function printSummary(ctx: ManagerCheckContext): void {
+async function printSummary(ctx: ManagerCheckContext): Promise<void> {
   const {
     escalationsCreated,
     escalationsResolved,
@@ -2921,8 +2962,43 @@ function printSummary(ctx: ManagerCheckContext): void {
 
   if (summary.length > 0) {
     console.log(chalk.yellow(`  ${summary.join(', ')}`));
+    return;
+  }
+
+  const noActionSnapshot = await ctx.withDb(async db => {
+    const pendingEscalations =
+      queryOne<{ count: number }>(
+        db.db,
+        "SELECT COUNT(*) AS count FROM escalations WHERE status = 'pending'"
+      )?.count ?? 0;
+    const pendingStories =
+      queryOne<{ count: number }>(db.db, "SELECT COUNT(*) AS count FROM stories WHERE status != 'merged'")
+        ?.count ?? 0;
+    const activeWorkerAgents =
+      queryOne<{ count: number }>(
+        db.db,
+        "SELECT COUNT(*) AS count FROM agents WHERE type != 'tech_lead' AND status != 'terminated'"
+      )?.count ?? 0;
+
+    return {
+      pendingEscalations,
+      pendingStories,
+      activeWorkerAgents,
+      liveWorkerSessions: ctx.hiveSessions.filter(session => {
+        const agent = ctx.agentsBySessionName.get(session.name);
+        return Boolean(agent && agent.type !== 'tech_lead' && agent.status !== 'terminated');
+      }).length,
+    };
+  });
+  const line = classifyNoActionSummary(noActionSnapshot);
+  if (line.color === 'red') {
+    console.log(chalk.red(`  ${line.message}`));
+  } else if (line.color === 'yellow') {
+    console.log(chalk.yellow(`  ${line.message}`));
+  } else if (line.color === 'gray') {
+    console.log(chalk.gray(`  ${line.message}`));
   } else {
-    console.log(chalk.green('  All agents productive'));
+    console.log(chalk.green(`  ${line.message}`));
   }
 }
 
