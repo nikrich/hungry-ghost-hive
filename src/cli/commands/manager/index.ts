@@ -93,6 +93,7 @@ import type { ManagerCheckContext } from './types.js';
 import {
   MANAGER_NUDGE_END_MARKER,
   MANAGER_NUDGE_START_MARKER,
+  POST_NUDGE_DELAY_MS,
   TMUX_CAPTURE_LINES,
   TMUX_CAPTURE_LINES_SHORT,
 } from './types.js';
@@ -101,6 +102,7 @@ const DONE_INFERENCE_CONFIDENCE_THRESHOLD = 0.82;
 const SCREEN_STATIC_AI_RECHECK_MS = 5 * 60 * 1000;
 const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_STUCK_NUDGES_PER_STORY = 1;
+const NUDGE_ENTER_RETRY_ATTEMPTS = 2;
 const REVIEWING_PR_VALIDATION_MIN_AGE_MS = 5 * 60 * 1000;
 const GH_PR_VIEW_TIMEOUT_MS = 30_000;
 const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
@@ -190,6 +192,30 @@ function stripManagerNudgeBlocks(output: string): string {
   }
 
   return filtered.join('\n');
+}
+
+function hasPendingNudgeInputAtPrompt(output: string): boolean {
+  const tail = output
+    .split('\n')
+    .slice(-12)
+    .join('\n');
+  return /(?:^|\n)\s*(?:›|>)\s*#\s*\[HIVE_MANAGER_NUDGE_START\]/m.test(tail);
+}
+
+async function submitManagerNudge(sessionName: string): Promise<void> {
+  // First Enter is the normal submit path.
+  await sendEnterToTmuxSession(sessionName);
+
+  // Some CLI UIs occasionally ignore the first Enter while repainting.
+  // If the nudge is still at the prompt, retry Enter with a short delay.
+  for (let i = 0; i < NUDGE_ENTER_RETRY_ATTEMPTS; i++) {
+    await new Promise(resolve => setTimeout(resolve, POST_NUDGE_DELAY_MS));
+    const output = await captureTmuxPane(sessionName, TMUX_CAPTURE_LINES_SHORT);
+    if (!hasPendingNudgeInputAtPrompt(output)) {
+      return;
+    }
+    await sendEnterToTmuxSession(sessionName);
+  }
 }
 
 function getScreenStaticInactivityThresholdMs(config?: HiveConfig): number {
@@ -1881,7 +1907,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 #   hive my-stories complete ${storyId}`
               )
             );
-            await sendEnterToTmuxSession(session.name);
+            await submitManagerNudge(session.name);
             ctx.counters.nudged++;
             actionNotes.push('ai_stall_nudge');
             if (tracked) {
@@ -2132,7 +2158,7 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
 # Fix the issues and resubmit: hive pr submit -b ${pr.branchName} -s ${pr.storyId || 'STORY-ID'} --from ${devSession.name}`
           )
         );
-        await sendEnterToTmuxSession(devSession.name);
+        await submitManagerNudge(devSession.name);
         rejectionNotified++;
       }
     }
@@ -2200,7 +2226,7 @@ async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
 hive pr queue`
         )
       );
-      await sendEnterToTmuxSession(candidate.sessionName);
+      await submitManagerNudge(candidate.sessionName);
     } else {
       verboseLogCtx(
         ctx,
@@ -2496,7 +2522,7 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
         sessionName,
         withManagerNudgeEnvelope(completionSignalLines.join('\n'))
       );
-      await sendEnterToTmuxSession(sessionName);
+      await submitManagerNudge(sessionName);
       ctx.counters.nudged++;
       if (trackedState) {
         trackedState.lastNudgeTime = now;
@@ -2525,7 +2551,7 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
 # Then mark complete: hive my-stories complete ${story.id}`
       )
     );
-    await sendEnterToTmuxSession(sessionName);
+    await submitManagerNudge(sessionName);
     ctx.counters.nudged++;
     if (trackedState) {
       trackedState.lastNudgeTime = now;
@@ -2635,7 +2661,7 @@ async function autoProgressDoneStory(
         `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), detected existing PR, and moved story to PR-submitted state.`
       )
     );
-    await sendEnterToTmuxSession(sessionName);
+    await submitManagerNudge(sessionName);
     verboseLogCtx(ctx, `autoProgressDoneStory: story=${story.id} action=existing_pr_progressed`);
     return true;
   }
@@ -2650,7 +2676,7 @@ async function autoProgressDoneStory(
       `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), auto-submitted branch ${branch} to merge queue.`
     )
   );
-  await sendEnterToTmuxSession(sessionName);
+  await submitManagerNudge(sessionName);
   return true;
 }
 
