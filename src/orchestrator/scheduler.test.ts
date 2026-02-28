@@ -523,6 +523,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
       assignedAgentId: activeAgentId,
       status: 'in_progress',
     });
+    db.run(`UPDATE agents SET current_story_id = ? WHERE id = ?`, [story.id, activeAgentId]);
 
     // Get the recovery method
     const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
@@ -537,6 +538,42 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     expect(unchangedStory?.[0]).toBe(activeAgentId);
     expect(unchangedStory?.[1]).toBe('in_progress');
+  });
+
+  it('should recover in_progress stories assigned to idle agents with no current story', async () => {
+    const team = createTeam(db, {
+      name: 'Inconsistent Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const idleAgentId = 'agent-idle-1';
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+      [idleAgentId, 'intermediate', team.id, 'idle']
+    );
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Inconsistent Assignment Story',
+      description: 'Assigned to idle agent',
+    });
+    updateStory(db, story.id, {
+      assignedAgentId: idleAgentId,
+      status: 'in_progress',
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).toContain(story.id);
+
+    const recoveredStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
+    )[0]?.values[0];
+
+    expect(recoveredStory?.[0]).toBeNull();
+    expect(recoveredStory?.[1]).toBe('planned');
   });
 
   it('should recover stale in_progress stories without assigned agents', async () => {

@@ -418,6 +418,27 @@ export function getStaleInProgressStoriesWithoutAssignment(db: Database): Array<
   );
 }
 
+export function getInProgressStoriesWithInconsistentAssignments(
+  db: Database
+): Array<{ id: string; agent_id: string }> {
+  return queryAll<{ id: string; agent_id: string }>(
+    db,
+    `
+    SELECT s.id, s.assigned_agent_id as agent_id
+    FROM stories s
+    JOIN agents a ON a.id = s.assigned_agent_id
+    WHERE s.status = 'in_progress'
+      AND s.assigned_agent_id IS NOT NULL
+      AND a.status != 'terminated'
+      AND (
+        a.status != 'working'
+        OR a.current_story_id IS NULL
+        OR a.current_story_id != s.id
+      )
+  `
+  );
+}
+
 /** @deprecated Use getStoryByExternalKey instead */
 export function getStoryByJiraKey(db: Database, jiraIssueKey: string): StoryRow | undefined {
   return queryOne<StoryRow>(
