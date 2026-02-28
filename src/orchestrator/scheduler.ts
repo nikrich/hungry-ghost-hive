@@ -632,18 +632,19 @@ export class Scheduler {
 
   /**
    * Scale QA agents based on pending work
-   * - Count stories with status 'pr_submitted' or 'qa'
+   * - Count stories in explicit QA statuses ('pr_submitted', 'qa', 'qa_failed')
+   * - Also count non-merged stories that have queued/reviewing PRs
    * - Calculate needed QA agents: 1 QA per 2-3 pending PRs, max 5
    * - Spawn QA agents in parallel with unique session names
    * - Scale down excess QA agents when queue shrinks
    *
    * Note: Unlike checkScaling(), this method does not need to filter by dependencies
-   * because it only counts stories with PRs already created ('pr_submitted', 'qa', etc).
-   * By the time a story reaches these statuses, its work is complete and dependencies
-   * are no longer a blocking concern for QA review.
+   * because it only counts stories already in QA phases or stories with open PRs.
+   * Open PR status is treated as source-of-truth for review demand, which allows
+   * recovery from stale story statuses (for example, story still marked in_progress).
    */
   private async scaleQAAgents(teamId: string, teamName: string, repoPath: string): Promise<void> {
-    // Count pending QA work: stories in QA-related statuses OR stories in review with queued PRs
+    // Count pending QA work: explicit QA statuses OR any non-merged story with an open PR.
     const qaStories = queryAll<StoryRow>(
       this.db,
       `
@@ -651,7 +652,7 @@ export class Scheduler {
       LEFT JOIN pull_requests pr ON pr.story_id = s.id
       WHERE s.team_id = ? AND (
         s.status IN ('qa', 'pr_submitted', 'qa_failed')
-        OR (s.status = 'review' AND pr.status IN ('queued', 'reviewing'))
+        OR (s.status != 'merged' AND pr.status IN ('queued', 'reviewing'))
       )
     `,
       [teamId]

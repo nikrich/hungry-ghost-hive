@@ -5,6 +5,7 @@ import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getLogsByEventType } from '../db/queries/logs.js';
+import { createPullRequest } from '../db/queries/pull-requests.js';
 import { createRequirement } from '../db/queries/requirements.js';
 import type { StoryRow } from '../db/queries/stories.js';
 import {
@@ -1577,6 +1578,105 @@ describe('Scheduler Agent Reassignment for Working Agents with NULL currentStory
 
     // Should not include the busy agent
     expect(result).toHaveLength(0);
+  });
+});
+
+describe('Scheduler checkMergeQueue', () => {
+  const ensurePullRequestsTable = () => {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS pull_requests (
+        id TEXT PRIMARY KEY,
+        story_id TEXT REFERENCES stories(id),
+        team_id TEXT REFERENCES teams(id),
+        branch_name TEXT NOT NULL,
+        github_pr_number INTEGER,
+        github_pr_url TEXT,
+        submitted_by TEXT,
+        reviewed_by TEXT,
+        status TEXT DEFAULT 'queued' CHECK (status IN ('queued', 'reviewing', 'approved', 'merged', 'rejected', 'closed')),
+        review_notes TEXT,
+        jira_issue_key TEXT,
+        external_issue_key TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        reviewed_at TIMESTAMP
+      )
+    `);
+  };
+
+  it('should spawn QA when a queued PR exists for an in_progress story', async () => {
+    ensurePullRequestsTable();
+
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Queued PR Story',
+      description: 'Story has queued PR but stale in_progress status',
+    });
+    updateStory(db, story.id, { status: 'in_progress' });
+
+    createPullRequest(db, {
+      storyId: story.id,
+      teamId: team.id,
+      branchName: 'feature/queued-pr-story',
+      githubPrNumber: 123,
+      githubPrUrl: 'https://github.com/test/repo/pull/123',
+    });
+
+    const spawnQASpy = vi.spyOn(scheduler as any, 'spawnQA').mockResolvedValue({
+      id: 'qa-test',
+      type: 'qa',
+      team_id: team.id,
+      status: 'idle',
+    });
+
+    await scheduler.checkMergeQueue();
+
+    expect(spawnQASpy).toHaveBeenCalledTimes(1);
+    expect(spawnQASpy).toHaveBeenCalledWith(team.id, team.name, team.repo_path, 1);
+
+    spawnQASpy.mockRestore();
+  });
+
+  it('should not spawn QA for merged stories even if PR row is still queued', async () => {
+    ensurePullRequestsTable();
+
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Merged Story',
+      description: 'Merged stories should not drive QA scaling',
+    });
+    updateStory(db, story.id, { status: 'merged' });
+
+    createPullRequest(db, {
+      storyId: story.id,
+      teamId: team.id,
+      branchName: 'feature/merged-story',
+      githubPrNumber: 124,
+      githubPrUrl: 'https://github.com/test/repo/pull/124',
+    });
+
+    const spawnQASpy = vi.spyOn(scheduler as any, 'spawnQA').mockResolvedValue({
+      id: 'qa-test',
+      type: 'qa',
+      team_id: team.id,
+      status: 'idle',
+    });
+
+    await scheduler.checkMergeQueue();
+
+    expect(spawnQASpy).not.toHaveBeenCalled();
+
+    spawnQASpy.mockRestore();
   });
 });
 
