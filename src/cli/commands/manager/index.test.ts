@@ -115,22 +115,24 @@ describe('No-action manager summary classification', () => {
     const { classifyNoActionSummary } = await import('./index.js');
     const result = classifyNoActionSummary({
       pendingEscalations: 0,
-      pendingStories: 5,
+      pendingActionableStories: 5,
       activeWorkerAgents: 0,
-      liveWorkerSessions: 0,
+      workingWorkerAgents: 0,
+      liveWorkingSessions: 0,
     });
 
     expect(result.color).toBe('red');
-    expect(result.message).toContain('5 pending story(ies)');
+    expect(result.message).toContain('5 actionable story(ies)');
   });
 
   it('should prioritize pending escalations over productivity status', async () => {
     const { classifyNoActionSummary } = await import('./index.js');
     const result = classifyNoActionSummary({
       pendingEscalations: 2,
-      pendingStories: 0,
+      pendingActionableStories: 0,
       activeWorkerAgents: 3,
-      liveWorkerSessions: 3,
+      workingWorkerAgents: 3,
+      liveWorkingSessions: 3,
     });
 
     expect(result).toEqual({
@@ -143,14 +145,30 @@ describe('No-action manager summary classification', () => {
     const { classifyNoActionSummary } = await import('./index.js');
     const result = classifyNoActionSummary({
       pendingEscalations: 0,
-      pendingStories: 3,
+      pendingActionableStories: 3,
       activeWorkerAgents: 2,
-      liveWorkerSessions: 2,
+      workingWorkerAgents: 2,
+      liveWorkingSessions: 2,
     });
 
     expect(result).toEqual({
       color: 'green',
       message: 'All agents productive',
     });
+  });
+
+  it('should flag actionable work when only idle agents exist', async () => {
+    const { classifyNoActionSummary } = await import('./index.js');
+    const result = classifyNoActionSummary({
+      pendingEscalations: 0,
+      pendingActionableStories: 4,
+      activeWorkerAgents: 2,
+      workingWorkerAgents: 0,
+      liveWorkingSessions: 0,
+    });
+
+    expect(result.color).toBe('red');
+    expect(result.message).toContain('4 actionable story(ies)');
+    expect(result.message).toContain('0 working agent(s)');
   });
 });

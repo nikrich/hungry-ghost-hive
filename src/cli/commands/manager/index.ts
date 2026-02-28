@@ -130,9 +130,10 @@ interface ScreenStaticStatus {
 
 interface NoActionSummarySnapshot {
   pendingEscalations: number;
-  pendingStories: number;
+  pendingActionableStories: number;
   activeWorkerAgents: number;
-  liveWorkerSessions: number;
+  workingWorkerAgents: number;
+  liveWorkingSessions: number;
 }
 
 interface SummaryLine {
@@ -149,16 +150,16 @@ export function classifyNoActionSummary(snapshot: NoActionSummarySnapshot): Summ
   }
 
   if (
-    snapshot.pendingStories > 0 &&
-    (snapshot.activeWorkerAgents === 0 || snapshot.liveWorkerSessions === 0)
+    snapshot.pendingActionableStories > 0 &&
+    (snapshot.workingWorkerAgents === 0 || snapshot.liveWorkingSessions === 0)
   ) {
     return {
       color: 'red',
-      message: `${snapshot.pendingStories} pending story(ies), ${snapshot.activeWorkerAgents} active worker agent(s), ${snapshot.liveWorkerSessions} live worker session(s)`,
+      message: `${snapshot.pendingActionableStories} actionable story(ies), ${snapshot.workingWorkerAgents} working agent(s), ${snapshot.liveWorkingSessions} live working session(s), ${snapshot.activeWorkerAgents} total active agent(s)`,
     };
   }
 
-  if (snapshot.pendingStories === 0 && snapshot.activeWorkerAgents === 0) {
+  if (snapshot.pendingActionableStories === 0 && snapshot.activeWorkerAgents === 0) {
     return {
       color: 'gray',
       message: 'No pending work and no active worker agents',
@@ -2971,22 +2972,30 @@ async function printSummary(ctx: ManagerCheckContext): Promise<void> {
         db.db,
         "SELECT COUNT(*) AS count FROM escalations WHERE status = 'pending'"
       )?.count ?? 0;
-    const pendingStories =
-      queryOne<{ count: number }>(db.db, "SELECT COUNT(*) AS count FROM stories WHERE status != 'merged'")
-        ?.count ?? 0;
+    const pendingActionableStories =
+      queryOne<{ count: number }>(
+        db.db,
+        "SELECT COUNT(*) AS count FROM stories WHERE status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')"
+      )?.count ?? 0;
     const activeWorkerAgents =
       queryOne<{ count: number }>(
         db.db,
         "SELECT COUNT(*) AS count FROM agents WHERE type != 'tech_lead' AND status != 'terminated'"
       )?.count ?? 0;
+    const workingWorkerAgents =
+      queryOne<{ count: number }>(
+        db.db,
+        "SELECT COUNT(*) AS count FROM agents WHERE type != 'tech_lead' AND status = 'working'"
+      )?.count ?? 0;
 
     return {
       pendingEscalations,
-      pendingStories,
+      pendingActionableStories,
       activeWorkerAgents,
-      liveWorkerSessions: ctx.hiveSessions.filter(session => {
+      workingWorkerAgents,
+      liveWorkingSessions: ctx.hiveSessions.filter(session => {
         const agent = ctx.agentsBySessionName.get(session.name);
-        return Boolean(agent && agent.type !== 'tech_lead' && agent.status !== 'terminated');
+        return Boolean(agent && agent.type !== 'tech_lead' && agent.status === 'working');
       }).length,
     };
   });
