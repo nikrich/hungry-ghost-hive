@@ -85,6 +85,7 @@ import { handleEscalationAndNudge } from './escalation-handler.js';
 import { checkFeatureSignOff } from './feature-sign-off.js';
 import { checkFeatureTestResult } from './feature-test-result.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
+import { cleanupAgentsReferencingMergedStory } from './merged-story-cleanup.js';
 import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
 import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
@@ -921,6 +922,8 @@ async function managerCheck(
   await runAutoMerge(ctx);
   verboseLogCtx(ctx, 'Step: sync merged PRs from GitHub');
   await syncMergedPRs(ctx);
+  verboseLogCtx(ctx, 'Step: reconcile merged story agent pointers');
+  await reconcileAgentsOnMergedStories(ctx);
   verboseLogCtx(ctx, 'Step: sync open PRs from GitHub');
   await syncOpenPRs(ctx);
   verboseLogCtx(ctx, 'Step: close stale PRs');
@@ -1142,11 +1145,16 @@ async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
         await withTransaction(db.db, () => {
           for (const update of toUpdate) {
             updateStory(db.db, update.storyId, { status: 'merged', assignedAgentId: null });
+            const cleanup = cleanupAgentsReferencingMergedStory(db.db, update.storyId);
             createLog(db.db, {
               agentId: 'manager',
               storyId: update.storyId,
               eventType: 'STORY_MERGED',
               message: `Story synced to merged from GitHub PR #${update.prNumber}`,
+              metadata: {
+                merged_agent_cleanup_cleared: cleanup.cleared,
+                merged_agent_cleanup_reassigned: cleanup.reassigned,
+              },
             });
           }
         });
@@ -1163,6 +1171,65 @@ async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
   verboseLogCtx(ctx, `syncMergedPRs: synced=${mergedSynced}`);
   if (mergedSynced > 0) {
     console.log(chalk.green(`  Synced ${mergedSynced} merged story(ies) from GitHub`));
+  }
+}
+
+async function reconcileAgentsOnMergedStories(ctx: ManagerCheckContext): Promise<void> {
+  const result = await ctx.withDb(async db => {
+    const mergedStoryIds = queryAll<{ id: string }>(
+      db.db,
+      `
+      SELECT DISTINCT s.id
+      FROM stories s
+      JOIN agents a ON a.current_story_id = s.id
+      WHERE s.status = 'merged'
+        AND a.status != 'terminated'
+      `
+    ).map(row => row.id);
+
+    if (mergedStoryIds.length === 0) {
+      return { storyCount: 0, cleared: 0, reassigned: 0 };
+    }
+
+    let cleared = 0;
+    let reassigned = 0;
+    for (const storyId of mergedStoryIds) {
+      const cleanup = cleanupAgentsReferencingMergedStory(db.db, storyId);
+      if (cleanup.cleared > 0) {
+        createLog(db.db, {
+          agentId: 'manager',
+          storyId,
+          eventType: 'STORY_PROGRESS_UPDATE',
+          message: `Reconciled stale merged-story agent assignments`,
+          metadata: {
+            story_id: storyId,
+            cleared_agents: cleanup.cleared,
+            reassigned_agents: cleanup.reassigned,
+            recovery: 'merged_story_agent_reconcile',
+          },
+        });
+      }
+      cleared += cleanup.cleared;
+      reassigned += cleanup.reassigned;
+    }
+
+    if (cleared > 0) {
+      db.save();
+    }
+
+    return { storyCount: mergedStoryIds.length, cleared, reassigned };
+  });
+
+  verboseLogCtx(
+    ctx,
+    `reconcileAgentsOnMergedStories: stories=${result.storyCount}, cleared=${result.cleared}, reassigned=${result.reassigned}`
+  );
+  if (result.cleared > 0) {
+    console.log(
+      chalk.yellow(
+        `  Reconciled ${result.cleared} stale merged-story agent assignment(s) (${result.reassigned} reassigned, ${result.cleared - result.reassigned} idled)`
+      )
+    );
   }
 }
 
@@ -1532,16 +1599,8 @@ async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promise<void>
           });
 
           if (!result.candidate.storyId) return;
-
-          const story = getStoryById(db.db, result.candidate.storyId);
-          if (story?.assigned_agent_id) {
-            const agent = getAgentById(db.db, story.assigned_agent_id);
-            if (agent && agent.current_story_id === result.candidate.storyId) {
-              updateAgent(db.db, agent.id, { currentStoryId: null, status: 'idle' });
-            }
-          }
-
           updateStory(db.db, result.candidate.storyId, { status: 'merged', assignedAgentId: null });
+          const cleanup = cleanupAgentsReferencingMergedStory(db.db, result.candidate.storyId);
           createLog(db.db, {
             agentId: 'manager',
             storyId: result.candidate.storyId,
@@ -1551,6 +1610,8 @@ async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promise<void>
               pr_id: result.candidate.id,
               github_pr_number: result.candidate.githubPrNumber,
               github_url: result.githubUrl,
+              merged_agent_cleanup_cleared: cleanup.cleared,
+              merged_agent_cleanup_reassigned: cleanup.reassigned,
             },
           });
           mergedStoryIds.push(result.candidate.storyId);
