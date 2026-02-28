@@ -63,8 +63,12 @@ import {
 
 // --- Named constants (extracted from inline magic numbers) ---
 
-/** Timeout in ms for git worktree operations */
-const GIT_WORKTREE_TIMEOUT_MS = 30000;
+/** Timeout in ms for best-effort fetch before creating an agent worktree */
+const GIT_FETCH_TIMEOUT_MS = 5000;
+/** Timeout in ms for creating/attaching agent worktrees */
+const GIT_WORKTREE_ADD_TIMEOUT_MS = 30000;
+/** Timeout in ms for removing stale worktrees during cleanup paths */
+const GIT_WORKTREE_REMOVE_TIMEOUT_MS = 5000;
 /** Max tokens for Opus 4.6 in godmode */
 const GODMODE_MAX_TOKENS = 16000;
 /** Temperature for Opus 4.6 in godmode */
@@ -131,7 +135,7 @@ export class Scheduler {
       execSync(`git fetch origin ${baseBranch}`, {
         cwd: fullRepoPath,
         stdio: 'pipe',
-        timeout: GIT_WORKTREE_TIMEOUT_MS,
+        timeout: GIT_FETCH_TIMEOUT_MS,
       });
     } catch (_err) {
       // Fetch failure is non-fatal; proceed with whatever is available locally
@@ -142,7 +146,7 @@ export class Scheduler {
       execSync(`git worktree add "${fullWorktreePath}" -b "${branchName}" "origin/${baseBranch}"`, {
         cwd: fullRepoPath,
         stdio: 'pipe',
-        timeout: GIT_WORKTREE_TIMEOUT_MS,
+        timeout: GIT_WORKTREE_ADD_TIMEOUT_MS,
       });
     } catch (err) {
       // If worktree or branch already exists, try to add without creating branch
@@ -150,7 +154,7 @@ export class Scheduler {
         execSync(`git worktree add "${fullWorktreePath}" "${branchName}"`, {
           cwd: fullRepoPath,
           stdio: 'pipe',
-          timeout: GIT_WORKTREE_TIMEOUT_MS,
+          timeout: GIT_WORKTREE_ADD_TIMEOUT_MS,
         });
       } catch (_error) {
         // If that fails too, log and throw
@@ -169,7 +173,9 @@ export class Scheduler {
   private removeAgentWorktree(worktreePath: string, agentId: string): void {
     if (!worktreePath) return;
 
-    const result = removeWorktree(this.config.rootDir, worktreePath);
+    const result = removeWorktree(this.config.rootDir, worktreePath, {
+      timeout: GIT_WORKTREE_REMOVE_TIMEOUT_MS,
+    });
     if (!result.success) {
       createLog(this.db, {
         agentId,

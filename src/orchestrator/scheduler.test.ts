@@ -425,6 +425,20 @@ describe('Scheduler Build Dependency Graph', () => {
 });
 
 describe('Scheduler Worktree Removal', () => {
+  it('should remove worktrees with a short cleanup timeout', () => {
+    const removeSpy = vi.spyOn(worktreeModule, 'removeWorktree').mockReturnValue({
+      success: true,
+      fullWorktreePath: '/tmp/repos/test-agent-1',
+    });
+
+    const removeMethod = (scheduler as any).removeAgentWorktree;
+    removeMethod.call(scheduler, 'repos/test-agent-1', 'agent-test-1');
+
+    expect(removeSpy).toHaveBeenCalledWith('/tmp', 'repos/test-agent-1', { timeout: 5000 });
+
+    vi.restoreAllMocks();
+  });
+
   it('should log worktree removal failures to the database', () => {
     // Mock the shared removeWorktree to simulate failure
     vi.spyOn(worktreeModule, 'removeWorktree').mockReturnValue({
