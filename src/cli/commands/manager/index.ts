@@ -148,6 +148,12 @@ interface UnknownStateStuckHeuristicSnapshot {
   staticInactivityThresholdMs: number;
 }
 
+interface StuckReminderDeferralSnapshot {
+  state: AgentState;
+  sessionUnchangedForMs: number;
+  staticInactivityThresholdMs: number;
+}
+
 export function classifyNoActionSummary(snapshot: NoActionSummarySnapshot): SummaryLine {
   if (snapshot.pendingEscalations > 0) {
     return {
@@ -185,6 +191,16 @@ export function shouldTreatUnknownAsStuckWaiting(
     !snapshot.isWaiting &&
     snapshot.sessionUnchangedForMs >= thresholdMs
   );
+}
+
+export function shouldDeferStuckReminderUntilStaticWindow(
+  snapshot: StuckReminderDeferralSnapshot
+): boolean {
+  const thresholdMs = Math.max(1, snapshot.staticInactivityThresholdMs);
+  if (snapshot.state === AgentState.WORK_COMPLETE) {
+    return false;
+  }
+  return snapshot.sessionUnchangedForMs < thresholdMs;
 }
 
 const screenStaticBySession = new Map<string, ScreenStaticTracking>();
@@ -2500,11 +2516,18 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       );
     }
 
-    if (sessionUnchangedForMs < staticInactivityThresholdMs) {
+    if (
+      shouldDeferStuckReminderUntilStaticWindow({
+        state: stateResult.state,
+        sessionUnchangedForMs,
+        staticInactivityThresholdMs,
+      })
+    ) {
       verboseLogCtx(
         ctx,
         `nudgeStuckStories: story=${story.id} skip=done_inference_static_window remainingMs=${staticInactivityThresholdMs - sessionUnchangedForMs}`
       );
+      continue;
     } else {
       const completionAssessment = await assessCompletionFromOutput(
         ctx.config,

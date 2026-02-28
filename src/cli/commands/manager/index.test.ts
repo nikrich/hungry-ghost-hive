@@ -220,3 +220,48 @@ describe('Unknown-state stuck heuristic', () => {
     expect(result).toBe(false);
   });
 });
+
+describe('Stuck reminder deferral', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('defers reminders while static window has not elapsed for non-complete states', async () => {
+    const { shouldDeferStuckReminderUntilStaticWindow } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldDeferStuckReminderUntilStaticWindow({
+      state: AgentState.IDLE_AT_PROMPT,
+      sessionUnchangedForMs: 90_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it('does not defer reminders once static window elapsed', async () => {
+    const { shouldDeferStuckReminderUntilStaticWindow } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldDeferStuckReminderUntilStaticWindow({
+      state: AgentState.IDLE_AT_PROMPT,
+      sessionUnchangedForMs: 610_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it('does not defer mandatory completion for work-complete state', async () => {
+    const { shouldDeferStuckReminderUntilStaticWindow } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldDeferStuckReminderUntilStaticWindow({
+      state: AgentState.WORK_COMPLETE,
+      sessionUnchangedForMs: 10_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(false);
+  });
+});

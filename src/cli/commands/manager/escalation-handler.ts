@@ -152,7 +152,12 @@ export async function handleEscalationAndNudge(
     `escalationCheck: ${sessionName} state=${stateResult.state}, waiting=${stateResult.isWaiting}, needsHuman=${stateResult.needsHuman}, interrupted=${interrupted}, rateLimited=${rateLimited}`
   );
 
-  if (!interrupted) {
+  if (
+    !interrupted &&
+    [AgentState.THINKING, AgentState.TOOL_RUNNING, AgentState.PROCESSING].includes(
+      stateResult.state
+    )
+  ) {
     interruptionRecoveryAttempts.delete(sessionName);
   }
   if (!rateLimited) {
