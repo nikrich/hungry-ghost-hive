@@ -78,6 +78,7 @@ function makeCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheckCont
       escalationsCreated: 0,
       escalationsResolved: 0,
       queuedPRCount: 0,
+      reviewingPRCount: 0,
       handoffPromoted: 0,
       handoffAutoAssigned: 0,
       plannedAutoAssigned: 0,

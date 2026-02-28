@@ -14,7 +14,7 @@ import {
   syncStatusForStory,
 } from '../../../connectors/project-management/operations.js';
 import type { StoryRow } from '../../../db/client.js';
-import { queryAll, withTransaction } from '../../../db/client.js';
+import { queryAll, queryOne, withTransaction } from '../../../db/client.js';
 import { acquireLock } from '../../../db/lock.js';
 import {
   getAgentById,
@@ -101,6 +101,8 @@ const DONE_INFERENCE_CONFIDENCE_THRESHOLD = 0.82;
 const SCREEN_STATIC_AI_RECHECK_MS = 5 * 60 * 1000;
 const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_STUCK_NUDGES_PER_STORY = 1;
+const REVIEWING_PR_VALIDATION_MIN_AGE_MS = 5 * 60 * 1000;
+const GH_PR_VIEW_TIMEOUT_MS = 30_000;
 const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
 const AI_DONE_FALSE_REASON_PREFIX = 'AI done=false escalation';
 
@@ -796,6 +798,7 @@ async function managerCheck(
       escalationsCreated: 0,
       escalationsResolved: 0,
       queuedPRCount: 0,
+      reviewingPRCount: 0,
       handoffPromoted: 0,
       handoffAutoAssigned: 0,
       plannedAutoAssigned: 0,
@@ -821,6 +824,8 @@ async function managerCheck(
   await syncOpenPRs(ctx);
   verboseLogCtx(ctx, 'Step: close stale PRs');
   await closeStalePRs(ctx);
+  verboseLogCtx(ctx, 'Step: recover stale reviewing PRs');
+  await recoverStaleReviewingPRs(ctx);
   verboseLogCtx(ctx, 'Step: sync Jira statuses');
   await syncJiraStatuses(ctx);
   verboseLogCtx(ctx, 'Step: planning handoff recovery');
@@ -1289,6 +1294,231 @@ async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
   verboseLogCtx(ctx, `closeStalePRs: closed=${closed.length}`);
 }
 
+interface ReviewingPRValidationCandidate {
+  id: string;
+  storyId: string | null;
+  teamId: string;
+  branchName: string;
+  githubPrNumber: number;
+  reviewedBy: string | null;
+  repoDir: string;
+  repoSlug: string | null;
+}
+
+interface ReviewingPRValidationResult {
+  candidate: ReviewingPRValidationCandidate;
+  githubState: string;
+  githubUrl: string | null;
+}
+
+async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promise<void> {
+  const now = Date.now();
+
+  // Phase 1: Read stale reviewing PRs and resolve repo metadata (brief lock)
+  const candidates = await ctx.withDb(async db => {
+    const reviewingPRs = getPullRequestsByStatus(db.db, 'reviewing').filter(pr => {
+      if (!pr.github_pr_number || !pr.team_id) return false;
+      const updatedAtMs = Date.parse(pr.updated_at);
+      if (Number.isNaN(updatedAtMs)) return true;
+      return now - updatedAtMs >= REVIEWING_PR_VALIDATION_MIN_AGE_MS;
+    });
+
+    verboseLogCtx(ctx, `recoverStaleReviewingPRs: staleCandidates=${reviewingPRs.length}`);
+    if (reviewingPRs.length === 0) {
+      return [] as ReviewingPRValidationCandidate[];
+    }
+
+    const { getAllTeams } = await import('../../../db/queries/teams.js');
+    const teams = getAllTeams(db.db);
+    const teamsById = new Map(teams.map(team => [team.id, team]));
+
+    const result: ReviewingPRValidationCandidate[] = [];
+    for (const pr of reviewingPRs) {
+      const team = teamsById.get(pr.team_id!);
+      if (!team?.repo_path) continue;
+
+      result.push({
+        id: pr.id,
+        storyId: pr.story_id,
+        teamId: pr.team_id!,
+        branchName: pr.branch_name,
+        githubPrNumber: pr.github_pr_number!,
+        reviewedBy: pr.reviewed_by,
+        repoDir: `${ctx.root}/${team.repo_path}`,
+        repoSlug: ghRepoSlug(team.repo_url),
+      });
+    }
+
+    return result;
+  });
+
+  if (candidates.length === 0) return;
+
+  // Phase 2: Check GitHub state for each stale reviewing PR (no lock)
+  const mergedResults: ReviewingPRValidationResult[] = [];
+  const rejectedResults: ReviewingPRValidationResult[] = [];
+
+  for (const candidate of candidates) {
+    try {
+      const args = ['pr', 'view', String(candidate.githubPrNumber), '--json', 'state,url'];
+      if (candidate.repoSlug) args.push('-R', candidate.repoSlug);
+      const result = await execa('gh', args, {
+        cwd: candidate.repoDir,
+        timeout: GH_PR_VIEW_TIMEOUT_MS,
+      });
+      const parsed = JSON.parse(result.stdout) as { state?: string; url?: string };
+      const state = parsed.state?.toUpperCase();
+      const url = parsed.url || null;
+
+      if (state === 'OPEN') continue;
+      if (state === 'MERGED') {
+        mergedResults.push({
+          candidate,
+          githubState: 'MERGED',
+          githubUrl: url,
+        });
+        continue;
+      }
+
+      if (state) {
+        rejectedResults.push({
+          candidate,
+          githubState: state,
+          githubUrl: url,
+        });
+      }
+    } catch (err) {
+      verboseLogCtx(
+        ctx,
+        `recoverStaleReviewingPRs: skip pr=${candidate.id} github_check_failed=${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  if (mergedResults.length === 0 && rejectedResults.length === 0) return;
+
+  const mergedStoryIds: string[] = [];
+
+  // Phase 3: Apply DB updates (brief lock)
+  await ctx.withDb(async db => {
+    for (const result of mergedResults) {
+      await withTransaction(
+        db.db,
+        () => {
+          const currentPR = queryOne<{ status: string }>(
+            db.db,
+            `SELECT status FROM pull_requests WHERE id = ?`,
+            [result.candidate.id]
+          );
+          if (!currentPR || currentPR.status !== 'reviewing') return;
+
+          updatePullRequest(db.db, result.candidate.id, {
+            status: 'merged',
+            reviewedBy: result.candidate.reviewedBy || 'manager',
+          });
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: result.candidate.storyId || undefined,
+            eventType: 'PR_MERGED',
+            message: `Auto-closed reviewing PR ${result.candidate.id}: GitHub PR #${result.candidate.githubPrNumber} is already merged`,
+            metadata: {
+              pr_id: result.candidate.id,
+              github_pr_number: result.candidate.githubPrNumber,
+              github_state: result.githubState,
+              github_url: result.githubUrl,
+            },
+          });
+
+          if (!result.candidate.storyId) return;
+
+          const story = getStoryById(db.db, result.candidate.storyId);
+          if (story?.assigned_agent_id) {
+            const agent = getAgentById(db.db, story.assigned_agent_id);
+            if (agent && agent.current_story_id === result.candidate.storyId) {
+              updateAgent(db.db, agent.id, { currentStoryId: null, status: 'idle' });
+            }
+          }
+
+          updateStory(db.db, result.candidate.storyId, { status: 'merged', assignedAgentId: null });
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: result.candidate.storyId,
+            eventType: 'STORY_MERGED',
+            message: `Story auto-synced to merged (GitHub PR #${result.candidate.githubPrNumber} already merged)`,
+            metadata: {
+              pr_id: result.candidate.id,
+              github_pr_number: result.candidate.githubPrNumber,
+              github_url: result.githubUrl,
+            },
+          });
+          mergedStoryIds.push(result.candidate.storyId);
+        },
+        () => db.save()
+      );
+    }
+
+    for (const result of rejectedResults) {
+      await withTransaction(
+        db.db,
+        () => {
+          const currentPR = queryOne<{ status: string }>(
+            db.db,
+            `SELECT status FROM pull_requests WHERE id = ?`,
+            [result.candidate.id]
+          );
+          if (!currentPR || currentPR.status !== 'reviewing') return;
+
+          const reason = `GitHub PR #${result.candidate.githubPrNumber} is ${result.githubState.toLowerCase()} on GitHub${result.githubUrl ? ` (${result.githubUrl})` : ''}. Reopen/create a new PR and resubmit.`;
+          updatePullRequest(db.db, result.candidate.id, {
+            status: 'rejected',
+            reviewedBy: result.candidate.reviewedBy || 'manager',
+            reviewNotes: reason,
+          });
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: result.candidate.storyId || undefined,
+            eventType: 'PR_REJECTED',
+            status: 'warn',
+            message: `Auto-rejected stale review ${result.candidate.id}: ${reason}`,
+            metadata: {
+              pr_id: result.candidate.id,
+              github_pr_number: result.candidate.githubPrNumber,
+              github_state: result.githubState,
+              github_url: result.githubUrl,
+              branch: result.candidate.branchName,
+              team_id: result.candidate.teamId,
+            },
+          });
+        },
+        () => db.save()
+      );
+    }
+  });
+
+  // Sync merged stories to PM provider outside lock
+  const uniqueMergedStoryIds = Array.from(new Set(mergedStoryIds));
+  for (const storyId of uniqueMergedStoryIds) {
+    await ctx.withDb(async db => {
+      await syncStatusForStory(ctx.root, db.db, storyId, 'merged');
+    });
+  }
+
+  if (mergedResults.length > 0) {
+    console.log(
+      chalk.green(
+        `  Auto-synced ${mergedResults.length} reviewing PR(s) that were already merged on GitHub`
+      )
+    );
+  }
+  if (rejectedResults.length > 0) {
+    console.log(
+      chalk.yellow(
+        `  Auto-rejected ${rejectedResults.length} stale reviewing PR(s) with non-open GitHub PR state`
+      )
+    );
+  }
+}
+
 async function syncJiraStatuses(ctx: ManagerCheckContext): Promise<void> {
   await ctx.withDb(async db => {
     const syncedStories = await syncFromProvider(ctx.root, db.db);
@@ -1718,10 +1948,12 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read PR queue and assign reviews (brief lock)
   const { queuedPRs, dispatched } = await ctx.withDb(async db => {
     const openPRs = getMergeQueue(db.db);
-    ctx.counters.queuedPRCount = openPRs.length;
     verboseLogCtx(ctx, `notifyQAOfQueuedPRs: open=${openPRs.length}`);
 
     const queued = openPRs.filter(pr => pr.status === 'queued');
+    const reviewing = openPRs.filter(pr => pr.status === 'reviewing');
+    ctx.counters.queuedPRCount = queued.length;
+    ctx.counters.reviewingPRCount = reviewing.length;
     verboseLogCtx(ctx, `notifyQAOfQueuedPRs: queued=${queued.length}`);
     if (queued.length === 0) {
       return {
@@ -2638,6 +2870,7 @@ function printSummary(ctx: ManagerCheckContext): void {
     autoProgressed,
     messagesForwarded,
     queuedPRCount,
+    reviewingPRCount,
     handoffPromoted,
     handoffAutoAssigned,
     plannedAutoAssigned,
@@ -2652,6 +2885,7 @@ function printSummary(ctx: ManagerCheckContext): void {
   if (autoProgressed > 0) summary.push(`${autoProgressed} auto-progressed`);
   if (messagesForwarded > 0) summary.push(`${messagesForwarded} messages forwarded`);
   if (queuedPRCount > 0) summary.push(`${queuedPRCount} PRs queued`);
+  if (reviewingPRCount > 0) summary.push(`${reviewingPRCount} PRs reviewing`);
   if (handoffPromoted > 0) summary.push(`${handoffPromoted} auto-promoted from estimated`);
   if (handoffAutoAssigned > 0) summary.push(`${handoffAutoAssigned} auto-assigned after recovery`);
   if (plannedAutoAssigned > 0)

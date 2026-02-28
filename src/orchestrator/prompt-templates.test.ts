@@ -440,7 +440,9 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('hive pr queue');
       expect(prompt).toContain('hive pr review');
       expect(prompt).toContain('hive pr approve');
+      expect(prompt).toContain('--no-merge');
       expect(prompt).toContain('hive pr reject');
+      expect(prompt).toContain('closed/missing/inaccessible');
     });
 
     it('should include review checklist', () => {
