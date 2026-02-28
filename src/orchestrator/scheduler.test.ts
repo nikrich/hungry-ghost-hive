@@ -576,6 +576,113 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(recoveredStory?.[1]).toBe('planned');
   });
 
+  it('should recover in_progress stories when agent current_story_id points to a different story', async () => {
+    const team = createTeam(db, {
+      name: 'Mismatched Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const workingAgentId = 'agent-working-mismatch-1';
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [workingAgentId, 'intermediate', team.id, 'working', 'STORY-OTHER']
+    );
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Mismatched Assignment Story',
+      description: 'Assigned story does not match agent current story',
+    });
+    updateStory(db, story.id, {
+      assignedAgentId: workingAgentId,
+      status: 'in_progress',
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).toContain(story.id);
+
+    const recoveredStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
+    )[0]?.values[0];
+
+    expect(recoveredStory?.[0]).toBeNull();
+    expect(recoveredStory?.[1]).toBe('planned');
+  });
+
+  it('should recover in_progress stories assigned to blocked agents even with matching current story', async () => {
+    const team = createTeam(db, {
+      name: 'Blocked Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const blockedAgentId = 'agent-blocked-1';
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Blocked Assignment Story',
+      description: 'Assigned to blocked agent',
+    });
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [blockedAgentId, 'intermediate', team.id, 'blocked', story.id]
+    );
+    updateStory(db, story.id, {
+      assignedAgentId: blockedAgentId,
+      status: 'in_progress',
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).toContain(story.id);
+
+    const recoveredStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
+    )[0]?.values[0];
+
+    expect(recoveredStory?.[0]).toBeNull();
+    expect(recoveredStory?.[1]).toBe('planned');
+  });
+
+  it('should not recover non-in_progress stories with inconsistent assignment', async () => {
+    const team = createTeam(db, {
+      name: 'Review Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const idleAgentId = 'agent-idle-review-1';
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+      [idleAgentId, 'intermediate', team.id, 'idle']
+    );
+
+    const reviewStory = createStory(db, {
+      teamId: team.id,
+      title: 'Review Story',
+      description: 'Should not be recovered by in_progress consistency check',
+    });
+    updateStory(db, reviewStory.id, {
+      assignedAgentId: idleAgentId,
+      status: 'review',
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).not.toContain(reviewStory.id);
+
+    const unchangedStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${reviewStory.id}'`
+    )[0]?.values[0];
+
+    expect(unchangedStory?.[0]).toBe(idleAgentId);
+    expect(unchangedStory?.[1]).toBe('review');
+  });
+
   it('should recover stale in_progress stories without assigned agents', async () => {
     const team = createTeam(db, {
       name: 'Stale Team',
