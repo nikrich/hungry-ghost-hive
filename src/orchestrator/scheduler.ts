@@ -231,13 +231,24 @@ export class Scheduler {
           a.type !== 'qa' &&
           (a.status === 'idle' || (a.status === 'working' && a.current_story_id === null))
       );
+      const activeSeniorCount = getAgentsByTeam(this.db, teamId).filter(
+        a => a.type === 'senior' && a.status !== 'terminated'
+      ).length;
+      let nextSeniorIndex = activeSeniorCount > 0 ? activeSeniorCount + 1 : 1;
 
       const getOrSpawnSenior = async (): Promise<AgentRow | undefined> => {
         const idleSenior = agents.find(a => a.type === 'senior' && a.status === 'idle');
         if (idleSenior) return idleSenior;
 
         try {
-          const spawnedSenior = await this.spawnSenior(teamId, team.name, team.repo_path);
+          const spawnIndex = nextSeniorIndex;
+          nextSeniorIndex += 1;
+          const spawnedSenior = await this.spawnSenior(
+            teamId,
+            team.name,
+            team.repo_path,
+            spawnIndex > 1 ? spawnIndex : undefined
+          );
           agents.push(spawnedSenior);
           return spawnedSenior;
         } catch (err) {
@@ -832,7 +843,15 @@ export class Scheduler {
         a => a.tmux_session === sessionName && a.status !== 'terminated'
       );
       if (existingOnSession && (await isTmuxSessionRunning(sessionName))) {
-        return existingOnSession;
+        const sessionSeniorAvailable =
+          existingOnSession.status === 'idle' ||
+          (existingOnSession.status === 'working' && existingOnSession.current_story_id === null);
+        if (sessionSeniorAvailable) {
+          return existingOnSession;
+        }
+        throw new OperationalError(
+          `Cannot spawn senior on busy session ${sessionName} (agent ${existingOnSession.id})`
+        );
       }
     }
 

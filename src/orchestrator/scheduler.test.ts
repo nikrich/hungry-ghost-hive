@@ -16,6 +16,7 @@ import {
 } from '../db/queries/stories.js';
 import { createTeam } from '../db/queries/teams.js';
 import * as worktreeModule from '../git/worktree.js';
+import * as tmuxModule from '../tmux/manager.js';
 import { getAgentWorkload, selectAgentWithLeastWorkload } from './agent-selector.js';
 import {
   getCapacityPoints,
@@ -1825,6 +1826,63 @@ describe('Scheduler checkMergeQueue', () => {
 });
 
 describe('Scheduler checkScaling', () => {
+  it('should spawn a new indexed senior when the base senior is busy', async () => {
+    const team = createTeam(db, {
+      name: 'Busy Senior Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      ['senior-busy-1', 'senior', team.id, 'working', 'STORY-OLD']
+    );
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Needs Senior',
+      description: 'High complexity story',
+    });
+    updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+
+    const spawnSeniorSpy = vi
+      .spyOn(scheduler as any, 'spawnSenior')
+      .mockImplementation(async (...args: any[]): Promise<any> => {
+        const index = args[3] as number | undefined;
+        expect(index).toBe(2);
+        db.run(
+          `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+          ['senior-spawned-2', 'senior', team.id, 'idle']
+        );
+        return {
+          id: 'senior-spawned-2',
+          type: 'senior',
+          team_id: team.id,
+          status: 'idle',
+          current_story_id: null,
+        };
+      });
+
+    const result = await scheduler.assignStories();
+
+    expect(result.assigned).toBe(1);
+    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+
+    const updatedStory = getStoryById(db, story.id)!;
+    expect(updatedStory.status).toBe('in_progress');
+    expect(updatedStory.assigned_agent_id).toBe('senior-spawned-2');
+
+    const busySeniorRow = db.exec(
+      `SELECT status, current_story_id FROM agents WHERE id = 'senior-busy-1'`
+    )[0]?.values[0];
+    expect(busySeniorRow?.[0]).toBe('working');
+    expect(busySeniorRow?.[1]).toBe('STORY-OLD');
+
+    spawnSeniorSpy.mockRestore();
+  });
+
   it('should not assign multiple stories to the same senior in one cycle', async () => {
     const team = createTeam(db, {
       name: 'Single Senior Team',
@@ -1879,6 +1937,28 @@ describe('Scheduler checkScaling', () => {
     expect(seniorRow?.[1]).toBe(inProgress[0].id);
 
     spawnSeniorSpy.mockRestore();
+  });
+
+  it('should reject spawning a senior on a busy existing session', async () => {
+    const team = createTeam(db, {
+      name: 'Spawn Guard Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    db.run(
+      `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      ['senior-guard-1', 'senior', team.id, `hive-senior-${team.name}`, 'working', 'STORY-ACTIVE']
+    );
+
+    const isRunningSpy = vi.spyOn(tmuxModule, 'isTmuxSessionRunning').mockResolvedValue(true);
+
+    await expect(
+      (scheduler as any).spawnAgent('senior', team.id, team.name, team.repo_path)
+    ).rejects.toThrow(/busy session/i);
+
+    isRunningSpy.mockRestore();
   });
 
   it('should only spawn agents for assignable stories (unblocked dependencies)', async () => {
