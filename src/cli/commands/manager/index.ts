@@ -86,6 +86,7 @@ import { checkFeatureSignOff } from './feature-sign-off.js';
 import { checkFeatureTestResult } from './feature-test-result.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
 import { cleanupAgentsReferencingMergedStory } from './merged-story-cleanup.js';
+import { closeOpenPRsForMergedStories } from './open-pr-cleanup.js';
 import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
 import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
@@ -927,6 +928,8 @@ async function managerCheck(
   await closeStalePRs(ctx);
   verboseLogCtx(ctx, 'Step: recover stale reviewing PRs');
   await recoverStaleReviewingPRs(ctx);
+  verboseLogCtx(ctx, 'Step: reconcile open PR rows on merged stories');
+  await reconcileOpenPRsOnMergedStories(ctx);
   verboseLogCtx(ctx, 'Step: sync Jira statuses');
   await syncJiraStatuses(ctx);
   verboseLogCtx(ctx, 'Step: planning handoff recovery');
@@ -1676,6 +1679,36 @@ async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promise<void>
         `  Auto-rejected ${rejectedResults.length} stale reviewing PR(s) with non-open GitHub PR state`
       )
     );
+  }
+}
+
+async function reconcileOpenPRsOnMergedStories(ctx: ManagerCheckContext): Promise<void> {
+  const closed = await ctx.withDb(async db => {
+    const result = closeOpenPRsForMergedStories(db.db);
+    for (const item of result) {
+      const githubSuffix =
+        item.githubPrNumber != null ? ` (GitHub PR #${item.githubPrNumber})` : '';
+      createLog(db.db, {
+        agentId: 'manager',
+        storyId: item.storyId,
+        eventType: 'PR_CLOSED',
+        message: `Auto-closed stale ${item.previousStatus} PR row ${item.prId}${githubSuffix}: story already merged`,
+        metadata: {
+          pr_id: item.prId,
+          branch: item.branchName,
+          github_pr_number: item.githubPrNumber,
+          reason: 'story_merged',
+          previous_status: item.previousStatus,
+        },
+      });
+    }
+    if (result.length > 0) db.save();
+    return result;
+  });
+
+  verboseLogCtx(ctx, `reconcileOpenPRsOnMergedStories: closed=${closed.length}`);
+  if (closed.length > 0) {
+    console.log(chalk.yellow(`  Closed ${closed.length} stale queue/review PR row(s) for merged stories`));
   }
 }
 
