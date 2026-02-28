@@ -898,6 +898,8 @@ async function managerCheck(
   await handleStalledPlanningHandoff(ctx);
   verboseLogCtx(ctx, 'Step: restart stale tech lead');
   await restartStaleTechLead(ctx);
+  verboseLogCtx(ctx, 'Step: auto-assign planned stories');
+  await autoAssignPlannedStories(ctx);
 
   // Discover active tmux sessions
   verboseLogCtx(ctx, 'Step: discover hive tmux sessions');
@@ -927,8 +929,6 @@ async function managerCheck(
   await handleRejectedPRs(ctx);
   verboseLogCtx(ctx, 'Step: recover unassigned qa_failed stories');
   await recoverUnassignedQAFailedStories(ctx);
-  verboseLogCtx(ctx, 'Step: auto-assign planned stories');
-  await autoAssignPlannedStories(ctx);
   verboseLogCtx(ctx, 'Step: nudge qa_failed stories');
   await nudgeQAFailedStories(ctx);
   verboseLogCtx(ctx, 'Step: spin down merged agents');
