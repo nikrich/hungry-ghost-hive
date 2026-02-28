@@ -31,9 +31,15 @@ const interruptionRecoveryAttempts = new Map<string, number>();
 const rateLimitRecoveryAttempts = new Map<string, number>();
 const INTERRUPTION_PROMPT_PATTERN =
   /conversation interrupted|tell the model what to do differently|hit [`'"]?\/feedback[`'"]? to report the issue/i;
+const INTERRUPTION_WINDOW_LINES = 80;
+
+function getRecentPaneOutput(output: string, lineCount: number): string {
+  return output.split('\n').slice(-lineCount).join('\n');
+}
 
 function isInterruptionPrompt(output: string): boolean {
-  return INTERRUPTION_PROMPT_PATTERN.test(output);
+  const recentOutput = getRecentPaneOutput(output, INTERRUPTION_WINDOW_LINES);
+  return INTERRUPTION_PROMPT_PATTERN.test(recentOutput);
 }
 
 function verboseLog(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string): void {

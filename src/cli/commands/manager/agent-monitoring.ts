@@ -68,6 +68,7 @@ const INTERACTIVE_PROMPT_LINE_PATTERN = /^\s*(?:›|>)\s+\S.+$/m;
 const INTERACTIVE_PROMPT_UI_SIGNAL_PATTERNS = [
   /\?\s*for shortcuts/i,
   /\bcontext left\b/i,
+  /\b\d{1,3}%\s+left\b/i,
   /\[pasted content\s+\d+\s+chars\]/i,
 ];
 const INTERACTIVE_PROMPT_HUMAN_NEEDED_PATTERNS = [
@@ -78,13 +79,16 @@ const INTERACTIVE_PROMPT_HUMAN_NEEDED_PATTERNS = [
 ];
 const RATE_LIMIT_WINDOW_LINES = 120;
 const INTERACTIVE_PROMPT_WINDOW_LINES = 80;
+const INTERRUPTION_WINDOW_LINES = 80;
+const STATE_DETECTOR_WINDOW_LINES = 120;
 
 function getRecentPaneOutput(output: string, lineCount: number): string {
   return output.split('\n').slice(-lineCount).join('\n');
 }
 
 export function isInterruptionPrompt(output: string): boolean {
-  return INTERRUPTION_PROMPT_PATTERN.test(output);
+  const recentOutput = getRecentPaneOutput(output, INTERRUPTION_WINDOW_LINES);
+  return INTERRUPTION_PROMPT_PATTERN.test(recentOutput);
 }
 
 export function isRateLimitPrompt(output: string): boolean {
@@ -166,7 +170,8 @@ export function detectAgentState(output: string, cliTool: CLITool): StateDetecti
     };
   }
 
-  return stateDetectors[cliTool].detectState(output);
+  const detectorOutput = getRecentPaneOutput(output, STATE_DETECTOR_WINDOW_LINES);
+  return stateDetectors[cliTool].detectState(detectorOutput);
 }
 
 export function describeAgentState(state: AgentState, cliTool: CLITool): string {
