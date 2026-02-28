@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.40.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.40.0...hungry-ghost-hive-v0.40.1) (2026-02-28)
+
+
+### Bug Fixes
+
+* auto-assign planned stories during manager checks ([#471](https://github.com/nikrich/hungry-ghost-hive/issues/471)) ([30d0ddf](https://github.com/nikrich/hungry-ghost-hive/commit/30d0ddfdb40dd76a61e9b4f6a14e017278da329f))
+* avoid jira progress blocking when PM provider is none ([#470](https://github.com/nikrich/hungry-ghost-hive/issues/470)) ([b0c9689](https://github.com/nikrich/hungry-ghost-hive/commit/b0c9689620975dbed604e94f199ca26475b9e333))
+* make migration loading resilient to stale dist builds ([#468](https://github.com/nikrich/hungry-ghost-hive/issues/468)) ([6ca5a25](https://github.com/nikrich/hungry-ghost-hive/commit/6ca5a250bce620327a6ada3b624971fccdf9cb09))
+* manager auto assign planned ([#473](https://github.com/nikrich/hungry-ghost-hive/issues/473)) ([1615b5a](https://github.com/nikrich/hungry-ghost-hive/commit/1615b5a8bfae24f51012c86bf10086af09d82993))
+
 ## [0.40.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.39.4...hungry-ghost-hive-v0.40.0) (2026-02-18)
 
 
