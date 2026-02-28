@@ -227,7 +227,8 @@ export function generateSeniorPrompt(
   repoPath: string,
   stories: StoryRow[],
   targetBranch: string = 'main',
-  options?: AgentPromptOptions
+  options?: AgentPromptOptions,
+  sessionNameOverride?: string
 ): string {
   const includeProgressUpdates = shouldIncludeProgressUpdates(options);
   const storyList = stories
@@ -239,7 +240,7 @@ export function generateSeniorPrompt(
     })
     .join('\n\n');
 
-  const sessionName = formatSeniorSessionName(teamName);
+  const sessionName = sessionNameOverride || formatSeniorSessionName(teamName);
 
   return `You are a Senior Developer on Team ${teamName}.
 Your tmux session: ${sessionName}

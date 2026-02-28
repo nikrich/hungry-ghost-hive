@@ -45,6 +45,23 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('hive-senior-testteam');
     });
 
+    it('should use provided senior session override', () => {
+      const stories: StoryRow[] = [];
+      const prompt = generateSeniorPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        stories,
+        'main',
+        undefined,
+        'hive-senior-testteam-3'
+      );
+
+      expect(prompt).toContain('Your tmux session: hive-senior-testteam-3');
+      expect(prompt).toContain('hive my-stories hive-senior-testteam-3');
+      expect(prompt).toContain('--from hive-senior-testteam-3');
+    });
+
     it('should sanitize team name for session name', () => {
       const stories: StoryRow[] = [];
       const prompt = generateSeniorPrompt('Test_Team-123!@#', repoUrl, repoPath, stories);

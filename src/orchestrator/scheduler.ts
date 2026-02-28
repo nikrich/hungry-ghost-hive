@@ -946,7 +946,8 @@ export class Scheduler {
           worktreePath,
           stories,
           targetBranch,
-          { includeProgressUpdates }
+          { includeProgressUpdates },
+          sessionName
         );
       } else if (type === 'intermediate') {
         prompt = generateIntermediatePrompt(
