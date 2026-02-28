@@ -141,6 +141,13 @@ interface SummaryLine {
   message: string;
 }
 
+interface UnknownStateStuckHeuristicSnapshot {
+  state: AgentState;
+  isWaiting: boolean;
+  sessionUnchangedForMs: number;
+  staticInactivityThresholdMs: number;
+}
+
 export function classifyNoActionSummary(snapshot: NoActionSummarySnapshot): SummaryLine {
   if (snapshot.pendingEscalations > 0) {
     return {
@@ -167,6 +174,17 @@ export function classifyNoActionSummary(snapshot: NoActionSummarySnapshot): Summ
   }
 
   return { color: 'green', message: 'All agents productive' };
+}
+
+export function shouldTreatUnknownAsStuckWaiting(
+  snapshot: UnknownStateStuckHeuristicSnapshot
+): boolean {
+  const thresholdMs = Math.max(1, snapshot.staticInactivityThresholdMs);
+  return (
+    snapshot.state === AgentState.UNKNOWN &&
+    !snapshot.isWaiting &&
+    snapshot.sessionUnchangedForMs >= thresholdMs
+  );
 }
 
 const screenStaticBySession = new Map<string, ScreenStaticTracking>();
@@ -2446,19 +2464,42 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} skip=needs_human`);
       continue;
     }
-    if (!stateResult.isWaiting || stateResult.state === AgentState.THINKING) {
+    const sessionUnchangedForMs = getSessionStaticUnchangedForMs(sessionName, now);
+    const unknownLooksStuck = shouldTreatUnknownAsStuckWaiting({
+      state: stateResult.state,
+      isWaiting: stateResult.isWaiting,
+      sessionUnchangedForMs,
+      staticInactivityThresholdMs,
+    });
+    if (stateResult.state === AgentState.THINKING) {
       if (trackedState && (trackedState.storyStuckNudgeCount || 0) > 0) {
         trackedState.storyStuckNudgeCount = 0;
       }
       clearHumanIntervention(sessionName);
       verboseLogCtx(
         ctx,
-        `nudgeStuckStories: story=${story.id} skip=not_waiting_or_thinking state=${stateResult.state}`
+        `nudgeStuckStories: story=${story.id} skip=thinking state=${stateResult.state}`
       );
       continue;
     }
+    if (!stateResult.isWaiting && !unknownLooksStuck) {
+      if (trackedState && (trackedState.storyStuckNudgeCount || 0) > 0) {
+        trackedState.storyStuckNudgeCount = 0;
+      }
+      clearHumanIntervention(sessionName);
+      verboseLogCtx(
+        ctx,
+        `nudgeStuckStories: story=${story.id} skip=not_waiting state=${stateResult.state}`
+      );
+      continue;
+    }
+    if (unknownLooksStuck) {
+      verboseLogCtx(
+        ctx,
+        `nudgeStuckStories: story=${story.id} action=unknown_state_stuck_heuristic unchangedMs=${sessionUnchangedForMs}`
+      );
+    }
 
-    const sessionUnchangedForMs = getSessionStaticUnchangedForMs(sessionName, now);
     if (sessionUnchangedForMs < staticInactivityThresholdMs) {
       verboseLogCtx(
         ctx,

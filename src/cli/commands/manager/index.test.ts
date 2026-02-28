@@ -172,3 +172,51 @@ describe('No-action manager summary classification', () => {
     expect(result.message).toContain('0 working agent(s)');
   });
 });
+
+describe('Unknown-state stuck heuristic', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('treats unknown non-waiting sessions as stuck once static threshold is reached', async () => {
+    const { shouldTreatUnknownAsStuckWaiting } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldTreatUnknownAsStuckWaiting({
+      state: AgentState.UNKNOWN,
+      isWaiting: false,
+      sessionUnchangedForMs: 600_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it('does not treat unknown as stuck before static threshold', async () => {
+    const { shouldTreatUnknownAsStuckWaiting } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldTreatUnknownAsStuckWaiting({
+      state: AgentState.UNKNOWN,
+      isWaiting: false,
+      sessionUnchangedForMs: 90_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it('does not treat non-unknown states as unknown-state stuck candidates', async () => {
+    const { shouldTreatUnknownAsStuckWaiting } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldTreatUnknownAsStuckWaiting({
+      state: AgentState.TOOL_RUNNING,
+      isWaiting: false,
+      sessionUnchangedForMs: 700_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(false);
+  });
+});
