@@ -231,10 +231,26 @@ export class Scheduler {
           a.type !== 'qa' &&
           (a.status === 'idle' || (a.status === 'working' && a.current_story_id === null))
       );
-      const activeSeniorCount = getAgentsByTeam(this.db, teamId).filter(
+      const activeSeniors = getAgentsByTeam(this.db, teamId).filter(
         a => a.type === 'senior' && a.status !== 'terminated'
-      ).length;
-      let nextSeniorIndex = activeSeniorCount > 0 ? activeSeniorCount + 1 : 1;
+      );
+      const seniorSessionPrefix = generateSessionName('senior', team.name);
+      const indexedSeniorSessions = activeSeniors
+        .map(senior => {
+          if (!senior.tmux_session) return null;
+          if (senior.tmux_session === seniorSessionPrefix) return 1;
+          const indexedPrefix = `${seniorSessionPrefix}-`;
+          if (!senior.tmux_session.startsWith(indexedPrefix)) return null;
+          const parsed = Number.parseInt(senior.tmux_session.slice(indexedPrefix.length), 10);
+          if (!Number.isFinite(parsed) || parsed <= 1) return null;
+          return parsed;
+        })
+        .filter((index): index is number => index !== null);
+      const maxSeniorIndex =
+        indexedSeniorSessions.length > 0
+          ? Math.max(...indexedSeniorSessions)
+          : Math.max(activeSeniors.length, 0);
+      let nextSeniorIndex = maxSeniorIndex + 1;
 
       const getOrSpawnSenior = async (): Promise<AgentRow | undefined> => {
         const idleSenior = agents.find(a => a.type === 'senior' && a.status === 'idle');

@@ -1883,6 +1883,64 @@ describe('Scheduler checkScaling', () => {
     spawnSeniorSpy.mockRestore();
   });
 
+  it('should choose next senior index from max active index when index 1 is absent', async () => {
+    const team = createTeam(db, {
+      name: 'Gap Index Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    for (const index of [2, 3, 4, 5]) {
+      db.run(
+        `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        [
+          `senior-gap-${index}`,
+          'senior',
+          team.id,
+          `hive-senior-${team.name}-${index}`,
+          'working',
+          `STORY-EXISTING-${index}`,
+        ]
+      );
+    }
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Gap Index Story',
+      description: 'Requires spawning the next indexed senior',
+    });
+    updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+
+    const spawnSeniorSpy = vi
+      .spyOn(scheduler as any, 'spawnSenior')
+      .mockImplementation(async (...args: any[]): Promise<any> => {
+        const index = args[3] as number | undefined;
+        expect(index).toBe(6);
+        db.run(
+          `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+          ['senior-gap-6', 'senior', team.id, `hive-senior-${team.name}-6`, 'idle']
+        );
+        return {
+          id: 'senior-gap-6',
+          type: 'senior',
+          team_id: team.id,
+          status: 'idle',
+          current_story_id: null,
+          tmux_session: `hive-senior-${team.name}-6`,
+        };
+      });
+
+    const result = await scheduler.assignStories();
+
+    expect(result.assigned).toBe(1);
+    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+    expect(getStoryById(db, story.id)?.assigned_agent_id).toBe('senior-gap-6');
+
+    spawnSeniorSpy.mockRestore();
+  });
+
   it('should not assign multiple stories to the same senior in one cycle', async () => {
     const team = createTeam(db, {
       name: 'Single Senior Team',
