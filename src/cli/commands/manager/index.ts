@@ -271,10 +271,7 @@ function stripManagerNudgeBlocks(output: string): string {
 }
 
 function hasPendingNudgeInputAtPrompt(output: string): boolean {
-  const tail = output
-    .split('\n')
-    .slice(-12)
-    .join('\n');
+  const tail = output.split('\n').slice(-12).join('\n');
   return /(?:^|\n)\s*(?:›|>)\s*#\s*\[HIVE_MANAGER_NUDGE_START\]/m.test(tail);
 }
 

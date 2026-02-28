@@ -144,9 +144,8 @@ describe('handleEscalationAndNudge interruption recovery progression', () => {
     vi.clearAllMocks();
     const { agentStates } = await import('./agent-monitoring.js');
     agentStates.clear();
-    const { getRecentEscalationsForAgent, getActiveEscalationsForAgent } = await import(
-      '../../../db/queries/escalations.js'
-    );
+    const { getRecentEscalationsForAgent, getActiveEscalationsForAgent } =
+      await import('../../../db/queries/escalations.js');
     vi.mocked(getRecentEscalationsForAgent).mockReturnValue([]);
     vi.mocked(getActiveEscalationsForAgent).mockReturnValue([]);
   });

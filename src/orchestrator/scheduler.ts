@@ -40,8 +40,8 @@ import {
   getHiveSessions,
   isManagerRunning,
   isTmuxSessionRunning,
-  sendToTmuxSession,
   killTmuxSession,
+  sendToTmuxSession,
   spawnTmuxSession,
   startManager,
 } from '../tmux/manager.js';

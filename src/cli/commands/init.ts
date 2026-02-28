@@ -113,8 +113,7 @@ function applyAgentRuntimePreset(config: HiveConfig, agentRuntime: AgentRuntime)
   const cliTool = agentRuntime;
 
   const advancedModel = agentRuntime === 'codex' ? 'gpt-5.2-codex' : 'claude-opus-4-6';
-  const standardModel =
-    agentRuntime === 'codex' ? 'gpt-5.2-codex' : 'claude-sonnet-4-5-20250929';
+  const standardModel = agentRuntime === 'codex' ? 'gpt-5.2-codex' : 'claude-sonnet-4-5-20250929';
 
   const advancedRoles: Array<keyof HiveConfig['models']> = ['tech_lead', 'senior', 'feature_test'];
   const standardRoles: Array<keyof HiveConfig['models']> = ['intermediate', 'junior', 'qa'];
