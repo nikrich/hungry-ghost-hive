@@ -7,6 +7,8 @@ import { CodexRuntimeBuilder } from './codex.js';
 import { GeminiRuntimeBuilder } from './gemini.js';
 import { CliRuntimeBuilder, CliRuntimeType, RuntimeSafetyMode } from './types.js';
 
+const CODEX_CHATGPT_SAFE_MODEL = 'gpt-5.2-codex';
+
 /**
  * Factory function to get the appropriate CLI runtime builder
  * @param runtimeType - The type of CLI runtime to use
@@ -118,6 +120,7 @@ export function selectCompatibleModelForCli(
  * Resolve model values for the target CLI runtime.
  * - Claude CLI accepts compact aliases (sonnet/opus/haiku) for common model families.
  * - Codex CLI should use full OpenAI model IDs; normalize legacy shorthand forms when possible.
+ *   Older presets used gpt-4o-mini, which Codex rejects for ChatGPT-account auth.
  * - Gemini CLI uses the model string as configured.
  */
 export function resolveRuntimeModelForCli(model: string, cliTool: CliRuntimeType): string {
@@ -132,7 +135,9 @@ export function resolveRuntimeModelForCli(model: string, cliTool: CliRuntimeType
 
   if (cliTool === 'codex') {
     if (normalized === 'gpt4o') return 'gpt-4o';
-    if (normalized === 'gpt4o-mini') return 'gpt-4o-mini';
+    if (normalized === 'gpt4o-mini' || normalized === 'gpt-4o-mini') {
+      return CODEX_CHATGPT_SAFE_MODEL;
+    }
     return model;
   }
 

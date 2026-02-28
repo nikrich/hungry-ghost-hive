@@ -139,6 +139,129 @@ describe('buildRateLimitRecoveryPrompt', () => {
   });
 });
 
+describe('handleEscalationAndNudge interruption recovery progression', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { agentStates } = await import('./agent-monitoring.js');
+    agentStates.clear();
+    const { getRecentEscalationsForAgent, getActiveEscalationsForAgent } =
+      await import('../../../db/queries/escalations.js');
+    vi.mocked(getRecentEscalationsForAgent).mockReturnValue([]);
+    vi.mocked(getActiveEscalationsForAgent).mockReturnValue([]);
+  });
+
+  function makeCtx() {
+    const dbInstance = {} as Database;
+    return {
+      ctx: {
+        verbose: false,
+        escalatedSessions: new Set<string>(),
+        counters: { nudged: 0, escalationsCreated: 0, escalationsResolved: 0 },
+        config: { manager: { nudge_cooldown_ms: 60000 } },
+        withDb: async (fn: (db: { db: Database; save: () => void }) => Promise<unknown>) =>
+          fn({ db: dbInstance, save: vi.fn() }),
+      },
+    };
+  }
+
+  it('keeps interruption attempts across idle waiting checks so recovery can escalate', async () => {
+    const { sendToTmuxSession } = await import('./agent-monitoring.js');
+    const mockedSendToTmux = vi.mocked(sendToTmuxSession);
+    const { ctx } = makeCtx();
+    const agent = {
+      id: 'senior-keep-attempts',
+      current_story_id: 'STORY-KEEP-1',
+    } as Parameters<typeof handleEscalationAndNudge>[2] & {};
+    const interruptionOutput =
+      '■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/feedback` to report the issue.';
+
+    await handleEscalationAndNudge(
+      ctx as never,
+      'hive-senior-keep-attempts',
+      agent,
+      { state: AgentState.USER_DECLINED, isWaiting: true, needsHuman: true },
+      'claude',
+      interruptionOutput,
+      100_000
+    );
+
+    expect(mockedSendToTmux).toHaveBeenCalledTimes(1);
+    expect(String(mockedSendToTmux.mock.calls[0]?.[1] ?? '')).toContain('continue');
+
+    await handleEscalationAndNudge(
+      ctx as never,
+      'hive-senior-keep-attempts',
+      agent,
+      { state: AgentState.IDLE_AT_PROMPT, isWaiting: true, needsHuman: false },
+      'claude',
+      '› Summarize recent commits\n\n  gpt-5.2-codex xhigh · 46% left',
+      161_000
+    );
+
+    expect(mockedSendToTmux).toHaveBeenCalledTimes(1);
+
+    await handleEscalationAndNudge(
+      ctx as never,
+      'hive-senior-keep-attempts',
+      agent,
+      { state: AgentState.USER_DECLINED, isWaiting: true, needsHuman: true },
+      'claude',
+      interruptionOutput,
+      222_000
+    );
+
+    expect(mockedSendToTmux).toHaveBeenCalledTimes(2);
+    expect(String(mockedSendToTmux.mock.calls[1]?.[1] ?? '')).toContain(
+      'Manager auto-recovery: your session was interrupted.'
+    );
+  });
+
+  it('resets interruption attempts after active progress resumes', async () => {
+    const { sendToTmuxSession } = await import('./agent-monitoring.js');
+    const mockedSendToTmux = vi.mocked(sendToTmuxSession);
+    const { ctx } = makeCtx();
+    const agent = {
+      id: 'senior-reset-attempts',
+      current_story_id: 'STORY-RESET-1',
+    } as Parameters<typeof handleEscalationAndNudge>[2] & {};
+    const interruptionOutput =
+      '■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/feedback` to report the issue.';
+
+    await handleEscalationAndNudge(
+      ctx as never,
+      'hive-senior-reset-attempts',
+      agent,
+      { state: AgentState.USER_DECLINED, isWaiting: true, needsHuman: true },
+      'claude',
+      interruptionOutput,
+      100_000
+    );
+
+    await handleEscalationAndNudge(
+      ctx as never,
+      'hive-senior-reset-attempts',
+      agent,
+      { state: AgentState.TOOL_RUNNING, isWaiting: false, needsHuman: false },
+      'claude',
+      'Working (10s • esc to interrupt)',
+      161_000
+    );
+
+    await handleEscalationAndNudge(
+      ctx as never,
+      'hive-senior-reset-attempts',
+      agent,
+      { state: AgentState.USER_DECLINED, isWaiting: true, needsHuman: true },
+      'claude',
+      interruptionOutput,
+      222_000
+    );
+
+    expect(mockedSendToTmux).toHaveBeenCalledTimes(2);
+    expect(String(mockedSendToTmux.mock.calls[1]?.[1] ?? '')).toContain('continue');
+  });
+});
+
 describe('handleEscalationAndNudge — fromAgentId FK fix', () => {
   beforeEach(() => {
     vi.clearAllMocks();

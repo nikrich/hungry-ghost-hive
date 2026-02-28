@@ -4,6 +4,7 @@ import type { Database } from 'sql.js';
 import { syncStatusForStory } from '../connectors/project-management/operations.js';
 import { createLog } from '../db/queries/logs.js';
 import {
+  getInProgressStoriesWithInconsistentAssignments,
   getStaleInProgressStoriesWithoutAssignment,
   getStoriesWithOrphanedAssignments,
   updateStory,
@@ -16,6 +17,7 @@ import {
 export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): string[] {
   const orphanedAssignments = getStoriesWithOrphanedAssignments(db);
   const staleInProgressStories = getStaleInProgressStoriesWithoutAssignment(db);
+  const inconsistentInProgressAssignments = getInProgressStoriesWithInconsistentAssignments(db);
   const recovered: string[] = [];
   const recoveredSet = new Set<string>();
 
@@ -68,6 +70,32 @@ export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): 
     } catch (err) {
       console.error(
         `Failed to recover stale story ${story.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  for (const assignment of inconsistentInProgressAssignments) {
+    try {
+      if (recoveredSet.has(assignment.id)) continue;
+
+      updateStory(db, assignment.id, {
+        assignedAgentId: null,
+        status: 'planned',
+      });
+      createLog(db, {
+        agentId: 'scheduler',
+        storyId: assignment.id,
+        eventType: 'ORPHANED_STORY_RECOVERED',
+        message: `Recovered inconsistent in_progress assignment from agent ${assignment.agent_id}`,
+      });
+      recovered.push(assignment.id);
+      recoveredSet.add(assignment.id);
+
+      // Sync status change to Jira (fire and forget)
+      syncStatusForStory(rootDir, db, assignment.id, 'planned');
+    } catch (err) {
+      console.error(
+        `Failed to recover inconsistent assignment story ${assignment.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
       );
     }
   }

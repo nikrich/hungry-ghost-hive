@@ -14,6 +14,8 @@ const GEMINI_RATE_LIMIT =
 const INTERACTIVE_PROMPT = '› Improve documentation in @filename\n\n  ? for shortcuts';
 const INTERACTIVE_PROMPT_WITH_PASTE = '› [Pasted Content 1203 chars]\n\n  16% context left';
 const INTERACTIVE_QUESTION_PROMPT = '› Should I submit this PR now?\n\n  12% context left';
+const INTERACTIVE_PROMPT_WITH_MODEL_METER =
+  '› Explain this codebase\n\n  gpt-5.2-codex xhigh · 99% left';
 
 describe('detectAgentState interruption fallback', () => {
   it('treats interruption banner as blocked for codex sessions', () => {
@@ -37,6 +39,15 @@ describe('detectAgentState interruption fallback', () => {
 
     expect(result.state).toBe(AgentState.USER_DECLINED);
     expect(result.needsHuman).toBe(true);
+  });
+
+  it('ignores stale interruption banners outside the recent pane window', () => {
+    const staleLines = Array.from({ length: 90 }, (_, i) => `old line ${i}`).join('\n');
+    const output = `${INTERRUPTION_BANNER}\n${staleLines}\n${INTERACTIVE_PROMPT}`;
+    const result = detectAgentState(output, 'codex');
+
+    expect(result.state).toBe(AgentState.IDLE_AT_PROMPT);
+    expect(result.needsHuman).toBe(false);
   });
 
   it('treats rate limit prompts as recoverable waiting state', () => {
@@ -106,6 +117,14 @@ describe('detectAgentState interruption fallback', () => {
 
   it('detects interactive prompt with pasted-content and context-left ui', () => {
     const result = detectAgentState(INTERACTIVE_PROMPT_WITH_PASTE, 'codex');
+
+    expect(result.state).toBe(AgentState.IDLE_AT_PROMPT);
+    expect(result.isWaiting).toBe(true);
+    expect(result.needsHuman).toBe(false);
+  });
+
+  it('detects interactive prompt with model status meter', () => {
+    const result = detectAgentState(INTERACTIVE_PROMPT_WITH_MODEL_METER, 'claude');
 
     expect(result.state).toBe(AgentState.IDLE_AT_PROMPT);
     expect(result.isWaiting).toBe(true);

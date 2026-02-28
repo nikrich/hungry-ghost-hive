@@ -5,6 +5,7 @@ import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getLogsByEventType } from '../db/queries/logs.js';
+import { createPullRequest } from '../db/queries/pull-requests.js';
 import { createRequirement } from '../db/queries/requirements.js';
 import type { StoryRow } from '../db/queries/stories.js';
 import {
@@ -15,6 +16,7 @@ import {
 } from '../db/queries/stories.js';
 import { createTeam } from '../db/queries/teams.js';
 import * as worktreeModule from '../git/worktree.js';
+import * as tmuxModule from '../tmux/manager.js';
 import { getAgentWorkload, selectAgentWithLeastWorkload } from './agent-selector.js';
 import {
   getCapacityPoints,
@@ -423,6 +425,20 @@ describe('Scheduler Build Dependency Graph', () => {
 });
 
 describe('Scheduler Worktree Removal', () => {
+  it('should remove worktrees with a short cleanup timeout', () => {
+    const removeSpy = vi.spyOn(worktreeModule, 'removeWorktree').mockReturnValue({
+      success: true,
+      fullWorktreePath: '/tmp/repos/test-agent-1',
+    });
+
+    const removeMethod = (scheduler as any).removeAgentWorktree;
+    removeMethod.call(scheduler, 'repos/test-agent-1', 'agent-test-1');
+
+    expect(removeSpy).toHaveBeenCalledWith('/tmp', 'repos/test-agent-1', { timeout: 5000 });
+
+    vi.restoreAllMocks();
+  });
+
   it('should log worktree removal failures to the database', () => {
     // Mock the shared removeWorktree to simulate failure
     vi.spyOn(worktreeModule, 'removeWorktree').mockReturnValue({
@@ -522,6 +538,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
       assignedAgentId: activeAgentId,
       status: 'in_progress',
     });
+    db.run(`UPDATE agents SET current_story_id = ? WHERE id = ?`, [story.id, activeAgentId]);
 
     // Get the recovery method
     const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
@@ -536,6 +553,149 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     expect(unchangedStory?.[0]).toBe(activeAgentId);
     expect(unchangedStory?.[1]).toBe('in_progress');
+  });
+
+  it('should recover in_progress stories assigned to idle agents with no current story', async () => {
+    const team = createTeam(db, {
+      name: 'Inconsistent Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const idleAgentId = 'agent-idle-1';
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+      [idleAgentId, 'intermediate', team.id, 'idle']
+    );
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Inconsistent Assignment Story',
+      description: 'Assigned to idle agent',
+    });
+    updateStory(db, story.id, {
+      assignedAgentId: idleAgentId,
+      status: 'in_progress',
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).toContain(story.id);
+
+    const recoveredStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
+    )[0]?.values[0];
+
+    expect(recoveredStory?.[0]).toBeNull();
+    expect(recoveredStory?.[1]).toBe('planned');
+  });
+
+  it('should recover in_progress stories when agent current_story_id points to a different story', async () => {
+    const team = createTeam(db, {
+      name: 'Mismatched Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const workingAgentId = 'agent-working-mismatch-1';
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [workingAgentId, 'intermediate', team.id, 'working', 'STORY-OTHER']
+    );
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Mismatched Assignment Story',
+      description: 'Assigned story does not match agent current story',
+    });
+    updateStory(db, story.id, {
+      assignedAgentId: workingAgentId,
+      status: 'in_progress',
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).toContain(story.id);
+
+    const recoveredStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
+    )[0]?.values[0];
+
+    expect(recoveredStory?.[0]).toBeNull();
+    expect(recoveredStory?.[1]).toBe('planned');
+  });
+
+  it('should recover in_progress stories assigned to blocked agents even with matching current story', async () => {
+    const team = createTeam(db, {
+      name: 'Blocked Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const blockedAgentId = 'agent-blocked-1';
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Blocked Assignment Story',
+      description: 'Assigned to blocked agent',
+    });
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      [blockedAgentId, 'intermediate', team.id, 'blocked', story.id]
+    );
+    updateStory(db, story.id, {
+      assignedAgentId: blockedAgentId,
+      status: 'in_progress',
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).toContain(story.id);
+
+    const recoveredStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
+    )[0]?.values[0];
+
+    expect(recoveredStory?.[0]).toBeNull();
+    expect(recoveredStory?.[1]).toBe('planned');
+  });
+
+  it('should not recover non-in_progress stories with inconsistent assignment', async () => {
+    const team = createTeam(db, {
+      name: 'Review Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const idleAgentId = 'agent-idle-review-1';
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+      [idleAgentId, 'intermediate', team.id, 'idle']
+    );
+
+    const reviewStory = createStory(db, {
+      teamId: team.id,
+      title: 'Review Story',
+      description: 'Should not be recovered by in_progress consistency check',
+    });
+    updateStory(db, reviewStory.id, {
+      assignedAgentId: idleAgentId,
+      status: 'review',
+    });
+
+    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+
+    expect(recovered).not.toContain(reviewStory.id);
+
+    const unchangedStory = db.exec(
+      `SELECT assigned_agent_id, status FROM stories WHERE id = '${reviewStory.id}'`
+    )[0]?.values[0];
+
+    expect(unchangedStory?.[0]).toBe(idleAgentId);
+    expect(unchangedStory?.[1]).toBe('review');
   });
 
   it('should recover stale in_progress stories without assigned agents', async () => {
@@ -1436,10 +1596,10 @@ describe('Scheduler Story Assignment Prevention', () => {
     expect(runtimeModel).toBe('sonnet');
   });
 
-  it('should preserve configured model for codex and gemini runtimes', () => {
+  it('should remap unsupported codex mini model and preserve gemini runtime model', () => {
     const codexModel = (scheduler as any).getRuntimeModel('gpt-4o-mini', 'codex');
     const geminiModel = (scheduler as any).getRuntimeModel('gemini-2.5-pro', 'gemini');
-    expect(codexModel).toBe('gpt-4o-mini');
+    expect(codexModel).toBe('gpt-5.2-codex');
     expect(geminiModel).toBe('gemini-2.5-pro');
   });
 
@@ -1580,7 +1740,336 @@ describe('Scheduler Agent Reassignment for Working Agents with NULL currentStory
   });
 });
 
+describe('Scheduler checkMergeQueue', () => {
+  const ensurePullRequestsTable = () => {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS pull_requests (
+        id TEXT PRIMARY KEY,
+        story_id TEXT REFERENCES stories(id),
+        team_id TEXT REFERENCES teams(id),
+        branch_name TEXT NOT NULL,
+        github_pr_number INTEGER,
+        github_pr_url TEXT,
+        submitted_by TEXT,
+        reviewed_by TEXT,
+        status TEXT DEFAULT 'queued' CHECK (status IN ('queued', 'reviewing', 'approved', 'merged', 'rejected', 'closed')),
+        review_notes TEXT,
+        jira_issue_key TEXT,
+        external_issue_key TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        reviewed_at TIMESTAMP
+      )
+    `);
+  };
+
+  it('should spawn QA when a queued PR exists for an in_progress story', async () => {
+    ensurePullRequestsTable();
+
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Queued PR Story',
+      description: 'Story has queued PR but stale in_progress status',
+    });
+    updateStory(db, story.id, { status: 'in_progress' });
+
+    createPullRequest(db, {
+      storyId: story.id,
+      teamId: team.id,
+      branchName: 'feature/queued-pr-story',
+      githubPrNumber: 123,
+      githubPrUrl: 'https://github.com/test/repo/pull/123',
+    });
+
+    const spawnQASpy = vi.spyOn(scheduler as any, 'spawnQA').mockResolvedValue({
+      id: 'qa-test',
+      type: 'qa',
+      team_id: team.id,
+      status: 'idle',
+    });
+
+    await scheduler.checkMergeQueue();
+
+    expect(spawnQASpy).toHaveBeenCalledTimes(1);
+    expect(spawnQASpy).toHaveBeenCalledWith(team.id, team.name, team.repo_path, 1);
+
+    spawnQASpy.mockRestore();
+  });
+
+  it('should not spawn QA for merged stories even if PR row is still queued', async () => {
+    ensurePullRequestsTable();
+
+    const team = createTeam(db, {
+      name: 'Test Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Merged Story',
+      description: 'Merged stories should not drive QA scaling',
+    });
+    updateStory(db, story.id, { status: 'merged' });
+
+    createPullRequest(db, {
+      storyId: story.id,
+      teamId: team.id,
+      branchName: 'feature/merged-story',
+      githubPrNumber: 124,
+      githubPrUrl: 'https://github.com/test/repo/pull/124',
+    });
+
+    const spawnQASpy = vi.spyOn(scheduler as any, 'spawnQA').mockResolvedValue({
+      id: 'qa-test',
+      type: 'qa',
+      team_id: team.id,
+      status: 'idle',
+    });
+
+    await scheduler.checkMergeQueue();
+
+    expect(spawnQASpy).not.toHaveBeenCalled();
+
+    spawnQASpy.mockRestore();
+  });
+});
+
 describe('Scheduler checkScaling', () => {
+  it('should spawn a new indexed senior when the base senior is busy', async () => {
+    const team = createTeam(db, {
+      name: 'Busy Senior Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      ['senior-busy-1', 'senior', team.id, 'working', 'STORY-OLD']
+    );
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Needs Senior',
+      description: 'High complexity story',
+    });
+    updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+
+    const spawnSeniorSpy = vi
+      .spyOn(scheduler as any, 'spawnSenior')
+      .mockImplementation(async (...args: any[]): Promise<any> => {
+        const index = args[3] as number | undefined;
+        expect(index).toBe(2);
+        db.run(
+          `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+          ['senior-spawned-2', 'senior', team.id, 'idle']
+        );
+        return {
+          id: 'senior-spawned-2',
+          type: 'senior',
+          team_id: team.id,
+          status: 'idle',
+          current_story_id: null,
+        };
+      });
+
+    const result = await scheduler.assignStories();
+
+    expect(result.assigned).toBe(1);
+    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+
+    const updatedStory = getStoryById(db, story.id)!;
+    expect(updatedStory.status).toBe('in_progress');
+    expect(updatedStory.assigned_agent_id).toBe('senior-spawned-2');
+
+    const busySeniorRow = db.exec(
+      `SELECT status, current_story_id FROM agents WHERE id = 'senior-busy-1'`
+    )[0]?.values[0];
+    expect(busySeniorRow?.[0]).toBe('working');
+    expect(busySeniorRow?.[1]).toBe('STORY-OLD');
+
+    spawnSeniorSpy.mockRestore();
+  });
+
+  it('should choose next senior index from max active index when index 1 is absent', async () => {
+    const team = createTeam(db, {
+      name: 'Gap Index Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    for (const index of [2, 3, 4, 5]) {
+      db.run(
+        `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        [
+          `senior-gap-${index}`,
+          'senior',
+          team.id,
+          `hive-senior-${team.name}-${index}`,
+          'working',
+          `STORY-EXISTING-${index}`,
+        ]
+      );
+    }
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Gap Index Story',
+      description: 'Requires spawning the next indexed senior',
+    });
+    updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+
+    const spawnSeniorSpy = vi
+      .spyOn(scheduler as any, 'spawnSenior')
+      .mockImplementation(async (...args: any[]): Promise<any> => {
+        const index = args[3] as number | undefined;
+        expect(index).toBe(6);
+        db.run(
+          `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+          ['senior-gap-6', 'senior', team.id, `hive-senior-${team.name}-6`, 'idle']
+        );
+        return {
+          id: 'senior-gap-6',
+          type: 'senior',
+          team_id: team.id,
+          status: 'idle',
+          current_story_id: null,
+          tmux_session: `hive-senior-${team.name}-6`,
+        };
+      });
+
+    const result = await scheduler.assignStories();
+
+    expect(result.assigned).toBe(1);
+    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+    expect(getStoryById(db, story.id)?.assigned_agent_id).toBe('senior-gap-6');
+
+    spawnSeniorSpy.mockRestore();
+  });
+
+  it('should not assign multiple stories to the same senior in one cycle', async () => {
+    const team = createTeam(db, {
+      name: 'Single Senior Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+      ['senior-single-1', 'senior', team.id, 'idle']
+    );
+
+    const story1 = createStory(db, {
+      teamId: team.id,
+      title: 'High Complexity 1',
+      description: 'Needs senior',
+    });
+    updateStory(db, story1.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+
+    const story2 = createStory(db, {
+      teamId: team.id,
+      title: 'High Complexity 2',
+      description: 'Needs senior too',
+    });
+    updateStory(db, story2.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+
+    const spawnSeniorSpy = vi
+      .spyOn(scheduler as any, 'spawnSenior')
+      .mockRejectedValue(new Error('senior capacity exhausted'));
+
+    const result = await scheduler.assignStories();
+
+    expect(result.assigned).toBe(1);
+    expect(result.errors.some(e => e.includes('Failed to spawn Senior'))).toBe(true);
+    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+
+    const updatedStory1 = getStoryById(db, story1.id)!;
+    const updatedStory2 = getStoryById(db, story2.id)!;
+    const inProgress = [updatedStory1, updatedStory2].filter(s => s.status === 'in_progress');
+    const planned = [updatedStory1, updatedStory2].filter(s => s.status === 'planned');
+
+    expect(inProgress).toHaveLength(1);
+    expect(planned).toHaveLength(1);
+    expect(inProgress[0].assigned_agent_id).toBe('senior-single-1');
+    expect(planned[0].assigned_agent_id).toBeNull();
+
+    const seniorRow = db.exec(
+      `SELECT status, current_story_id FROM agents WHERE id = 'senior-single-1'`
+    )[0]?.values[0];
+    expect(seniorRow?.[0]).toBe('working');
+    expect(seniorRow?.[1]).toBe(inProgress[0].id);
+
+    spawnSeniorSpy.mockRestore();
+  });
+
+  it('should send an explicit assignment handoff to the assigned tmux session', async () => {
+    const team = createTeam(db, {
+      name: 'Handoff Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const sessionName = 'hive-senior-handoff-team';
+    db.run(
+      `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+      ['senior-handoff-1', 'senior', team.id, sessionName, 'idle']
+    );
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Needs Context Reset',
+      description: 'Verify assignment handoff message is sent',
+    });
+    updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+
+    const isRunningSpy = vi.spyOn(tmuxModule, 'isTmuxSessionRunning').mockResolvedValue(true);
+    const sendSpy = vi.spyOn(tmuxModule, 'sendToTmuxSession').mockResolvedValue();
+
+    const result = await scheduler.assignStories();
+
+    expect(result.assigned).toBe(1);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const [targetSession, handoffMessage] = sendSpy.mock.calls[0];
+    expect(targetSession).toBe(sessionName);
+    expect(handoffMessage).toContain(`hive my-stories ${sessionName}`);
+    expect(handoffMessage).toContain(story.id);
+
+    isRunningSpy.mockRestore();
+    sendSpy.mockRestore();
+  });
+
+  it('should reject spawning a senior on a busy existing session', async () => {
+    const team = createTeam(db, {
+      name: 'Spawn Guard Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    db.run(
+      `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      ['senior-guard-1', 'senior', team.id, `hive-senior-${team.name}`, 'working', 'STORY-ACTIVE']
+    );
+
+    const isRunningSpy = vi.spyOn(tmuxModule, 'isTmuxSessionRunning').mockResolvedValue(true);
+
+    await expect(
+      (scheduler as any).spawnAgent('senior', team.id, team.name, team.repo_path)
+    ).rejects.toThrow(/busy session/i);
+
+    isRunningSpy.mockRestore();
+  });
+
   it('should only spawn agents for assignable stories (unblocked dependencies)', async () => {
     const team = createTeam(db, {
       name: 'Test Team',

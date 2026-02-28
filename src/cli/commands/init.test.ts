@@ -28,7 +28,7 @@ vi.mock('../../utils/paths.js', () => ({
 }));
 
 vi.mock('../wizard/init-wizard.js', () => ({
-  runInitWizard: vi.fn(() => ({ integrations: {} })),
+  runInitWizard: vi.fn(() => ({ integrations: {}, agent_runtime: 'claude' })),
 }));
 
 import { initCommand } from './init.js';
@@ -70,6 +70,11 @@ describe('init command', () => {
     it('should have --autonomy option', () => {
       const autonomyOpt = initCommand.options.find(opt => opt.long === '--autonomy');
       expect(autonomyOpt).toBeDefined();
+    });
+
+    it('should have --agent-runtime option', () => {
+      const runtimeOpt = initCommand.options.find(opt => opt.long === '--agent-runtime');
+      expect(runtimeOpt).toBeDefined();
     });
 
     it('should have --jira-project option', () => {

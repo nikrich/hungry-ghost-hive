@@ -105,3 +105,163 @@ describe('Message Forwarding with Delivery Confirmation', () => {
     expect(sendMessageWithConfirmation).toBeDefined();
   });
 });
+
+describe('No-action manager summary classification', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should flag pending stories when there are no active worker agents', async () => {
+    const { classifyNoActionSummary } = await import('./index.js');
+    const result = classifyNoActionSummary({
+      pendingEscalations: 0,
+      pendingActionableStories: 5,
+      activeWorkerAgents: 0,
+      workingWorkerAgents: 0,
+      liveWorkingSessions: 0,
+    });
+
+    expect(result.color).toBe('red');
+    expect(result.message).toContain('5 actionable story(ies)');
+  });
+
+  it('should prioritize pending escalations over productivity status', async () => {
+    const { classifyNoActionSummary } = await import('./index.js');
+    const result = classifyNoActionSummary({
+      pendingEscalations: 2,
+      pendingActionableStories: 0,
+      activeWorkerAgents: 3,
+      workingWorkerAgents: 3,
+      liveWorkingSessions: 3,
+    });
+
+    expect(result).toEqual({
+      color: 'yellow',
+      message: '2 pending escalation(s)',
+    });
+  });
+
+  it('should report productive only when work and coverage look healthy', async () => {
+    const { classifyNoActionSummary } = await import('./index.js');
+    const result = classifyNoActionSummary({
+      pendingEscalations: 0,
+      pendingActionableStories: 3,
+      activeWorkerAgents: 2,
+      workingWorkerAgents: 2,
+      liveWorkingSessions: 2,
+    });
+
+    expect(result).toEqual({
+      color: 'green',
+      message: 'All agents productive',
+    });
+  });
+
+  it('should flag actionable work when only idle agents exist', async () => {
+    const { classifyNoActionSummary } = await import('./index.js');
+    const result = classifyNoActionSummary({
+      pendingEscalations: 0,
+      pendingActionableStories: 4,
+      activeWorkerAgents: 2,
+      workingWorkerAgents: 0,
+      liveWorkingSessions: 0,
+    });
+
+    expect(result.color).toBe('red');
+    expect(result.message).toContain('4 actionable story(ies)');
+    expect(result.message).toContain('0 working agent(s)');
+  });
+});
+
+describe('Unknown-state stuck heuristic', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('treats unknown non-waiting sessions as stuck once static threshold is reached', async () => {
+    const { shouldTreatUnknownAsStuckWaiting } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldTreatUnknownAsStuckWaiting({
+      state: AgentState.UNKNOWN,
+      isWaiting: false,
+      sessionUnchangedForMs: 600_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it('does not treat unknown as stuck before static threshold', async () => {
+    const { shouldTreatUnknownAsStuckWaiting } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldTreatUnknownAsStuckWaiting({
+      state: AgentState.UNKNOWN,
+      isWaiting: false,
+      sessionUnchangedForMs: 90_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it('does not treat non-unknown states as unknown-state stuck candidates', async () => {
+    const { shouldTreatUnknownAsStuckWaiting } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldTreatUnknownAsStuckWaiting({
+      state: AgentState.TOOL_RUNNING,
+      isWaiting: false,
+      sessionUnchangedForMs: 700_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(false);
+  });
+});
+
+describe('Stuck reminder deferral', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('defers reminders while static window has not elapsed for non-complete states', async () => {
+    const { shouldDeferStuckReminderUntilStaticWindow } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldDeferStuckReminderUntilStaticWindow({
+      state: AgentState.IDLE_AT_PROMPT,
+      sessionUnchangedForMs: 90_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it('does not defer reminders once static window elapsed', async () => {
+    const { shouldDeferStuckReminderUntilStaticWindow } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldDeferStuckReminderUntilStaticWindow({
+      state: AgentState.IDLE_AT_PROMPT,
+      sessionUnchangedForMs: 610_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it('does not defer mandatory completion for work-complete state', async () => {
+    const { shouldDeferStuckReminderUntilStaticWindow } = await import('./index.js');
+    const { AgentState } = await import('../../../state-detectors/types.js');
+
+    const result = shouldDeferStuckReminderUntilStaticWindow({
+      state: AgentState.WORK_COMPLETE,
+      sessionUnchangedForMs: 10_000,
+      staticInactivityThresholdMs: 600_000,
+    });
+
+    expect(result).toBe(false);
+  });
+});

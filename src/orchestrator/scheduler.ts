@@ -41,6 +41,7 @@ import {
   isManagerRunning,
   isTmuxSessionRunning,
   killTmuxSession,
+  sendToTmuxSession,
   spawnTmuxSession,
   startManager,
 } from '../tmux/manager.js';
@@ -63,8 +64,12 @@ import {
 
 // --- Named constants (extracted from inline magic numbers) ---
 
-/** Timeout in ms for git worktree operations */
-const GIT_WORKTREE_TIMEOUT_MS = 30000;
+/** Timeout in ms for best-effort fetch before creating an agent worktree */
+const GIT_FETCH_TIMEOUT_MS = 5000;
+/** Timeout in ms for creating/attaching agent worktrees */
+const GIT_WORKTREE_ADD_TIMEOUT_MS = 30000;
+/** Timeout in ms for removing stale worktrees during cleanup paths */
+const GIT_WORKTREE_REMOVE_TIMEOUT_MS = 5000;
 /** Max tokens for Opus 4.6 in godmode */
 const GODMODE_MAX_TOKENS = 16000;
 /** Temperature for Opus 4.6 in godmode */
@@ -131,7 +136,7 @@ export class Scheduler {
       execSync(`git fetch origin ${baseBranch}`, {
         cwd: fullRepoPath,
         stdio: 'pipe',
-        timeout: GIT_WORKTREE_TIMEOUT_MS,
+        timeout: GIT_FETCH_TIMEOUT_MS,
       });
     } catch (_err) {
       // Fetch failure is non-fatal; proceed with whatever is available locally
@@ -142,7 +147,7 @@ export class Scheduler {
       execSync(`git worktree add "${fullWorktreePath}" -b "${branchName}" "origin/${baseBranch}"`, {
         cwd: fullRepoPath,
         stdio: 'pipe',
-        timeout: GIT_WORKTREE_TIMEOUT_MS,
+        timeout: GIT_WORKTREE_ADD_TIMEOUT_MS,
       });
     } catch (err) {
       // If worktree or branch already exists, try to add without creating branch
@@ -150,7 +155,7 @@ export class Scheduler {
         execSync(`git worktree add "${fullWorktreePath}" "${branchName}"`, {
           cwd: fullRepoPath,
           stdio: 'pipe',
-          timeout: GIT_WORKTREE_TIMEOUT_MS,
+          timeout: GIT_WORKTREE_ADD_TIMEOUT_MS,
         });
       } catch (_error) {
         // If that fails too, log and throw
@@ -169,7 +174,9 @@ export class Scheduler {
   private removeAgentWorktree(worktreePath: string, agentId: string): void {
     if (!worktreePath) return;
 
-    const result = removeWorktree(this.config.rootDir, worktreePath);
+    const result = removeWorktree(this.config.rootDir, worktreePath, {
+      timeout: GIT_WORKTREE_REMOVE_TIMEOUT_MS,
+    });
     if (!result.success) {
       createLog(this.db, {
         agentId,
@@ -231,18 +238,53 @@ export class Scheduler {
           a.type !== 'qa' &&
           (a.status === 'idle' || (a.status === 'working' && a.current_story_id === null))
       );
+      const activeSeniors = getAgentsByTeam(this.db, teamId).filter(
+        a => a.type === 'senior' && a.status !== 'terminated'
+      );
+      const seniorSessionPrefix = generateSessionName('senior', team.name);
+      const indexedSeniorSessions = activeSeniors
+        .map(senior => {
+          if (!senior.tmux_session) return null;
+          if (senior.tmux_session === seniorSessionPrefix) return 1;
+          const indexedPrefix = `${seniorSessionPrefix}-`;
+          if (!senior.tmux_session.startsWith(indexedPrefix)) return null;
+          const parsed = Number.parseInt(senior.tmux_session.slice(indexedPrefix.length), 10);
+          if (!Number.isFinite(parsed) || parsed <= 1) return null;
+          return parsed;
+        })
+        .filter((index): index is number => index !== null);
+      const maxSeniorIndex =
+        indexedSeniorSessions.length > 0
+          ? Math.max(...indexedSeniorSessions)
+          : Math.max(activeSeniors.length, 0);
+      let nextSeniorIndex = maxSeniorIndex + 1;
 
-      // Find or create a Senior for delegation
-      let senior = agents.find(a => a.type === 'senior');
-      if (!senior) {
+      const getOrSpawnSenior = async (): Promise<AgentRow | undefined> => {
+        const idleSenior = agents.find(a => a.type === 'senior' && a.status === 'idle');
+        if (idleSenior) return idleSenior;
+
         try {
-          senior = await this.spawnSenior(teamId, team.name, team.repo_path);
+          const spawnIndex = nextSeniorIndex;
+          nextSeniorIndex += 1;
+          const spawnedSenior = await this.spawnSenior(
+            teamId,
+            team.name,
+            team.repo_path,
+            spawnIndex > 1 ? spawnIndex : undefined
+          );
+          agents.push(spawnedSenior);
+          return spawnedSenior;
         } catch (err) {
           errors.push(
             `Failed to spawn Senior for team ${team.name}: ${err instanceof Error ? err.message : 'Unknown error'}`
           );
-          continue;
+          return undefined;
         }
+      };
+
+      // Ensure at least one Senior is available for delegation/fallback.
+      if (!(await getOrSpawnSenior())) {
+        continue;
       }
 
       // Assign stories based on complexity and capacity policy
@@ -291,7 +333,7 @@ export class Scheduler {
 
         if (isBlocker) {
           // Blocker stories always go to Senior regardless of complexity
-          targetAgent = senior;
+          targetAgent = await getOrSpawnSenior();
         } else if (complexity <= this.config.scaling.junior_max_complexity) {
           // Assign to Junior with least workload
           const juniors = agents.filter(a => a.type === 'junior' && a.status === 'idle');
@@ -300,6 +342,7 @@ export class Scheduler {
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnJunior(teamId, team.name, team.repo_path);
+              agents.push(targetAgent);
             } catch (_error) {
               // Fall back to Intermediate or Senior
               const intermediates = agents.filter(
@@ -308,7 +351,7 @@ export class Scheduler {
               targetAgent =
                 intermediates.length > 0
                   ? selectAgentWithLeastWorkload(this.db, intermediates)
-                  : senior;
+                  : await getOrSpawnSenior();
             }
           }
         } else if (complexity <= this.config.scaling.intermediate_max_complexity) {
@@ -323,14 +366,15 @@ export class Scheduler {
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnIntermediate(teamId, team.name, team.repo_path);
+              agents.push(targetAgent);
             } catch (_error) {
               // Fall back to Senior
-              targetAgent = senior;
+              targetAgent = await getOrSpawnSenior();
             }
           }
         } else {
           // Senior handles directly
-          targetAgent = senior;
+          targetAgent = await getOrSpawnSenior();
         }
 
         if (!targetAgent) {
@@ -368,6 +412,17 @@ export class Scheduler {
           );
           assigned++;
 
+          // Keep local availability snapshot in sync so we don't reassign
+          // additional stories to an agent already marked busy this cycle.
+          const localIndex = agents.findIndex(a => a.id === targetAgent!.id);
+          if (localIndex >= 0) {
+            agents[localIndex] = {
+              ...agents[localIndex],
+              status: 'working',
+              current_story_id: story.id,
+            };
+          }
+
           // Enqueue Jira operations to prevent race conditions
           // Operations are processed sequentially to avoid:
           // - TokenStore file lock contention
@@ -380,6 +435,10 @@ export class Scheduler {
           this.pmQueue.enqueue(`story-${story.id}-status-transition`, async () => {
             await syncStatusForStory(this.config.rootDir, this.db, story.id, 'in_progress');
           });
+
+          // Force an explicit context handoff in the assigned tmux session so
+          // reused sessions do not continue stale prior-story threads.
+          await this.sendAssignmentHandoff(targetAgent, story);
         } catch (err) {
           errors.push(
             `Failed to assign story ${story.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -389,6 +448,49 @@ export class Scheduler {
     }
 
     return { assigned, errors, preventedDuplicates };
+  }
+
+  private async sendAssignmentHandoff(agent: AgentRow, story: StoryRow): Promise<void> {
+    const sessionName = agent.tmux_session;
+    if (!sessionName) return;
+
+    let sessionRunning = false;
+    try {
+      sessionRunning = await isTmuxSessionRunning(sessionName);
+    } catch {
+      sessionRunning = false;
+    }
+    if (!sessionRunning) return;
+
+    const handoffMessage = [
+      `Use session ${sessionName} for all hive commands.`,
+      `Run now: hive my-stories ${sessionName}.`,
+      `Continue ${story.id} now.`,
+    ].join(' ');
+
+    try {
+      await sendToTmuxSession(sessionName, handoffMessage);
+      createLog(this.db, {
+        agentId: 'scheduler',
+        storyId: story.id,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Sent assignment handoff to ${sessionName} for ${story.id}`,
+        metadata: {
+          session: sessionName,
+          handoff: 'assignment_context_reset',
+        },
+      });
+    } catch (err) {
+      createLog(this.db, {
+        agentId: 'scheduler',
+        storyId: story.id,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        status: 'error',
+        message: `Failed to send assignment handoff to ${sessionName}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      });
+    }
   }
 
   /**
@@ -632,18 +734,19 @@ export class Scheduler {
 
   /**
    * Scale QA agents based on pending work
-   * - Count stories with status 'pr_submitted' or 'qa'
+   * - Count stories in explicit QA statuses ('pr_submitted', 'qa', 'qa_failed')
+   * - Also count non-merged stories that have queued/reviewing PRs
    * - Calculate needed QA agents: 1 QA per 2-3 pending PRs, max 5
    * - Spawn QA agents in parallel with unique session names
    * - Scale down excess QA agents when queue shrinks
    *
    * Note: Unlike checkScaling(), this method does not need to filter by dependencies
-   * because it only counts stories with PRs already created ('pr_submitted', 'qa', etc).
-   * By the time a story reaches these statuses, its work is complete and dependencies
-   * are no longer a blocking concern for QA review.
+   * because it only counts stories already in QA phases or stories with open PRs.
+   * Open PR status is treated as source-of-truth for review demand, which allows
+   * recovery from stale story statuses (for example, story still marked in_progress).
    */
   private async scaleQAAgents(teamId: string, teamName: string, repoPath: string): Promise<void> {
-    // Count pending QA work: stories in QA-related statuses OR stories in review with queued PRs
+    // Count pending QA work: explicit QA statuses OR any non-merged story with an open PR.
     const qaStories = queryAll<StoryRow>(
       this.db,
       `
@@ -651,7 +754,7 @@ export class Scheduler {
       LEFT JOIN pull_requests pr ON pr.story_id = s.id
       WHERE s.team_id = ? AND (
         s.status IN ('qa', 'pr_submitted', 'qa_failed')
-        OR (s.status = 'review' AND pr.status IN ('queued', 'reviewing'))
+        OR (s.status != 'merged' AND pr.status IN ('queued', 'reviewing'))
       )
     `,
       [teamId]
@@ -810,7 +913,15 @@ export class Scheduler {
         a => a.tmux_session === sessionName && a.status !== 'terminated'
       );
       if (existingOnSession && (await isTmuxSessionRunning(sessionName))) {
-        return existingOnSession;
+        const sessionSeniorAvailable =
+          existingOnSession.status === 'idle' ||
+          (existingOnSession.status === 'working' && existingOnSession.current_story_id === null);
+        if (sessionSeniorAvailable) {
+          return existingOnSession;
+        }
+        throw new OperationalError(
+          `Cannot spawn senior on busy session ${sessionName} (agent ${existingOnSession.id})`
+        );
       }
     }
 
@@ -889,7 +1000,8 @@ export class Scheduler {
           worktreePath,
           stories,
           targetBranch,
-          { includeProgressUpdates }
+          { includeProgressUpdates },
+          sessionName
         );
       } else if (type === 'intermediate') {
         prompt = generateIntermediatePrompt(

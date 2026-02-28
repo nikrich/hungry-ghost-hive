@@ -227,7 +227,8 @@ export function generateSeniorPrompt(
   repoPath: string,
   stories: StoryRow[],
   targetBranch: string = 'main',
-  options?: AgentPromptOptions
+  options?: AgentPromptOptions,
+  sessionNameOverride?: string
 ): string {
   const includeProgressUpdates = shouldIncludeProgressUpdates(options);
   const storyList = stories
@@ -239,7 +240,7 @@ export function generateSeniorPrompt(
     })
     .join('\n\n');
 
-  const sessionName = formatSeniorSessionName(teamName);
+  const sessionName = sessionNameOverride || formatSeniorSessionName(teamName);
 
   return `You are a Senior Developer on Team ${teamName}.
 Your tmux session: ${sessionName}
@@ -491,11 +492,13 @@ hive pr show <pr-id>
 
 **If the PR is good - approve and merge:**
 \`\`\`bash
-# First, merge via GitHub CLI
-gh pr merge <pr-number> --merge
-
-# Then mark as merged in Hive
+# Approve via Hive (this attempts GitHub merge when a PR number is linked)
 hive pr approve <pr-id> --from ${sessionName}
+\`\`\`
+
+**If manual merge is required for this repo:**
+\`\`\`bash
+hive pr approve <pr-id> --no-merge --notes "Manual merge required" --from ${sessionName}
 \`\`\`
 
 **If the PR has issues - reject with feedback:**
@@ -504,6 +507,11 @@ hive pr reject <pr-id> --reason "Description of issues" --from ${sessionName}
 
 # Notify the developer
 hive msg send <developer-session> "Your PR was rejected: <reason>" --from ${sessionName}
+\`\`\`
+
+**If the linked GitHub PR is closed/missing/inaccessible:**
+\`\`\`bash
+hive pr reject <pr-id> --reason "Linked GitHub PR is not open. Reopen/create PR and resubmit with --pr-number/--pr-url." --from ${sessionName}
 \`\`\`
 
 ## Review Checklist

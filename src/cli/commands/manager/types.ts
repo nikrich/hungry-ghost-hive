@@ -72,6 +72,7 @@ export interface ManagerCheckContext {
     escalationsCreated: number;
     escalationsResolved: number;
     queuedPRCount: number;
+    reviewingPRCount: number;
     handoffPromoted: number;
     handoffAutoAssigned: number;
     plannedAutoAssigned: number;

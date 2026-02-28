@@ -480,11 +480,12 @@ describe('CLI Runtime Builders', () => {
 
     it('should normalize legacy Codex model shorthands', () => {
       expect(resolveRuntimeModelForCli('gpt4o', 'codex')).toBe('gpt-4o');
-      expect(resolveRuntimeModelForCli('gpt4o-mini', 'codex')).toBe('gpt-4o-mini');
+      expect(resolveRuntimeModelForCli('gpt4o-mini', 'codex')).toBe('gpt-5.2-codex');
     });
 
-    it('should preserve configured model IDs for codex and gemini', () => {
-      expect(resolveRuntimeModelForCli('gpt-4o-mini', 'codex')).toBe('gpt-4o-mini');
+    it('should map unsupported Codex mini models and preserve other configured model IDs', () => {
+      expect(resolveRuntimeModelForCli('gpt-4o-mini', 'codex')).toBe('gpt-5.2-codex');
+      expect(resolveRuntimeModelForCli('gpt-4o', 'codex')).toBe('gpt-4o');
       expect(resolveRuntimeModelForCli('gemini-2.5-pro', 'gemini')).toBe('gemini-2.5-pro');
     });
   });

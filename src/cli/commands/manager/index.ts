@@ -14,7 +14,7 @@ import {
   syncStatusForStory,
 } from '../../../connectors/project-management/operations.js';
 import type { StoryRow } from '../../../db/client.js';
-import { queryAll, withTransaction } from '../../../db/client.js';
+import { queryAll, queryOne, withTransaction } from '../../../db/client.js';
 import { acquireLock } from '../../../db/lock.js';
 import {
   getAgentById,
@@ -85,6 +85,7 @@ import { handleEscalationAndNudge } from './escalation-handler.js';
 import { checkFeatureSignOff } from './feature-sign-off.js';
 import { checkFeatureTestResult } from './feature-test-result.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
+import { cleanupAgentsReferencingMergedStory } from './merged-story-cleanup.js';
 import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
 import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
@@ -93,6 +94,7 @@ import type { ManagerCheckContext } from './types.js';
 import {
   MANAGER_NUDGE_END_MARKER,
   MANAGER_NUDGE_START_MARKER,
+  POST_NUDGE_DELAY_MS,
   TMUX_CAPTURE_LINES,
   TMUX_CAPTURE_LINES_SHORT,
 } from './types.js';
@@ -101,6 +103,9 @@ const DONE_INFERENCE_CONFIDENCE_THRESHOLD = 0.82;
 const SCREEN_STATIC_AI_RECHECK_MS = 5 * 60 * 1000;
 const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_STUCK_NUDGES_PER_STORY = 1;
+const NUDGE_ENTER_RETRY_ATTEMPTS = 2;
+const REVIEWING_PR_VALIDATION_MIN_AGE_MS = 5 * 60 * 1000;
+const GH_PR_VIEW_TIMEOUT_MS = 30_000;
 const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
 const AI_DONE_FALSE_REASON_PREFIX = 'AI done=false escalation';
 
@@ -122,6 +127,81 @@ interface ScreenStaticStatus {
   stuckDetectionInMs: number;
   fullAiDetectionInMs: number;
   shouldRunFullAiDetection: boolean;
+}
+
+interface NoActionSummarySnapshot {
+  pendingEscalations: number;
+  pendingActionableStories: number;
+  activeWorkerAgents: number;
+  workingWorkerAgents: number;
+  liveWorkingSessions: number;
+}
+
+interface SummaryLine {
+  color: 'green' | 'yellow' | 'red' | 'gray';
+  message: string;
+}
+
+interface UnknownStateStuckHeuristicSnapshot {
+  state: AgentState;
+  isWaiting: boolean;
+  sessionUnchangedForMs: number;
+  staticInactivityThresholdMs: number;
+}
+
+interface StuckReminderDeferralSnapshot {
+  state: AgentState;
+  sessionUnchangedForMs: number;
+  staticInactivityThresholdMs: number;
+}
+
+export function classifyNoActionSummary(snapshot: NoActionSummarySnapshot): SummaryLine {
+  if (snapshot.pendingEscalations > 0) {
+    return {
+      color: 'yellow',
+      message: `${snapshot.pendingEscalations} pending escalation(s)`,
+    };
+  }
+
+  if (
+    snapshot.pendingActionableStories > 0 &&
+    (snapshot.workingWorkerAgents === 0 || snapshot.liveWorkingSessions === 0)
+  ) {
+    return {
+      color: 'red',
+      message: `${snapshot.pendingActionableStories} actionable story(ies), ${snapshot.workingWorkerAgents} working agent(s), ${snapshot.liveWorkingSessions} live working session(s), ${snapshot.activeWorkerAgents} total active agent(s)`,
+    };
+  }
+
+  if (snapshot.pendingActionableStories === 0 && snapshot.activeWorkerAgents === 0) {
+    return {
+      color: 'gray',
+      message: 'No pending work and no active worker agents',
+    };
+  }
+
+  return { color: 'green', message: 'All agents productive' };
+}
+
+export function shouldTreatUnknownAsStuckWaiting(
+  snapshot: UnknownStateStuckHeuristicSnapshot
+): boolean {
+  const thresholdMs = Math.max(1, snapshot.staticInactivityThresholdMs);
+  return (
+    snapshot.state === AgentState.UNKNOWN &&
+    !snapshot.isWaiting &&
+    snapshot.sessionUnchangedForMs >= thresholdMs
+  );
+}
+
+export function shouldDeferStuckReminderUntilStaticWindow(
+  snapshot: StuckReminderDeferralSnapshot
+): boolean {
+  const thresholdMs = Math.max(1, snapshot.staticInactivityThresholdMs);
+  if (snapshot.state === AgentState.WORK_COMPLETE) {
+    return false;
+  }
+  return snapshot.sessionUnchangedForMs < thresholdMs;
 }
 
 const screenStaticBySession = new Map<string, ScreenStaticTracking>();
@@ -188,6 +268,27 @@ function stripManagerNudgeBlocks(output: string): string {
   }
 
   return filtered.join('\n');
+}
+
+function hasPendingNudgeInputAtPrompt(output: string): boolean {
+  const tail = output.split('\n').slice(-12).join('\n');
+  return /(?:^|\n)\s*(?:›|>)\s*#\s*\[HIVE_MANAGER_NUDGE_START\]/m.test(tail);
+}
+
+async function submitManagerNudge(sessionName: string): Promise<void> {
+  // First Enter is the normal submit path.
+  await sendEnterToTmuxSession(sessionName);
+
+  // Some CLI UIs occasionally ignore the first Enter while repainting.
+  // If the nudge is still at the prompt, retry Enter with a short delay.
+  for (let i = 0; i < NUDGE_ENTER_RETRY_ATTEMPTS; i++) {
+    await new Promise(resolve => setTimeout(resolve, POST_NUDGE_DELAY_MS));
+    const output = await captureTmuxPane(sessionName, TMUX_CAPTURE_LINES_SHORT);
+    if (!hasPendingNudgeInputAtPrompt(output)) {
+      return;
+    }
+    await sendEnterToTmuxSession(sessionName);
+  }
 }
 
 function getScreenStaticInactivityThresholdMs(config?: HiveConfig): number {
@@ -796,6 +897,7 @@ async function managerCheck(
       escalationsCreated: 0,
       escalationsResolved: 0,
       queuedPRCount: 0,
+      reviewingPRCount: 0,
       handoffPromoted: 0,
       handoffAutoAssigned: 0,
       plannedAutoAssigned: 0,
@@ -817,16 +919,22 @@ async function managerCheck(
   await runAutoMerge(ctx);
   verboseLogCtx(ctx, 'Step: sync merged PRs from GitHub');
   await syncMergedPRs(ctx);
+  verboseLogCtx(ctx, 'Step: reconcile merged story agent pointers');
+  await reconcileAgentsOnMergedStories(ctx);
   verboseLogCtx(ctx, 'Step: sync open PRs from GitHub');
   await syncOpenPRs(ctx);
   verboseLogCtx(ctx, 'Step: close stale PRs');
   await closeStalePRs(ctx);
+  verboseLogCtx(ctx, 'Step: recover stale reviewing PRs');
+  await recoverStaleReviewingPRs(ctx);
   verboseLogCtx(ctx, 'Step: sync Jira statuses');
   await syncJiraStatuses(ctx);
   verboseLogCtx(ctx, 'Step: planning handoff recovery');
   await handleStalledPlanningHandoff(ctx);
   verboseLogCtx(ctx, 'Step: restart stale tech lead');
   await restartStaleTechLead(ctx);
+  verboseLogCtx(ctx, 'Step: auto-assign planned stories');
+  await autoAssignPlannedStories(ctx);
 
   // Discover active tmux sessions
   verboseLogCtx(ctx, 'Step: discover hive tmux sessions');
@@ -842,6 +950,7 @@ async function managerCheck(
 
   if (ctx.hiveSessions.length === 0) {
     console.log(chalk.gray('  No agent sessions found'));
+    await printSummary(ctx);
     return;
   }
 
@@ -855,8 +964,6 @@ async function managerCheck(
   await handleRejectedPRs(ctx);
   verboseLogCtx(ctx, 'Step: recover unassigned qa_failed stories');
   await recoverUnassignedQAFailedStories(ctx);
-  verboseLogCtx(ctx, 'Step: auto-assign planned stories');
-  await autoAssignPlannedStories(ctx);
   verboseLogCtx(ctx, 'Step: nudge qa_failed stories');
   await nudgeQAFailedStories(ctx);
   verboseLogCtx(ctx, 'Step: spin down merged agents');
@@ -871,7 +978,7 @@ async function managerCheck(
   await nudgeStuckStories(ctx);
   verboseLogCtx(ctx, 'Step: notify seniors about unassigned stories');
   await notifyUnassignedStories(ctx);
-  printSummary(ctx);
+  await printSummary(ctx);
 }
 
 async function backfillPRNumbers(ctx: ManagerCheckContext): Promise<void> {
@@ -1035,11 +1142,16 @@ async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
         await withTransaction(db.db, () => {
           for (const update of toUpdate) {
             updateStory(db.db, update.storyId, { status: 'merged', assignedAgentId: null });
+            const cleanup = cleanupAgentsReferencingMergedStory(db.db, update.storyId);
             createLog(db.db, {
               agentId: 'manager',
               storyId: update.storyId,
               eventType: 'STORY_MERGED',
               message: `Story synced to merged from GitHub PR #${update.prNumber}`,
+              metadata: {
+                merged_agent_cleanup_cleared: cleanup.cleared,
+                merged_agent_cleanup_reassigned: cleanup.reassigned,
+              },
             });
           }
         });
@@ -1056,6 +1168,65 @@ async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
   verboseLogCtx(ctx, `syncMergedPRs: synced=${mergedSynced}`);
   if (mergedSynced > 0) {
     console.log(chalk.green(`  Synced ${mergedSynced} merged story(ies) from GitHub`));
+  }
+}
+
+async function reconcileAgentsOnMergedStories(ctx: ManagerCheckContext): Promise<void> {
+  const result = await ctx.withDb(async db => {
+    const mergedStoryIds = queryAll<{ id: string }>(
+      db.db,
+      `
+      SELECT DISTINCT s.id
+      FROM stories s
+      JOIN agents a ON a.current_story_id = s.id
+      WHERE s.status = 'merged'
+        AND a.status != 'terminated'
+      `
+    ).map(row => row.id);
+
+    if (mergedStoryIds.length === 0) {
+      return { storyCount: 0, cleared: 0, reassigned: 0 };
+    }
+
+    let cleared = 0;
+    let reassigned = 0;
+    for (const storyId of mergedStoryIds) {
+      const cleanup = cleanupAgentsReferencingMergedStory(db.db, storyId);
+      if (cleanup.cleared > 0) {
+        createLog(db.db, {
+          agentId: 'manager',
+          storyId,
+          eventType: 'STORY_PROGRESS_UPDATE',
+          message: `Reconciled stale merged-story agent assignments`,
+          metadata: {
+            story_id: storyId,
+            cleared_agents: cleanup.cleared,
+            reassigned_agents: cleanup.reassigned,
+            recovery: 'merged_story_agent_reconcile',
+          },
+        });
+      }
+      cleared += cleanup.cleared;
+      reassigned += cleanup.reassigned;
+    }
+
+    if (cleared > 0) {
+      db.save();
+    }
+
+    return { storyCount: mergedStoryIds.length, cleared, reassigned };
+  });
+
+  verboseLogCtx(
+    ctx,
+    `reconcileAgentsOnMergedStories: stories=${result.storyCount}, cleared=${result.cleared}, reassigned=${result.reassigned}`
+  );
+  if (result.cleared > 0) {
+    console.log(
+      chalk.yellow(
+        `  Reconciled ${result.cleared} stale merged-story agent assignment(s) (${result.reassigned} reassigned, ${result.cleared - result.reassigned} idled)`
+      )
+    );
   }
 }
 
@@ -1287,6 +1458,225 @@ async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
     }
   }
   verboseLogCtx(ctx, `closeStalePRs: closed=${closed.length}`);
+}
+
+interface ReviewingPRValidationCandidate {
+  id: string;
+  storyId: string | null;
+  teamId: string;
+  branchName: string;
+  githubPrNumber: number;
+  reviewedBy: string | null;
+  repoDir: string;
+  repoSlug: string | null;
+}
+
+interface ReviewingPRValidationResult {
+  candidate: ReviewingPRValidationCandidate;
+  githubState: string;
+  githubUrl: string | null;
+}
+
+async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promise<void> {
+  const now = Date.now();
+
+  // Phase 1: Read stale reviewing PRs and resolve repo metadata (brief lock)
+  const candidates = await ctx.withDb(async db => {
+    const reviewingPRs = getPullRequestsByStatus(db.db, 'reviewing').filter(pr => {
+      if (!pr.github_pr_number || !pr.team_id) return false;
+      const updatedAtMs = Date.parse(pr.updated_at);
+      if (Number.isNaN(updatedAtMs)) return true;
+      return now - updatedAtMs >= REVIEWING_PR_VALIDATION_MIN_AGE_MS;
+    });
+
+    verboseLogCtx(ctx, `recoverStaleReviewingPRs: staleCandidates=${reviewingPRs.length}`);
+    if (reviewingPRs.length === 0) {
+      return [] as ReviewingPRValidationCandidate[];
+    }
+
+    const { getAllTeams } = await import('../../../db/queries/teams.js');
+    const teams = getAllTeams(db.db);
+    const teamsById = new Map(teams.map(team => [team.id, team]));
+
+    const result: ReviewingPRValidationCandidate[] = [];
+    for (const pr of reviewingPRs) {
+      const team = teamsById.get(pr.team_id!);
+      if (!team?.repo_path) continue;
+
+      result.push({
+        id: pr.id,
+        storyId: pr.story_id,
+        teamId: pr.team_id!,
+        branchName: pr.branch_name,
+        githubPrNumber: pr.github_pr_number!,
+        reviewedBy: pr.reviewed_by,
+        repoDir: `${ctx.root}/${team.repo_path}`,
+        repoSlug: ghRepoSlug(team.repo_url),
+      });
+    }
+
+    return result;
+  });
+
+  if (candidates.length === 0) return;
+
+  // Phase 2: Check GitHub state for each stale reviewing PR (no lock)
+  const mergedResults: ReviewingPRValidationResult[] = [];
+  const rejectedResults: ReviewingPRValidationResult[] = [];
+
+  for (const candidate of candidates) {
+    try {
+      const args = ['pr', 'view', String(candidate.githubPrNumber), '--json', 'state,url'];
+      if (candidate.repoSlug) args.push('-R', candidate.repoSlug);
+      const result = await execa('gh', args, {
+        cwd: candidate.repoDir,
+        timeout: GH_PR_VIEW_TIMEOUT_MS,
+      });
+      const parsed = JSON.parse(result.stdout) as { state?: string; url?: string };
+      const state = parsed.state?.toUpperCase();
+      const url = parsed.url || null;
+
+      if (state === 'OPEN') continue;
+      if (state === 'MERGED') {
+        mergedResults.push({
+          candidate,
+          githubState: 'MERGED',
+          githubUrl: url,
+        });
+        continue;
+      }
+
+      if (state) {
+        rejectedResults.push({
+          candidate,
+          githubState: state,
+          githubUrl: url,
+        });
+      }
+    } catch (err) {
+      verboseLogCtx(
+        ctx,
+        `recoverStaleReviewingPRs: skip pr=${candidate.id} github_check_failed=${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  if (mergedResults.length === 0 && rejectedResults.length === 0) return;
+
+  const mergedStoryIds: string[] = [];
+
+  // Phase 3: Apply DB updates (brief lock)
+  await ctx.withDb(async db => {
+    for (const result of mergedResults) {
+      await withTransaction(
+        db.db,
+        () => {
+          const currentPR = queryOne<{ status: string }>(
+            db.db,
+            `SELECT status FROM pull_requests WHERE id = ?`,
+            [result.candidate.id]
+          );
+          if (!currentPR || currentPR.status !== 'reviewing') return;
+
+          updatePullRequest(db.db, result.candidate.id, {
+            status: 'merged',
+            reviewedBy: result.candidate.reviewedBy || 'manager',
+          });
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: result.candidate.storyId || undefined,
+            eventType: 'PR_MERGED',
+            message: `Auto-closed reviewing PR ${result.candidate.id}: GitHub PR #${result.candidate.githubPrNumber} is already merged`,
+            metadata: {
+              pr_id: result.candidate.id,
+              github_pr_number: result.candidate.githubPrNumber,
+              github_state: result.githubState,
+              github_url: result.githubUrl,
+            },
+          });
+
+          if (!result.candidate.storyId) return;
+          updateStory(db.db, result.candidate.storyId, { status: 'merged', assignedAgentId: null });
+          const cleanup = cleanupAgentsReferencingMergedStory(db.db, result.candidate.storyId);
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: result.candidate.storyId,
+            eventType: 'STORY_MERGED',
+            message: `Story auto-synced to merged (GitHub PR #${result.candidate.githubPrNumber} already merged)`,
+            metadata: {
+              pr_id: result.candidate.id,
+              github_pr_number: result.candidate.githubPrNumber,
+              github_url: result.githubUrl,
+              merged_agent_cleanup_cleared: cleanup.cleared,
+              merged_agent_cleanup_reassigned: cleanup.reassigned,
+            },
+          });
+          mergedStoryIds.push(result.candidate.storyId);
+        },
+        () => db.save()
+      );
+    }
+
+    for (const result of rejectedResults) {
+      await withTransaction(
+        db.db,
+        () => {
+          const currentPR = queryOne<{ status: string }>(
+            db.db,
+            `SELECT status FROM pull_requests WHERE id = ?`,
+            [result.candidate.id]
+          );
+          if (!currentPR || currentPR.status !== 'reviewing') return;
+
+          const reason = `GitHub PR #${result.candidate.githubPrNumber} is ${result.githubState.toLowerCase()} on GitHub${result.githubUrl ? ` (${result.githubUrl})` : ''}. Reopen/create a new PR and resubmit.`;
+          updatePullRequest(db.db, result.candidate.id, {
+            status: 'rejected',
+            reviewedBy: result.candidate.reviewedBy || 'manager',
+            reviewNotes: reason,
+          });
+          createLog(db.db, {
+            agentId: 'manager',
+            storyId: result.candidate.storyId || undefined,
+            eventType: 'PR_REJECTED',
+            status: 'warn',
+            message: `Auto-rejected stale review ${result.candidate.id}: ${reason}`,
+            metadata: {
+              pr_id: result.candidate.id,
+              github_pr_number: result.candidate.githubPrNumber,
+              github_state: result.githubState,
+              github_url: result.githubUrl,
+              branch: result.candidate.branchName,
+              team_id: result.candidate.teamId,
+            },
+          });
+        },
+        () => db.save()
+      );
+    }
+  });
+
+  // Sync merged stories to PM provider outside lock
+  const uniqueMergedStoryIds = Array.from(new Set(mergedStoryIds));
+  for (const storyId of uniqueMergedStoryIds) {
+    await ctx.withDb(async db => {
+      await syncStatusForStory(ctx.root, db.db, storyId, 'merged');
+    });
+  }
+
+  if (mergedResults.length > 0) {
+    console.log(
+      chalk.green(
+        `  Auto-synced ${mergedResults.length} reviewing PR(s) that were already merged on GitHub`
+      )
+    );
+  }
+  if (rejectedResults.length > 0) {
+    console.log(
+      chalk.yellow(
+        `  Auto-rejected ${rejectedResults.length} stale reviewing PR(s) with non-open GitHub PR state`
+      )
+    );
+  }
 }
 
 async function syncJiraStatuses(ctx: ManagerCheckContext): Promise<void> {
@@ -1651,7 +2041,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 #   hive my-stories complete ${storyId}`
               )
             );
-            await sendEnterToTmuxSession(session.name);
+            await submitManagerNudge(session.name);
             ctx.counters.nudged++;
             actionNotes.push('ai_stall_nudge');
             if (tracked) {
@@ -1718,10 +2108,12 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read PR queue and assign reviews (brief lock)
   const { queuedPRs, dispatched } = await ctx.withDb(async db => {
     const openPRs = getMergeQueue(db.db);
-    ctx.counters.queuedPRCount = openPRs.length;
     verboseLogCtx(ctx, `notifyQAOfQueuedPRs: open=${openPRs.length}`);
 
     const queued = openPRs.filter(pr => pr.status === 'queued');
+    const reviewing = openPRs.filter(pr => pr.status === 'reviewing');
+    ctx.counters.queuedPRCount = queued.length;
+    ctx.counters.reviewingPRCount = reviewing.length;
     verboseLogCtx(ctx, `notifyQAOfQueuedPRs: queued=${queued.length}`);
     if (queued.length === 0) {
       return {
@@ -1900,7 +2292,7 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
 # Fix the issues and resubmit: hive pr submit -b ${pr.branchName} -s ${pr.storyId || 'STORY-ID'} --from ${devSession.name}`
           )
         );
-        await sendEnterToTmuxSession(devSession.name);
+        await submitManagerNudge(devSession.name);
         rejectionNotified++;
       }
     }
@@ -1968,7 +2360,7 @@ async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
 hive pr queue`
         )
       );
-      await sendEnterToTmuxSession(candidate.sessionName);
+      await submitManagerNudge(candidate.sessionName);
     } else {
       verboseLogCtx(
         ctx,
@@ -2146,24 +2538,54 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} skip=needs_human`);
       continue;
     }
-    if (!stateResult.isWaiting || stateResult.state === AgentState.THINKING) {
+    const sessionUnchangedForMs = getSessionStaticUnchangedForMs(sessionName, now);
+    const unknownLooksStuck = shouldTreatUnknownAsStuckWaiting({
+      state: stateResult.state,
+      isWaiting: stateResult.isWaiting,
+      sessionUnchangedForMs,
+      staticInactivityThresholdMs,
+    });
+    if (stateResult.state === AgentState.THINKING) {
       if (trackedState && (trackedState.storyStuckNudgeCount || 0) > 0) {
         trackedState.storyStuckNudgeCount = 0;
       }
       clearHumanIntervention(sessionName);
       verboseLogCtx(
         ctx,
-        `nudgeStuckStories: story=${story.id} skip=not_waiting_or_thinking state=${stateResult.state}`
+        `nudgeStuckStories: story=${story.id} skip=thinking state=${stateResult.state}`
       );
       continue;
     }
+    if (!stateResult.isWaiting && !unknownLooksStuck) {
+      if (trackedState && (trackedState.storyStuckNudgeCount || 0) > 0) {
+        trackedState.storyStuckNudgeCount = 0;
+      }
+      clearHumanIntervention(sessionName);
+      verboseLogCtx(
+        ctx,
+        `nudgeStuckStories: story=${story.id} skip=not_waiting state=${stateResult.state}`
+      );
+      continue;
+    }
+    if (unknownLooksStuck) {
+      verboseLogCtx(
+        ctx,
+        `nudgeStuckStories: story=${story.id} action=unknown_state_stuck_heuristic unchangedMs=${sessionUnchangedForMs}`
+      );
+    }
 
-    const sessionUnchangedForMs = getSessionStaticUnchangedForMs(sessionName, now);
-    if (sessionUnchangedForMs < staticInactivityThresholdMs) {
+    if (
+      shouldDeferStuckReminderUntilStaticWindow({
+        state: stateResult.state,
+        sessionUnchangedForMs,
+        staticInactivityThresholdMs,
+      })
+    ) {
       verboseLogCtx(
         ctx,
         `nudgeStuckStories: story=${story.id} skip=done_inference_static_window remainingMs=${staticInactivityThresholdMs - sessionUnchangedForMs}`
       );
+      continue;
     } else {
       const completionAssessment = await assessCompletionFromOutput(
         ctx.config,
@@ -2264,7 +2686,7 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
         sessionName,
         withManagerNudgeEnvelope(completionSignalLines.join('\n'))
       );
-      await sendEnterToTmuxSession(sessionName);
+      await submitManagerNudge(sessionName);
       ctx.counters.nudged++;
       if (trackedState) {
         trackedState.lastNudgeTime = now;
@@ -2293,7 +2715,7 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
 # Then mark complete: hive my-stories complete ${story.id}`
       )
     );
-    await sendEnterToTmuxSession(sessionName);
+    await submitManagerNudge(sessionName);
     ctx.counters.nudged++;
     if (trackedState) {
       trackedState.lastNudgeTime = now;
@@ -2403,7 +2825,7 @@ async function autoProgressDoneStory(
         `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), detected existing PR, and moved story to PR-submitted state.`
       )
     );
-    await sendEnterToTmuxSession(sessionName);
+    await submitManagerNudge(sessionName);
     verboseLogCtx(ctx, `autoProgressDoneStory: story=${story.id} action=existing_pr_progressed`);
     return true;
   }
@@ -2418,7 +2840,7 @@ async function autoProgressDoneStory(
       `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), auto-submitted branch ${branch} to merge queue.`
     )
   );
-  await sendEnterToTmuxSession(sessionName);
+  await submitManagerNudge(sessionName);
   return true;
 }
 
@@ -2630,7 +3052,7 @@ async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<void> {
   }
 }
 
-function printSummary(ctx: ManagerCheckContext): void {
+async function printSummary(ctx: ManagerCheckContext): Promise<void> {
   const {
     escalationsCreated,
     escalationsResolved,
@@ -2638,6 +3060,7 @@ function printSummary(ctx: ManagerCheckContext): void {
     autoProgressed,
     messagesForwarded,
     queuedPRCount,
+    reviewingPRCount,
     handoffPromoted,
     handoffAutoAssigned,
     plannedAutoAssigned,
@@ -2652,6 +3075,7 @@ function printSummary(ctx: ManagerCheckContext): void {
   if (autoProgressed > 0) summary.push(`${autoProgressed} auto-progressed`);
   if (messagesForwarded > 0) summary.push(`${messagesForwarded} messages forwarded`);
   if (queuedPRCount > 0) summary.push(`${queuedPRCount} PRs queued`);
+  if (reviewingPRCount > 0) summary.push(`${reviewingPRCount} PRs reviewing`);
   if (handoffPromoted > 0) summary.push(`${handoffPromoted} auto-promoted from estimated`);
   if (handoffAutoAssigned > 0) summary.push(`${handoffAutoAssigned} auto-assigned after recovery`);
   if (plannedAutoAssigned > 0)
@@ -2661,8 +3085,51 @@ function printSummary(ctx: ManagerCheckContext): void {
 
   if (summary.length > 0) {
     console.log(chalk.yellow(`  ${summary.join(', ')}`));
+    return;
+  }
+
+  const noActionSnapshot = await ctx.withDb(async db => {
+    const pendingEscalations =
+      queryOne<{ count: number }>(
+        db.db,
+        "SELECT COUNT(*) AS count FROM escalations WHERE status = 'pending'"
+      )?.count ?? 0;
+    const pendingActionableStories =
+      queryOne<{ count: number }>(
+        db.db,
+        "SELECT COUNT(*) AS count FROM stories WHERE status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')"
+      )?.count ?? 0;
+    const activeWorkerAgents =
+      queryOne<{ count: number }>(
+        db.db,
+        "SELECT COUNT(*) AS count FROM agents WHERE type != 'tech_lead' AND status != 'terminated'"
+      )?.count ?? 0;
+    const workingWorkerAgents =
+      queryOne<{ count: number }>(
+        db.db,
+        "SELECT COUNT(*) AS count FROM agents WHERE type != 'tech_lead' AND status = 'working'"
+      )?.count ?? 0;
+
+    return {
+      pendingEscalations,
+      pendingActionableStories,
+      activeWorkerAgents,
+      workingWorkerAgents,
+      liveWorkingSessions: ctx.hiveSessions.filter(session => {
+        const agent = ctx.agentsBySessionName.get(session.name);
+        return Boolean(agent && agent.type !== 'tech_lead' && agent.status === 'working');
+      }).length,
+    };
+  });
+  const line = classifyNoActionSummary(noActionSnapshot);
+  if (line.color === 'red') {
+    console.log(chalk.red(`  ${line.message}`));
+  } else if (line.color === 'yellow') {
+    console.log(chalk.yellow(`  ${line.message}`));
+  } else if (line.color === 'gray') {
+    console.log(chalk.gray(`  ${line.message}`));
   } else {
-    console.log(chalk.green('  All agents productive'));
+    console.log(chalk.green(`  ${line.message}`));
   }
 }
 

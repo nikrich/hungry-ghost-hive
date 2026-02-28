@@ -667,26 +667,52 @@ describe('distributed runtime sync behavior', () => {
 async function startRuntimeFixture(
   overrides: Partial<ClusterConfig> = {}
 ): Promise<RuntimeFixture> {
-  const config = await buildConfig(overrides);
-  return startRuntimeWithConfig(config);
+  const attempts = overrides.listen_port ? 1 : 5;
+  let lastError: unknown;
+
+  for (let i = 0; i < attempts; i++) {
+    const config = await buildConfig(overrides);
+    try {
+      return await startRuntimeWithConfig(config);
+    } catch (error) {
+      lastError = error;
+      const err = error as NodeJS.ErrnoException;
+      if (!overrides.listen_port && err.code === 'EADDRINUSE') {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Failed to start runtime fixture');
 }
 
 async function startRuntimeWithConfig(config: ClusterConfig): Promise<RuntimeFixture> {
   const root = mkdtempSync(join(tmpdir(), `hive-cluster-runtime-${config.node_id}-`));
-  tempRoots.push(root);
   const hiveDir = join(root, '.hive');
   mkdirSync(hiveDir, { recursive: true });
 
   const runtime = new ClusterRuntime(config, { hiveDir });
-  await runtime.start();
-  activeRuntimes.push(runtime);
+  try {
+    await runtime.start();
+    activeRuntimes.push(runtime);
+    tempRoots.push(root);
 
-  return {
-    root,
-    hiveDir,
-    config,
-    runtime,
-  };
+    return {
+      root,
+      hiveDir,
+      config,
+      runtime,
+    };
+  } catch (error) {
+    try {
+      await runtime.stop();
+    } catch {
+      // Best effort cleanup for partial starts.
+    }
+    rmSync(root, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 async function buildConfig(overrides: Partial<ClusterConfig> = {}): Promise<ClusterConfig> {
