@@ -40,6 +40,7 @@ import {
   getHiveSessions,
   isManagerRunning,
   isTmuxSessionRunning,
+  sendToTmuxSession,
   killTmuxSession,
   spawnTmuxSession,
   startManager,
@@ -434,6 +435,10 @@ export class Scheduler {
           this.pmQueue.enqueue(`story-${story.id}-status-transition`, async () => {
             await syncStatusForStory(this.config.rootDir, this.db, story.id, 'in_progress');
           });
+
+          // Force an explicit context handoff in the assigned tmux session so
+          // reused sessions do not continue stale prior-story threads.
+          await this.sendAssignmentHandoff(targetAgent, story);
         } catch (err) {
           errors.push(
             `Failed to assign story ${story.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -443,6 +448,49 @@ export class Scheduler {
     }
 
     return { assigned, errors, preventedDuplicates };
+  }
+
+  private async sendAssignmentHandoff(agent: AgentRow, story: StoryRow): Promise<void> {
+    const sessionName = agent.tmux_session;
+    if (!sessionName) return;
+
+    let sessionRunning = false;
+    try {
+      sessionRunning = await isTmuxSessionRunning(sessionName);
+    } catch {
+      sessionRunning = false;
+    }
+    if (!sessionRunning) return;
+
+    const handoffMessage = [
+      `Use session ${sessionName} for all hive commands.`,
+      `Run now: hive my-stories ${sessionName}.`,
+      `Continue ${story.id} now.`,
+    ].join(' ');
+
+    try {
+      await sendToTmuxSession(sessionName, handoffMessage);
+      createLog(this.db, {
+        agentId: 'scheduler',
+        storyId: story.id,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Sent assignment handoff to ${sessionName} for ${story.id}`,
+        metadata: {
+          session: sessionName,
+          handoff: 'assignment_context_reset',
+        },
+      });
+    } catch (err) {
+      createLog(this.db, {
+        agentId: 'scheduler',
+        storyId: story.id,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        status: 'error',
+        message: `Failed to send assignment handoff to ${sessionName}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      });
+    }
   }
 
   /**

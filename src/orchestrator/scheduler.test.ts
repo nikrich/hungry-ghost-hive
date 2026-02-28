@@ -2011,6 +2011,43 @@ describe('Scheduler checkScaling', () => {
     spawnSeniorSpy.mockRestore();
   });
 
+  it('should send an explicit assignment handoff to the assigned tmux session', async () => {
+    const team = createTeam(db, {
+      name: 'Handoff Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    const sessionName = 'hive-senior-handoff-team';
+    db.run(
+      `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+      ['senior-handoff-1', 'senior', team.id, sessionName, 'idle']
+    );
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Needs Context Reset',
+      description: 'Verify assignment handoff message is sent',
+    });
+    updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+
+    const isRunningSpy = vi.spyOn(tmuxModule, 'isTmuxSessionRunning').mockResolvedValue(true);
+    const sendSpy = vi.spyOn(tmuxModule, 'sendToTmuxSession').mockResolvedValue();
+
+    const result = await scheduler.assignStories();
+
+    expect(result.assigned).toBe(1);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const [targetSession, handoffMessage] = sendSpy.mock.calls[0];
+    expect(targetSession).toBe(sessionName);
+    expect(handoffMessage).toContain(`hive my-stories ${sessionName}`);
+    expect(handoffMessage).toContain(story.id);
+
+    isRunningSpy.mockRestore();
+    sendSpy.mockRestore();
+  });
+
   it('should reject spawning a senior on a busy existing session', async () => {
     const team = createTeam(db, {
       name: 'Spawn Guard Team',
