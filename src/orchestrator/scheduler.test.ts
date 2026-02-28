@@ -1825,6 +1825,62 @@ describe('Scheduler checkMergeQueue', () => {
 });
 
 describe('Scheduler checkScaling', () => {
+  it('should not assign multiple stories to the same senior in one cycle', async () => {
+    const team = createTeam(db, {
+      name: 'Single Senior Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+      ['senior-single-1', 'senior', team.id, 'idle']
+    );
+
+    const story1 = createStory(db, {
+      teamId: team.id,
+      title: 'High Complexity 1',
+      description: 'Needs senior',
+    });
+    updateStory(db, story1.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+
+    const story2 = createStory(db, {
+      teamId: team.id,
+      title: 'High Complexity 2',
+      description: 'Needs senior too',
+    });
+    updateStory(db, story2.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+
+    const spawnSeniorSpy = vi
+      .spyOn(scheduler as any, 'spawnSenior')
+      .mockRejectedValue(new Error('senior capacity exhausted'));
+
+    const result = await scheduler.assignStories();
+
+    expect(result.assigned).toBe(1);
+    expect(result.errors.some(e => e.includes('Failed to spawn Senior'))).toBe(true);
+    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+
+    const updatedStory1 = getStoryById(db, story1.id)!;
+    const updatedStory2 = getStoryById(db, story2.id)!;
+    const inProgress = [updatedStory1, updatedStory2].filter(s => s.status === 'in_progress');
+    const planned = [updatedStory1, updatedStory2].filter(s => s.status === 'planned');
+
+    expect(inProgress).toHaveLength(1);
+    expect(planned).toHaveLength(1);
+    expect(inProgress[0].assigned_agent_id).toBe('senior-single-1');
+    expect(planned[0].assigned_agent_id).toBeNull();
+
+    const seniorRow = db.exec(
+      `SELECT status, current_story_id FROM agents WHERE id = 'senior-single-1'`
+    )[0]?.values[0];
+    expect(seniorRow?.[0]).toBe('working');
+    expect(seniorRow?.[1]).toBe(inProgress[0].id);
+
+    spawnSeniorSpy.mockRestore();
+  });
+
   it('should only spawn agents for assignable stories (unblocked dependencies)', async () => {
     const team = createTeam(db, {
       name: 'Test Team',

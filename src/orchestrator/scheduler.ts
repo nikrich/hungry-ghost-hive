@@ -232,17 +232,25 @@ export class Scheduler {
           (a.status === 'idle' || (a.status === 'working' && a.current_story_id === null))
       );
 
-      // Find or create a Senior for delegation
-      let senior = agents.find(a => a.type === 'senior');
-      if (!senior) {
+      const getOrSpawnSenior = async (): Promise<AgentRow | undefined> => {
+        const idleSenior = agents.find(a => a.type === 'senior' && a.status === 'idle');
+        if (idleSenior) return idleSenior;
+
         try {
-          senior = await this.spawnSenior(teamId, team.name, team.repo_path);
+          const spawnedSenior = await this.spawnSenior(teamId, team.name, team.repo_path);
+          agents.push(spawnedSenior);
+          return spawnedSenior;
         } catch (err) {
           errors.push(
             `Failed to spawn Senior for team ${team.name}: ${err instanceof Error ? err.message : 'Unknown error'}`
           );
-          continue;
+          return undefined;
         }
+      };
+
+      // Ensure at least one Senior is available for delegation/fallback.
+      if (!(await getOrSpawnSenior())) {
+        continue;
       }
 
       // Assign stories based on complexity and capacity policy
@@ -291,7 +299,7 @@ export class Scheduler {
 
         if (isBlocker) {
           // Blocker stories always go to Senior regardless of complexity
-          targetAgent = senior;
+          targetAgent = await getOrSpawnSenior();
         } else if (complexity <= this.config.scaling.junior_max_complexity) {
           // Assign to Junior with least workload
           const juniors = agents.filter(a => a.type === 'junior' && a.status === 'idle');
@@ -300,6 +308,7 @@ export class Scheduler {
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnJunior(teamId, team.name, team.repo_path);
+              agents.push(targetAgent);
             } catch (_error) {
               // Fall back to Intermediate or Senior
               const intermediates = agents.filter(
@@ -308,7 +317,7 @@ export class Scheduler {
               targetAgent =
                 intermediates.length > 0
                   ? selectAgentWithLeastWorkload(this.db, intermediates)
-                  : senior;
+                  : await getOrSpawnSenior();
             }
           }
         } else if (complexity <= this.config.scaling.intermediate_max_complexity) {
@@ -323,14 +332,15 @@ export class Scheduler {
           if (!targetAgent) {
             try {
               targetAgent = await this.spawnIntermediate(teamId, team.name, team.repo_path);
+              agents.push(targetAgent);
             } catch (_error) {
               // Fall back to Senior
-              targetAgent = senior;
+              targetAgent = await getOrSpawnSenior();
             }
           }
         } else {
           // Senior handles directly
-          targetAgent = senior;
+          targetAgent = await getOrSpawnSenior();
         }
 
         if (!targetAgent) {
@@ -367,6 +377,17 @@ export class Scheduler {
             this.saveFn
           );
           assigned++;
+
+          // Keep local availability snapshot in sync so we don't reassign
+          // additional stories to an agent already marked busy this cycle.
+          const localIndex = agents.findIndex(a => a.id === targetAgent!.id);
+          if (localIndex >= 0) {
+            agents[localIndex] = {
+              ...agents[localIndex],
+              status: 'working',
+              current_story_id: story.id,
+            };
+          }
 
           // Enqueue Jira operations to prevent race conditions
           // Operations are processed sequentially to avoid:
