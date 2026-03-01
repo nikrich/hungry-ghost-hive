@@ -51,7 +51,6 @@ import {
   isManagerRunning,
   isTmuxSessionRunning,
   killTmuxSession,
-  sendEnterToTmuxSession,
   sendToTmuxSession,
   spawnTmuxSession,
   stopManager as stopManagerSession,
@@ -69,6 +68,7 @@ import { extractStoryIdFromBranch } from '../../../utils/story-id.js';
 import { withHiveContext, withHiveRoot } from '../../../utils/with-hive-context.js';
 import {
   agentStates,
+  createManagerNudgeEnvelope,
   detectAgentState,
   enforceBypassMode,
   forwardMessages,
@@ -76,8 +76,8 @@ import {
   handlePermissionPrompt,
   handlePlanApproval,
   nudgeAgent,
+  submitManagerNudgeWithVerification,
   updateAgentStateTracking,
-  withManagerNudgeEnvelope,
 } from './agent-monitoring.js';
 import { autoAssignPlannedStories } from './auto-assignment.js';
 import { assessCompletionFromOutput } from './done-intelligence.js';
@@ -94,7 +94,6 @@ import type { ManagerCheckContext } from './types.js';
 import {
   MANAGER_NUDGE_END_MARKER,
   MANAGER_NUDGE_START_MARKER,
-  POST_NUDGE_DELAY_MS,
   TMUX_CAPTURE_LINES,
   TMUX_CAPTURE_LINES_SHORT,
 } from './types.js';
@@ -103,7 +102,6 @@ const DONE_INFERENCE_CONFIDENCE_THRESHOLD = 0.82;
 const SCREEN_STATIC_AI_RECHECK_MS = 5 * 60 * 1000;
 const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_STUCK_NUDGES_PER_STORY = 1;
-const NUDGE_ENTER_RETRY_ATTEMPTS = 2;
 const REVIEWING_PR_VALIDATION_MIN_AGE_MS = 5 * 60 * 1000;
 const GH_PR_VIEW_TIMEOUT_MS = 30_000;
 const CLASSIFIER_TIMEOUT_REASON_PREFIX = 'Classifier timeout';
@@ -270,47 +268,43 @@ function stripManagerNudgeBlocks(output: string): string {
   return filtered.join('\n');
 }
 
-function hasPendingNudgeInputAtPrompt(output: string): boolean {
-  const tail = output.split('\n').slice(-12).join('\n');
-  return /(?:^|\n)\s*(?:›|>)\s*#\s*\[HIVE_MANAGER_NUDGE_START\]/m.test(tail);
-}
-
-async function submitManagerNudge(ctx: ManagerCheckContext, sessionName: string): Promise<void> {
-  let enterPresses = 1;
-  let retryEnters = 0;
-  // First Enter is the normal submit path.
-  await sendEnterToTmuxSession(sessionName);
-
-  // Some CLI UIs occasionally ignore the first Enter while repainting.
-  // If the nudge is still at the prompt, retry Enter with a short delay.
-  for (let i = 0; i < NUDGE_ENTER_RETRY_ATTEMPTS; i++) {
-    await new Promise(resolve => setTimeout(resolve, POST_NUDGE_DELAY_MS));
-    const output = await captureTmuxPane(sessionName, TMUX_CAPTURE_LINES_SHORT);
-    if (!hasPendingNudgeInputAtPrompt(output)) {
-      ctx.counters.nudgeEnterPresses = (ctx.counters.nudgeEnterPresses ?? 0) + enterPresses;
-      ctx.counters.nudgeEnterRetries = (ctx.counters.nudgeEnterRetries ?? 0) + retryEnters;
-      verboseLogCtx(
-        ctx,
-        `nudgeSubmit: session=${sessionName} enterPresses=${enterPresses} retries=${retryEnters} confirmed=true`
-      );
-      return;
-    }
-    await sendEnterToTmuxSession(sessionName);
-    enterPresses++;
-    retryEnters++;
-  }
-  ctx.counters.nudgeEnterPresses = (ctx.counters.nudgeEnterPresses ?? 0) + enterPresses;
-  ctx.counters.nudgeEnterRetries = (ctx.counters.nudgeEnterRetries ?? 0) + retryEnters;
-  ctx.counters.nudgeSubmitUnconfirmed = (ctx.counters.nudgeSubmitUnconfirmed ?? 0) + 1;
+async function submitManagerNudge(
+  ctx: ManagerCheckContext,
+  sessionName: string,
+  nudgeId: string
+): Promise<void> {
   console.log(
-    chalk.yellow(
-      `  Nudge submit warning: ${sessionName} still shows manager nudge prompt after ${enterPresses} Enter keypress(es)`
+    chalk.gray(
+      `  Nudge ${nudgeId}: double-checking Enter delivery after nudge (verification loop enabled)`
     )
   );
-  verboseLogCtx(
-    ctx,
-    `nudgeSubmit: session=${sessionName} enterPresses=${enterPresses} retries=${retryEnters} confirmed=false`
+  const result = await submitManagerNudgeWithVerification(sessionName, nudgeId);
+  ctx.counters.nudgeEnterPresses = (ctx.counters.nudgeEnterPresses ?? 0) + result.enterPresses;
+  ctx.counters.nudgeEnterRetries = (ctx.counters.nudgeEnterRetries ?? 0) + result.retryEnters;
+  if (!result.confirmed) {
+    ctx.counters.nudgeSubmitUnconfirmed = (ctx.counters.nudgeSubmitUnconfirmed ?? 0) + 1;
+    console.log(
+      chalk.yellow(
+        `  Nudge ${nudgeId}: unable to confirm Enter delivery after ${result.checks} check(s), ${result.enterPresses} Enter keypress(es)`
+      )
+    );
+    return;
+  }
+  console.log(
+    chalk.gray(
+      `  Nudge ${nudgeId}: Enter delivery confirmed after ${result.checks} check(s), ${result.enterPresses} Enter keypress(es)`
+    )
   );
+}
+
+async function sendManagerNudge(
+  ctx: ManagerCheckContext,
+  sessionName: string,
+  message: string
+): Promise<void> {
+  const envelope = createManagerNudgeEnvelope(message);
+  await sendToTmuxSession(sessionName, envelope.text);
+  await submitManagerNudge(ctx, sessionName, envelope.nudgeId);
 }
 
 function getScreenStaticInactivityThresholdMs(config?: HiveConfig): number {
@@ -2055,18 +2049,16 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
               continue;
             }
             const shortReason = completionAssessment.reason.replace(/\s+/g, ' ').trim();
-            await sendToTmuxSession(
+            await sendManagerNudge(
+              ctx,
               session.name,
-              withManagerNudgeEnvelope(
-                `# STALLED OUTPUT DETECTED: your terminal output has not changed for ${formatDuration(staticStatus.unchangedForMs)}.
+              `# STALLED OUTPUT DETECTED: your terminal output has not changed for ${formatDuration(staticStatus.unchangedForMs)}.
 # AI assessment: ${shortReason}
 # Stop repeating status updates. Execute the next concrete step now (tests, then PR submit if done).
 # If complete, run:
 #   hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${storyId} --from ${session.name}
 #   hive my-stories complete ${storyId}`
-              )
             );
-            await submitManagerNudge(ctx, session.name);
             ctx.counters.nudged++;
             actionNotes.push('ai_stall_nudge');
             if (tracked) {
@@ -2211,19 +2203,17 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
   // Phase 2: Send tmux nudges (no lock needed)
   for (const d of dispatched) {
     const githubLine = d.githubPrUrl ? `\n# GitHub: ${d.githubPrUrl}` : '';
-    await sendToTmuxSession(
+    await sendManagerNudge(
+      ctx,
       d.qaName,
-      withManagerNudgeEnvelope(
-        `# You are assigned PR review ${d.prId} (${d.storyId || 'no-story'}).${githubLine}
+      `# You are assigned PR review ${d.prId} (${d.storyId || 'no-story'}).${githubLine}
 # Execute now:
 #   hive pr show ${d.prId}
 #   hive pr approve ${d.prId}
 # (If manual merge is required in this repo, use --no-merge.)
 # or reject:
 #   hive pr reject ${d.prId} -r "reason"`
-      )
     );
-    await submitManagerNudge(ctx, d.qaName);
   }
 
   // Fallback nudge if PRs are still queued but all QA sessions are busy/unavailable.
@@ -2231,11 +2221,11 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
     verboseLogCtx(ctx, 'notifyQAOfQueuedPRs: no idle QA, sent queue nudge fallback');
     const qaSessions = ctx.hiveSessions.filter(s => s.name.includes('-qa-'));
     for (const qa of qaSessions) {
-      await sendToTmuxSession(
+      await sendManagerNudge(
+        ctx,
         qa.name,
-        withManagerNudgeEnvelope(`# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`)
+        `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
       );
-      await submitManagerNudge(ctx, qa.name);
     }
   }
 }
@@ -2308,18 +2298,16 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
           ctx,
           `handleRejectedPRs: notifying ${devSession.name} for pr=${pr.id}, story=${pr.storyId || '-'}`
         );
-        await sendToTmuxSession(
+        await sendManagerNudge(
+          ctx,
           devSession.name,
-          withManagerNudgeEnvelope(
-            `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
+          `# ⚠️ PR REJECTED - ACTION REQUIRED ⚠️
 # Story: ${pr.storyId || 'Unknown'}
 # Reason: ${pr.reviewNotes || 'See review comments'}
 #
 # You MUST fix this issue before doing anything else.
 # Fix the issues and resubmit: hive pr submit -b ${pr.branchName} -s ${pr.storyId || 'STORY-ID'} --from ${devSession.name}`
-          )
         );
-        await submitManagerNudge(ctx, devSession.name);
         rejectionNotified++;
       }
     }
@@ -2378,16 +2366,14 @@ async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
         ctx,
         `nudgeQAFailedStories: story=${candidate.storyId} nudge session=${candidate.sessionName} state=${stateResult.state}`
       );
-      await sendToTmuxSession(
+      await sendManagerNudge(
+        ctx,
         candidate.sessionName,
-        withManagerNudgeEnvelope(
-          `# REMINDER: Story ${candidate.storyId} failed QA review!
+        `# REMINDER: Story ${candidate.storyId} failed QA review!
 # You must fix the issues and resubmit the PR.
 # Check the QA feedback and address all concerns.
 hive pr queue`
-        )
       );
-      await submitManagerNudge(ctx, candidate.sessionName);
     } else {
       verboseLogCtx(
         ctx,
@@ -2709,11 +2695,7 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
         '# Do not stop at a summary. Completion requires the commands above.'
       );
 
-      await sendToTmuxSession(
-        sessionName,
-        withManagerNudgeEnvelope(completionSignalLines.join('\n'))
-      );
-      await submitManagerNudge(ctx, sessionName);
+      await sendManagerNudge(ctx, sessionName, completionSignalLines.join('\n'));
       ctx.counters.nudged++;
       if (trackedState) {
         trackedState.lastNudgeTime = now;
@@ -2733,16 +2715,14 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
       ctx,
       `nudgeStuckStories: story=${story.id} action=stuck_reminder session=${sessionName}`
     );
-    await sendToTmuxSession(
+    await sendManagerNudge(
+      ctx,
       sessionName,
-      withManagerNudgeEnvelope(
-        `# REMINDER: Story ${story.id} has been in progress for a while.
+      `# REMINDER: Story ${story.id} has been in progress for a while.
 # If stuck, escalate to your Senior or Tech Lead.
 # If done, submit your PR: hive pr submit -b $(git rev-parse --abbrev-ref HEAD) -s ${story.id} --from ${sessionName}
 # Then mark complete: hive my-stories complete ${story.id}`
-      )
     );
-    await submitManagerNudge(ctx, sessionName);
     ctx.counters.nudged++;
     if (trackedState) {
       trackedState.lastNudgeTime = now;
@@ -2846,13 +2826,11 @@ async function autoProgressDoneStory(
 
   // Tmux notifications (no lock needed)
   if (action === 'existing_pr') {
-    await sendToTmuxSession(
+    await sendManagerNudge(
+      ctx,
       sessionName,
-      withManagerNudgeEnvelope(
-        `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), detected existing PR, and moved story to PR-submitted state.`
-      )
+      `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), detected existing PR, and moved story to PR-submitted state.`
     );
-    await submitManagerNudge(ctx, sessionName);
     verboseLogCtx(ctx, `autoProgressDoneStory: story=${story.id} action=existing_pr_progressed`);
     return true;
   }
@@ -2861,13 +2839,11 @@ async function autoProgressDoneStory(
     return false;
   }
 
-  await sendToTmuxSession(
+  await sendManagerNudge(
+    ctx,
     sessionName,
-    withManagerNudgeEnvelope(
-      `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), auto-submitted branch ${branch} to merge queue.`
-    )
+    `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), auto-submitted branch ${branch} to merge queue.`
   );
-  await submitManagerNudge(ctx, sessionName);
   return true;
 }
 
@@ -2934,13 +2910,11 @@ async function notifyUnassignedStories(ctx: ManagerCheckContext): Promise<void> 
         ctx,
         `notifyUnassignedStories: nudge ${senior.name} waiting=${stateResult.isWaiting} state=${stateResult.state}`
       );
-      await sendToTmuxSession(
+      await sendManagerNudge(
+        ctx,
         senior.name,
-        withManagerNudgeEnvelope(
-          `# ${plannedCount} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
-        )
+        `# ${plannedCount} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
       );
-      await submitManagerNudge(ctx, senior.name);
     } else {
       verboseLogCtx(
         ctx,

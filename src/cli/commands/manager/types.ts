@@ -31,6 +31,7 @@ export const PROACTIVE_HANDOFF_RETRY_DELAY_MS = 60000;
 /** Marker lines used to tag manager-authored nudges in tmux output */
 export const MANAGER_NUDGE_START_MARKER = '[HIVE_MANAGER_NUDGE_START]';
 export const MANAGER_NUDGE_END_MARKER = '[HIVE_MANAGER_NUDGE_END]';
+export const MANAGER_NUDGE_ID_MARKER = '[HIVE_MANAGER_NUDGE_ID]';
 
 // Agent state tracking for nudge logic
 export interface AgentStateTracking {
