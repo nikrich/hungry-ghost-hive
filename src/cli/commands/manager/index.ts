@@ -1708,7 +1708,9 @@ async function reconcileOpenPRsOnMergedStories(ctx: ManagerCheckContext): Promis
 
   verboseLogCtx(ctx, `reconcileOpenPRsOnMergedStories: closed=${closed.length}`);
   if (closed.length > 0) {
-    console.log(chalk.yellow(`  Closed ${closed.length} stale queue/review PR row(s) for merged stories`));
+    console.log(
+      chalk.yellow(`  Closed ${closed.length} stale queue/review PR row(s) for merged stories`)
+    );
   }
 }
 
@@ -2231,6 +2233,7 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
 #   hive pr reject ${d.prId} -r "reason"`
       )
     );
+    await submitManagerNudge(d.qaName);
   }
 
   // Fallback nudge if PRs are still queued but all QA sessions are busy/unavailable.
@@ -2242,6 +2245,7 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
         qa.name,
         withManagerNudgeEnvelope(`# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`)
       );
+      await submitManagerNudge(qa.name);
     }
   }
 }
@@ -2946,6 +2950,7 @@ async function notifyUnassignedStories(ctx: ManagerCheckContext): Promise<void> 
           `# ${plannedCount} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
         )
       );
+      await submitManagerNudge(senior.name);
     } else {
       verboseLogCtx(
         ctx,
