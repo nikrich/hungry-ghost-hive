@@ -28,13 +28,15 @@ export const addRepoCommand = new Command('add-repo')
         const existingTeam = getTeamByName(db.db, options.team);
         if (existingTeam) {
           spinner.fail(chalk.red(`Team "${options.team}" already exists`));
-          process.exit(1);
+          process.exitCode = 1;
+          return;
         }
 
         // Check if repo path already exists
         if (existsSync(repoPath)) {
           spinner.fail(chalk.red(`Repository path already exists: ${repoPath}`));
-          process.exit(1);
+          process.exitCode = 1;
+          return;
         }
 
         // Add git submodule
@@ -78,7 +80,7 @@ export const addRepoCommand = new Command('add-repo')
       } catch (err) {
         spinner.fail(chalk.red('Failed to add repository'));
         console.error(err);
-        process.exit(1);
+        process.exitCode = 1;
       }
     });
   });

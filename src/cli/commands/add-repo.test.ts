@@ -1,6 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import type { Command } from 'commander';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { execa } from 'execa';
+import { createTeam, getTeamByName } from '../../db/queries/teams.js';
 
 // Mock dependencies
 vi.mock('../../db/queries/teams.js', () => ({
@@ -19,11 +22,47 @@ vi.mock('../../utils/with-hive-context.js', () => ({
   ),
 }));
 
+vi.mock('execa', () => ({
+  execa: vi.fn(),
+}));
+
+vi.mock('fs', () => ({
+  existsSync: vi.fn(() => false),
+}));
+
+vi.mock('ora', () => ({
+  default: vi.fn(() => ({
+    text: '',
+    start() {
+      return this;
+    },
+    fail() {
+      return this;
+    },
+    succeed() {
+      return this;
+    },
+  })),
+}));
+
 import { addRepoCommand } from './add-repo.js';
 
 describe('add-repo command', () => {
+  const resetCommandOptions = (command: Command): void => {
+    for (const option of command.options) {
+      command.setOptionValue(option.attributeName(), undefined);
+    }
+  };
+
+  const run = async (...args: string[]): Promise<void> => {
+    await addRepoCommand.parseAsync(args, { from: 'user' });
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    resetCommandOptions(addRepoCommand);
+    process.exitCode = undefined;
+    vi.mocked(getTeamByName).mockReturnValue(undefined);
   });
 
   describe('command structure', () => {
@@ -51,5 +90,36 @@ describe('add-repo command', () => {
       const branchOpt = addRepoCommand.options.find(opt => opt.long === '--branch');
       expect(branchOpt).toBeDefined();
     });
+  });
+
+  it('sets exitCode instead of calling process.exit when team already exists', async () => {
+    vi.mocked(getTeamByName).mockReturnValue({
+      id: 'team-existing',
+      name: 'test-team',
+    } as ReturnType<typeof getTeamByName>);
+    const exitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined as never) as typeof process.exit);
+
+    await run('--url', 'https://github.com/test/repo.git', '--team', 'test-team');
+
+    expect(process.exitCode).toBe(1);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(execa).not.toHaveBeenCalled();
+    expect(createTeam).not.toHaveBeenCalled();
+  });
+
+  it('sets exitCode instead of calling process.exit on unexpected failure', async () => {
+    vi.mocked(execa).mockRejectedValue(new Error('git failed'));
+    const exitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined as never) as typeof process.exit);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await run('--url', 'https://github.com/test/repo.git', '--team', 'test-team');
+
+    expect(process.exitCode).toBe(1);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalled();
   });
 });
