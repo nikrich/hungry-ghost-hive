@@ -1,8 +1,20 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentState } from '../../../state-detectors/types.js';
-import { detectAgentState } from './agent-monitoring.js';
+import {
+  detectAgentState,
+  submitManagerNudgeWithVerification,
+} from './agent-monitoring.js';
+
+vi.mock('../../../tmux/manager.js', () => ({
+  autoApprovePermission: vi.fn(),
+  captureTmuxPane: vi.fn(),
+  forceBypassMode: vi.fn(),
+  sendEnterToTmuxSession: vi.fn(),
+  sendMessageWithConfirmation: vi.fn(),
+  sendToTmuxSession: vi.fn(),
+}));
 
 const INTERRUPTION_BANNER = `■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit \`/feedback\` to report the issue.`;
 const RATE_LIMIT_BANNER =
@@ -16,8 +28,15 @@ const INTERACTIVE_PROMPT_WITH_PASTE = '› [Pasted Content 1203 chars]\n\n  16% 
 const INTERACTIVE_QUESTION_PROMPT = '› Should I submit this PR now?\n\n  12% context left';
 const INTERACTIVE_PROMPT_WITH_MODEL_METER =
   '› Explain this codebase\n\n  gpt-5.2-codex xhigh · 99% left';
+const START_MARKER = '[HIVE_MANAGER_NUDGE_START]';
+const ID_MARKER = '[HIVE_MANAGER_NUDGE_ID]';
+const END_MARKER = '[HIVE_MANAGER_NUDGE_END]';
 
 describe('detectAgentState interruption fallback', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('treats interruption banner as blocked for codex sessions', () => {
     const result = detectAgentState(INTERRUPTION_BANNER, 'codex');
 
@@ -137,5 +156,75 @@ describe('detectAgentState interruption fallback', () => {
     expect(result.state).toBe(AgentState.ASKING_QUESTION);
     expect(result.isWaiting).toBe(true);
     expect(result.needsHuman).toBe(true);
+  });
+});
+
+describe('submitManagerNudgeWithVerification', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('confirms when the latest prompt block no longer contains current nudge id', async () => {
+    const { captureTmuxPane, sendEnterToTmuxSession } = await import('../../../tmux/manager.js');
+    const nudgeId = 'nudge-123';
+    const paneOutput = `› # ${START_MARKER} ${nudgeId}
+  # ${ID_MARKER} ${nudgeId}
+  # ${END_MARKER} ${nudgeId}
+› Explain this codebase`;
+    vi.mocked(captureTmuxPane).mockResolvedValue(paneOutput);
+
+    const result = await submitManagerNudgeWithVerification('hive-agent-1', nudgeId, {
+      maxChecks: 1,
+      checkIntervalMs: 10,
+    });
+
+    expect(result.confirmed).toBe(true);
+    expect(result.enterPresses).toBe(0);
+    expect(result.retryEnters).toBe(0);
+    expect(sendEnterToTmuxSession).not.toHaveBeenCalled();
+  });
+
+  it('retries Enter when latest prompt block still contains nudge id', async () => {
+    const { captureTmuxPane, sendEnterToTmuxSession } = await import('../../../tmux/manager.js');
+    const nudgeId = 'nudge-456';
+    const pendingOutput = `› # ${START_MARKER} ${nudgeId}
+  # ${ID_MARKER} ${nudgeId}
+  # ${END_MARKER} ${nudgeId}`;
+    const resolvedOutput = '› Summarize recent commits';
+    vi.mocked(captureTmuxPane)
+      .mockResolvedValueOnce(pendingOutput)
+      .mockResolvedValueOnce(resolvedOutput);
+
+    const result = await submitManagerNudgeWithVerification('hive-agent-2', nudgeId, {
+      maxChecks: 2,
+      checkIntervalMs: 10,
+    });
+
+    expect(result.confirmed).toBe(true);
+    expect(result.checks).toBe(2);
+    expect(result.enterPresses).toBe(1);
+    expect(result.retryEnters).toBe(1);
+    expect(sendEnterToTmuxSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('caps Enter retries while waiting for confirmation', async () => {
+    const { captureTmuxPane, sendEnterToTmuxSession } = await import('../../../tmux/manager.js');
+    const nudgeId = 'nudge-789';
+    const pendingOutput = `› # ${START_MARKER} ${nudgeId}
+  # ${ID_MARKER} ${nudgeId}
+  # ${END_MARKER} ${nudgeId}`;
+    vi.mocked(captureTmuxPane).mockResolvedValue(pendingOutput);
+
+    const result = await submitManagerNudgeWithVerification('hive-agent-3', nudgeId, {
+      maxChecks: 20,
+      checkIntervalMs: 10,
+      maxEnterPresses: 3,
+    });
+
+    expect(result.confirmed).toBe(false);
+    expect(result.checks).toBe(20);
+    expect(result.enterPresses).toBe(3);
+    expect(result.retryEnters).toBe(3);
+    expect(sendEnterToTmuxSession).toHaveBeenCalledTimes(3);
   });
 });

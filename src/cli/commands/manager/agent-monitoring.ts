@@ -85,6 +85,7 @@ const STATE_DETECTOR_WINDOW_LINES = 120;
 const NUDGE_CONFIRMATION_CAPTURE_LINES = 50;
 const NUDGE_CONFIRMATION_CHECK_INTERVAL_MS = 100;
 const NUDGE_CONFIRMATION_MAX_CHECKS = 300;
+const NUDGE_CONFIRMATION_MAX_ENTER_PRESSES = 6;
 
 function getRecentPaneOutput(output: string | null | undefined, lineCount: number): string {
   const safeOutput = typeof output === 'string' ? output : '';
@@ -93,6 +94,17 @@ function getRecentPaneOutput(output: string | null | undefined, lineCount: numbe
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getLatestPromptBlock(output: string, lineCount: number): string {
+  const tail = getRecentPaneOutput(output, lineCount);
+  const lines = tail.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^\s*(?:›|>)\s*/.test(lines[i])) {
+      return lines.slice(i).join('\n');
+    }
+  }
+  return '';
 }
 
 export function isInterruptionPrompt(output: string): boolean {
@@ -331,19 +343,16 @@ export function withManagerNudgeEnvelope(message: string): string {
 }
 
 function hasPendingManagerNudgeAtPrompt(output: string, nudgeId: string): boolean {
-  const tail = getRecentPaneOutput(output, NUDGE_CONFIRMATION_CAPTURE_LINES);
+  const latestPromptBlock = getLatestPromptBlock(output, NUDGE_CONFIRMATION_CAPTURE_LINES);
+  if (!latestPromptBlock) {
+    return false;
+  }
   const escapedId = escapeRegExp(nudgeId);
   const escapedStart = escapeRegExp(MANAGER_NUDGE_START_MARKER);
   const escapedIdMarker = escapeRegExp(MANAGER_NUDGE_ID_MARKER);
-  const startPattern = new RegExp(
-    `(?:^|\\n)\\s*(?:›|>)\\s*#\\s*${escapedStart}\\s+${escapedId}(?:\\s|$)`,
-    'm'
-  );
-  const idPattern = new RegExp(
-    `(?:^|\\n)\\s*(?:›|>)\\s*#\\s*${escapedIdMarker}\\s+${escapedId}(?:\\s|$)`,
-    'm'
-  );
-  return startPattern.test(tail) || idPattern.test(tail);
+  const startPattern = new RegExp(`#\\s*${escapedStart}\\s+${escapedId}(?:\\s|$)`, 'm');
+  const idPattern = new RegExp(`#\\s*${escapedIdMarker}\\s+${escapedId}(?:\\s|$)`, 'm');
+  return startPattern.test(latestPromptBlock) || idPattern.test(latestPromptBlock);
 }
 
 export async function submitManagerNudgeWithVerification(
@@ -352,6 +361,7 @@ export async function submitManagerNudgeWithVerification(
   options?: {
     maxChecks?: number;
     checkIntervalMs?: number;
+    maxEnterPresses?: number;
   }
 ): Promise<ManagerNudgeSubmitResult> {
   const maxChecks = Math.max(1, options?.maxChecks ?? NUDGE_CONFIRMATION_MAX_CHECKS);
@@ -359,11 +369,9 @@ export async function submitManagerNudgeWithVerification(
     10,
     options?.checkIntervalMs ?? NUDGE_CONFIRMATION_CHECK_INTERVAL_MS
   );
-  let enterPresses = 1;
+  const maxEnterPresses = Math.max(0, options?.maxEnterPresses ?? NUDGE_CONFIRMATION_MAX_ENTER_PRESSES);
+  let enterPresses = 0;
   let retryEnters = 0;
-
-  // First Enter is the normal submit path.
-  await sendEnterToTmuxSession(sessionName);
 
   for (let check = 1; check <= maxChecks; check++) {
     await new Promise(resolve => setTimeout(resolve, checkIntervalMs));
@@ -377,9 +385,11 @@ export async function submitManagerNudgeWithVerification(
         confirmed: true,
       };
     }
-    await sendEnterToTmuxSession(sessionName);
-    enterPresses++;
-    retryEnters++;
+    if (enterPresses < maxEnterPresses) {
+      await sendEnterToTmuxSession(sessionName);
+      enterPresses++;
+      retryEnters++;
+    }
   }
 
   return {
