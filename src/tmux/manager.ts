@@ -37,6 +37,10 @@ const DEFAULT_APPROVE_MAX_RETRIES = 3;
 const POST_APPROVAL_DELAY_MS = 500;
 /** Default manager check interval in seconds */
 const DEFAULT_MANAGER_INTERVAL = 60;
+/** Max initial prompt bytes to inline as a single CLI argument */
+const MAX_INLINE_PROMPT_BYTES = 100_000;
+/** Max wait in ms before pasting oversized initial prompts into a session */
+const LARGE_PROMPT_READY_WAIT_MS = 10000;
 
 export interface TmuxSessionOptions {
   sessionName: string;
@@ -188,6 +192,24 @@ export function buildShellCommand(commandArgs: string[], promptFile?: string): s
   return `${escapedCommand} -- "$(cat ${shellEscapeArg(promptFile)})"`;
 }
 
+export function shouldInlineInitialPrompt(initialPrompt: string): boolean {
+  return Buffer.byteLength(initialPrompt, 'utf-8') <= MAX_INLINE_PROMPT_BYTES;
+}
+
+async function pasteFileIntoTmuxSession(sessionName: string, filePath: string): Promise<void> {
+  const bufferName = `hive-initial-prompt-${sanitizeSessionNameForFilename(sessionName)}-${Date.now()}`;
+  await execa('tmux', ['load-buffer', '-b', bufferName, filePath]);
+  try {
+    await execa('tmux', ['paste-buffer', '-b', bufferName, '-t', sessionName]);
+  } finally {
+    try {
+      await execa('tmux', ['delete-buffer', '-b', bufferName]);
+    } catch (_error) {
+      // Best-effort cleanup only; failure to delete buffer should not fail session startup.
+    }
+  }
+}
+
 export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<void> {
   const { sessionName, workDir, commandArgs, initialPrompt, env } = options;
 
@@ -211,19 +233,27 @@ export async function spawnTmuxSession(options: TmuxSessionOptions): Promise<voi
   // Send the command to the session
   if (commandArgs.length > 0) {
     let promptFile: string | undefined;
+    let inlineInitialPrompt = false;
 
     if (initialPrompt) {
-      // Write the prompt to a temp file and pass it as a single positional argument.
-      // The generated command line is shell-escaped to prevent argument injection.
+      // Write prompt to a temp file once. Small prompts are passed as a positional arg,
+      // while oversized prompts are pasted into the CLI after startup to avoid argv limits.
       const promptDir = join(tmpdir(), 'hive-prompts');
       mkdirSync(promptDir, { recursive: true });
       const safeSessionName = sanitizeSessionNameForFilename(sessionName);
       promptFile = join(promptDir, `${safeSessionName}-${Date.now()}.md`);
       writeFileSync(promptFile, initialPrompt, 'utf-8');
+      inlineInitialPrompt = shouldInlineInitialPrompt(initialPrompt);
     }
 
-    const fullCommand = buildShellCommand(commandArgs, promptFile);
+    const fullCommand = buildShellCommand(commandArgs, inlineInitialPrompt ? promptFile : undefined);
     await execa('tmux', ['send-keys', '-t', sessionName, fullCommand, 'Enter']);
+
+    if (promptFile && !inlineInitialPrompt) {
+      await waitForTmuxSessionReady(sessionName, LARGE_PROMPT_READY_WAIT_MS);
+      await pasteFileIntoTmuxSession(sessionName, promptFile);
+      await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
+    }
   }
 }
 
@@ -269,10 +299,8 @@ export async function sendToTmuxSession(
   // For single-line text, use send-keys with literal flag then Enter separately.
   // '--' signals end of options, preventing text starting with '-' from being parsed as flags.
   //
-  // NOTE: Multi-line initial prompts should be passed via spawnTmuxSession's
-  // initialPrompt option, which writes to a temp file and uses $(cat ...) to
-  // deliver the prompt as a CLI positional argument. This function is only for
-  // single-line runtime messages (nudges, commands, etc).
+  // NOTE: This helper is for runtime one-line messages. Initial prompts are
+  // handled by spawnTmuxSession (either as CLI arg or tmux paste fallback).
   await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', text]);
   // Send Enter as a key event (C-m = carriage return = Enter) to ensure prompt receives it
   await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);

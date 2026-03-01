@@ -226,9 +226,9 @@ export const reqCommand = new Command('req')
               techLeadSafetyMode
             );
 
-            // Pass the prompt as initialPrompt so it's included as a CLI positional
-            // argument via $(cat ...). This delivers the full multi-line prompt
-            // reliably without tmux send-keys newline issues.
+            // Pass initialPrompt so tmux/session startup can deliver it either as
+            // a CLI positional argument (small prompts) or via paste fallback
+            // (oversized prompts that would exceed argv limits).
             await spawnTmuxSession({
               sessionName,
               workDir: root,

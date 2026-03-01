@@ -101,4 +101,21 @@ describe('tmux shell command hardening', () => {
       process.argv[1] = originalArgv1;
     }
   });
+
+  it('shouldInlineInitialPrompt should allow small prompts', async () => {
+    const { shouldInlineInitialPrompt } = await import('./manager.js');
+    expect(shouldInlineInitialPrompt('small prompt')).toBe(true);
+  });
+
+  it('shouldInlineInitialPrompt should reject oversized prompts', async () => {
+    const { shouldInlineInitialPrompt } = await import('./manager.js');
+    const oversizedPrompt = 'a'.repeat(100001);
+    expect(shouldInlineInitialPrompt(oversizedPrompt)).toBe(false);
+  });
+
+  it('shouldInlineInitialPrompt should use UTF-8 byte length', async () => {
+    const { shouldInlineInitialPrompt } = await import('./manager.js');
+    const oversizedUtf8Prompt = 'é'.repeat(50001); // 100002 bytes in UTF-8
+    expect(shouldInlineInitialPrompt(oversizedUtf8Prompt)).toBe(false);
+  });
 });
