@@ -9,7 +9,7 @@ import { createEscalation } from '../../../db/queries/escalations.js';
 import { createLog } from '../../../db/queries/logs.js';
 import { updateRequirement } from '../../../db/queries/requirements.js';
 import { getStoriesByStatus, updateStory } from '../../../db/queries/stories.js';
-import { isTmuxSessionRunning } from '../../../tmux/manager.js';
+import { isTmuxSessionRunning, sendEnterToTmuxSession } from '../../../tmux/manager.js';
 import { nudgeAgent, type CLITool } from './agent-monitoring.js';
 import type { ManagerCheckContext, PlanningHandoffTracking } from './types.js';
 import { PROACTIVE_HANDOFF_RETRY_DELAY_MS } from './types.js';
@@ -109,6 +109,8 @@ async function nudgeTechLeadForStalledHandoff(
     undefined,
     techLeadInfo.cliTool
   );
+  await sendEnterToTmuxSession(techLeadInfo.sessionName);
+  ctx.counters.nudgeEnterPresses = (ctx.counters.nudgeEnterPresses ?? 0) + 1;
   verboseLog(
     ctx,
     `handoff: nudged tech-lead session=${techLeadInfo.sessionName} requirement=${requirementLabel} estimated=${estimatedCount}`

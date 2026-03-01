@@ -183,6 +183,7 @@ export async function handleEscalationAndNudge(
       )
     );
     await sendEnterToTmuxSession(sessionName);
+    ctx.counters.nudgeEnterPresses = (ctx.counters.nudgeEnterPresses ?? 0) + 1;
     rateLimitRecoveryAttempts.set(sessionName, attempts + 1);
     ctx.counters.nudged++;
 
@@ -272,6 +273,7 @@ export async function handleEscalationAndNudge(
         : buildInterruptionRecoveryPrompt(sessionName, agent?.current_story_id);
     await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(prompt));
     await sendEnterToTmuxSession(sessionName);
+    ctx.counters.nudgeEnterPresses = (ctx.counters.nudgeEnterPresses ?? 0) + 1;
     interruptionRecoveryAttempts.set(sessionName, attempts + 1);
     ctx.counters.nudged++;
 

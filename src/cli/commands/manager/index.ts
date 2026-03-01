@@ -275,7 +275,9 @@ function hasPendingNudgeInputAtPrompt(output: string): boolean {
   return /(?:^|\n)\s*(?:›|>)\s*#\s*\[HIVE_MANAGER_NUDGE_START\]/m.test(tail);
 }
 
-async function submitManagerNudge(sessionName: string): Promise<void> {
+async function submitManagerNudge(ctx: ManagerCheckContext, sessionName: string): Promise<void> {
+  let enterPresses = 1;
+  let retryEnters = 0;
   // First Enter is the normal submit path.
   await sendEnterToTmuxSession(sessionName);
 
@@ -285,10 +287,30 @@ async function submitManagerNudge(sessionName: string): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, POST_NUDGE_DELAY_MS));
     const output = await captureTmuxPane(sessionName, TMUX_CAPTURE_LINES_SHORT);
     if (!hasPendingNudgeInputAtPrompt(output)) {
+      ctx.counters.nudgeEnterPresses = (ctx.counters.nudgeEnterPresses ?? 0) + enterPresses;
+      ctx.counters.nudgeEnterRetries = (ctx.counters.nudgeEnterRetries ?? 0) + retryEnters;
+      verboseLogCtx(
+        ctx,
+        `nudgeSubmit: session=${sessionName} enterPresses=${enterPresses} retries=${retryEnters} confirmed=true`
+      );
       return;
     }
     await sendEnterToTmuxSession(sessionName);
+    enterPresses++;
+    retryEnters++;
   }
+  ctx.counters.nudgeEnterPresses = (ctx.counters.nudgeEnterPresses ?? 0) + enterPresses;
+  ctx.counters.nudgeEnterRetries = (ctx.counters.nudgeEnterRetries ?? 0) + retryEnters;
+  ctx.counters.nudgeSubmitUnconfirmed = (ctx.counters.nudgeSubmitUnconfirmed ?? 0) + 1;
+  console.log(
+    chalk.yellow(
+      `  Nudge submit warning: ${sessionName} still shows manager nudge prompt after ${enterPresses} Enter keypress(es)`
+    )
+  );
+  verboseLogCtx(
+    ctx,
+    `nudgeSubmit: session=${sessionName} enterPresses=${enterPresses} retries=${retryEnters} confirmed=false`
+  );
 }
 
 function getScreenStaticInactivityThresholdMs(config?: HiveConfig): number {
@@ -892,6 +914,9 @@ async function managerCheck(
     hiveSessions: [],
     counters: {
       nudged: 0,
+      nudgeEnterPresses: 0,
+      nudgeEnterRetries: 0,
+      nudgeSubmitUnconfirmed: 0,
       autoProgressed: 0,
       messagesForwarded: 0,
       escalationsCreated: 0,
@@ -2041,7 +2066,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 #   hive my-stories complete ${storyId}`
               )
             );
-            await submitManagerNudge(session.name);
+            await submitManagerNudge(ctx, session.name);
             ctx.counters.nudged++;
             actionNotes.push('ai_stall_nudge');
             if (tracked) {
@@ -2198,7 +2223,7 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
 #   hive pr reject ${d.prId} -r "reason"`
       )
     );
-    await submitManagerNudge(d.qaName);
+    await submitManagerNudge(ctx, d.qaName);
   }
 
   // Fallback nudge if PRs are still queued but all QA sessions are busy/unavailable.
@@ -2210,7 +2235,7 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
         qa.name,
         withManagerNudgeEnvelope(`# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`)
       );
-      await submitManagerNudge(qa.name);
+      await submitManagerNudge(ctx, qa.name);
     }
   }
 }
@@ -2294,7 +2319,7 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
 # Fix the issues and resubmit: hive pr submit -b ${pr.branchName} -s ${pr.storyId || 'STORY-ID'} --from ${devSession.name}`
           )
         );
-        await submitManagerNudge(devSession.name);
+        await submitManagerNudge(ctx, devSession.name);
         rejectionNotified++;
       }
     }
@@ -2362,7 +2387,7 @@ async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
 hive pr queue`
         )
       );
-      await submitManagerNudge(candidate.sessionName);
+      await submitManagerNudge(ctx, candidate.sessionName);
     } else {
       verboseLogCtx(
         ctx,
@@ -2688,7 +2713,7 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
         sessionName,
         withManagerNudgeEnvelope(completionSignalLines.join('\n'))
       );
-      await submitManagerNudge(sessionName);
+      await submitManagerNudge(ctx, sessionName);
       ctx.counters.nudged++;
       if (trackedState) {
         trackedState.lastNudgeTime = now;
@@ -2717,7 +2742,7 @@ async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void> {
 # Then mark complete: hive my-stories complete ${story.id}`
       )
     );
-    await submitManagerNudge(sessionName);
+    await submitManagerNudge(ctx, sessionName);
     ctx.counters.nudged++;
     if (trackedState) {
       trackedState.lastNudgeTime = now;
@@ -2827,7 +2852,7 @@ async function autoProgressDoneStory(
         `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), detected existing PR, and moved story to PR-submitted state.`
       )
     );
-    await submitManagerNudge(sessionName);
+    await submitManagerNudge(ctx, sessionName);
     verboseLogCtx(ctx, `autoProgressDoneStory: story=${story.id} action=existing_pr_progressed`);
     return true;
   }
@@ -2842,7 +2867,7 @@ async function autoProgressDoneStory(
       `# AUTO-PROGRESS: Manager inferred ${story.id} is complete (confidence ${confidence.toFixed(2)}), auto-submitted branch ${branch} to merge queue.`
     )
   );
-  await submitManagerNudge(sessionName);
+  await submitManagerNudge(ctx, sessionName);
   return true;
 }
 
@@ -2915,7 +2940,7 @@ async function notifyUnassignedStories(ctx: ManagerCheckContext): Promise<void> 
           `# ${plannedCount} unassigned story(ies). Run: hive my-stories ${senior.name} --all`
         )
       );
-      await submitManagerNudge(senior.name);
+      await submitManagerNudge(ctx, senior.name);
     } else {
       verboseLogCtx(
         ctx,
@@ -3060,6 +3085,9 @@ async function printSummary(ctx: ManagerCheckContext): Promise<void> {
     escalationsCreated,
     escalationsResolved,
     nudged,
+    nudgeEnterPresses,
+    nudgeEnterRetries,
+    nudgeSubmitUnconfirmed,
     autoProgressed,
     messagesForwarded,
     queuedPRCount,
@@ -3075,6 +3103,16 @@ async function printSummary(ctx: ManagerCheckContext): Promise<void> {
   if (escalationsCreated > 0) summary.push(`${escalationsCreated} escalations created`);
   if (escalationsResolved > 0) summary.push(`${escalationsResolved} escalations auto-resolved`);
   if (nudged > 0) summary.push(`${nudged} nudged`);
+  if (nudgeEnterPresses > 0) {
+    const retrySuffix = nudgeEnterRetries > 0 ? `, ${nudgeEnterRetries} retry Enter` : '';
+    const confirmationSuffix =
+      nudgeSubmitUnconfirmed > 0
+        ? `, ${nudgeSubmitUnconfirmed} unconfirmed submit(s)`
+        : ', all submits confirmed';
+    summary.push(
+      `nudge Enter proof: ${nudgeEnterPresses} keypress(es) after nudge${retrySuffix}${confirmationSuffix}`
+    );
+  }
   if (autoProgressed > 0) summary.push(`${autoProgressed} auto-progressed`);
   if (messagesForwarded > 0) summary.push(`${messagesForwarded} messages forwarded`);
   if (queuedPRCount > 0) summary.push(`${queuedPRCount} PRs queued`);
