@@ -73,6 +73,9 @@ function makeCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheckCont
     hiveSessions: [],
     counters: {
       nudged: 0,
+      nudgeEnterPresses: 0,
+      nudgeEnterRetries: 0,
+      nudgeSubmitUnconfirmed: 0,
       autoProgressed: 0,
       messagesForwarded: 0,
       escalationsCreated: 0,

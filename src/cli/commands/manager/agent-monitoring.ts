@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import chalk from 'chalk';
+import { randomUUID } from 'crypto';
 import type { HiveConfig } from '../../../config/schema.js';
 import type { getAllAgents } from '../../../db/queries/agents.js';
 import { createLog } from '../../../db/queries/logs.js';
@@ -23,9 +24,9 @@ import type { AgentStateTracking, ManagerCheckContext, MessageRow } from './type
 import {
   BYPASS_MODE_MAX_RETRIES,
   MANAGER_NUDGE_END_MARKER,
+  MANAGER_NUDGE_ID_MARKER,
   MANAGER_NUDGE_START_MARKER,
   MESSAGE_FORWARD_DELAY_MS,
-  POST_NUDGE_DELAY_MS,
 } from './types.js';
 
 // In-memory state tracking per agent session
@@ -81,9 +82,17 @@ const RATE_LIMIT_WINDOW_LINES = 120;
 const INTERACTIVE_PROMPT_WINDOW_LINES = 80;
 const INTERRUPTION_WINDOW_LINES = 80;
 const STATE_DETECTOR_WINDOW_LINES = 120;
+const NUDGE_CONFIRMATION_CAPTURE_LINES = 50;
+const NUDGE_CONFIRMATION_CHECK_INTERVAL_MS = 100;
+const NUDGE_CONFIRMATION_MAX_CHECKS = 300;
 
-function getRecentPaneOutput(output: string, lineCount: number): string {
-  return output.split('\n').slice(-lineCount).join('\n');
+function getRecentPaneOutput(output: string | null | undefined, lineCount: number): string {
+  const safeOutput = typeof output === 'string' ? output : '';
+  return safeOutput.split('\n').slice(-lineCount).join('\n');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function isInterruptionPrompt(output: string): boolean {
@@ -291,10 +300,95 @@ export function getAgentType(
   return 'unknown';
 }
 
-export function withManagerNudgeEnvelope(message: string): string {
-  return `# ${MANAGER_NUDGE_START_MARKER}
+export interface ManagerNudgeEnvelope {
+  nudgeId: string;
+  text: string;
+}
+
+export interface ManagerNudgeSubmitResult {
+  nudgeId: string;
+  enterPresses: number;
+  retryEnters: number;
+  checks: number;
+  confirmed: boolean;
+}
+
+export function createManagerNudgeEnvelope(
+  message: string,
+  nudgeId = randomUUID()
+): ManagerNudgeEnvelope {
+  return {
+    nudgeId,
+    text: `# ${MANAGER_NUDGE_START_MARKER} ${nudgeId}
+# ${MANAGER_NUDGE_ID_MARKER} ${nudgeId}
 ${message}
-# ${MANAGER_NUDGE_END_MARKER}`;
+# ${MANAGER_NUDGE_END_MARKER} ${nudgeId}`,
+  };
+}
+
+export function withManagerNudgeEnvelope(message: string): string {
+  return createManagerNudgeEnvelope(message).text;
+}
+
+function hasPendingManagerNudgeAtPrompt(output: string, nudgeId: string): boolean {
+  const tail = getRecentPaneOutput(output, NUDGE_CONFIRMATION_CAPTURE_LINES);
+  const escapedId = escapeRegExp(nudgeId);
+  const escapedStart = escapeRegExp(MANAGER_NUDGE_START_MARKER);
+  const escapedIdMarker = escapeRegExp(MANAGER_NUDGE_ID_MARKER);
+  const startPattern = new RegExp(
+    `(?:^|\\n)\\s*(?:›|>)\\s*#\\s*${escapedStart}\\s+${escapedId}(?:\\s|$)`,
+    'm'
+  );
+  const idPattern = new RegExp(
+    `(?:^|\\n)\\s*(?:›|>)\\s*#\\s*${escapedIdMarker}\\s+${escapedId}(?:\\s|$)`,
+    'm'
+  );
+  return startPattern.test(tail) || idPattern.test(tail);
+}
+
+export async function submitManagerNudgeWithVerification(
+  sessionName: string,
+  nudgeId: string,
+  options?: {
+    maxChecks?: number;
+    checkIntervalMs?: number;
+  }
+): Promise<ManagerNudgeSubmitResult> {
+  const maxChecks = Math.max(1, options?.maxChecks ?? NUDGE_CONFIRMATION_MAX_CHECKS);
+  const checkIntervalMs = Math.max(
+    10,
+    options?.checkIntervalMs ?? NUDGE_CONFIRMATION_CHECK_INTERVAL_MS
+  );
+  let enterPresses = 1;
+  let retryEnters = 0;
+
+  // First Enter is the normal submit path.
+  await sendEnterToTmuxSession(sessionName);
+
+  for (let check = 1; check <= maxChecks; check++) {
+    await new Promise(resolve => setTimeout(resolve, checkIntervalMs));
+    const output = await captureTmuxPane(sessionName, NUDGE_CONFIRMATION_CAPTURE_LINES);
+    if (!hasPendingManagerNudgeAtPrompt(output, nudgeId)) {
+      return {
+        nudgeId,
+        enterPresses,
+        retryEnters,
+        checks: check,
+        confirmed: true,
+      };
+    }
+    await sendEnterToTmuxSession(sessionName);
+    enterPresses++;
+    retryEnters++;
+  }
+
+  return {
+    nudgeId,
+    enterPresses,
+    retryEnters,
+    checks: maxChecks,
+    confirmed: false,
+  };
 }
 
 export async function nudgeAgent(
@@ -306,7 +400,27 @@ export async function nudgeAgent(
   agentCliTool?: CLITool
 ): Promise<void> {
   if (customMessage) {
-    await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(customMessage));
+    const nudge = createManagerNudgeEnvelope(customMessage);
+    await sendToTmuxSession(sessionName, nudge.text);
+    console.log(
+      chalk.gray(
+        `  Nudge ${nudge.nudgeId}: double-checking Enter delivery after nudge (verification loop enabled)`
+      )
+    );
+    const submitResult = await submitManagerNudgeWithVerification(sessionName, nudge.nudgeId);
+    if (submitResult.confirmed) {
+      console.log(
+        chalk.gray(
+          `  Nudge ${nudge.nudgeId}: Enter delivery confirmed after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
+        )
+      );
+    } else {
+      console.log(
+        chalk.yellow(
+          `  Nudge ${nudge.nudgeId}: unable to confirm Enter delivery after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
+        )
+      );
+    }
     return;
   }
 
@@ -344,11 +458,27 @@ hive status`;
     nudge = `# Manager detected: ${reason}\n${nudge}`;
   }
 
-  await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(nudge));
-
-  // Also send Enter to ensure prompt is activated
-  await new Promise(resolve => setTimeout(resolve, POST_NUDGE_DELAY_MS));
-  await sendEnterToTmuxSession(sessionName);
+  const envelope = createManagerNudgeEnvelope(nudge);
+  await sendToTmuxSession(sessionName, envelope.text);
+  console.log(
+    chalk.gray(
+      `  Nudge ${envelope.nudgeId}: double-checking Enter delivery after nudge (verification loop enabled)`
+    )
+  );
+  const submitResult = await submitManagerNudgeWithVerification(sessionName, envelope.nudgeId);
+  if (submitResult.confirmed) {
+    console.log(
+      chalk.gray(
+        `  Nudge ${envelope.nudgeId}: Enter delivery confirmed after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
+      )
+    );
+  } else {
+    console.log(
+      chalk.yellow(
+        `  Nudge ${envelope.nudgeId}: unable to confirm Enter delivery after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
+      )
+    );
+  }
 }
 
 export async function forwardMessages(

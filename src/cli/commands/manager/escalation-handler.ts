@@ -9,15 +9,16 @@ import {
   updateEscalation,
 } from '../../../db/queries/escalations.js';
 import { createLog } from '../../../db/queries/logs.js';
-import { killTmuxSession, sendEnterToTmuxSession } from '../../../tmux/manager.js';
+import { killTmuxSession } from '../../../tmux/manager.js';
 import {
   AgentState,
   agentStates,
   buildAutoRecoveryReminder,
+  createManagerNudgeEnvelope,
   describeAgentState,
   isRateLimitPrompt,
   sendToTmuxSession,
-  withManagerNudgeEnvelope,
+  submitManagerNudgeWithVerification,
   type CLITool,
 } from './agent-monitoring.js';
 import type { ManagerCheckContext } from './types.js';
@@ -176,13 +177,34 @@ export async function handleEscalationAndNudge(
       return;
     }
 
-    await sendToTmuxSession(
-      sessionName,
-      withManagerNudgeEnvelope(
-        buildRateLimitRecoveryPrompt(sessionName, backoffMs, agent?.current_story_id)
+    const nudge = createManagerNudgeEnvelope(
+      buildRateLimitRecoveryPrompt(sessionName, backoffMs, agent?.current_story_id)
+    );
+    await sendToTmuxSession(sessionName, nudge.text);
+    console.log(
+      chalk.gray(
+        `  Nudge ${nudge.nudgeId}: double-checking Enter delivery after nudge (verification loop enabled)`
       )
     );
-    await sendEnterToTmuxSession(sessionName);
+    const submitResult = await submitManagerNudgeWithVerification(sessionName, nudge.nudgeId);
+    ctx.counters.nudgeEnterPresses =
+      (ctx.counters.nudgeEnterPresses ?? 0) + submitResult.enterPresses;
+    ctx.counters.nudgeEnterRetries =
+      (ctx.counters.nudgeEnterRetries ?? 0) + submitResult.retryEnters;
+    if (!submitResult.confirmed) {
+      ctx.counters.nudgeSubmitUnconfirmed = (ctx.counters.nudgeSubmitUnconfirmed ?? 0) + 1;
+      console.log(
+        chalk.yellow(
+          `  Nudge ${nudge.nudgeId}: unable to confirm Enter delivery after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
+        )
+      );
+    } else {
+      console.log(
+        chalk.gray(
+          `  Nudge ${nudge.nudgeId}: Enter delivery confirmed after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
+        )
+      );
+    }
     rateLimitRecoveryAttempts.set(sessionName, attempts + 1);
     ctx.counters.nudged++;
 
@@ -270,8 +292,32 @@ export async function handleEscalationAndNudge(
       attempts === 0
         ? INTERRUPTION_FIRST_RECOVERY_COMMAND
         : buildInterruptionRecoveryPrompt(sessionName, agent?.current_story_id);
-    await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(prompt));
-    await sendEnterToTmuxSession(sessionName);
+    const nudge = createManagerNudgeEnvelope(prompt);
+    await sendToTmuxSession(sessionName, nudge.text);
+    console.log(
+      chalk.gray(
+        `  Nudge ${nudge.nudgeId}: double-checking Enter delivery after nudge (verification loop enabled)`
+      )
+    );
+    const submitResult = await submitManagerNudgeWithVerification(sessionName, nudge.nudgeId);
+    ctx.counters.nudgeEnterPresses =
+      (ctx.counters.nudgeEnterPresses ?? 0) + submitResult.enterPresses;
+    ctx.counters.nudgeEnterRetries =
+      (ctx.counters.nudgeEnterRetries ?? 0) + submitResult.retryEnters;
+    if (!submitResult.confirmed) {
+      ctx.counters.nudgeSubmitUnconfirmed = (ctx.counters.nudgeSubmitUnconfirmed ?? 0) + 1;
+      console.log(
+        chalk.yellow(
+          `  Nudge ${nudge.nudgeId}: unable to confirm Enter delivery after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
+        )
+      );
+    } else {
+      console.log(
+        chalk.gray(
+          `  Nudge ${nudge.nudgeId}: Enter delivery confirmed after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
+        )
+      );
+    }
     interruptionRecoveryAttempts.set(sessionName, attempts + 1);
     ctx.counters.nudged++;
 
@@ -365,7 +411,32 @@ export async function handleEscalationAndNudge(
     ctx.escalatedSessions.add(sessionName);
 
     const reminder = buildAutoRecoveryReminder(sessionName, agentCliTool);
-    await sendToTmuxSession(sessionName, withManagerNudgeEnvelope(reminder));
+    const nudge = createManagerNudgeEnvelope(reminder);
+    await sendToTmuxSession(sessionName, nudge.text);
+    console.log(
+      chalk.gray(
+        `  Nudge ${nudge.nudgeId}: double-checking Enter delivery after nudge (verification loop enabled)`
+      )
+    );
+    const submitResult = await submitManagerNudgeWithVerification(sessionName, nudge.nudgeId);
+    ctx.counters.nudgeEnterPresses =
+      (ctx.counters.nudgeEnterPresses ?? 0) + submitResult.enterPresses;
+    ctx.counters.nudgeEnterRetries =
+      (ctx.counters.nudgeEnterRetries ?? 0) + submitResult.retryEnters;
+    if (!submitResult.confirmed) {
+      ctx.counters.nudgeSubmitUnconfirmed = (ctx.counters.nudgeSubmitUnconfirmed ?? 0) + 1;
+      console.log(
+        chalk.yellow(
+          `  Nudge ${nudge.nudgeId}: unable to confirm Enter delivery after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
+        )
+      );
+    } else {
+      console.log(
+        chalk.gray(
+          `  Nudge ${nudge.nudgeId}: Enter delivery confirmed after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
+        )
+      );
+    }
 
     console.log(chalk.red(`  ESCALATION: ${sessionName} needs human input`));
     verboseLog(ctx, `escalationCheck: ${sessionName} action=create_escalation`);
