@@ -938,6 +938,7 @@ export class Scheduler {
         temperature: GODMODE_TEMPERATURE,
         cli_tool: 'claude',
         safety_mode: modelConfig.safety_mode,
+        personas: modelConfig.personas,
       };
     }
 
