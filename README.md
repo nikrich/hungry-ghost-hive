@@ -558,12 +558,12 @@ Before running `hive init`, you must configure an OAuth 2.0 (3LO) app in the Atl
    > **Important:** Use `127.0.0.1` — not `localhost`. Hive constructs the redirect URI with `127.0.0.1` explicitly, and Atlassian validates it character-for-character.
 3. Under **Permissions**, add the following scopes:
 
-   | API | Scopes |
-   |-----|--------|
-   | Jira API | `read:jira-work`, `write:jira-work`, `read:jira-user` |
+   | API               | Scopes                                                                                                                         |
+   | ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+   | Jira API          | `read:jira-work`, `write:jira-work`, `read:jira-user`                                                                          |
    | Jira Software API | `read:board-scope:jira-software`, `write:board-scope:jira-software`, `read:sprint:jira-software`, `write:sprint:jira-software` |
-   | Confluence API | `read:confluence-content.all` |
-   | User Identity API | `offline_access` |
+   | Confluence API    | `read:confluence-content.all`                                                                                                  |
+   | User Identity API | `offline_access`                                                                                                               |
 
 4. Save your changes, then copy the **Client ID** and **Client Secret** from the app's settings page — the `hive init` wizard will prompt you for these
 
