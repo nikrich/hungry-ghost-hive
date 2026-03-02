@@ -2243,7 +2243,7 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
  * Action: Auto-reject the PR with the QA's feedback as the rejection reason,
  * which triggers the standard qa_failed flow back to the developer agent.
  */
-async function autoRejectCommentOnlyReviews(ctx: ManagerCheckContext): Promise<void> {
+export async function autoRejectCommentOnlyReviews(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Identify reviewing PRs with idle QA agents (brief lock)
   const candidates = await ctx.withDb(async db => {
     const reviewingPRs = getPullRequestsByStatus(db.db, 'reviewing').filter(
