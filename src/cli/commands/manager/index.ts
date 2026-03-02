@@ -43,6 +43,7 @@ import {
   updatePullRequest,
 } from '../../../db/queries/pull-requests.js';
 import { getStoriesByStatus, getStoryById, updateStory } from '../../../db/queries/stories.js';
+import { getPullRequestComments, getPullRequestReviews } from '../../../git/github.js';
 import { Scheduler } from '../../../orchestrator/scheduler.js';
 import { AgentState } from '../../../state-detectors/types.js';
 import {
@@ -979,6 +980,8 @@ async function managerCheck(
   await batchMarkMessagesRead(ctx);
   verboseLogCtx(ctx, 'Step: notify QA about queued PRs');
   await notifyQAOfQueuedPRs(ctx);
+  verboseLogCtx(ctx, 'Step: auto-reject comment-only reviews');
+  await autoRejectCommentOnlyReviews(ctx);
   verboseLogCtx(ctx, 'Step: handle rejected PRs');
   await handleRejectedPRs(ctx);
   verboseLogCtx(ctx, 'Step: recover unassigned qa_failed stories');
@@ -2226,6 +2229,193 @@ async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
         qa.name,
         `# ${queuedPRs.length} PR(s) waiting in queue. Run: hive pr queue`
       );
+    }
+  }
+}
+
+/**
+ * Auto-reject PRs where the QA agent posted review comments/feedback on GitHub
+ * but never formally approved or rejected via `hive pr approve/reject`.
+ *
+ * Detection: PR is in 'reviewing' status, the assigned QA agent is idle,
+ * and there are GitHub comments or CHANGES_REQUESTED reviews on the PR.
+ *
+ * Action: Auto-reject the PR with the QA's feedback as the rejection reason,
+ * which triggers the standard qa_failed flow back to the developer agent.
+ */
+async function autoRejectCommentOnlyReviews(ctx: ManagerCheckContext): Promise<void> {
+  // Phase 1: Identify reviewing PRs with idle QA agents (brief lock)
+  const candidates = await ctx.withDb(async db => {
+    const reviewingPRs = getPullRequestsByStatus(db.db, 'reviewing').filter(
+      pr => pr.github_pr_number && pr.team_id && pr.reviewed_by
+    );
+
+    verboseLogCtx(ctx, `autoRejectCommentOnlyReviews: reviewingWithQA=${reviewingPRs.length}`);
+    if (reviewingPRs.length === 0) return [];
+
+    // Only consider PRs whose QA agent is idle (finished reviewing but didn't approve/reject)
+    const idlePRs = reviewingPRs.filter(pr => {
+      const qaAgent = ctx.agentsBySessionName.get(pr.reviewed_by!);
+      if (!qaAgent) return false;
+      // Check if the QA agent is idle or if their session shows idle state
+      const qaState = agentStates.get(pr.reviewed_by!);
+      return qaAgent.status === 'idle' || qaState?.lastState === AgentState.IDLE_AT_PROMPT;
+    });
+
+    verboseLogCtx(ctx, `autoRejectCommentOnlyReviews: idleQACandidates=${idlePRs.length}`);
+    if (idlePRs.length === 0) return [];
+
+    const { getAllTeams } = await import('../../../db/queries/teams.js');
+    const teams = getAllTeams(db.db);
+    const teamsById = new Map(teams.map(team => [team.id, team]));
+
+    return idlePRs
+      .map(pr => {
+        const team = teamsById.get(pr.team_id!);
+        if (!team?.repo_path) return null;
+        return {
+          id: pr.id,
+          storyId: pr.story_id,
+          teamId: pr.team_id!,
+          branchName: pr.branch_name,
+          githubPrNumber: pr.github_pr_number!,
+          reviewedBy: pr.reviewed_by!,
+          submittedBy: pr.submitted_by,
+          repoDir: `${ctx.root}/${team.repo_path}`,
+        };
+      })
+      .filter(Boolean) as Array<{
+      id: string;
+      storyId: string | null;
+      branchName: string;
+      githubPrNumber: number;
+      reviewedBy: string;
+      submittedBy: string | null;
+      teamId: string;
+      repoDir: string;
+    }>;
+  });
+
+  if (candidates.length === 0) return;
+
+  // Phase 2: Check GitHub for comments/reviews on each candidate (no lock)
+  const toReject: Array<{
+    candidate: (typeof candidates)[number];
+    reason: string;
+  }> = [];
+
+  for (const candidate of candidates) {
+    try {
+      // Fetch both reviews and comments from GitHub
+      const [reviews, comments] = await Promise.all([
+        getPullRequestReviews(candidate.repoDir, candidate.githubPrNumber).catch(
+          (): Array<{ author: string; state: string; body: string }> => []
+        ),
+        getPullRequestComments(candidate.repoDir, candidate.githubPrNumber).catch(
+          (): Array<{ author: string; body: string; createdAt: string }> => []
+        ),
+      ]);
+
+      // If there's a formal APPROVED review, skip (QA approved via GitHub directly)
+      const hasApproval = reviews.some(r => r.state === 'APPROVED');
+      if (hasApproval) {
+        verboseLogCtx(
+          ctx,
+          `autoRejectCommentOnlyReviews: pr=${candidate.id} has GitHub approval, skipping`
+        );
+        continue;
+      }
+
+      // Check for CHANGES_REQUESTED reviews
+      const changesRequested = reviews.filter(r => r.state === 'CHANGES_REQUESTED');
+
+      // Check for substantive issue comments (filter out bot noise and very short comments)
+      const substantiveComments = comments.filter(c => {
+        if (c.body.length < 20) return false;
+        // Skip known bot comments (Ellipsis, etc.)
+        if (c.body.includes('Looks good to me') && c.body.length < 100) return false;
+        return true;
+      });
+
+      // If there are review feedback items, auto-reject
+      if (changesRequested.length > 0 || substantiveComments.length > 0) {
+        // Build rejection reason from the feedback
+        const feedbackParts: string[] = [];
+        for (const review of changesRequested) {
+          if (review.body) feedbackParts.push(review.body);
+        }
+        for (const comment of substantiveComments) {
+          feedbackParts.push(comment.body);
+        }
+        const reason =
+          feedbackParts.length > 0
+            ? feedbackParts.join('\n---\n').slice(0, 2000)
+            : 'QA posted review feedback on GitHub without formal approval. See PR comments.';
+
+        toReject.push({ candidate, reason });
+        verboseLogCtx(
+          ctx,
+          `autoRejectCommentOnlyReviews: pr=${candidate.id} has ${changesRequested.length} changes_requested + ${substantiveComments.length} comments, will auto-reject`
+        );
+      }
+    } catch (err) {
+      verboseLogCtx(
+        ctx,
+        `autoRejectCommentOnlyReviews: skip pr=${candidate.id} github_check_failed=${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  if (toReject.length === 0) return;
+
+  // Phase 3: Reject PRs in DB (brief lock)
+  await ctx.withDb(async db => {
+    for (const { candidate, reason } of toReject) {
+      await withTransaction(
+        db.db,
+        () => {
+          updatePullRequest(db.db, candidate.id, {
+            status: 'rejected',
+            reviewNotes: reason,
+          });
+          if (candidate.storyId) {
+            updateStory(db.db, candidate.storyId, { status: 'qa_failed' });
+          }
+          createLog(db.db, {
+            agentId: 'manager',
+            eventType: 'PR_REJECTED',
+            message: `Auto-rejected PR ${candidate.id}: QA posted review comments without formal approve/reject`,
+            storyId: candidate.storyId || undefined,
+            metadata: { pr_id: candidate.id, auto_rejected: true },
+          });
+        },
+        () => db.save()
+      );
+      console.log(
+        chalk.yellow(
+          `  Auto-rejected PR ${candidate.id} (story: ${candidate.storyId || '-'}): QA left review comments without approving`
+        )
+      );
+    }
+  });
+
+  // Phase 4: Notify developer agents via tmux (no lock)
+  for (const { candidate, reason } of toReject) {
+    if (candidate.submittedBy) {
+      const devSession = ctx.hiveSessions.find(s => s.name === candidate.submittedBy);
+      if (devSession) {
+        await sendManagerNudge(
+          ctx,
+          devSession.name,
+          `# ⚠️ PR AUTO-REJECTED - QA REVIEW FEEDBACK ⚠️
+# Story: ${candidate.storyId || 'Unknown'}
+# QA agent (${candidate.reviewedBy}) posted review feedback without formally approving.
+# Feedback:
+# ${reason.split('\n').slice(0, 10).join('\n# ')}
+#
+# Fix the issues and resubmit: hive pr submit -b ${candidate.branchName} -s ${candidate.storyId || 'STORY-ID'} --from ${devSession.name}`
+        );
+      }
     }
   }
 }

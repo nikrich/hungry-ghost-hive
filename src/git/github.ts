@@ -301,3 +301,31 @@ export async function getPullRequestReviews(
   const data = JSON.parse(stdout);
   return data.reviews || [];
 }
+
+/**
+ * Get PR comments (issue comments, not inline review comments).
+ * Returns comments with author login, body, and creation date.
+ */
+export async function getPullRequestComments(
+  workDir: string,
+  prNumber: number
+): Promise<
+  Array<{
+    author: string;
+    body: string;
+    createdAt: string;
+  }>
+> {
+  const { stdout } = await execa('gh', ['pr', 'view', prNumber.toString(), '--json', 'comments'], {
+    cwd: workDir,
+  });
+
+  const data = JSON.parse(stdout);
+  return (data.comments || []).map(
+    (c: { author?: { login?: string }; body?: string; createdAt?: string }) => ({
+      author: c.author?.login || 'unknown',
+      body: c.body || '',
+      createdAt: c.createdAt || '',
+    })
+  );
+}
