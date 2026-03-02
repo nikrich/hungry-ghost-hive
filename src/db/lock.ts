@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdirSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import lockfile from 'proper-lockfile';
 import { ConcurrencyError } from '../errors/index.js';
@@ -32,6 +32,20 @@ function getLockErrorCode(err: unknown): string | undefined {
 }
 
 /**
+ * Compatibility cleanup for older lock style where "*.lock" was a regular file.
+ * proper-lockfile expects "*.lock" to be a directory.
+ */
+function removeLegacyFileLock(lockPath: string): void {
+  const legacyLockPath = `${lockPath}.lock`;
+  if (!existsSync(legacyLockPath)) return;
+
+  const stats = lstatSync(legacyLockPath);
+  if (!stats.isDirectory()) {
+    unlinkSync(legacyLockPath);
+  }
+}
+
+/**
  * Acquire exclusive lock for singleton processes (e.g., manager daemon)
  * Blocks until lock is acquired or timeout is reached
  *
@@ -54,6 +68,8 @@ export async function acquireLock(
   if (!existsSync(lockPath)) {
     writeFileSync(lockPath, '');
   }
+
+  removeLegacyFileLock(lockPath);
 
   let compromisedError: Error | null = null;
   const opts = {

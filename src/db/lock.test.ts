@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -107,5 +107,15 @@ describe('Database Lock', () => {
 
     expect(onCompromised).toHaveBeenCalledOnce();
     await expect(release()).resolves.toBeUndefined();
+  });
+
+  it('should remove legacy file-based lock artifacts before acquiring lock', async () => {
+    writeFileSync(lockPath, '');
+    writeFileSync(`${lockPath}.lock`, '');
+
+    const release = await acquireLock(lockPath);
+    expect(await isLocked(lockPath)).toBe(true);
+
+    await release();
   });
 });
