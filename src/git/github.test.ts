@@ -508,4 +508,97 @@ describe('github module', () => {
       expect(result[0].author).toBe('reviewer1');
     });
   });
+
+  describe('getPullRequestComments', () => {
+    const workDir = '/test/repo';
+    const prNumber = 123;
+
+    it('should get PR comments with author, body, and createdAt', async () => {
+      mockedExeca.mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          comments: [
+            {
+              author: { login: 'user1' },
+              body: 'This needs a fix in the error handling path.',
+              createdAt: '2026-03-01T10:00:00Z',
+            },
+            {
+              author: { login: 'user2' },
+              body: 'Coverage is below threshold.',
+              createdAt: '2026-03-01T11:00:00Z',
+            },
+          ],
+        }),
+        stderr: '',
+      } as any);
+
+      const result = await github.getPullRequestComments(workDir, prNumber);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        author: 'user1',
+        body: 'This needs a fix in the error handling path.',
+        createdAt: '2026-03-01T10:00:00Z',
+      });
+      expect(result[1].author).toBe('user2');
+      expect(mockedExeca).toHaveBeenCalledWith('gh', ['pr', 'view', '123', '--json', 'comments'], {
+        cwd: workDir,
+      });
+    });
+
+    it('should return empty array when no comments exist', async () => {
+      mockedExeca.mockResolvedValueOnce({
+        stdout: JSON.stringify({ comments: [] }),
+        stderr: '',
+      } as any);
+
+      const result = await github.getPullRequestComments(workDir, prNumber);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('should handle missing comments field gracefully', async () => {
+      mockedExeca.mockResolvedValueOnce({
+        stdout: JSON.stringify({}),
+        stderr: '',
+      } as any);
+
+      const result = await github.getPullRequestComments(workDir, prNumber);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('should handle comments with missing author fields', async () => {
+      mockedExeca.mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          comments: [
+            { body: 'Anonymous comment', createdAt: '2026-03-01T10:00:00Z' },
+            { author: {}, body: 'No login', createdAt: '2026-03-01T11:00:00Z' },
+          ],
+        }),
+        stderr: '',
+      } as any);
+
+      const result = await github.getPullRequestComments(workDir, prNumber);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].author).toBe('unknown');
+      expect(result[1].author).toBe('unknown');
+    });
+
+    it('should handle comments with missing body and createdAt', async () => {
+      mockedExeca.mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          comments: [{ author: { login: 'user1' } }],
+        }),
+        stderr: '',
+      } as any);
+
+      const result = await github.getPullRequestComments(workDir, prNumber);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].body).toBe('');
+      expect(result[0].createdAt).toBe('');
+    });
+  });
 });
