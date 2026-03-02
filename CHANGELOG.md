@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.40.1...hungry-ghost-hive-v0.40.2) (2026-03-02)
+
+
+### Bug Fixes
+
+* format README.md to pass prettier check ([#475](https://github.com/nikrich/hungry-ghost-hive/issues/475)) ([4939f16](https://github.com/nikrich/hungry-ghost-hive/commit/4939f1633eb0fdefdc606c711916cf44b31c318a))
+
 ## [0.40.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.40.0...hungry-ghost-hive-v0.40.1) (2026-03-01)
 
 
