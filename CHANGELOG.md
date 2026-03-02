@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.41.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.40.3...hungry-ghost-hive-v0.41.0) (2026-03-02)
+
+
+### Features
+
+* interactive persona configuration during hive init ([#472](https://github.com/nikrich/hungry-ghost-hive/issues/472)) ([437e21c](https://github.com/nikrich/hungry-ghost-hive/commit/437e21c817c2fbcc67575045a9d27aecc43ba049))
+* **manager:** auto-reject PRs when QA posts comments without formal approval ([#479](https://github.com/nikrich/hungry-ghost-hive/issues/479)) ([2324a24](https://github.com/nikrich/hungry-ghost-hive/commit/2324a24d33b59478597da5500c9050d03ae4f46b))
+
 ## [0.40.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.40.2...hungry-ghost-hive-v0.40.3) (2026-03-02)
 
 
