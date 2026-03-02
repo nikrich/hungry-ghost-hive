@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.40.2...hungry-ghost-hive-v0.40.3) (2026-03-02)
+
+
+### Bug Fixes
+
+* replace exec() with execFile() in open-browser to prevent shell injection ([#466](https://github.com/nikrich/hungry-ghost-hive/issues/466)) ([a430b98](https://github.com/nikrich/hungry-ghost-hive/commit/a430b98674c48d15ebbadb9b486a7761923a2ec3))
+
 ## [0.40.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.40.1...hungry-ghost-hive-v0.40.2) (2026-03-02)
 
 
