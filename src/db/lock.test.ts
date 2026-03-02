@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acquireLock, isLocked } from './lock.js';
 
 describe('Database Lock', () => {
@@ -12,7 +12,7 @@ describe('Database Lock', () => {
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'hive-lock-test-'));
-    lockPath = join(testDir, 'test.lock');
+    lockPath = join(testDir, 'test');
   });
 
   afterEach(() => {
@@ -51,7 +51,7 @@ describe('Database Lock', () => {
   });
 
   it('should create lock file in non-existent directory', async () => {
-    const deepPath = join(testDir, 'deep', 'nested', 'path', 'test.lock');
+    const deepPath = join(testDir, 'deep', 'nested', 'path', 'test');
     const release = await acquireLock(deepPath);
 
     expect(await isLocked(deepPath)).toBe(true);
@@ -69,7 +69,7 @@ describe('Database Lock', () => {
   });
 
   it('should return false for isLocked when lock file does not exist', async () => {
-    const nonExistentPath = join(testDir, 'nonexistent.lock');
+    const nonExistentPath = join(testDir, 'nonexistent');
     expect(await isLocked(nonExistentPath)).toBe(false);
   });
 
@@ -91,5 +91,21 @@ describe('Database Lock', () => {
     });
 
     await release1();
+  });
+
+  it('should invoke compromise callback and allow release after compromise', async () => {
+    const onCompromised = vi.fn();
+    const release = await acquireLock(lockPath, { stale: 2000, onCompromised });
+
+    // Force heartbeat failure by removing the lock directory while lock is held.
+    rmSync(`${lockPath}.lock`, { recursive: true, force: true });
+
+    const timeoutAt = Date.now() + 4000;
+    while (onCompromised.mock.calls.length === 0 && Date.now() < timeoutAt) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    expect(onCompromised).toHaveBeenCalledOnce();
+    await expect(release()).resolves.toBeUndefined();
   });
 });

@@ -575,39 +575,60 @@ managerCommand
     const config = loadConfig(paths.hiveDir);
     let clusterRuntime: ClusterRuntime | null = null;
 
-    const lockPath = join(paths.hiveDir, 'manager.lock');
+    const lockPath = join(paths.hiveDir, 'manager');
 
     // Acquire manager lock to ensure singleton
     let releaseLock: (() => Promise<void>) | null = null;
-    try {
-      releaseLock = await acquireLock(lockPath, { stale: config.manager.lock_stale_ms });
-      console.log(chalk.gray('Manager lock acquired'));
-    } catch (err) {
-      console.error(
-        chalk.red('Failed to acquire manager lock - another manager instance may be running.'),
-        err
-      );
-      console.error(
-        chalk.gray('If you are sure no other manager is running, remove:'),
-        lockPath + '.lock'
-      );
-      process.exit(1);
-    }
+    let cleaningUp = false;
+    const cleanup = async (exitCode = 0, shouldExit = true): Promise<void> => {
+      if (cleaningUp) return;
+      cleaningUp = true;
 
-    // Release lock on exit
-    const cleanup = async () => {
       if (releaseLock) {
-        await releaseLock();
-        console.log(chalk.gray('\nManager lock released'));
+        try {
+          await releaseLock();
+          console.log(chalk.gray('\nManager lock released'));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(chalk.yellow(`Warning: failed to release manager lock cleanly: ${message}`));
+        }
       }
       if (clusterRuntime) {
         await clusterRuntime.stop();
       }
-      process.exit(0);
+      if (shouldExit) {
+        process.exit(exitCode);
+      }
     };
 
-    process.on('SIGINT', cleanup);
-    process.on('SIGTERM', cleanup);
+    try {
+      releaseLock = await acquireLock(lockPath, {
+        stale: config.manager.lock_stale_ms,
+        onCompromised: err => {
+          console.error(chalk.red(`Manager lock compromised: ${err.message}`));
+          console.error(chalk.yellow('Stopping manager to avoid running without singleton lock.'));
+          void cleanup(1);
+        },
+      });
+      console.log(chalk.gray('Manager lock acquired'));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`Failed to acquire manager lock: ${message}`));
+      if (message.includes('Another process may be holding the lock.')) {
+        console.error(
+          chalk.gray('If you are sure no other manager is running, remove:'),
+          lockPath + '.lock'
+        );
+      }
+      process.exit(1);
+    }
+
+    process.on('SIGINT', () => {
+      void cleanup(0);
+    });
+    process.on('SIGTERM', () => {
+      void cleanup(0);
+    });
 
     if (config.cluster.enabled) {
       clusterRuntime = new ClusterRuntime(config.cluster, { hiveDir: paths.hiveDir });
@@ -661,11 +682,8 @@ managerCommand
         setInterval(() => {
           void runCheck();
         }, slowInterval);
-      } else if (releaseLock) {
-        await releaseLock();
-        if (clusterRuntime) {
-          await clusterRuntime.stop();
-        }
+      } else {
+        await cleanup(0, false);
       }
     } else {
       // Legacy mode: single interval
@@ -682,11 +700,8 @@ managerCommand
         setInterval(() => {
           void runCheck();
         }, interval);
-      } else if (releaseLock) {
-        await releaseLock();
-        if (clusterRuntime) {
-          await clusterRuntime.stop();
-        }
+      } else {
+        await cleanup(0, false);
       }
     }
   });

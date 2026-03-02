@@ -56,9 +56,8 @@ export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | 
       },
     });
   } catch (err) {
-    console.error(
-      chalk.red('Failed to acquire database lock. Another process may be accessing the database.')
-    );
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(chalk.red(`Failed to acquire database lock: ${message}`));
     throw err;
   }
 
