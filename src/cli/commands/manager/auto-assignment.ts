@@ -9,19 +9,19 @@ function verboseLog(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string):
   console.log(chalk.gray(`  [verbose] ${message}`));
 }
 
-async function getPlannedUnassignedStoryCount(ctx: ManagerCheckContext): Promise<number> {
+async function getAssignableUnassignedStoryCount(ctx: ManagerCheckContext): Promise<number> {
   return ctx.withDb(async db => {
     const rows = queryAll<{ count: number }>(
       db.db,
-      "SELECT COUNT(*) as count FROM stories WHERE status = 'planned' AND assigned_agent_id IS NULL"
+      "SELECT COUNT(*) as count FROM stories WHERE status IN ('planned', 'qa_failed') AND assigned_agent_id IS NULL"
     );
     return rows[0]?.count || 0;
   });
 }
 
 export async function autoAssignPlannedStories(ctx: ManagerCheckContext): Promise<void> {
-  const plannedUnassigned = await getPlannedUnassignedStoryCount(ctx);
-  verboseLog(ctx, `autoAssignPlannedStories: plannedUnassigned=${plannedUnassigned}`);
+  const plannedUnassigned = await getAssignableUnassignedStoryCount(ctx);
+  verboseLog(ctx, `autoAssignPlannedStories: assignableUnassigned=${plannedUnassigned}`);
 
   if (plannedUnassigned === 0) {
     return;

@@ -1558,7 +1558,33 @@ async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promise<void>
       const state = parsed.state?.toUpperCase();
       const url = parsed.url || null;
 
-      if (state === 'OPEN') continue;
+      if (state === 'OPEN') {
+        // PR is still open on GitHub but stale in 'reviewing' — the QA agent
+        // may have missed the original nudge. Re-nudge if QA agent is idle.
+        if (candidate.reviewedBy) {
+          const qaAgent = ctx.agentsBySessionName.get(candidate.reviewedBy);
+          if (qaAgent && qaAgent.status === 'idle') {
+            const githubLine = candidate.repoSlug
+              ? `\n# GitHub: https://github.com/${candidate.repoSlug}/pull/${candidate.githubPrNumber}`
+              : '';
+            await sendManagerNudge(
+              ctx,
+              candidate.reviewedBy,
+              `# [REMINDER] You are assigned PR review ${candidate.id} (${candidate.storyId || 'no-story'}).${githubLine}
+# This PR has been waiting for review. Execute now:
+#   hive pr show ${candidate.id}
+#   hive pr approve ${candidate.id}
+# or reject:
+#   hive pr reject ${candidate.id} -r "reason"`
+            );
+            verboseLogCtx(
+              ctx,
+              `recoverStaleReviewingPRs: re-nudged idle QA ${candidate.reviewedBy} for stale pr=${candidate.id}`
+            );
+          }
+        }
+        continue;
+      }
       if (state === 'MERGED') {
         mergedResults.push({
           candidate,
@@ -1879,10 +1905,19 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
   // Phase 2: Per-session processing (tmux/AI outside lock, DB writes under brief locks)
   for (const session of ctx.hiveSessions) {
     if (session.name === 'hive-manager') continue;
-    activeSessionNames.add(session.name);
 
     const agent = ctx.agentsBySessionName.get(session.name);
-    const agentCliTool = (agent?.cli_tool || 'claude') as CLITool;
+
+    // Skip sessions not registered in our DB (cross-project sessions).
+    // This prevents escalation noise from sessions belonging to other
+    // teams/projects sharing the same tmux server.
+    if (!agent) {
+      verboseLogCtx(ctx, `Skipping ${session.name}: no agent registered in DB (cross-project)`);
+      continue;
+    }
+
+    activeSessionNames.add(session.name);
+    const agentCliTool = (agent.cli_tool || 'claude') as CLITool;
     const safetyMode = getAgentSafetyMode(ctx.config, agent);
     verboseLogCtx(
       ctx,

@@ -266,14 +266,25 @@ export async function sendToTmuxSession(
     await new Promise(resolve => setTimeout(resolve, CLEAR_INPUT_DELAY_MS));
   }
 
-  // For single-line text, use send-keys with literal flag then Enter separately.
-  // '--' signals end of options, preventing text starting with '-' from being parsed as flags.
-  //
-  // NOTE: Multi-line initial prompts should be passed via spawnTmuxSession's
-  // initialPrompt option, which writes to a temp file and uses $(cat ...) to
-  // deliver the prompt as a CLI positional argument. This function is only for
-  // single-line runtime messages (nudges, commands, etc).
-  await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', text]);
+  const isMultiLine = text.includes('\n');
+
+  if (isMultiLine) {
+    // Multi-line text: write to temp file and paste via $(cat ...) to avoid
+    // the [Pasted text #N] buffering issue in Claude CLI. The shell expands
+    // $(cat file) into a single argument, bypassing tmux's paste-buffer handling.
+    const tempFile = join(
+      tmpdir(),
+      `hive-nudge-${Date.now()}-${sessionName.replace(/[^a-zA-Z0-9-]/g, '_')}.txt`
+    );
+    writeFileSync(tempFile, text, 'utf-8');
+    const catCmd = `$(cat ${tempFile})`;
+    await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', catCmd]);
+  } else {
+    // Single-line: use send-keys with literal flag directly.
+    // '--' signals end of options, preventing text starting with '-' from being parsed as flags.
+    await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', text]);
+  }
+
   // Send Enter as a key event (C-m = carriage return = Enter) to ensure prompt receives it
   await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
 }
