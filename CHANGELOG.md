@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.41.0...hungry-ghost-hive-v0.41.1) (2026-03-03)
+
+
+### Bug Fixes
+
+* hive reliability improvements from Mini Marty project ([#481](https://github.com/nikrich/hungry-ghost-hive/issues/481)) ([789295a](https://github.com/nikrich/hungry-ghost-hive/commit/789295a99d488598b191aded03733f3d5f932a1d))
+
 ## [0.41.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.40.3...hungry-ghost-hive-v0.41.0) (2026-03-02)
 
 
