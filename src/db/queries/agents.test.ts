@@ -316,6 +316,19 @@ describe('agents queries', () => {
 
       expect(updated?.tmux_session).toBeNull();
     });
+
+    it('should reset created_at when createdAt is provided', () => {
+      const agent = createAgent(db, { type: 'tech_lead', teamId });
+      const newCreatedAt = new Date(Date.now() + 60_000).toISOString();
+
+      const updated = updateAgent(db, agent.id, {
+        status: 'working',
+        createdAt: newCreatedAt,
+      });
+
+      expect(updated?.created_at).toBe(newCreatedAt);
+      expect(updated?.status).toBe('working');
+    });
   });
 
   describe('deleteAgent', () => {

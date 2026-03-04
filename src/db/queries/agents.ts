@@ -23,6 +23,7 @@ export interface UpdateAgentInput {
   currentStoryId?: string | null;
   memoryState?: string | null;
   worktreePath?: string | null;
+  createdAt?: string;
 }
 
 export function createAgent(db: Database, input: CreateAgentInput): AgentRow {
@@ -113,6 +114,10 @@ export function updateAgent(
   if (input.worktreePath !== undefined) {
     updates.push('worktree_path = ?');
     values.push(input.worktreePath);
+  }
+  if (input.createdAt !== undefined) {
+    updates.push('created_at = ?');
+    values.push(input.createdAt);
   }
 
   if (updates.length === 1) {
