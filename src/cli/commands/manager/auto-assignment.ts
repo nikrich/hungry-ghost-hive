@@ -20,10 +20,10 @@ async function getAssignableUnassignedStoryCount(ctx: ManagerCheckContext): Prom
 }
 
 export async function autoAssignPlannedStories(ctx: ManagerCheckContext): Promise<void> {
-  const plannedUnassigned = await getAssignableUnassignedStoryCount(ctx);
-  verboseLog(ctx, `autoAssignPlannedStories: assignableUnassigned=${plannedUnassigned}`);
+  const assignableUnassigned = await getAssignableUnassignedStoryCount(ctx);
+  verboseLog(ctx, `autoAssignPlannedStories: assignableUnassigned=${assignableUnassigned}`);
 
-  if (plannedUnassigned === 0) {
+  if (assignableUnassigned === 0) {
     return;
   }
 
