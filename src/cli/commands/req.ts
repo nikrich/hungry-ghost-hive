@@ -312,7 +312,7 @@ async function promptTargetBranch(): Promise<string> {
   });
 }
 
-function generateTechLeadPrompt(
+export function generateTechLeadPrompt(
   reqId: string,
   title: string,
   description: string,
