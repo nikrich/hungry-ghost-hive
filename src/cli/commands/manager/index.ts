@@ -88,9 +88,9 @@ import { checkFeatureTestResult } from './feature-test-result.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
 import { cleanupAgentsReferencingMergedStory } from './merged-story-cleanup.js';
 import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
+import { isTechLeadRestartOnCooldown } from './restart-cooldown.js';
 import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
-import { isTechLeadRestartOnCooldown } from './restart-cooldown.js';
 import { findStaleSessionEscalations } from './stale-escalations.js';
 import type { ManagerCheckContext } from './types.js';
 import {
