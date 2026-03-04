@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.42.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.41.1...hungry-ghost-hive-v0.42.0) (2026-03-04)
+
+
+### Features
+
+* **manager:** add restart cooldown to prevent rapid tech lead restart loops ([#484](https://github.com/nikrich/hungry-ghost-hive/issues/484)) ([4ca645b](https://github.com/nikrich/hungry-ghost-hive/commit/4ca645be9b295468b346617de5d777bb5fedae8f))
+
+
+### Bug Fixes
+
+* pass context prompt when restarting stale tech lead ([#485](https://github.com/nikrich/hungry-ghost-hive/issues/485)) ([edb0ed2](https://github.com/nikrich/hungry-ghost-hive/commit/edb0ed2f7b379b3299044b42136e452b11d4e09e))
+* reset created_at on tech lead restart to prevent restart loop ([#483](https://github.com/nikrich/hungry-ghost-hive/issues/483)) ([e8a887e](https://github.com/nikrich/hungry-ghost-hive/commit/e8a887efffca3c474c2e008025e8a13f91cb6f7f))
+
 ## [0.41.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.41.0...hungry-ghost-hive-v0.41.1) (2026-03-03)
 
 
