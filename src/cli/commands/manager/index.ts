@@ -88,6 +88,7 @@ import { checkFeatureTestResult } from './feature-test-result.js';
 import { handleStalledPlanningHandoff } from './handoff-recovery.js';
 import { cleanupAgentsReferencingMergedStory } from './merged-story-cleanup.js';
 import { shouldAutoResolveOrphanedManagerEscalation } from './orphaned-escalations.js';
+import { isTechLeadRestartOnCooldown } from './restart-cooldown.js';
 import { findSessionForAgent } from './session-resolution.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
 import { findStaleSessionEscalations } from './stale-escalations.js';
@@ -206,6 +207,7 @@ export function shouldDeferStuckReminderUntilStaticWindow(
 const screenStaticBySession = new Map<string, ScreenStaticTracking>();
 const classifierTimeoutInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
 const aiDoneFalseInterventionsBySession = new Map<string, ClassifierTimeoutIntervention>();
+const techLeadLastRestartByAgentId = new Map<string, number>();
 
 function verboseLog(verbose: boolean, message: string): void {
   if (!verbose) return;
@@ -3199,6 +3201,19 @@ async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<void> {
       continue;
     }
 
+    const cooldown = isTechLeadRestartOnCooldown(
+      techLeadLastRestartByAgentId.get(techLead.id),
+      now,
+      maxAgeHours
+    );
+    if (cooldown.onCooldown) {
+      verboseLogCtx(
+        ctx,
+        `restartStaleTechLead: techLead=${techLead.id} skip=cooldown cooldownHours=${cooldown.cooldownHours} remainingMs=${cooldown.remainingMs}`
+      );
+      continue;
+    }
+
     const output = await captureTmuxPane(techLead.tmuxSession, TMUX_CAPTURE_LINES_SHORT);
     const stateResult = detectAgentState(output, techLead.cliTool);
 
@@ -3271,6 +3286,8 @@ async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<void> {
       });
       db.save();
     });
+
+    techLeadLastRestartByAgentId.set(techLead.id, now);
 
     console.log(
       chalk.green(
