@@ -69,6 +69,7 @@ import {
 } from '../../../utils/pr-sync.js';
 import { extractStoryIdFromBranch } from '../../../utils/story-id.js';
 import { withHiveContext, withHiveRoot } from '../../../utils/with-hive-context.js';
+import { generateTechLeadPrompt } from '../req.js';
 import {
   agentStates,
   createManagerNudgeEnvelope,
@@ -82,7 +83,6 @@ import {
   submitManagerNudgeWithVerification,
   updateAgentStateTracking,
 } from './agent-monitoring.js';
-import { generateTechLeadPrompt } from '../req.js';
 import { autoAssignPlannedStories } from './auto-assignment.js';
 import { assessCompletionFromOutput } from './done-intelligence.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
