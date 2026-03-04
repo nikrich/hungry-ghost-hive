@@ -42,7 +42,9 @@ import {
   getPullRequestsByStatus,
   updatePullRequest,
 } from '../../../db/queries/pull-requests.js';
+import { getRequirementsByStatus } from '../../../db/queries/requirements.js';
 import { getStoriesByStatus, getStoryById, updateStory } from '../../../db/queries/stories.js';
+import { getAllTeams } from '../../../db/queries/teams.js';
 import { getPullRequestComments, getPullRequestReviews } from '../../../git/github.js';
 import { Scheduler } from '../../../orchestrator/scheduler.js';
 import { AgentState } from '../../../state-detectors/types.js';
@@ -80,6 +82,7 @@ import {
   submitManagerNudgeWithVerification,
   updateAgentStateTracking,
 } from './agent-monitoring.js';
+import { generateTechLeadPrompt } from '../req.js';
 import { autoAssignPlannedStories } from './auto-assignment.js';
 import { assessCompletionFromOutput } from './done-intelligence.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
@@ -3244,10 +3247,48 @@ async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<void> {
     const runtimeBuilder = getCliRuntimeBuilder(cliTool);
     const commandArgs = runtimeBuilder.buildSpawnCommand(model, safetyMode);
 
+    // Look up active requirement and teams to provide context to the restarted tech lead
+    const initialPrompt = await ctx.withDb(async db => {
+      const planningReqs = getRequirementsByStatus(db.db, 'planning');
+      const inProgressReqs = getRequirementsByStatus(db.db, 'in_progress');
+      const activeReq = planningReqs[0] ?? inProgressReqs[0] ?? null;
+      const teams = getAllTeams(db.db);
+
+      if (activeReq) {
+        return generateTechLeadPrompt(
+          activeReq.id,
+          activeReq.title,
+          activeReq.description,
+          teams,
+          activeReq.godmode === 1,
+          activeReq.target_branch || 'main'
+        );
+      }
+
+      return `You are the Tech Lead of Hive, an AI development team orchestrator.
+
+You have been restarted to refresh your context. No active requirement is currently being planned.
+
+## Next Steps
+
+1. Check the current status of the Hive workspace:
+\`\`\`bash
+hive status
+\`\`\`
+
+2. Check your inbox for messages from developers:
+\`\`\`bash
+hive msg inbox hive-tech-lead
+\`\`\`
+
+3. If there are pending requirements, begin planning them. If all work is complete, monitor for new requirements.`;
+    });
+
     await spawnTmuxSession({
       sessionName: techLead.tmuxSession,
       workDir: ctx.root,
       commandArgs,
+      initialPrompt,
     });
 
     // DB writes under brief lock
