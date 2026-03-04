@@ -269,16 +269,16 @@ export async function sendToTmuxSession(
   const isMultiLine = text.includes('\n');
 
   if (isMultiLine) {
-    // Multi-line text: write to temp file and paste via $(cat ...) to avoid
-    // the [Pasted text #N] buffering issue in Claude CLI. The shell expands
-    // $(cat file) into a single argument, bypassing tmux's paste-buffer handling.
-    const tempFile = join(
-      tmpdir(),
-      `hive-nudge-${Date.now()}-${sessionName.replace(/[^a-zA-Z0-9-]/g, '_')}.txt`
-    );
-    writeFileSync(tempFile, text, 'utf-8');
-    const catCmd = `$(cat ${tempFile})`;
-    await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', catCmd]);
+    // Multi-line text: use tmux set-buffer + paste-buffer to deliver the full
+    // text as a single paste event. This works because:
+    // 1. send-keys -l sends characters literally to the app (Claude CLI), NOT
+    //    to a shell, so $(cat ...) is never expanded — it appears verbatim.
+    // 2. paste-buffer uses bracketed paste mode, which tells Claude CLI that
+    //    the incoming text is pasted content, so newlines don't trigger submit.
+    const bufferName = `hive-nudge-${Date.now()}`;
+    await execa('tmux', ['set-buffer', '-b', bufferName, text]);
+    // -d deletes the buffer immediately after pasting (no cleanup needed)
+    await execa('tmux', ['paste-buffer', '-b', bufferName, '-t', sessionName, '-d']);
   } else {
     // Single-line: use send-keys with literal flag directly.
     // '--' signals end of options, preventing text starting with '-' from being parsed as flags.
