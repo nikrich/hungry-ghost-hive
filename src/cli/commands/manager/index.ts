@@ -3267,6 +3267,7 @@ async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<void> {
       });
       updateAgent(db.db, techLead.id, {
         status: 'working',
+        createdAt: new Date().toISOString(),
       });
       db.save();
     });
