@@ -18,6 +18,7 @@ import {
   syncHiveStatusesToJira,
   syncJiraStatusesToHive,
   syncUnsyncedStoriesToJira,
+  type WithDb,
 } from './sync.js';
 import type { JiraIssue } from './types.js';
 
@@ -25,6 +26,11 @@ import type { JiraIssue } from './types.js';
 vi.mock('./client.js');
 vi.mock('./issues.js');
 vi.mock('./stories.js');
+
+/** Create a pass-through WithDb callback for tests using an in-memory DB */
+function createTestWithDb(db: Database): WithDb {
+  return async <T>(fn: (db: Database) => T | Promise<T>): Promise<T> => fn(db);
+}
 
 describe('jiraStatusToHiveStatus', () => {
   it('maps Jira status to Hive status (case-insensitive)', () => {
@@ -90,6 +96,7 @@ describe('isForwardTransition', () => {
 
 describe('syncJiraStatusesToHive', () => {
   let db: Database;
+  let withDb: WithDb;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -123,6 +130,7 @@ describe('syncJiraStatusesToHive', () => {
 
   beforeEach(async () => {
     db = await createTestDatabase();
+    withDb = createTestWithDb(db);
     envDir = mkdtempSync(join(tmpdir(), 'hive-sync-test-'));
     // Create a manager agent for logging purposes
     db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
@@ -132,7 +140,7 @@ describe('syncJiraStatusesToHive', () => {
     const tokenStore = createTestTokenStore();
     const config: JiraConfig = { ...baseConfig, status_mapping: {} };
 
-    const updated = await syncJiraStatusesToHive(db, tokenStore, config);
+    const updated = await syncJiraStatusesToHive(withDb, tokenStore, config);
     expect(updated).toBe(0);
   });
 
@@ -146,7 +154,7 @@ describe('syncJiraStatusesToHive', () => {
     const tokenStore = createTestTokenStore();
     const config: JiraConfig = { ...baseConfig, status_mapping: { 'To Do': 'planned' } };
 
-    const updated = await syncJiraStatusesToHive(db, tokenStore, config);
+    const updated = await syncJiraStatusesToHive(withDb, tokenStore, config);
     expect(updated).toBe(0);
   });
 
@@ -208,7 +216,7 @@ describe('syncJiraStatusesToHive', () => {
     const { getIssue } = await import('./issues.js');
     vi.mocked(getIssue).mockResolvedValue(mockJiraIssue);
 
-    const updated = await syncJiraStatusesToHive(db, tokenStore, config);
+    const updated = await syncJiraStatusesToHive(withDb, tokenStore, config);
     expect(updated).toBe(1);
 
     // Verify story was updated
@@ -268,7 +276,7 @@ describe('syncJiraStatusesToHive', () => {
     const { getIssue } = await import('./issues.js');
     vi.mocked(getIssue).mockResolvedValue(mockJiraIssue);
 
-    const updated = await syncJiraStatusesToHive(db, tokenStore, config);
+    const updated = await syncJiraStatusesToHive(withDb, tokenStore, config);
     expect(updated).toBe(0);
   });
 
@@ -298,7 +306,7 @@ describe('syncJiraStatusesToHive', () => {
     vi.mocked(getIssue).mockRejectedValue(new Error('API Error'));
 
     // Should not throw - errors are logged
-    const updated = await syncJiraStatusesToHive(db, tokenStore, config);
+    const updated = await syncJiraStatusesToHive(withDb, tokenStore, config);
     expect(updated).toBe(0);
   });
 
@@ -359,7 +367,7 @@ describe('syncJiraStatusesToHive', () => {
     const { getIssue } = await import('./issues.js');
     vi.mocked(getIssue).mockResolvedValue(mockJiraIssue);
 
-    const updated = await syncJiraStatusesToHive(db, tokenStore, config);
+    const updated = await syncJiraStatusesToHive(withDb, tokenStore, config);
     // Should NOT update — backward transition blocked
     expect(updated).toBe(0);
 
@@ -383,13 +391,14 @@ describe('syncJiraStatusesToHive', () => {
     const tokenStore = createTestTokenStore();
     const config: JiraConfig = { ...baseConfig, status_mapping: { 'To Do': 'planned' } };
 
-    const updated = await syncJiraStatusesToHive(db, tokenStore, config);
+    const updated = await syncJiraStatusesToHive(withDb, tokenStore, config);
     expect(updated).toBe(0);
   });
 });
 
 describe('syncUnsyncedStoriesToJira', () => {
   let db: Database;
+  let withDb: WithDb;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -420,6 +429,7 @@ describe('syncUnsyncedStoriesToJira', () => {
 
   beforeEach(async () => {
     db = await createTestDatabase();
+    withDb = createTestWithDb(db);
     envDir = mkdtempSync(join(tmpdir(), 'hive-sync-unsynced-test-'));
     db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
@@ -436,13 +446,13 @@ describe('syncUnsyncedStoriesToJira', () => {
     );
 
     const tokenStore = createTestTokenStore();
-    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    const synced = await syncUnsyncedStoriesToJira(withDb, tokenStore, baseConfig);
     expect(synced).toBe(0);
   });
 
   it('returns 0 when no stories exist', async () => {
     const tokenStore = createTestTokenStore();
-    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    const synced = await syncUnsyncedStoriesToJira(withDb, tokenStore, baseConfig);
     expect(synced).toBe(0);
   });
 
@@ -454,7 +464,7 @@ describe('syncUnsyncedStoriesToJira', () => {
     // Default status is 'draft', so it should be skipped
 
     const tokenStore = createTestTokenStore();
-    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    const synced = await syncUnsyncedStoriesToJira(withDb, tokenStore, baseConfig);
     expect(synced).toBe(0);
   });
 
@@ -498,7 +508,7 @@ describe('syncUnsyncedStoriesToJira', () => {
       errors: [],
     });
 
-    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    const synced = await syncUnsyncedStoriesToJira(withDb, tokenStore, baseConfig);
     expect(synced).toBe(1);
     expect(syncRequirementToJira).toHaveBeenCalledWith(
       db,
@@ -518,7 +528,7 @@ describe('syncUnsyncedStoriesToJira', () => {
     run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story.id]);
 
     const tokenStore = createTestTokenStore();
-    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    const synced = await syncUnsyncedStoriesToJira(withDb, tokenStore, baseConfig);
     expect(synced).toBe(0);
   });
 
@@ -567,7 +577,7 @@ describe('syncUnsyncedStoriesToJira', () => {
       errors: [],
     });
 
-    const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
+    const synced = await syncUnsyncedStoriesToJira(withDb, tokenStore, baseConfig);
     // Only story2 should be synced (story1 was filtered by initial query since it now has a key)
     expect(synced).toBe(1);
     // Verify only story2 was passed to syncRequirementToJira
@@ -584,6 +594,7 @@ describe('syncUnsyncedStoriesToJira', () => {
 
 describe('retrySprintAssignment', () => {
   let db: Database;
+  let withDb: WithDb;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -614,13 +625,14 @@ describe('retrySprintAssignment', () => {
 
   beforeEach(async () => {
     db = await createTestDatabase();
+    withDb = createTestWithDb(db);
     envDir = mkdtempSync(join(tmpdir(), 'hive-sprint-retry-test-'));
     db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
 
   it('returns 0 when no stories need sprint assignment', async () => {
     const tokenStore = createTestTokenStore();
-    const count = await retrySprintAssignment(db, tokenStore, baseConfig);
+    const count = await retrySprintAssignment(withDb, tokenStore, baseConfig);
     expect(count).toBe(0);
   });
 
@@ -636,7 +648,7 @@ describe('retrySprintAssignment', () => {
     ]);
 
     const tokenStore = createTestTokenStore();
-    const count = await retrySprintAssignment(db, tokenStore, baseConfig);
+    const count = await retrySprintAssignment(withDb, tokenStore, baseConfig);
     expect(count).toBe(0);
   });
 
@@ -660,7 +672,7 @@ describe('retrySprintAssignment', () => {
     const { tryMoveToActiveSprint } = await import('./stories.js');
     vi.mocked(tryMoveToActiveSprint).mockResolvedValue(true);
 
-    const count = await retrySprintAssignment(db, tokenStore, baseConfig);
+    const count = await retrySprintAssignment(withDb, tokenStore, baseConfig);
     expect(count).toBe(1);
 
     // Verify tryMoveToActiveSprint was called with the right keys
@@ -695,7 +707,7 @@ describe('retrySprintAssignment', () => {
     const { tryMoveToActiveSprint } = await import('./stories.js');
     vi.mocked(tryMoveToActiveSprint).mockResolvedValue(false);
 
-    const count = await retrySprintAssignment(db, tokenStore, baseConfig);
+    const count = await retrySprintAssignment(withDb, tokenStore, baseConfig);
     expect(count).toBe(0);
 
     // Verify in_sprint was NOT updated
@@ -715,7 +727,7 @@ describe('retrySprintAssignment', () => {
     ]);
 
     const tokenStore = createTestTokenStore();
-    const count = await retrySprintAssignment(db, tokenStore, baseConfig);
+    const count = await retrySprintAssignment(withDb, tokenStore, baseConfig);
     expect(count).toBe(0);
   });
 });
@@ -769,6 +781,7 @@ describe('idempotency guards', () => {
 
 describe('syncHiveStatusesToJira', () => {
   let db: Database;
+  let withDb: WithDb;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -800,6 +813,7 @@ describe('syncHiveStatusesToJira', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     db = await createTestDatabase();
+    withDb = createTestWithDb(db);
     envDir = mkdtempSync(join(tmpdir(), 'hive-sync-push-test-'));
     db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
@@ -808,7 +822,7 @@ describe('syncHiveStatusesToJira', () => {
     const tokenStore = createTestTokenStore();
     const config: JiraConfig = { ...baseConfig, status_mapping: {} };
 
-    const pushed = await syncHiveStatusesToJira(db, tokenStore, config);
+    const pushed = await syncHiveStatusesToJira(withDb, tokenStore, config);
     expect(pushed).toBe(0);
   });
 
@@ -821,7 +835,7 @@ describe('syncHiveStatusesToJira', () => {
     const tokenStore = createTestTokenStore();
     const config: JiraConfig = { ...baseConfig, status_mapping: { 'To Do': 'planned' } };
 
-    const pushed = await syncHiveStatusesToJira(db, tokenStore, config);
+    const pushed = await syncHiveStatusesToJira(withDb, tokenStore, config);
     expect(pushed).toBe(0);
   });
 
@@ -896,7 +910,7 @@ describe('syncHiveStatusesToJira', () => {
     });
     vi.mocked(transitionIssue).mockResolvedValue(undefined);
 
-    const pushed = await syncHiveStatusesToJira(db, tokenStore, config);
+    const pushed = await syncHiveStatusesToJira(withDb, tokenStore, config);
     expect(pushed).toBe(1);
     expect(transitionIssue).toHaveBeenCalledWith(expect.anything(), 'TEST-123', {
       transition: { id: '11' },
@@ -956,7 +970,7 @@ describe('syncHiveStatusesToJira', () => {
     const { getIssue } = await import('./issues.js');
     vi.mocked(getIssue).mockResolvedValue(mockJiraIssue);
 
-    const pushed = await syncHiveStatusesToJira(db, tokenStore, config);
+    const pushed = await syncHiveStatusesToJira(withDb, tokenStore, config);
     expect(pushed).toBe(0);
   });
 
@@ -1017,7 +1031,7 @@ describe('syncHiveStatusesToJira', () => {
     const { getIssue, transitionIssue } = await import('./issues.js');
     vi.mocked(getIssue).mockResolvedValue(mockJiraIssue);
 
-    const pushed = await syncHiveStatusesToJira(db, tokenStore, config);
+    const pushed = await syncHiveStatusesToJira(withDb, tokenStore, config);
     expect(pushed).toBe(0);
     // Should not attempt to transition backward
     expect(transitionIssue).not.toHaveBeenCalled();

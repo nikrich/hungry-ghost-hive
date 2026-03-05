@@ -10,7 +10,7 @@ import type { JiraConfig } from '../../config/schema.js';
 import { queryAll, run } from '../../db/client.js';
 import { createStory, getStoryById } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
-import { repairMissedAssignmentHooks } from './sync.js';
+import { repairMissedAssignmentHooks, type WithDb } from './sync.js';
 
 // Mock Jira client, comments, issues, stories, and transitions modules
 vi.mock('./client.js');
@@ -19,8 +19,14 @@ vi.mock('./issues.js');
 vi.mock('./stories.js');
 vi.mock('./transitions.js');
 
+/** Create a pass-through WithDb callback for tests using an in-memory DB */
+function createTestWithDb(db: Database): WithDb {
+  return async <T>(fn: (db: Database) => T | Promise<T>): Promise<T> => fn(db);
+}
+
 describe('repairMissedAssignmentHooks', () => {
   let db: Database;
+  let withDb: WithDb;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -72,6 +78,7 @@ describe('repairMissedAssignmentHooks', () => {
 
   beforeEach(async () => {
     db = await createTestDatabase();
+    withDb = createTestWithDb(db);
     envDir = mkdtempSync(join(tmpdir(), 'hive-repair-test-'));
     // Create a manager agent for logging purposes
     db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
@@ -89,7 +96,7 @@ describe('repairMissedAssignmentHooks', () => {
 
   it('returns 0 when no stories need repair', async () => {
     const tokenStore = createTestTokenStore();
-    const repaired = await repairMissedAssignmentHooks(db, tokenStore, baseConfig);
+    const repaired = await repairMissedAssignmentHooks(withDb, tokenStore, baseConfig);
     expect(repaired).toBe(0);
   });
 
@@ -105,7 +112,7 @@ describe('repairMissedAssignmentHooks', () => {
     );
 
     const tokenStore = createTestTokenStore();
-    const repaired = await repairMissedAssignmentHooks(db, tokenStore, baseConfig);
+    const repaired = await repairMissedAssignmentHooks(withDb, tokenStore, baseConfig);
     expect(repaired).toBe(0);
   });
 
@@ -121,7 +128,7 @@ describe('repairMissedAssignmentHooks', () => {
     ]);
 
     const tokenStore = createTestTokenStore();
-    const repaired = await repairMissedAssignmentHooks(db, tokenStore, baseConfig);
+    const repaired = await repairMissedAssignmentHooks(withDb, tokenStore, baseConfig);
     expect(repaired).toBe(0);
   });
 
@@ -137,7 +144,7 @@ describe('repairMissedAssignmentHooks', () => {
     );
 
     const tokenStore = createTestTokenStore();
-    const repaired = await repairMissedAssignmentHooks(db, tokenStore, baseConfig);
+    const repaired = await repairMissedAssignmentHooks(withDb, tokenStore, baseConfig);
     expect(repaired).toBe(0);
   });
 
@@ -169,11 +176,11 @@ describe('repairMissedAssignmentHooks', () => {
     const { postComment } = await import('./comments.js');
     vi.mocked(postComment).mockResolvedValue(true);
 
-    // Mock syncStoryStatusToJira (called for in_progress stories)
-    const { syncStoryStatusToJira } = await import('./transitions.js');
-    vi.mocked(syncStoryStatusToJira).mockResolvedValue(undefined);
+    // Mock transitionJiraIssue (called for in_progress stories)
+    const { transitionJiraIssue } = await import('./transitions.js');
+    vi.mocked(transitionJiraIssue).mockResolvedValue(true);
 
-    const repaired = await repairMissedAssignmentHooks(db, tokenStore, baseConfig);
+    const repaired = await repairMissedAssignmentHooks(withDb, tokenStore, baseConfig);
     expect(repaired).toBe(1);
 
     // Verify subtask was created with correct args
@@ -205,13 +212,12 @@ describe('repairMissedAssignmentHooks', () => {
     expect(updatedStory?.external_subtask_key).toBe('TEST-11');
     expect(updatedStory?.external_subtask_id).toBe('20001');
 
-    // Verify status sync was called for in_progress story
-    expect(syncStoryStatusToJira).toHaveBeenCalledWith(
-      db,
-      tokenStore,
-      baseConfig,
-      story.id,
-      'in_progress'
+    // Verify Jira transition was called for in_progress story
+    expect(transitionJiraIssue).toHaveBeenCalledWith(
+      expect.anything(),
+      'TEST-10',
+      'in_progress',
+      baseConfig.status_mapping
     );
   });
 
@@ -241,18 +247,18 @@ describe('repairMissedAssignmentHooks', () => {
     const { postComment } = await import('./comments.js');
     vi.mocked(postComment).mockResolvedValue(true);
 
-    const { syncStoryStatusToJira } = await import('./transitions.js');
-    vi.mocked(syncStoryStatusToJira).mockResolvedValue(undefined);
+    const { transitionJiraIssue } = await import('./transitions.js');
+    vi.mocked(transitionJiraIssue).mockResolvedValue(true);
 
     // First repair
-    const repaired1 = await repairMissedAssignmentHooks(db, tokenStore, baseConfig);
+    const repaired1 = await repairMissedAssignmentHooks(withDb, tokenStore, baseConfig);
     expect(repaired1).toBe(1);
 
     // Reset mocks to track second call
     vi.mocked(createSubtask).mockClear();
 
     // Second repair — story now has subtask key, should be skipped
-    const repaired2 = await repairMissedAssignmentHooks(db, tokenStore, baseConfig);
+    const repaired2 = await repairMissedAssignmentHooks(withDb, tokenStore, baseConfig);
     expect(repaired2).toBe(0);
     expect(createSubtask).not.toHaveBeenCalled();
   });
@@ -269,7 +275,7 @@ describe('repairMissedAssignmentHooks', () => {
     );
 
     const tokenStore = createTestTokenStore();
-    const repaired = await repairMissedAssignmentHooks(db, tokenStore, baseConfig);
+    const repaired = await repairMissedAssignmentHooks(withDb, tokenStore, baseConfig);
     expect(repaired).toBe(0);
   });
 
@@ -293,7 +299,7 @@ describe('repairMissedAssignmentHooks', () => {
     vi.mocked(createSubtask).mockRejectedValue(new Error('API Error'));
 
     // Should not throw
-    const repaired = await repairMissedAssignmentHooks(db, tokenStore, baseConfig);
+    const repaired = await repairMissedAssignmentHooks(withDb, tokenStore, baseConfig);
     expect(repaired).toBe(0);
   });
 });

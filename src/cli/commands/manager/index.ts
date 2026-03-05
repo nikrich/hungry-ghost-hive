@@ -1738,16 +1738,15 @@ async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promise<void>
 }
 
 async function syncJiraStatuses(ctx: ManagerCheckContext): Promise<void> {
-  await ctx.withDb(async db => {
-    const syncedStories = await syncFromProvider(ctx.root, db.db);
-    verboseLogCtx(ctx, `syncJiraStatuses: synced=${syncedStories}`);
-    if (syncedStories > 0) {
-      ctx.counters.jiraSynced = syncedStories;
-      console.log(chalk.cyan(`  Synced ${syncedStories} story status(es) from Jira`));
-    }
-    // Always save after Jira sync — syncFromJira now also pushes unsynced stories TO Jira
-    db.save();
-  });
+  // syncFromProvider manages its own short-lived DB locks internally,
+  // so we do NOT wrap this in ctx.withDb — this avoids holding the DB
+  // lock during potentially slow Jira API calls.
+  const syncedStories = await syncFromProvider(ctx.root);
+  verboseLogCtx(ctx, `syncJiraStatuses: synced=${syncedStories}`);
+  if (syncedStories > 0) {
+    ctx.counters.jiraSynced = syncedStories;
+    console.log(chalk.cyan(`  Synced ${syncedStories} story status(es) from Jira`));
+  }
 }
 
 async function prepareSessionData(ctx: ManagerCheckContext): Promise<void> {

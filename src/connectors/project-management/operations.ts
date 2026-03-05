@@ -198,9 +198,12 @@ export async function postProgressUpdate(
  * Run bidirectional sync with the PM provider.
  * Replaces direct `syncFromJira()` calls.
  *
+ * Each sub-operation acquires and releases the DB lock independently,
+ * so API calls do not block other processes from accessing the database.
+ *
  * Never throws — failures are logged.
  */
-export async function syncFromProvider(root: string, db: Database): Promise<number> {
+export async function syncFromProvider(root: string): Promise<number> {
   try {
     const resolved = await resolveProvider(root);
     if (!resolved) return 0;
@@ -209,7 +212,7 @@ export async function syncFromProvider(root: string, db: Database): Promise<numb
 
     if (pmConfig.provider === 'jira') {
       const { syncFromJira } = await import('../../integrations/jira/sync.js');
-      return syncFromJira(root, db);
+      return syncFromJira(root);
     }
 
     return 0;
