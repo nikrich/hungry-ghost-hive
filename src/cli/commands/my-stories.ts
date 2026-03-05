@@ -6,6 +6,7 @@ import { syncStatusForStory } from '../../connectors/project-management/operatio
 import { queryAll, queryOne, run, type StoryRow } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import { createStory, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
+import { requireAgentBySession, requireStory } from '../../utils/cli-helpers.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 export const myStoriesCommand = new Command('my-stories')
@@ -123,23 +124,10 @@ myStoriesCommand
   .action(async (storyId: string, options: { session: string }) => {
     await withHiveContext(async ({ root, db }) => {
       // Find agent by session
-      const agent = queryOne<{ id: string }>(
-        db.db,
-        "SELECT id FROM agents WHERE tmux_session = ? AND status != 'terminated'",
-        [options.session]
-      );
-
-      if (!agent) {
-        console.error(chalk.red(`No agent found with session: ${options.session}`));
-        process.exit(1);
-      }
+      const agent = requireAgentBySession(db.db, options.session);
 
       // Check story exists and is available
-      const story = queryOne<StoryRow>(db.db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
-      if (!story) {
-        console.error(chalk.red(`Story not found: ${storyId}`));
-        process.exit(1);
-      }
+      const story = requireStory(db.db, storyId);
 
       if (story.assigned_agent_id && story.assigned_agent_id !== agent.id) {
         console.error(chalk.red(`Story already assigned to another agent.`));
@@ -185,11 +173,7 @@ myStoriesCommand
   .description('Mark a story as complete (ready for review)')
   .action(async (storyId: string) => {
     await withHiveContext(async ({ root, db }) => {
-      const story = queryOne<StoryRow>(db.db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
-      if (!story) {
-        console.error(chalk.red(`Story not found: ${storyId}`));
-        process.exit(1);
-      }
+      requireStory(db.db, storyId);
 
       run(
         db.db,
@@ -245,16 +229,7 @@ myStoriesCommand
       }
 
       await withHiveContext(async ({ db }) => {
-        const agent = queryOne<{ id: string; team_id: string | null }>(
-          db.db,
-          "SELECT id, team_id FROM agents WHERE tmux_session = ? AND status != 'terminated'",
-          [options.session]
-        );
-
-        if (!agent) {
-          console.error(chalk.red(`No agent found with session: ${options.session}`));
-          process.exit(1);
-        }
+        const agent = requireAgentBySession(db.db, options.session);
 
         if (!agent.team_id) {
           console.error(

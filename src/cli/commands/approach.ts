@@ -3,9 +3,8 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { postCommentOnIssue } from '../../connectors/project-management/operations.js';
-import { queryOne } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
-import type { StoryRow } from '../../db/queries/stories.js';
+import { requireStory } from '../../utils/cli-helpers.js';
 import * as logger from '../../utils/logger.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 
@@ -19,11 +18,7 @@ export const approachCommand = new Command('approach')
       const agentName = options.from || 'unknown-agent';
 
       // Look up the story
-      const story = queryOne<StoryRow>(db.db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
-      if (!story) {
-        console.error(chalk.red(`Story not found: ${storyId}`));
-        process.exit(1);
-      }
+      const story = requireStory(db.db, storyId);
 
       // Log approach to agent_logs
       createLog(db.db, {

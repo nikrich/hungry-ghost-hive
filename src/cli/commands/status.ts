@@ -13,6 +13,7 @@ import {
   getStoryDependencies,
 } from '../../db/queries/stories.js';
 import { getAllTeams, getTeamByName } from '../../db/queries/teams.js';
+import { requireStory } from '../../utils/cli-helpers.js';
 import { statusColor } from '../../utils/logger.js';
 import { withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
@@ -237,11 +238,7 @@ function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: 
 }
 
 function showStoryStatus(db: import('sql.js').Database, storyId: string, json?: boolean): void {
-  const story = getStoryById(db, storyId);
-  if (!story) {
-    console.error(chalk.red(`Story not found: ${storyId}`));
-    process.exit(1);
-  }
+  const story = requireStory(db, storyId);
 
   const dependencies = getStoryDependencies(db, story.id);
   const logs = getLogsByStory(db, story.id).slice(0, 10);
