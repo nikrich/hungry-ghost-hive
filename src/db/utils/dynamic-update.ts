@@ -34,8 +34,8 @@ export interface DualWritePair {
  * For each key in fieldMap, if the corresponding input value is not undefined,
  * adds a `column = ?` entry to updates and the (optionally transformed) value to values.
  */
-export function buildDynamicUpdate(
-  input: Record<string, unknown>,
+export function buildDynamicUpdate<T extends object>(
+  input: T,
   fieldMap: FieldMap,
   options?: { includeUpdatedAt?: boolean }
 ): DynamicUpdateResult {
@@ -47,8 +47,9 @@ export function buildDynamicUpdate(
     values.push(new Date().toISOString());
   }
 
+  const rec = input as Record<string, unknown>;
   for (const [inputKey, mapping] of Object.entries(fieldMap)) {
-    const value = input[inputKey];
+    const value = rec[inputKey];
     if (value !== undefined) {
       const column = typeof mapping === 'string' ? mapping : mapping.column;
       const transformed = typeof mapping === 'string' ? value : mapping.transform(value);
@@ -66,13 +67,14 @@ export function buildDynamicUpdate(
  * For each pair, resolves the value (preferring `current` over `legacy` input key),
  * then writes to both columns if a value is present.
  */
-export function addDualWrite(
+export function addDualWrite<T extends object>(
   result: DynamicUpdateResult,
-  input: Record<string, unknown>,
+  input: T,
   pairs: DualWritePair[]
 ): void {
+  const rec = input as Record<string, unknown>;
   for (const { current, legacy, currentColumn, legacyColumn } of pairs) {
-    const value = input[current] !== undefined ? input[current] : input[legacy];
+    const value = rec[current] !== undefined ? rec[current] : rec[legacy];
     if (value !== undefined) {
       result.updates.push(`${legacyColumn} = ?`);
       result.values.push(value);
