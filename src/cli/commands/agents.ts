@@ -1,15 +1,18 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import chalk from 'chalk';
+import { execSync } from 'child_process';
 import { Command } from 'commander';
 import {
   deleteAgent,
   getActiveAgents,
   getAgentById,
+  getAgentByTmuxSession,
   getAgentsByStatus,
   getAllAgents,
+  updateAgent,
 } from '../../db/queries/agents.js';
-import { getLogsByAgent } from '../../db/queries/logs.js';
+import { createLog, getLogsByAgent } from '../../db/queries/logs.js';
 import { removeWorktree } from '../../git/worktree.js';
 import { statusColor } from '../../utils/logger.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
@@ -211,3 +214,83 @@ agentsCommand
       console.log(chalk.green(`✓ Cleaned up ${deleted} terminated agent(s).`));
     });
   });
+
+agentsCommand
+  .command('self-terminate')
+  .description('Cleanly self-terminate the current agent')
+  .option(
+    '--session <session>',
+    'Tmux session name (defaults to HIVE_SESSION env var or current tmux session)'
+  )
+  .action(async (options: { session?: string }) => {
+    const sessionName = options.session || process.env.HIVE_SESSION || getCurrentTmuxSession();
+
+    if (!sessionName) {
+      console.error(
+        chalk.red('Could not determine tmux session. Use --session or set HIVE_SESSION.')
+      );
+      process.exit(1);
+    }
+
+    await withHiveContext(async ({ root, db }) => {
+      const agent = getAgentByTmuxSession(db.db, sessionName);
+      if (!agent) {
+        console.error(chalk.red(`No agent found for tmux session: ${sessionName}`));
+        process.exit(1);
+      }
+
+      // Clean up worktree if one exists
+      if (agent.worktree_path) {
+        const result = removeWorktree(root, agent.worktree_path);
+        if (!result.success) {
+          console.error(
+            chalk.yellow(`Warning: Failed to remove worktree for ${agent.id}: ${result.error}`)
+          );
+        }
+      }
+
+      // Mark agent as terminated in DB
+      updateAgent(db.db, agent.id, {
+        status: 'terminated',
+        currentStoryId: null,
+      });
+
+      // Log the self-termination event
+      createLog(db.db, {
+        agentId: agent.id,
+        eventType: 'AGENT_TERMINATED',
+        message: `Agent self-terminated (session: ${sessionName})`,
+      });
+
+      db.save();
+
+      console.log(chalk.green(`✓ Agent ${agent.id} self-terminated.`));
+
+      // Kill own tmux session as the final action.
+      // Use a backgrounded shell command with a delay so the process can exit cleanly.
+      try {
+        execSync(`(sleep 1 && tmux kill-session -t ${shellEscape(sessionName)}) &`, {
+          stdio: 'ignore',
+          shell: '/bin/sh',
+        });
+      } catch (_error) {
+        // Best-effort: session may already be gone
+      }
+    });
+  });
+
+function getCurrentTmuxSession(): string | undefined {
+  try {
+    return (
+      execSync('tmux display-message -p "#S"', { stdio: ['pipe', 'pipe', 'ignore'] })
+        .toString()
+        .trim() || undefined
+    );
+  } catch (_error) {
+    return undefined;
+  }
+}
+
+function shellEscape(s: string): string {
+  return `'${s.replace(/'/g, `'"'"'`)}'`;
+}

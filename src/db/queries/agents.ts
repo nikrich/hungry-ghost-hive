@@ -141,6 +141,12 @@ export function deleteAgent(db: Database, id: string): void {
   run(db, 'DELETE FROM agents WHERE id = ?', [id]);
 }
 
+export function getAgentByTmuxSession(db: Database, tmuxSession: string): AgentRow | undefined {
+  return queryOne<AgentRow>(db, 'SELECT * FROM agents WHERE tmux_session = ? LIMIT 1', [
+    tmuxSession,
+  ]);
+}
+
 export function terminateAgent(db: Database, id: string): void {
   updateAgent(db, id, { status: 'terminated', tmuxSession: null });
 }

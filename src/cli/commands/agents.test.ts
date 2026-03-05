@@ -7,11 +7,14 @@ vi.mock('../../db/queries/agents.js', () => ({
   deleteAgent: vi.fn(),
   getActiveAgents: vi.fn(() => []),
   getAgentById: vi.fn(),
+  getAgentByTmuxSession: vi.fn(),
   getAgentsByStatus: vi.fn(() => []),
   getAllAgents: vi.fn(() => []),
+  updateAgent: vi.fn(),
 }));
 
 vi.mock('../../db/queries/logs.js', () => ({
+  createLog: vi.fn(),
   getLogsByAgent: vi.fn(() => []),
 }));
 
@@ -81,6 +84,24 @@ describe('agents command', () => {
       const logsCmd = agentsCommand.commands.find(cmd => cmd.name() === 'logs');
       const jsonOpt = logsCmd?.options.find(opt => opt.long === '--json');
       expect(jsonOpt).toBeDefined();
+    });
+  });
+
+  describe('self-terminate subcommand', () => {
+    it('should have self-terminate subcommand', () => {
+      const cmd = agentsCommand.commands.find(cmd => cmd.name() === 'self-terminate');
+      expect(cmd).toBeDefined();
+    });
+
+    it('should have --session option', () => {
+      const cmd = agentsCommand.commands.find(cmd => cmd.name() === 'self-terminate');
+      const sessionOpt = cmd?.options.find(opt => opt.long === '--session');
+      expect(sessionOpt).toBeDefined();
+    });
+
+    it('should have description', () => {
+      const cmd = agentsCommand.commands.find(cmd => cmd.name() === 'self-terminate');
+      expect(cmd?.description()).toBe('Cleanly self-terminate the current agent');
     });
   });
 });
