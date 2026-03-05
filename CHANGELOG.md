@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.43.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.42.0...hungry-ghost-hive-v0.43.0) (2026-03-05)
+
+
+### Features
+
+* add agent self-terminate CLI command ([#491](https://github.com/nikrich/hungry-ghost-hive/issues/491)) ([4532f22](https://github.com/nikrich/hungry-ghost-hive/commit/4532f229427a5c229a1f4c08105011abd9adf7b6))
+* add auditor agent spawn, prompt, and lifecycle ([#494](https://github.com/nikrich/hungry-ghost-hive/issues/494)) ([dbfcccb](https://github.com/nikrich/hungry-ghost-hive/commit/dbfcccb062d1edaf6c9f3e6cbeb97e738f876507))
+* add auditor agent type to schema and config ([#489](https://github.com/nikrich/hungry-ghost-hive/issues/489)) ([53e9575](https://github.com/nikrich/hungry-ghost-hive/commit/53e9575206d1d69174aafffaf19cf327ab68a49f))
+* replace manager nudge cycle with auditor spawn ([#495](https://github.com/nikrich/hungry-ghost-hive/issues/495)) ([ea2114f](https://github.com/nikrich/hungry-ghost-hive/commit/ea2114f5405314c5a0dd7e53417440844839cfea))
+
+
+### Bug Fixes
+
+* add edge case handling and tests for agent self-terminate ([#492](https://github.com/nikrich/hungry-ghost-hive/issues/492)) ([bc2060b](https://github.com/nikrich/hungry-ghost-hive/commit/bc2060ba65365203616be541116435be33abd3c9))
+* use tmux paste-buffer for multi-line nudges and align variable naming ([#493](https://github.com/nikrich/hungry-ghost-hive/issues/493)) ([79da28e](https://github.com/nikrich/hungry-ghost-hive/commit/79da28e054f84b762a5d55257d444f4b1bbce8ba))
+
 ## [0.42.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.41.1...hungry-ghost-hive-v0.42.0) (2026-03-04)
 
 
