@@ -229,10 +229,7 @@ export class RaftStateMachine {
     });
   }
 
-  appendDurableEntry(
-    type: DurableLogEntryType,
-    metadata: Record<string, unknown>
-  ): void {
+  appendDurableEntry(type: DurableLogEntryType, metadata: Record<string, unknown>): void {
     if (!this.raftStore) return;
 
     try {
@@ -252,7 +249,11 @@ export class RaftStateMachine {
     return appended;
   }
 
-  getRaftStoreState(): { commit_index: number; last_applied: number; last_log_index: number } | null {
+  getRaftStoreState(): {
+    commit_index: number;
+    last_applied: number;
+    last_log_index: number;
+  } | null {
     return this.raftStore?.getState() ?? null;
   }
 
