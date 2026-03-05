@@ -83,6 +83,7 @@ import {
   submitManagerNudgeWithVerification,
   updateAgentStateTracking,
 } from './agent-monitoring.js';
+import { spawnAuditorIfNeeded } from './auditor-lifecycle.js';
 import { autoAssignPlannedStories } from './auto-assignment.js';
 import { assessCompletionFromOutput } from './done-intelligence.js';
 import { handleEscalationAndNudge } from './escalation-handler.js';
@@ -928,6 +929,7 @@ async function managerCheck(
       plannedAutoAssigned: 0,
       jiraSynced: 0,
       featureTestsSpawned: 0,
+      auditorsSpawned: 0,
     },
     escalatedSessions: new Set(),
     agentsBySessionName: new Map(),
@@ -1002,7 +1004,11 @@ async function managerCheck(
   verboseLogCtx(ctx, 'Step: spin down idle agents');
   await spinDownIdleAgents(ctx);
   verboseLogCtx(ctx, 'Step: evaluate stuck stories');
-  await nudgeStuckStories(ctx);
+  const auditorHandled = await spawnAuditorIfNeeded(ctx);
+  if (!auditorHandled) {
+    // auditor_enabled is false — fall back to existing nudge behavior
+    await nudgeStuckStories(ctx);
+  }
   verboseLogCtx(ctx, 'Step: notify seniors about unassigned stories');
   await notifyUnassignedStories(ctx);
   await printSummary(ctx);
@@ -3355,6 +3361,7 @@ async function printSummary(ctx: ManagerCheckContext): Promise<void> {
     plannedAutoAssigned,
     jiraSynced,
     featureTestsSpawned,
+    auditorsSpawned,
   } = ctx.counters;
   const summary = [];
 
@@ -3381,6 +3388,7 @@ async function printSummary(ctx: ManagerCheckContext): Promise<void> {
     summary.push(`${plannedAutoAssigned} planned story(ies) auto-assigned`);
   if (jiraSynced > 0) summary.push(`${jiraSynced} synced from Jira`);
   if (featureTestsSpawned > 0) summary.push(`${featureTestsSpawned} feature test(s) spawned`);
+  if (auditorsSpawned > 0) summary.push(`${auditorsSpawned} auditor(s) spawned`);
 
   if (summary.length > 0) {
     console.log(chalk.yellow(`  ${summary.join(', ')}`));
