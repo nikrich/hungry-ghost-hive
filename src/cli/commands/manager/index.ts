@@ -2486,7 +2486,10 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
       if (pr.story_id) {
         const storyId = pr.story_id;
         if (hasMergedPullRequestForStory(db.db, storyId)) {
-          verboseLogCtx(ctx, `handleRejectedPRs: skip qa_failed for story=${storyId}, another PR is already merged`);
+          verboseLogCtx(
+            ctx,
+            `handleRejectedPRs: skip qa_failed for story=${storyId}, another PR is already merged`
+          );
         } else {
           await withTransaction(
             db.db,
