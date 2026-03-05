@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import chalk from 'chalk';
-import { Command } from 'commander';
 import { execSync } from 'child_process';
+import { Command } from 'commander';
 import {
   deleteAgent,
   getActiveAgents,
@@ -223,8 +223,7 @@ agentsCommand
     'Tmux session name (defaults to HIVE_SESSION env var or current tmux session)'
   )
   .action(async (options: { session?: string }) => {
-    const sessionName =
-      options.session || process.env.HIVE_SESSION || getCurrentTmuxSession();
+    const sessionName = options.session || process.env.HIVE_SESSION || getCurrentTmuxSession();
 
     if (!sessionName) {
       console.error(
@@ -245,9 +244,7 @@ agentsCommand
         const result = removeWorktree(root, agent.worktree_path);
         if (!result.success) {
           console.error(
-            chalk.yellow(
-              `Warning: Failed to remove worktree for ${agent.id}: ${result.error}`
-            )
+            chalk.yellow(`Warning: Failed to remove worktree for ${agent.id}: ${result.error}`)
           );
         }
       }
@@ -284,9 +281,11 @@ agentsCommand
 
 function getCurrentTmuxSession(): string | undefined {
   try {
-    return execSync('tmux display-message -p "#S"', { stdio: ['pipe', 'pipe', 'ignore'] })
-      .toString()
-      .trim() || undefined;
+    return (
+      execSync('tmux display-message -p "#S"', { stdio: ['pipe', 'pipe', 'ignore'] })
+        .toString()
+        .trim() || undefined
+    );
   } catch (_error) {
     return undefined;
   }
