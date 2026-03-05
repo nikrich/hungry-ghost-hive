@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { StoryRow } from '../db/client.js';
 import {
   formatSeniorSessionName,
+  generateAuditorPrompt,
   generateFeatureTestPrompt,
   generateIntermediatePrompt,
   generateJuniorPrompt,
@@ -642,6 +643,82 @@ describe('Prompt Templates', () => {
 
       expect(prompt).toContain('hive msg send hive-tech-lead');
       expect(prompt).toContain(`hive msg outbox ${sessionName}`);
+    });
+  });
+
+  describe('generateAuditorPrompt', () => {
+    const sessionName = 'hive-auditor-1234567890';
+
+    it('should generate prompt with correct agent role', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl);
+
+      expect(prompt).toContain('You are a Hive Auditor Agent');
+    });
+
+    it('should include session name', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl);
+
+      expect(prompt).toContain(`Your tmux session: ${sessionName}`);
+    });
+
+    it('should include repository information', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl);
+
+      expect(prompt).toContain(`Local path: ${repoPath}`);
+      expect(prompt).toContain(`Remote: ${repoUrl}`);
+    });
+
+    it('should include hive CLI commands reference', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl);
+
+      expect(prompt).toContain('hive status');
+      expect(prompt).toContain('hive agents list --active');
+      expect(prompt).toContain('hive agents inspect');
+      expect(prompt).toContain('hive stories list');
+      expect(prompt).toContain('hive pr queue');
+      expect(prompt).toContain('hive msg send');
+      expect(prompt).toContain('hive agent self-terminate');
+    });
+
+    it('should include orphaned story detection instructions', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl);
+
+      expect(prompt).toContain('Orphaned stories');
+      expect(prompt).toContain('hive stories update');
+      expect(prompt).toContain('--status planned');
+    });
+
+    it('should include stuck agent detection instructions', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl);
+
+      expect(prompt).toContain('Plan mode');
+      expect(prompt).toContain('Permission prompts');
+      expect(prompt).toContain('BTab');
+    });
+
+    it('should include escalation instructions', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl);
+
+      expect(prompt).toContain('hive msg send hive-tech-lead');
+      expect(prompt).toContain(`--from ${sessionName}`);
+    });
+
+    it('should include self-terminate instruction', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl);
+
+      expect(prompt).toContain('hive agent self-terminate');
+    });
+
+    it('should prohibit nudging agents via arbitrary tmux send-keys', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl);
+
+      expect(prompt).toContain('Do NOT nudge or interrupt agents');
+    });
+
+    it('should include tmux capture-pane instructions', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl);
+
+      expect(prompt).toContain('tmux capture-pane');
     });
   });
 

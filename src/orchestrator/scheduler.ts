@@ -55,6 +55,7 @@ import {
 } from './feature-branch.js';
 import { detectAndRecoverOrphanedStories } from './orphan-recovery.js';
 import {
+  generateAuditorPrompt,
   generateFeatureTestPrompt,
   generateIntermediatePrompt,
   generateJuniorPrompt,
@@ -905,7 +906,11 @@ export class Scheduler {
       e2eTestsPath: string;
     }
   ): Promise<AgentRow> {
-    const sessionName = generateSessionName(type, teamName, index);
+    // Auditor uses a timestamp-based session name since it's ephemeral
+    const sessionName =
+      type === 'auditor'
+        ? `hive-auditor-${Date.now()}`
+        : generateSessionName(type, teamName, index);
 
     // Prevent creating duplicate agents on same tmux session (for senior agents)
     if (type === 'senior') {
@@ -1034,6 +1039,8 @@ export class Scheduler {
           featureTestContext.e2eTestsPath,
           { includeProgressUpdates }
         );
+      } else if (type === 'auditor') {
+        prompt = generateAuditorPrompt(sessionName, worktreePath, team?.repo_url || '');
       } else {
         prompt = generateQAPrompt(
           teamName,
@@ -1134,6 +1141,15 @@ export class Scheduler {
       undefined,
       featureTestContext
     );
+  }
+
+  /**
+   * Spawn an auditor agent for intelligent audit of all active work.
+   * The auditor is ephemeral — it audits the workspace and self-terminates.
+   * Uses a shared worktree from main branch (read-only, does not commit).
+   */
+  async spawnAuditor(teamId: string, teamName: string, repoPath: string): Promise<AgentRow> {
+    return this.spawnAgent('auditor', teamId, teamName, repoPath);
   }
 
   private async spawnSenior(
