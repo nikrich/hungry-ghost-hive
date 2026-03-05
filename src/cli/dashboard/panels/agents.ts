@@ -19,7 +19,10 @@ function debugLog(msg: string) {
 // Store agents for selection lookup
 let currentAgents: AgentRow[] = [];
 
-export function createAgentsPanel(screen: Widgets.Screen, ctx: DashboardContext): Widgets.ListElement {
+export function createAgentsPanel(
+  screen: Widgets.Screen,
+  ctx: DashboardContext
+): Widgets.ListElement {
   const list = blessed.list({
     parent: screen,
     top: 1,
