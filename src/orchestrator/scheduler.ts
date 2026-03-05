@@ -46,6 +46,12 @@ import {
   startManager,
 } from '../tmux/manager.js';
 import * as logger from '../utils/logger.js';
+import {
+  countOfType,
+  getActiveOfType,
+  getAssignableAgents,
+  getIdleOfType,
+} from './agent-filters.js';
 import { selectAgentWithLeastWorkload } from './agent-selector.js';
 import { getCapacityPoints, selectStoriesForCapacity } from './capacity-planner.js';
 import { areDependenciesSatisfied, topologicalSort } from './dependency-resolver.js';
@@ -234,15 +240,9 @@ export class Scheduler {
 
       // Get available agents for this team
       // Include agents that are working but have no current story (effectively idle)
-      const agents = getAgentsByTeam(this.db, teamId).filter(
-        a =>
-          a.type !== 'qa' &&
-          a.type !== 'auditor' &&
-          (a.status === 'idle' || (a.status === 'working' && a.current_story_id === null))
-      );
-      const activeSeniors = getAgentsByTeam(this.db, teamId).filter(
-        a => a.type === 'senior' && a.status !== 'terminated'
-      );
+      const allTeamAgents = getAgentsByTeam(this.db, teamId);
+      const agents = getAssignableAgents(allTeamAgents);
+      const activeSeniors = getActiveOfType(allTeamAgents, 'senior');
       const seniorSessionPrefix = generateSessionName('senior', team.name);
       const indexedSeniorSessions = activeSeniors
         .map(senior => {
@@ -268,7 +268,8 @@ export class Scheduler {
         try {
           const spawnIndex = nextSeniorIndex;
           nextSeniorIndex += 1;
-          const spawnedSenior = await this.spawnSenior(
+          const spawnedSenior = await this.spawnAgent(
+            'senior',
             teamId,
             team.name,
             team.repo_path,
@@ -338,18 +339,16 @@ export class Scheduler {
           targetAgent = await getOrSpawnSenior();
         } else if (complexity <= this.config.scaling.junior_max_complexity) {
           // Assign to Junior with least workload
-          const juniors = agents.filter(a => a.type === 'junior' && a.status === 'idle');
+          const juniors = getIdleOfType(agents, 'junior');
           targetAgent =
             juniors.length > 0 ? selectAgentWithLeastWorkload(this.db, juniors) : undefined;
           if (!targetAgent) {
             try {
-              targetAgent = await this.spawnJunior(teamId, team.name, team.repo_path);
+              targetAgent = await this.spawnAgent('junior', teamId, team.name, team.repo_path);
               agents.push(targetAgent);
             } catch (_error) {
               // Fall back to Intermediate or Senior
-              const intermediates = agents.filter(
-                a => a.type === 'intermediate' && a.status === 'idle'
-              );
+              const intermediates = getIdleOfType(agents, 'intermediate');
               targetAgent =
                 intermediates.length > 0
                   ? selectAgentWithLeastWorkload(this.db, intermediates)
@@ -358,16 +357,14 @@ export class Scheduler {
           }
         } else if (complexity <= this.config.scaling.intermediate_max_complexity) {
           // Assign to Intermediate with least workload
-          const intermediates = agents.filter(
-            a => a.type === 'intermediate' && a.status === 'idle'
-          );
+          const intermediates = getIdleOfType(agents, 'intermediate');
           targetAgent =
             intermediates.length > 0
               ? selectAgentWithLeastWorkload(this.db, intermediates)
               : undefined;
           if (!targetAgent) {
             try {
-              targetAgent = await this.spawnIntermediate(teamId, team.name, team.repo_path);
+              targetAgent = await this.spawnAgent('intermediate', teamId, team.name, team.repo_path);
               agents.push(targetAgent);
             } catch (_error) {
               // Fall back to Senior
@@ -618,9 +615,7 @@ export class Scheduler {
         0
       );
 
-      const seniors = getAgentsByTeam(this.db, team.id).filter(
-        a => a.type === 'senior' && a.status !== 'terminated'
-      );
+      const seniors = getActiveOfType(getAgentsByTeam(this.db, team.id), 'senior');
 
       // Calculate needed seniors based on assignable work only
       const seniorCapacity = this.config.scaling.senior_capacity;
@@ -632,7 +627,7 @@ export class Scheduler {
         const toSpawn = neededSeniors - currentSeniors;
         for (let i = 0; i < toSpawn; i++) {
           try {
-            await this.spawnSenior(team.id, team.name, team.repo_path, currentSeniors + i + 1);
+            await this.spawnAgent('senior', team.id, team.name, team.repo_path, currentSeniors + i + 1);
             createLog(this.db, {
               agentId: 'scheduler',
               eventType: 'TEAM_SCALED_UP',
@@ -777,9 +772,7 @@ export class Scheduler {
       pendingCount > 0 ? Math.min(Math.ceil(pendingCount / pendingPerAgent), maxAgents) : 0;
 
     // Get currently active QA agents for this team
-    const activeQAs = getAgentsByTeam(this.db, teamId).filter(
-      a => a.type === 'qa' && a.status !== 'terminated'
-    );
+    const activeQAs = getActiveOfType(getAgentsByTeam(this.db, teamId), 'qa');
 
     const currentQACount = activeQAs.length;
 
@@ -790,7 +783,7 @@ export class Scheduler {
 
       for (let i = 0; i < toSpawn; i++) {
         const index = currentQACount + i + 1;
-        spawnPromises.push(this.spawnQA(teamId, teamName, repoPath, index));
+        spawnPromises.push(this.spawnAgent('qa', teamId, teamName, repoPath, index));
       }
 
       try {
@@ -906,15 +899,22 @@ export class Scheduler {
       e2eTestsPath: string;
     }
   ): Promise<AgentRow> {
+    // Auto-compute index for intermediate/junior when not provided
+    let resolvedIndex = index;
+    if (resolvedIndex === undefined && (type === 'intermediate' || type === 'junior')) {
+      resolvedIndex = countOfType(getAgentsByTeam(this.db, teamId), type) + 1;
+    }
+
     // Auditor uses a timestamp-based session name since it's ephemeral
     const sessionName =
       type === 'auditor'
         ? `hive-auditor-${Date.now()}`
-        : generateSessionName(type, teamName, index);
+        : generateSessionName(type, teamName, resolvedIndex);
 
     // Prevent creating duplicate agents on same tmux session (for senior agents)
     if (type === 'senior') {
-      const existingSeniors = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'senior');
+      const teamAgents = getAgentsByTeam(this.db, teamId);
+      const existingSeniors = teamAgents.filter(a => a.type === 'senior');
       const existingOnSession = existingSeniors.find(
         a => a.tmux_session === sessionName && a.status !== 'terminated'
       );
@@ -1109,15 +1109,6 @@ export class Scheduler {
     return provider !== 'none';
   }
 
-  private async spawnQA(
-    teamId: string,
-    teamName: string,
-    repoPath: string,
-    index: number = 1
-  ): Promise<AgentRow> {
-    return this.spawnAgent('qa', teamId, teamName, repoPath, index);
-  }
-
   /**
    * Spawn a feature_test agent for running E2E tests against a feature branch.
    * This method is public because it is called from external orchestration logic
@@ -1150,31 +1141,6 @@ export class Scheduler {
    */
   async spawnAuditor(teamId: string, teamName: string, repoPath: string): Promise<AgentRow> {
     return this.spawnAgent('auditor', teamId, teamName, repoPath);
-  }
-
-  private async spawnSenior(
-    teamId: string,
-    teamName: string,
-    repoPath: string,
-    index?: number
-  ): Promise<AgentRow> {
-    return this.spawnAgent('senior', teamId, teamName, repoPath, index);
-  }
-
-  private async spawnIntermediate(
-    teamId: string,
-    teamName: string,
-    repoPath: string
-  ): Promise<AgentRow> {
-    const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'intermediate');
-    const index = existing.length + 1;
-    return this.spawnAgent('intermediate', teamId, teamName, repoPath, index);
-  }
-
-  private async spawnJunior(teamId: string, teamName: string, repoPath: string): Promise<AgentRow> {
-    const existing = getAgentsByTeam(this.db, teamId).filter(a => a.type === 'junior');
-    const index = existing.length + 1;
-    return this.spawnAgent('junior', teamId, teamName, repoPath, index);
   }
 
   /**

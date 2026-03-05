@@ -1786,7 +1786,7 @@ describe('Scheduler checkMergeQueue', () => {
       githubPrUrl: 'https://github.com/test/repo/pull/123',
     });
 
-    const spawnQASpy = vi.spyOn(scheduler as any, 'spawnQA').mockResolvedValue({
+    const spawnAgentSpy = vi.spyOn(scheduler as any, 'spawnAgent').mockResolvedValue({
       id: 'qa-test',
       type: 'qa',
       team_id: team.id,
@@ -1795,10 +1795,10 @@ describe('Scheduler checkMergeQueue', () => {
 
     await scheduler.checkMergeQueue();
 
-    expect(spawnQASpy).toHaveBeenCalledTimes(1);
-    expect(spawnQASpy).toHaveBeenCalledWith(team.id, team.name, team.repo_path, 1);
+    expect(spawnAgentSpy).toHaveBeenCalledTimes(1);
+    expect(spawnAgentSpy).toHaveBeenCalledWith('qa', team.id, team.name, team.repo_path, 1);
 
-    spawnQASpy.mockRestore();
+    spawnAgentSpy.mockRestore();
   });
 
   it('should not spawn QA for merged stories even if PR row is still queued', async () => {
@@ -1824,7 +1824,7 @@ describe('Scheduler checkMergeQueue', () => {
       githubPrUrl: 'https://github.com/test/repo/pull/124',
     });
 
-    const spawnQASpy = vi.spyOn(scheduler as any, 'spawnQA').mockResolvedValue({
+    const spawnAgentSpy = vi.spyOn(scheduler as any, 'spawnAgent').mockResolvedValue({
       id: 'qa-test',
       type: 'qa',
       team_id: team.id,
@@ -1833,9 +1833,9 @@ describe('Scheduler checkMergeQueue', () => {
 
     await scheduler.checkMergeQueue();
 
-    expect(spawnQASpy).not.toHaveBeenCalled();
+    expect(spawnAgentSpy).not.toHaveBeenCalled();
 
-    spawnQASpy.mockRestore();
+    spawnAgentSpy.mockRestore();
   });
 });
 
@@ -1860,10 +1860,10 @@ describe('Scheduler checkScaling', () => {
     });
     updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
 
-    const spawnSeniorSpy = vi
-      .spyOn(scheduler as any, 'spawnSenior')
+    const spawnAgentSpy = vi
+      .spyOn(scheduler as any, 'spawnAgent')
       .mockImplementation(async (...args: any[]): Promise<any> => {
-        const index = args[3] as number | undefined;
+        const index = args[4] as number | undefined;
         expect(index).toBe(2);
         db.run(
           `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
@@ -1882,7 +1882,7 @@ describe('Scheduler checkScaling', () => {
     const result = await scheduler.assignStories();
 
     expect(result.assigned).toBe(1);
-    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+    expect(spawnAgentSpy).toHaveBeenCalledTimes(1);
 
     const updatedStory = getStoryById(db, story.id)!;
     expect(updatedStory.status).toBe('in_progress');
@@ -1894,7 +1894,7 @@ describe('Scheduler checkScaling', () => {
     expect(busySeniorRow?.[0]).toBe('working');
     expect(busySeniorRow?.[1]).toBe('STORY-OLD');
 
-    spawnSeniorSpy.mockRestore();
+    spawnAgentSpy.mockRestore();
   });
 
   it('should choose next senior index from max active index when index 1 is absent', async () => {
@@ -1926,10 +1926,10 @@ describe('Scheduler checkScaling', () => {
     });
     updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
 
-    const spawnSeniorSpy = vi
-      .spyOn(scheduler as any, 'spawnSenior')
+    const spawnAgentSpy = vi
+      .spyOn(scheduler as any, 'spawnAgent')
       .mockImplementation(async (...args: any[]): Promise<any> => {
-        const index = args[3] as number | undefined;
+        const index = args[4] as number | undefined;
         expect(index).toBe(6);
         db.run(
           `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
@@ -1949,10 +1949,10 @@ describe('Scheduler checkScaling', () => {
     const result = await scheduler.assignStories();
 
     expect(result.assigned).toBe(1);
-    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+    expect(spawnAgentSpy).toHaveBeenCalledTimes(1);
     expect(getStoryById(db, story.id)?.assigned_agent_id).toBe('senior-gap-6');
 
-    spawnSeniorSpy.mockRestore();
+    spawnAgentSpy.mockRestore();
   });
 
   it('should not assign multiple stories to the same senior in one cycle', async () => {
@@ -1982,15 +1982,15 @@ describe('Scheduler checkScaling', () => {
     });
     updateStory(db, story2.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
 
-    const spawnSeniorSpy = vi
-      .spyOn(scheduler as any, 'spawnSenior')
+    const spawnAgentSpy = vi
+      .spyOn(scheduler as any, 'spawnAgent')
       .mockRejectedValue(new Error('senior capacity exhausted'));
 
     const result = await scheduler.assignStories();
 
     expect(result.assigned).toBe(1);
     expect(result.errors.some(e => e.includes('Failed to spawn Senior'))).toBe(true);
-    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+    expect(spawnAgentSpy).toHaveBeenCalledTimes(1);
 
     const updatedStory1 = getStoryById(db, story1.id)!;
     const updatedStory2 = getStoryById(db, story2.id)!;
@@ -2008,7 +2008,7 @@ describe('Scheduler checkScaling', () => {
     expect(seniorRow?.[0]).toBe('working');
     expect(seniorRow?.[1]).toBe(inProgress[0].id);
 
-    spawnSeniorSpy.mockRestore();
+    spawnAgentSpy.mockRestore();
   });
 
   it('should send an explicit assignment handoff to the assigned tmux session', async () => {
@@ -2108,8 +2108,8 @@ describe('Scheduler checkScaling', () => {
     // With senior_capacity: 50, this should spawn 1 senior (10/50 = 0.2, ceil = 1)
     // NOT 1 senior (50/50 = 1)
 
-    // Mock spawnSenior to track calls
-    const spawnSeniorSpy = vi.spyOn(scheduler as any, 'spawnSenior').mockResolvedValue({
+    // Mock spawnAgent to track calls
+    const spawnAgentSpy = vi.spyOn(scheduler as any, 'spawnAgent').mockResolvedValue({
       id: 'test-senior',
       type: 'senior',
       team_id: team.id,
@@ -2120,9 +2120,9 @@ describe('Scheduler checkScaling', () => {
     await scheduler.checkScaling();
 
     // Should spawn exactly 1 senior for 10 assignable points (not 0 seniors)
-    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+    expect(spawnAgentSpy).toHaveBeenCalledTimes(1);
 
-    spawnSeniorSpy.mockRestore();
+    spawnAgentSpy.mockRestore();
   });
 
   it('should not spawn agents when all stories are blocked', async () => {
@@ -2151,8 +2151,8 @@ describe('Scheduler checkScaling', () => {
       addStoryDependency(db, story.id, blockerStory.id);
     }
 
-    // Mock spawnSenior to track calls
-    const spawnSeniorSpy = vi.spyOn(scheduler as any, 'spawnSenior').mockResolvedValue({
+    // Mock spawnAgent to track calls
+    const spawnAgentSpy = vi.spyOn(scheduler as any, 'spawnAgent').mockResolvedValue({
       id: 'test-senior',
       type: 'senior',
       team_id: team.id,
@@ -2164,9 +2164,9 @@ describe('Scheduler checkScaling', () => {
 
     // Should not spawn any agents because all stories except the blocker are blocked
     // The blocker itself (10 points) would need agents, so we expect 1 spawn
-    expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
+    expect(spawnAgentSpy).toHaveBeenCalledTimes(1);
 
-    spawnSeniorSpy.mockRestore();
+    spawnAgentSpy.mockRestore();
   });
 });
 
