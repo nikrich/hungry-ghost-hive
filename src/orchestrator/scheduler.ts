@@ -236,6 +236,7 @@ export class Scheduler {
       const agents = getAgentsByTeam(this.db, teamId).filter(
         a =>
           a.type !== 'qa' &&
+          a.type !== 'auditor' &&
           (a.status === 'idle' || (a.status === 'working' && a.current_story_id === null))
       );
       const activeSeniors = getAgentsByTeam(this.db, teamId).filter(
@@ -893,7 +894,7 @@ export class Scheduler {
    * Handles spawning of all agent types (senior, intermediate, junior, qa)
    */
   private async spawnAgent(
-    type: 'senior' | 'intermediate' | 'junior' | 'qa' | 'feature_test',
+    type: 'senior' | 'intermediate' | 'junior' | 'qa' | 'feature_test' | 'auditor',
     teamId: string,
     teamName: string,
     repoPath: string,

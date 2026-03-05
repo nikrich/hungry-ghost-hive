@@ -1,0 +1,3 @@
+-- Migration 014: Add auditor agent type
+-- The CHECK constraint update is handled programmatically in client.ts
+-- (requires table recreation for SQLite CHECK constraint changes)
