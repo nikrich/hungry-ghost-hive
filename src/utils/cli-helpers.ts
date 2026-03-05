@@ -2,8 +2,8 @@
 
 import chalk from 'chalk';
 import type { Database } from 'sql.js';
-import { queryOne } from '../db/client.js';
 import type { AgentRow, PullRequestRow, StoryRow } from '../db/client.js';
+import { queryOne } from '../db/client.js';
 import { getAgentById } from '../db/queries/agents.js';
 import { getPullRequestById } from '../db/queries/pull-requests.js';
 import { getStoryById } from '../db/queries/stories.js';
