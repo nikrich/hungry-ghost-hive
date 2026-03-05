@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.43.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.43.0...hungry-ghost-hive-v0.43.1) (2026-03-05)
+
+
+### Code Refactoring
+
+* decompose ClusterRuntime monolithic class ([#497](https://github.com/nikrich/hungry-ghost-hive/issues/497)) ([baab0f6](https://github.com/nikrich/hungry-ghost-hive/commit/baab0f611341ce6e9228379781e00ea888194176))
+* deduplicate Jira sync bidirectional functions ([#498](https://github.com/nikrich/hungry-ghost-hive/issues/498)) ([f209da0](https://github.com/nikrich/hungry-ghost-hive/commit/f209da0643ce366e14939a0861c1fad3647965af))
+* extract shared CLI utility functions ([#500](https://github.com/nikrich/hungry-ghost-hive/issues/500)) ([95b8f9c](https://github.com/nikrich/hungry-ghost-hive/commit/95b8f9c847de7342eeec2f02441bb3051359cb46))
+* split manager index.ts into focused submodules ([#506](https://github.com/nikrich/hungry-ghost-hive/issues/506)) ([07d933f](https://github.com/nikrich/hungry-ghost-hive/commit/07d933f8c40f373aa169099e6536a0fd35e2ba70))
+* unify cross-module constants and story status utilities ([#503](https://github.com/nikrich/hungry-ghost-hive/issues/503)) ([464b5ab](https://github.com/nikrich/hungry-ghost-hive/commit/464b5ab88ada34687696f10ce020846a6e0dc89b))
+
 ## [0.43.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.42.0...hungry-ghost-hive-v0.43.0) (2026-03-05)
 
 
