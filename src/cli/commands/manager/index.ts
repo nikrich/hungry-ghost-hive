@@ -61,6 +61,7 @@ import {
 import type { WithLockFn } from '../../../utils/auto-merge.js';
 import { autoMergeApprovedPRs } from '../../../utils/auto-merge.js';
 import type { CLITool } from '../../../utils/cli-commands.js';
+import { GH_CLI_TIMEOUT_MS } from '../../../utils/github-cli.js';
 import { findHiveRoot as findHiveRootFromDir, getHivePaths } from '../../../utils/paths.js';
 import {
   fetchOpenGitHubPRs,
@@ -1118,7 +1119,6 @@ async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
 
   // Phase 2: GitHub CLI calls (no lock)
   const GITHUB_PR_LIST_LIMIT = 20;
-  const GH_CLI_TIMEOUT_MS = 30000;
   const ghResults: Array<{
     mergedPRs: Array<{ number: number; headRefName: string; mergedAt: string }>;
   }> = [];
@@ -1414,7 +1414,6 @@ async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
   if (teamInfos.length === 0) return;
 
   // Phase 2: GitHub CLI calls (no lock)
-  const GH_CLI_TIMEOUT_MS = 30000;
   const baseBranch = ctx.config.github?.base_branch ?? 'main';
   const closed: import('../../../utils/pr-sync.js').ClosedPRInfo[] = [];
 
