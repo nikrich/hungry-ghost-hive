@@ -119,9 +119,7 @@ describe('spawnAuditorIfNeeded', () => {
 
   it('spawns auditor when interval elapsed and no active auditor', async () => {
     mockGetAgentsByType.mockReturnValue([]);
-    mockGetAllTeams.mockReturnValue([
-      { id: 'team-1', name: 'alpha', repo_path: '/repo' },
-    ]);
+    mockGetAllTeams.mockReturnValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
 
     const ctx = makeCtx();
     const result = await spawnAuditorIfNeeded(ctx);
@@ -138,9 +136,7 @@ describe('spawnAuditorIfNeeded', () => {
 
   it('skips spawn when interval has not elapsed', async () => {
     mockGetAgentsByType.mockReturnValue([]);
-    mockGetAllTeams.mockReturnValue([
-      { id: 'team-1', name: 'alpha', repo_path: '/repo' },
-    ]);
+    mockGetAllTeams.mockReturnValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
 
     const ctx = makeCtx();
 
@@ -182,13 +178,14 @@ describe('spawnAuditorIfNeeded', () => {
 
   it('handles spawn errors gracefully', async () => {
     mockGetAgentsByType.mockReturnValue([]);
-    mockGetAllTeams.mockReturnValue([
-      { id: 'team-1', name: 'alpha', repo_path: '/repo' },
-    ]);
+    mockGetAllTeams.mockReturnValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
 
-    const ctx = makeCtx({}, {
-      spawnAuditor: vi.fn().mockRejectedValue(new Error('spawn failed')),
-    });
+    const ctx = makeCtx(
+      {},
+      {
+        spawnAuditor: vi.fn().mockRejectedValue(new Error('spawn failed')),
+      }
+    );
 
     const result = await spawnAuditorIfNeeded(ctx);
     expect(result).toBe(true);
@@ -199,9 +196,7 @@ describe('spawnAuditorIfNeeded', () => {
     mockGetAgentsByType.mockReturnValue([
       { id: 'auditor-old', type: 'auditor', status: 'terminated' },
     ]);
-    mockGetAllTeams.mockReturnValue([
-      { id: 'team-1', name: 'alpha', repo_path: '/repo' },
-    ]);
+    mockGetAllTeams.mockReturnValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
 
     const ctx = makeCtx();
     const result = await spawnAuditorIfNeeded(ctx);
@@ -212,9 +207,7 @@ describe('spawnAuditorIfNeeded', () => {
 
   it('updates lastAuditorSpawnTime after successful spawn', async () => {
     mockGetAgentsByType.mockReturnValue([]);
-    mockGetAllTeams.mockReturnValue([
-      { id: 'team-1', name: 'alpha', repo_path: '/repo' },
-    ]);
+    mockGetAllTeams.mockReturnValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
 
     expect(getLastAuditorSpawnTime()).toBe(0);
 
