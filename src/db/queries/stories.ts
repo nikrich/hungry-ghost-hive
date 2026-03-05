@@ -3,6 +3,7 @@
 import { nanoid } from 'nanoid';
 import type { Database } from 'sql.js';
 import { queryAll, queryOne, run, type StoryRow } from '../client.js';
+import { addDualWrite, buildDynamicUpdate, type FieldMap } from '../utils/dynamic-update.js';
 
 export type { StoryRow };
 
@@ -167,110 +168,46 @@ export function getStoryPointsByTeam(db: Database, teamId: string): number {
   return result?.total || 0;
 }
 
+const storyFieldMap: FieldMap = {
+  teamId: 'team_id',
+  title: 'title',
+  description: 'description',
+  acceptanceCriteria: {
+    column: 'acceptance_criteria',
+    transform: (v) => (v ? JSON.stringify(v) : null),
+  },
+  complexityScore: 'complexity_score',
+  storyPoints: 'story_points',
+  status: 'status',
+  assignedAgentId: 'assigned_agent_id',
+  branchName: 'branch_name',
+  prUrl: 'pr_url',
+  externalProvider: 'external_provider',
+  inSprint: { column: 'in_sprint', transform: (v) => (v ? 1 : 0) },
+};
+
+const storyDualWritePairs = [
+  { current: 'externalIssueKey', legacy: 'jiraIssueKey', currentColumn: 'external_issue_key', legacyColumn: 'jira_issue_key' },
+  { current: 'externalIssueId', legacy: 'jiraIssueId', currentColumn: 'external_issue_id', legacyColumn: 'jira_issue_id' },
+  { current: 'externalProjectKey', legacy: 'jiraProjectKey', currentColumn: 'external_project_key', legacyColumn: 'jira_project_key' },
+  { current: 'externalSubtaskKey', legacy: 'jiraSubtaskKey', currentColumn: 'external_subtask_key', legacyColumn: 'jira_subtask_key' },
+  { current: 'externalSubtaskId', legacy: 'jiraSubtaskId', currentColumn: 'external_subtask_id', legacyColumn: 'jira_subtask_id' },
+];
+
 export function updateStory(
   db: Database,
   id: string,
   input: UpdateStoryInput
 ): StoryRow | undefined {
-  const updates: string[] = ['updated_at = ?'];
-  const values: (string | number | null)[] = [new Date().toISOString()];
+  const result = buildDynamicUpdate(input, storyFieldMap, { includeUpdatedAt: true });
+  addDualWrite(result, input, storyDualWritePairs);
 
-  if (input.teamId !== undefined) {
-    updates.push('team_id = ?');
-    values.push(input.teamId);
-  }
-  if (input.title !== undefined) {
-    updates.push('title = ?');
-    values.push(input.title);
-  }
-  if (input.description !== undefined) {
-    updates.push('description = ?');
-    values.push(input.description);
-  }
-  if (input.acceptanceCriteria !== undefined) {
-    updates.push('acceptance_criteria = ?');
-    values.push(input.acceptanceCriteria ? JSON.stringify(input.acceptanceCriteria) : null);
-  }
-  if (input.complexityScore !== undefined) {
-    updates.push('complexity_score = ?');
-    values.push(input.complexityScore);
-  }
-  if (input.storyPoints !== undefined) {
-    updates.push('story_points = ?');
-    values.push(input.storyPoints);
-  }
-  if (input.status !== undefined) {
-    updates.push('status = ?');
-    values.push(input.status);
-  }
-  if (input.assignedAgentId !== undefined) {
-    updates.push('assigned_agent_id = ?');
-    values.push(input.assignedAgentId);
-  }
-  if (input.branchName !== undefined) {
-    updates.push('branch_name = ?');
-    values.push(input.branchName);
-  }
-  if (input.prUrl !== undefined) {
-    updates.push('pr_url = ?');
-    values.push(input.prUrl);
-  }
-  // Dual-write: support both legacy jira_* and new external_* columns
-  const issueKey =
-    input.externalIssueKey !== undefined ? input.externalIssueKey : input.jiraIssueKey;
-  const issueId = input.externalIssueId !== undefined ? input.externalIssueId : input.jiraIssueId;
-  const projectKey =
-    input.externalProjectKey !== undefined ? input.externalProjectKey : input.jiraProjectKey;
-  const subtaskKey =
-    input.externalSubtaskKey !== undefined ? input.externalSubtaskKey : input.jiraSubtaskKey;
-  const subtaskId =
-    input.externalSubtaskId !== undefined ? input.externalSubtaskId : input.jiraSubtaskId;
-
-  if (issueKey !== undefined) {
-    updates.push('jira_issue_key = ?');
-    values.push(issueKey);
-    updates.push('external_issue_key = ?');
-    values.push(issueKey);
-  }
-  if (issueId !== undefined) {
-    updates.push('jira_issue_id = ?');
-    values.push(issueId);
-    updates.push('external_issue_id = ?');
-    values.push(issueId);
-  }
-  if (projectKey !== undefined) {
-    updates.push('jira_project_key = ?');
-    values.push(projectKey);
-    updates.push('external_project_key = ?');
-    values.push(projectKey);
-  }
-  if (subtaskKey !== undefined) {
-    updates.push('jira_subtask_key = ?');
-    values.push(subtaskKey);
-    updates.push('external_subtask_key = ?');
-    values.push(subtaskKey);
-  }
-  if (subtaskId !== undefined) {
-    updates.push('jira_subtask_id = ?');
-    values.push(subtaskId);
-    updates.push('external_subtask_id = ?');
-    values.push(subtaskId);
-  }
-  if (input.externalProvider !== undefined) {
-    updates.push('external_provider = ?');
-    values.push(input.externalProvider);
-  }
-  if (input.inSprint !== undefined) {
-    updates.push('in_sprint = ?');
-    values.push(input.inSprint ? 1 : 0);
-  }
-
-  if (updates.length === 1) {
+  if (result.updates.length === 1) {
     return getStoryById(db, id);
   }
 
-  values.push(id);
-  run(db, `UPDATE stories SET ${updates.join(', ')} WHERE id = ?`, values);
+  result.values.push(id);
+  run(db, `UPDATE stories SET ${result.updates.join(', ')} WHERE id = ?`, result.values);
   return getStoryById(db, id);
 }
 

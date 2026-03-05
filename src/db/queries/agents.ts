@@ -3,6 +3,7 @@
 import { nanoid } from 'nanoid';
 import type { Database } from 'sql.js';
 import { queryAll, queryOne, run, type AgentRow } from '../client.js';
+import { buildDynamicUpdate, type FieldMap } from '../utils/dynamic-update.js';
 
 export type { AgentRow };
 
@@ -94,41 +95,23 @@ export function getTechLead(db: Database): AgentRow | undefined {
   return queryOne<AgentRow>(db, `SELECT * FROM agents WHERE type = 'tech_lead'`);
 }
 
+const agentFieldMap: FieldMap = {
+  status: 'status',
+  tmuxSession: 'tmux_session',
+  currentStoryId: 'current_story_id',
+  memoryState: 'memory_state',
+  worktreePath: 'worktree_path',
+  createdAt: 'created_at',
+};
+
 export function updateAgent(
   db: Database,
   id: string,
   input: UpdateAgentInput
 ): AgentRow | undefined {
-  const updates: string[] = ['updated_at = ?'];
-  const values: (string | null)[] = [new Date().toISOString()];
-
-  if (input.status !== undefined) {
-    updates.push('status = ?');
-    values.push(input.status);
-  }
-  if (input.tmuxSession !== undefined) {
-    updates.push('tmux_session = ?');
-    values.push(input.tmuxSession);
-  }
-  if (input.currentStoryId !== undefined) {
-    updates.push('current_story_id = ?');
-    values.push(input.currentStoryId);
-  }
-  if (input.memoryState !== undefined) {
-    updates.push('memory_state = ?');
-    values.push(input.memoryState);
-  }
-  if (input.worktreePath !== undefined) {
-    updates.push('worktree_path = ?');
-    values.push(input.worktreePath);
-  }
-  if (input.createdAt !== undefined) {
-    updates.push('created_at = ?');
-    values.push(input.createdAt);
-  }
+  const { updates, values } = buildDynamicUpdate(input, agentFieldMap, { includeUpdatedAt: true });
 
   if (updates.length === 1) {
-    // Only updated_at, nothing to update
     return getAgentById(db, id);
   }
 

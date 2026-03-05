@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import type { Database } from 'sql.js';
 import { extractPRNumber } from '../../utils/github.js';
 import { queryAll, queryOne, run, type PullRequestRow, type StoryRow } from '../client.js';
+import { buildDynamicUpdate, type FieldMap } from '../utils/dynamic-update.js';
 
 export type { PullRequestRow };
 
@@ -229,37 +230,30 @@ export function getPullRequestsByTeam(db: Database, teamId: string): PullRequest
   );
 }
 
+const pullRequestFieldMap: FieldMap = {
+  status: 'status',
+  reviewedBy: 'reviewed_by',
+  reviewNotes: 'review_notes',
+  githubPrNumber: 'github_pr_number',
+  githubPrUrl: 'github_pr_url',
+};
+
 export function updatePullRequest(
   db: Database,
   id: string,
   input: UpdatePullRequestInput
 ): PullRequestRow | undefined {
-  const updates: string[] = ['updated_at = ?'];
-  const values: (string | number | null)[] = [new Date().toISOString()];
+  const { updates, values } = buildDynamicUpdate(input, pullRequestFieldMap, {
+    includeUpdatedAt: true,
+  });
 
-  if (input.status !== undefined) {
-    updates.push('status = ?');
-    values.push(input.status);
-    if (['reviewing', 'approved', 'rejected', 'merged'].includes(input.status)) {
-      updates.push('reviewed_at = ?');
-      values.push(new Date().toISOString());
-    }
-  }
-  if (input.reviewedBy !== undefined) {
-    updates.push('reviewed_by = ?');
-    values.push(input.reviewedBy);
-  }
-  if (input.reviewNotes !== undefined) {
-    updates.push('review_notes = ?');
-    values.push(input.reviewNotes);
-  }
-  if (input.githubPrNumber !== undefined) {
-    updates.push('github_pr_number = ?');
-    values.push(input.githubPrNumber);
-  }
-  if (input.githubPrUrl !== undefined) {
-    updates.push('github_pr_url = ?');
-    values.push(input.githubPrUrl);
+  // Side-effect: set reviewed_at when status transitions to a review state
+  if (
+    input.status !== undefined &&
+    ['reviewing', 'approved', 'rejected', 'merged'].includes(input.status)
+  ) {
+    updates.push('reviewed_at = ?');
+    values.push(new Date().toISOString());
   }
 
   if (updates.length === 1) {

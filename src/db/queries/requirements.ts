@@ -3,6 +3,7 @@
 import { nanoid } from 'nanoid';
 import type { Database } from 'sql.js';
 import { queryAll, queryOne, run, type RequirementRow } from '../client.js';
+import { addDualWrite, buildDynamicUpdate, type FieldMap } from '../utils/dynamic-update.js';
 
 export type { RequirementRow };
 
@@ -96,65 +97,35 @@ export function getPendingRequirements(db: Database): RequirementRow[] {
   );
 }
 
+const requirementFieldMap: FieldMap = {
+  title: 'title',
+  description: 'description',
+  status: 'status',
+  godmode: { column: 'godmode', transform: (v) => (v ? 1 : 0) },
+  targetBranch: 'target_branch',
+  externalProvider: 'external_provider',
+  featureBranch: 'feature_branch',
+};
+
+const requirementDualWritePairs = [
+  { current: 'externalEpicKey', legacy: 'jiraEpicKey', currentColumn: 'external_epic_key', legacyColumn: 'jira_epic_key' },
+  { current: 'externalEpicId', legacy: 'jiraEpicId', currentColumn: 'external_epic_id', legacyColumn: 'jira_epic_id' },
+];
+
 export function updateRequirement(
   db: Database,
   id: string,
   input: UpdateRequirementInput
 ): RequirementRow | undefined {
-  const updates: string[] = [];
-  const values: unknown[] = [];
+  const result = buildDynamicUpdate(input, requirementFieldMap);
+  addDualWrite(result, input, requirementDualWritePairs);
 
-  if (input.title !== undefined) {
-    updates.push('title = ?');
-    values.push(input.title);
-  }
-  if (input.description !== undefined) {
-    updates.push('description = ?');
-    values.push(input.description);
-  }
-  if (input.status !== undefined) {
-    updates.push('status = ?');
-    values.push(input.status);
-  }
-  if (input.godmode !== undefined) {
-    updates.push('godmode = ?');
-    values.push(input.godmode ? 1 : 0);
-  }
-  if (input.targetBranch !== undefined) {
-    updates.push('target_branch = ?');
-    values.push(input.targetBranch);
-  }
-  // Dual-write: support both legacy jira_* and new external_* columns
-  const epicKey = input.externalEpicKey !== undefined ? input.externalEpicKey : input.jiraEpicKey;
-  const epicId = input.externalEpicId !== undefined ? input.externalEpicId : input.jiraEpicId;
-
-  if (epicKey !== undefined) {
-    updates.push('jira_epic_key = ?');
-    values.push(epicKey);
-    updates.push('external_epic_key = ?');
-    values.push(epicKey);
-  }
-  if (epicId !== undefined) {
-    updates.push('jira_epic_id = ?');
-    values.push(epicId);
-    updates.push('external_epic_id = ?');
-    values.push(epicId);
-  }
-  if (input.externalProvider !== undefined) {
-    updates.push('external_provider = ?');
-    values.push(input.externalProvider);
-  }
-  if (input.featureBranch !== undefined) {
-    updates.push('feature_branch = ?');
-    values.push(input.featureBranch);
-  }
-
-  if (updates.length === 0) {
+  if (result.updates.length === 0) {
     return getRequirementById(db, id);
   }
 
-  values.push(id);
-  run(db, `UPDATE requirements SET ${updates.join(', ')} WHERE id = ?`, values);
+  result.values.push(id);
+  run(db, `UPDATE requirements SET ${result.updates.join(', ')} WHERE id = ?`, result.values);
   return getRequirementById(db, id);
 }
 

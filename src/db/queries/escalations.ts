@@ -3,6 +3,7 @@
 import { nanoid } from 'nanoid';
 import type { Database } from 'sql.js';
 import { queryAll, queryOne, run, type EscalationRow } from '../client.js';
+import { buildDynamicUpdate, type FieldMap } from '../utils/dynamic-update.js';
 
 export type { EscalationRow };
 
@@ -155,29 +156,23 @@ export function getAllEscalations(db: Database): EscalationRow[] {
   return queryAll<EscalationRow>(db, 'SELECT * FROM escalations ORDER BY created_at DESC');
 }
 
+const escalationFieldMap: FieldMap = {
+  status: 'status',
+  toAgentId: 'to_agent_id',
+  resolution: 'resolution',
+};
+
 export function updateEscalation(
   db: Database,
   id: string,
   input: UpdateEscalationInput
 ): EscalationRow | undefined {
-  const updates: string[] = [];
-  const values: (string | null)[] = [];
+  const { updates, values } = buildDynamicUpdate(input, escalationFieldMap);
 
-  if (input.status !== undefined) {
-    updates.push('status = ?');
-    values.push(input.status);
-    if (input.status === 'resolved') {
-      updates.push('resolved_at = ?');
-      values.push(new Date().toISOString());
-    }
-  }
-  if (input.toAgentId !== undefined) {
-    updates.push('to_agent_id = ?');
-    values.push(input.toAgentId);
-  }
-  if (input.resolution !== undefined) {
-    updates.push('resolution = ?');
-    values.push(input.resolution);
+  // Side-effect: set resolved_at when status transitions to resolved
+  if (input.status === 'resolved') {
+    updates.push('resolved_at = ?');
+    values.push(new Date().toISOString());
   }
 
   if (updates.length === 0) {
