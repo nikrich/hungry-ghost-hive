@@ -40,6 +40,7 @@ import {
   getMergeQueue,
   getOpenPullRequestsByStory,
   getPullRequestsByStatus,
+  hasMergedPullRequestForStory,
   updatePullRequest,
 } from '../../../db/queries/pull-requests.js';
 import { getRequirementsByStatus } from '../../../db/queries/requirements.js';
@@ -2424,7 +2425,7 @@ export async function autoRejectCommentOnlyReviews(ctx: ManagerCheckContext): Pr
             status: 'rejected',
             reviewNotes: reason,
           });
-          if (candidate.storyId) {
+          if (candidate.storyId && !hasMergedPullRequestForStory(db.db, candidate.storyId)) {
             updateStory(db.db, candidate.storyId, { status: 'qa_failed' });
           }
           createLog(db.db, {
@@ -2484,22 +2485,26 @@ async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
     for (const pr of rejectedPRs) {
       if (pr.story_id) {
         const storyId = pr.story_id;
-        await withTransaction(
-          db.db,
-          () => {
-            updateStory(db.db, storyId, { status: 'qa_failed' });
-            createLog(db.db, {
-              agentId: 'manager',
-              eventType: 'STORY_QA_FAILED',
-              message: `Story ${storyId} QA failed: ${pr.review_notes || 'See review comments'}`,
-              storyId: storyId,
-            });
-          },
-          () => db.save()
-        );
+        if (hasMergedPullRequestForStory(db.db, storyId)) {
+          verboseLogCtx(ctx, `handleRejectedPRs: skip qa_failed for story=${storyId}, another PR is already merged`);
+        } else {
+          await withTransaction(
+            db.db,
+            () => {
+              updateStory(db.db, storyId, { status: 'qa_failed' });
+              createLog(db.db, {
+                agentId: 'manager',
+                eventType: 'STORY_QA_FAILED',
+                message: `Story ${storyId} QA failed: ${pr.review_notes || 'See review comments'}`,
+                storyId: storyId,
+              });
+            },
+            () => db.save()
+          );
 
-        // Sync status change to Jira
-        await syncStatusForStory(ctx.root, db.db, storyId, 'qa_failed');
+          // Sync status change to Jira
+          await syncStatusForStory(ctx.root, db.db, storyId, 'qa_failed');
+        }
       }
 
       // Mark as closed to prevent re-notification spam

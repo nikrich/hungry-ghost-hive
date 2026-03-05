@@ -18,6 +18,7 @@ import {
   getOpenPullRequestsByStory,
   getPullRequestById,
   getQueuePosition,
+  hasMergedPullRequestForStory,
   updatePullRequest,
 } from '../../db/queries/pull-requests.js';
 import { getStoryById, updateStory } from '../../db/queries/stories.js';
@@ -460,14 +461,15 @@ prCommand
       if (!storyId && pr.branch_name) {
         storyId = extractStoryIdFromBranch(pr.branch_name);
       }
-      if (storyId) {
+      const storyAlreadyMerged = storyId ? hasMergedPullRequestForStory(db.db, storyId) : false;
+      if (storyId && !storyAlreadyMerged) {
         updateStory(db.db, storyId, { status: 'qa_failed' });
       }
 
       db.save();
 
       // Sync status change to Jira
-      if (storyId) {
+      if (storyId && !storyAlreadyMerged) {
         await syncStatusForStory(root, db.db, storyId, 'qa_failed');
       }
 

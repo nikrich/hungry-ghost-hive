@@ -201,6 +201,15 @@ export function getApprovedPullRequests(db: Database): PullRequestRow[] {
   );
 }
 
+export function hasMergedPullRequestForStory(db: Database, storyId: string): boolean {
+  const result = queryOne<{ count: number }>(
+    db,
+    'SELECT COUNT(*) as count FROM pull_requests WHERE story_id = ? AND status = ?',
+    [storyId, 'merged']
+  );
+  return (result?.count || 0) > 0;
+}
+
 export function getOpenPullRequestsByStory(db: Database, storyId: string): PullRequestRow[] {
   return queryAll<PullRequestRow>(
     db,

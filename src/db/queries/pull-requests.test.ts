@@ -15,6 +15,7 @@ import {
   getPullRequestsByStatus,
   getPullRequestsByTeam,
   getQueuePosition,
+  hasMergedPullRequestForStory,
   isAgentReviewingPR,
   updatePullRequest,
 } from './pull-requests.js';
@@ -594,6 +595,40 @@ describe('pull-requests queries', () => {
 
       expect(updated?.reviewed_by).toBeNull();
       expect(updated?.review_notes).toBeNull();
+    });
+  });
+
+  describe('hasMergedPullRequestForStory', () => {
+    it('should return false when no PRs exist for the story', () => {
+      expect(hasMergedPullRequestForStory(db, storyId)).toBe(false);
+    });
+
+    it('should return false when PRs exist but none are merged', () => {
+      createPullRequest(db, { storyId, branchName: 'branch-1' });
+      const pr2 = createPullRequest(db, { storyId, branchName: 'branch-2' });
+      updatePullRequest(db, pr2.id, { status: 'rejected' });
+
+      expect(hasMergedPullRequestForStory(db, storyId)).toBe(false);
+    });
+
+    it('should return true when a merged PR exists for the story', () => {
+      const pr1 = createPullRequest(db, { storyId, branchName: 'branch-1' });
+      updatePullRequest(db, pr1.id, { status: 'merged' });
+      createPullRequest(db, { storyId, branchName: 'branch-2' });
+
+      expect(hasMergedPullRequestForStory(db, storyId)).toBe(true);
+    });
+
+    it('should not match merged PRs from other stories', () => {
+      const otherStory = createStory(db, {
+        title: 'Other Story',
+        description: 'Other',
+        teamId,
+      });
+      const pr = createPullRequest(db, { storyId: otherStory.id, branchName: 'branch-other' });
+      updatePullRequest(db, pr.id, { status: 'merged' });
+
+      expect(hasMergedPullRequestForStory(db, storyId)).toBe(false);
     });
   });
 

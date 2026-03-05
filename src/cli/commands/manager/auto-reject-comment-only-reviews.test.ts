@@ -14,6 +14,7 @@ vi.mock('../../../db/queries/pull-requests.js', () => ({
   createPullRequest: vi.fn(),
   getMergeQueue: vi.fn(() => []),
   getOpenPullRequestsByStory: vi.fn(() => []),
+  hasMergedPullRequestForStory: vi.fn(() => false),
 }));
 
 vi.mock('../../../db/queries/stories.js', () => ({
