@@ -15,7 +15,7 @@ describe('autoAssignPlannedStories', () => {
   });
 
   function makeCtx(options?: {
-    plannedUnassigned?: number;
+    assignableUnassigned?: number;
     assigned?: number;
     errors?: string[];
     verbose?: boolean;
@@ -35,7 +35,7 @@ describe('autoAssignPlannedStories', () => {
     const withDb = vi.fn(async (fn: (db: typeof mockDb, scheduler: any) => unknown) => {
       callCount += 1;
       vi.mocked(queryAll).mockReturnValueOnce([
-        { count: options?.plannedUnassigned ?? 0 },
+        { count: options?.assignableUnassigned ?? 0 },
       ] as never);
       return fn(mockDb, scheduler);
     });
@@ -61,7 +61,7 @@ describe('autoAssignPlannedStories', () => {
 
   it('skips assignment when there are no planned unassigned stories', async () => {
     const { ctx, checkScaling, checkMergeQueue, assignStories, withDb } = makeCtx({
-      plannedUnassigned: 0,
+      assignableUnassigned: 0,
     });
 
     await autoAssignPlannedStories(ctx);
@@ -75,7 +75,7 @@ describe('autoAssignPlannedStories', () => {
 
   it('runs scaling, merge queue check, and assignment when planned stories exist', async () => {
     const { ctx, checkScaling, checkMergeQueue, assignStories, withDb } = makeCtx({
-      plannedUnassigned: 2,
+      assignableUnassigned: 2,
       assigned: 1,
     });
 
