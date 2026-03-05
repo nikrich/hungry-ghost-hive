@@ -82,6 +82,7 @@ export interface ManagerCheckContext {
     plannedAutoAssigned: number;
     jiraSynced: number;
     featureTestsSpawned: number;
+    auditorsSpawned: number;
   };
   // Shared state for dedup
   escalatedSessions: Set<string | null>;

@@ -191,6 +191,7 @@ function makeMockCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheck
       plannedAutoAssigned: 0,
       jiraSynced: 0,
       featureTestsSpawned: 0,
+      auditorsSpawned: 0,
     },
     escalatedSessions: new Set(),
     agentsBySessionName: new Map(),
