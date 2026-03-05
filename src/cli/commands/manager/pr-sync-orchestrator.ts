@@ -5,7 +5,11 @@ import { execa } from 'execa';
 import { syncStatusForStory } from '../../../connectors/project-management/operations.js';
 import { queryAll, queryOne, withTransaction } from '../../../db/client.js';
 import { createLog } from '../../../db/queries/logs.js';
-import { createPullRequest, getPullRequestsByStatus, updatePullRequest } from '../../../db/queries/pull-requests.js';
+import {
+  createPullRequest,
+  getPullRequestsByStatus,
+  updatePullRequest,
+} from '../../../db/queries/pull-requests.js';
 import { updateStory } from '../../../db/queries/stories.js';
 import { GH_CLI_TIMEOUT_MS } from '../../../utils/github-cli.js';
 import {
@@ -14,8 +18,8 @@ import {
   ghRepoSlug,
 } from '../../../utils/pr-sync.js';
 import { extractStoryIdFromBranch } from '../../../utils/story-id.js';
-import { cleanupAgentsReferencingMergedStory } from './merged-story-cleanup.js';
 import { sendManagerNudge, verboseLogCtx } from './manager-utils.js';
+import { cleanupAgentsReferencingMergedStory } from './merged-story-cleanup.js';
 import type { ManagerCheckContext } from './types.js';
 
 const GH_PR_VIEW_TIMEOUT_MS = 30_000;

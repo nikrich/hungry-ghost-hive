@@ -2,11 +2,11 @@
 
 import chalk from 'chalk';
 import type { HiveConfig } from '../../../config/schema.js';
+import { sendToTmuxSession } from '../../../tmux/manager.js';
 import {
   createManagerNudgeEnvelope,
   submitManagerNudgeWithVerification,
 } from './agent-monitoring.js';
-import { sendToTmuxSession } from '../../../tmux/manager.js';
 import type { ManagerCheckContext } from './types.js';
 
 const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
@@ -17,10 +17,7 @@ export function verboseLog(verbose: boolean, message: string): void {
   console.log(chalk.gray(`  [verbose] ${message}`));
 }
 
-export function verboseLogCtx(
-  ctx: Pick<ManagerCheckContext, 'verbose'>,
-  message: string
-): void {
+export function verboseLogCtx(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string): void {
   verboseLog(ctx.verbose, message);
 }
 
