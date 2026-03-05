@@ -6,7 +6,6 @@ import { Command } from 'commander';
 import {
   deleteAgent,
   getActiveAgents,
-  getAgentById,
   getAgentByTmuxSession,
   getAgentsByStatus,
   getAllAgents,
@@ -14,6 +13,7 @@ import {
 } from '../../db/queries/agents.js';
 import { createLog, getLogsByAgent } from '../../db/queries/logs.js';
 import { removeWorktree } from '../../git/worktree.js';
+import { requireAgent } from '../../utils/cli-helpers.js';
 import { statusColor } from '../../utils/logger.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
@@ -67,11 +67,7 @@ agentsCommand
   .option('--json', 'Output as JSON')
   .action(async (agentId: string, options: { limit: string; json?: boolean }) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const agent = getAgentById(db.db, agentId);
-      if (!agent) {
-        console.error(chalk.red(`Agent not found: ${agentId}`));
-        process.exit(1);
-      }
+      requireAgent(db.db, agentId);
 
       const logs = getLogsByAgent(db.db, agentId, parseInt(options.limit, 10));
 
@@ -112,11 +108,7 @@ agentsCommand
   .description('View detailed agent state')
   .action(async (agentId: string) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const agent = getAgentById(db.db, agentId);
-      if (!agent) {
-        console.error(chalk.red(`Agent not found: ${agentId}`));
-        process.exit(1);
-      }
+      const agent = requireAgent(db.db, agentId);
 
       console.log(chalk.bold(`\nAgent: ${agent.id}\n`));
       console.log(chalk.gray(`Type:          ${agent.type}`));

@@ -16,15 +16,15 @@ import {
   getMergeQueue,
   getNextInQueue,
   getOpenPullRequestsByStory,
-  getPullRequestById,
   getQueuePosition,
   updatePullRequest,
 } from '../../db/queries/pull-requests.js';
-import { getStoryById, updateStory } from '../../db/queries/stories.js';
+import { updateStory } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
 import { Scheduler } from '../../orchestrator/scheduler.js';
 import { isTmuxSessionRunning, sendToTmuxSession } from '../../tmux/manager.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
+import { requirePullRequest, requireStory } from '../../utils/cli-helpers.js';
 import { markManualMergeRequired } from '../../utils/manual-merge.js';
 import { getExistingPRIdentifiers, syncOpenGitHubPRs } from '../../utils/pr-sync.js';
 import { extractStoryIdFromBranch, normalizeStoryId } from '../../utils/story-id.js';
@@ -57,11 +57,7 @@ prCommand
 
         // Get team from story
         let teamId = options.team || null;
-        const story = getStoryById(db.db, storyId);
-        if (!story) {
-          console.error(chalk.red(`Story not found: ${storyId}`));
-          process.exit(1);
-        }
+        const story = requireStory(db.db, storyId);
 
         teamId = story.team_id;
 
@@ -277,11 +273,7 @@ prCommand
   .description('View details of a PR')
   .action(async (prId: string) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const pr = getPullRequestById(db.db, prId);
-      if (!pr) {
-        console.error(chalk.red(`PR not found: ${prId}`));
-        process.exit(1);
-      }
+      const pr = requirePullRequest(db.db, prId);
 
       console.log(chalk.bold(`\nPull Request: ${pr.id}\n`));
       console.log(chalk.gray(`Branch:       ${pr.branch_name}`));
@@ -317,11 +309,7 @@ prCommand
   .option('--no-merge', 'Approve without merging (manual merge needed)')
   .action(async (prId: string, options: { notes?: string; from?: string; merge?: boolean }) => {
     await withHiveContext(async ({ root, db }) => {
-      const pr = getPullRequestById(db.db, prId);
-      if (!pr) {
-        console.error(chalk.red(`PR not found: ${prId}`));
-        process.exit(1);
-      }
+      const pr = requirePullRequest(db.db, prId);
 
       if (pr.status === 'merged') {
         console.log(chalk.yellow('PR already merged.'));
@@ -443,11 +431,7 @@ prCommand
   .option('--from <session>', 'QA agent session')
   .action(async (prId: string, options: { reason: string; from?: string }) => {
     await withHiveContext(async ({ root, db }) => {
-      const pr = getPullRequestById(db.db, prId);
-      if (!pr) {
-        console.error(chalk.red(`PR not found: ${prId}`));
-        process.exit(1);
-      }
+      const pr = requirePullRequest(db.db, prId);
 
       updatePullRequest(db.db, prId, {
         status: 'rejected',

@@ -9,7 +9,7 @@ import {
 } from '../../connectors/project-management/operations.js';
 import { queryOne } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
-import type { StoryRow } from '../../db/queries/stories.js';
+import { requireStory } from '../../utils/cli-helpers.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const progressCommand = new Command('progress')
@@ -43,12 +43,7 @@ export const progressCommand = new Command('progress')
         return;
       }
 
-      const story = queryOne<StoryRow>(db.db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
-
-      if (!story) {
-        console.error(chalk.red(`Story not found: ${storyId}`));
-        process.exit(1);
-      }
+      const story = requireStory(db.db, storyId);
 
       if (!story.external_subtask_key) {
         console.error(

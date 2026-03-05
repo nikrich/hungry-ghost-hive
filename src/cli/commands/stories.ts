@@ -12,6 +12,7 @@ import {
   updateStory,
   type StoryStatus,
 } from '../../db/queries/stories.js';
+import { requireStory } from '../../utils/cli-helpers.js';
 import { statusColor } from '../../utils/logger.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
@@ -144,11 +145,7 @@ storiesCommand
   .description('Show story details')
   .action(async (storyId: string) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const story = getStoryById(db.db, storyId);
-      if (!story) {
-        console.error(chalk.red(`Story not found: ${storyId}`));
-        process.exit(1);
-      }
+      const story = requireStory(db.db, storyId);
 
       const dependencies = getStoryDependencies(db.db, story.id);
 

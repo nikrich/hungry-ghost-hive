@@ -10,10 +10,11 @@ import {
 } from '../../cli-runtimes/index.js';
 import { loadConfig } from '../../config/index.js';
 import { withTransaction } from '../../db/client.js';
-import { getAgentById, getAllAgents, updateAgent, type AgentRow } from '../../db/queries/agents.js';
+import { getAllAgents, updateAgent, type AgentRow } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { getTeamById } from '../../db/queries/teams.js';
 import { isTmuxAvailable, isTmuxSessionRunning, spawnTmuxSession } from '../../tmux/manager.js';
+import { requireAgent } from '../../utils/cli-helpers.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const resumeCommand = new Command('resume')
@@ -34,11 +35,7 @@ export const resumeCommand = new Command('resume')
       let agentsToResume: AgentRow[];
 
       if (options.agent) {
-        const agent = getAgentById(db.db, options.agent);
-        if (!agent) {
-          console.error(chalk.red(`Agent not found: ${options.agent}`));
-          process.exit(1);
-        }
+        const agent = requireAgent(db.db, options.agent);
         if (agent.status === 'terminated') {
           console.error(chalk.red('Cannot resume a terminated agent'));
           process.exit(1);
