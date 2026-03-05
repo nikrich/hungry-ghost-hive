@@ -8,12 +8,10 @@ import { createLog } from '../db/queries/logs.js';
 import { createPullRequest } from '../db/queries/pull-requests.js';
 import { updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
+import { GH_CLI_TIMEOUT_MS } from './github-cli.js';
 import { extractStoryIdFromBranch } from './story-id.js';
 
 const GITHUB_PR_LIST_LIMIT = 20;
-
-/** Default timeout in ms for GitHub CLI operations */
-const GH_CLI_TIMEOUT_MS = 30000;
 
 /**
  * Extract 'owner/repo' slug from a GitHub URL for use with `gh -R`.

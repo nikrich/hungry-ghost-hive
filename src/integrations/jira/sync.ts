@@ -18,66 +18,13 @@ import { createLog } from '../../db/queries/logs.js';
 import { getStoryById, updateStory, type StoryStatus } from '../../db/queries/stories.js';
 import * as logger from '../../utils/logger.js';
 import { getHivePaths } from '../../utils/paths.js';
+import { isForwardTransition, isStatusRegression } from '../../utils/story-status.js';
 import { JiraClient } from './client.js';
 import { createSubtask, postComment } from './comments.js';
 import { getIssue } from './issues.js';
 import { syncRequirementToJira, tryMoveToActiveSprint } from './stories.js';
 import { syncStoryStatusToJira, transitionJiraIssue } from './transitions.js';
-
-/**
- * Ordered lifecycle stages for Hive stories.
- * Used to prevent bidirectional sync from regressing story status.
- */
-const STATUS_LIFECYCLE_ORDER: string[] = [
-  'draft',
-  'estimated',
-  'planned',
-  'in_progress',
-  'review',
-  'qa',
-  'qa_failed',
-  'pr_submitted',
-  'merged',
-];
-
-/**
- * Check if transitioning from currentStatus to newStatus would be a regression.
- * Returns true if the new status is earlier in the lifecycle than the current one.
- */
-function isStatusRegression(currentStatus: string, newStatus: string): boolean {
-  const currentIdx = STATUS_LIFECYCLE_ORDER.indexOf(currentStatus);
-  const newIdx = STATUS_LIFECYCLE_ORDER.indexOf(newStatus);
-  // If either status is unknown, allow the transition
-  if (currentIdx === -1 || newIdx === -1) return false;
-  return newIdx < currentIdx;
-}
-
-/**
- * Status progression order for the Hive pipeline.
- * Higher numbers represent further progress. Used to prevent
- * Jira sync from regressing stories backward.
- */
-const STATUS_ORDER: Record<string, number> = {
-  draft: 0,
-  estimated: 1,
-  planned: 2,
-  in_progress: 3,
-  review: 4,
-  pr_submitted: 5,
-  qa: 6,
-  qa_failed: 4, // allowed as a backward step from qa
-  merged: 7,
-};
-
-/**
- * Check whether transitioning from currentStatus to newStatus is a
- * forward (or lateral) move in the pipeline.
- */
-export function isForwardTransition(currentStatus: string, newStatus: string): boolean {
-  const currentOrder = STATUS_ORDER[currentStatus] ?? -1;
-  const newOrder = STATUS_ORDER[newStatus] ?? -1;
-  return newOrder >= currentOrder;
-}
+export { isForwardTransition };
 
 /**
  * Convert a Jira status name to a Hive status using the configured status mapping.

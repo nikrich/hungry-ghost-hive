@@ -1,7 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { run } from '../db/client.js';
-import type { ReplicatedTable, StoryRecord, TableAdapter } from './types.js';
+import { STORY_STATUS_ORDER } from '../utils/story-status.js';
+import type { ReplicatedTable, TableAdapter } from './types.js';
 import {
   asNullableNumber,
   asNullableString,
@@ -12,17 +13,7 @@ import {
   toAgentLogPayload,
 } from './utils.js';
 
-export const STORY_STATUS_ORDER: Array<StoryRecord['status']> = [
-  'draft',
-  'estimated',
-  'planned',
-  'in_progress',
-  'review',
-  'qa',
-  'qa_failed',
-  'pr_submitted',
-  'merged',
-];
+export { STORY_STATUS_ORDER };
 
 export const REPLICATED_TABLES: TableAdapter[] = [
   {
