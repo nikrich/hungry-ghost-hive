@@ -69,6 +69,14 @@ const ModelsConfigSchema = z.object({
     cli_tool: 'claude',
     safety_mode: 'unsafe',
   }),
+  auditor: ModelConfigSchema.default({
+    provider: 'anthropic',
+    model: 'claude-opus-4-6',
+    max_tokens: 16000,
+    temperature: 0.3,
+    cli_tool: 'claude',
+    safety_mode: 'unsafe',
+  }),
 });
 
 // Scaling rules
@@ -233,6 +241,10 @@ const ManagerConfigSchema = z.object({
   tmux_timeout_ms: z.number().int().positive().default(10000), // 10s for tmux commands
   // Tech lead session max age in hours before graceful restart for context freshness
   tech_lead_max_age_hours: z.number().positive().default(6),
+  // How often to spawn an auditor agent (ms, default 5 minutes)
+  auditor_interval_ms: z.number().int().positive().default(300000),
+  // Whether auditor agent is enabled (false falls back to nudge behavior)
+  auditor_enabled: z.boolean().default(true),
 });
 
 // Merge queue configuration
@@ -446,6 +458,14 @@ models:
     # Agent personas can be configured during 'hive init'.
     # Re-run 'hive init --force' to reconfigure.
 
+  auditor:
+    provider: anthropic
+    model: claude-opus-4-6
+    max_tokens: 16000
+    temperature: 0.3
+    cli_tool: claude
+    safety_mode: unsafe
+
 # Team scaling rules
 scaling:
   # Story points threshold before hiring additional senior
@@ -529,6 +549,10 @@ manager:
   gh_timeout_ms: 60000
   # Timeout for tmux operations to prevent manager hangs (ms)
   tmux_timeout_ms: 10000
+  # How often to spawn an auditor agent (ms, default 5 minutes)
+  auditor_interval_ms: 300000
+  # Whether auditor agent is enabled (false falls back to nudge behavior)
+  auditor_enabled: true
 
 # Merge queue configuration
 merge_queue:

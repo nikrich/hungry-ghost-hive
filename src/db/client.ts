@@ -520,6 +520,38 @@ const MIGRATIONS: MigrationDefinition[] = [
     },
   },
   {
+    name: '014-auditor-agent-type.sql',
+    up: db => {
+      // Recreate agents table with updated type CHECK constraint (add 'auditor')
+      db.run('PRAGMA foreign_keys = OFF');
+
+      db.run(`
+        CREATE TABLE agents_new (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa', 'feature_test', 'auditor')),
+          team_id TEXT REFERENCES teams(id),
+          tmux_session TEXT,
+          model TEXT,
+          status TEXT DEFAULT 'idle' CHECK (status IN ('idle', 'working', 'blocked', 'terminated')),
+          current_story_id TEXT,
+          memory_state TEXT,
+          last_seen TIMESTAMP,
+          worktree_path TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      db.run('INSERT INTO agents_new SELECT * FROM agents');
+      db.run('DROP TABLE agents');
+      db.run('ALTER TABLE agents_new RENAME TO agents');
+
+      db.run('CREATE INDEX IF NOT EXISTS idx_agents_team_id ON agents(team_id)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)');
+
+      db.run('PRAGMA foreign_keys = ON');
+    },
+  },
+  {
     name: '007-backfill-story-points.sql',
     up: db => {
       db.run(`
@@ -721,7 +753,7 @@ export interface TeamRow {
 
 export interface AgentRow {
   id: string;
-  type: 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa' | 'feature_test';
+  type: 'tech_lead' | 'senior' | 'intermediate' | 'junior' | 'qa' | 'feature_test' | 'auditor';
   team_id: string | null;
   tmux_session: string | null;
   model: string | null;
