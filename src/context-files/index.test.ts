@@ -169,6 +169,15 @@ describe('context-files module', () => {
           safety_mode: 'unsafe',
           personas: [],
         },
+        auditor: {
+          provider: 'anthropic',
+          model: 'claude-opus-4-6',
+          max_tokens: 16000,
+          temperature: 0.3,
+          cli_tool: 'claude',
+          safety_mode: 'unsafe',
+          personas: [],
+        },
       },
       scaling: {
         senior_capacity: 20,
@@ -214,6 +223,8 @@ describe('context-files module', () => {
         gh_timeout_ms: 60000,
         tmux_timeout_ms: 10000,
         tech_lead_max_age_hours: 6,
+        auditor_interval_ms: 300000,
+        auditor_enabled: true,
       },
       logging: { level: 'info', retention_days: 30 },
       cluster: {
