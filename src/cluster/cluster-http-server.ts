@@ -1,0 +1,187 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
+import type { ClusterConfig } from '../config/schema.js';
+import type { ClusterEvent, VersionVector } from './replication.js';
+
+interface DeltaRequest {
+  version_vector: VersionVector;
+  limit?: number;
+}
+
+interface DeltaResponse {
+  events: ClusterEvent[];
+  version_vector: VersionVector;
+}
+
+const MAX_CLUSTER_REQUEST_BODY_BYTES = 1024 * 1024; // 1 MiB
+
+export interface ClusterHttpHandlers {
+  getStatus: () => unknown;
+  handleVoteRequest: (body: unknown) => unknown;
+  handleHeartbeat: (body: unknown) => unknown;
+  getDeltaFromCache: (vector: VersionVector, limit: number) => ClusterEvent[];
+  getVersionVectorCache: () => VersionVector;
+}
+
+export class ClusterHttpServer {
+  private server: Server | null = null;
+
+  constructor(
+    private readonly config: ClusterConfig,
+    private readonly handlers: ClusterHttpHandlers
+  ) {}
+
+  async startServer(): Promise<void> {
+    this.server = createServer((req, res) => {
+      void this.handleHttpRequest(req, res);
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      if (!this.server) return reject(new Error('Cluster HTTP server not initialized'));
+
+      this.server.once('error', reject);
+      this.server.listen(this.config.listen_port, this.config.listen_host, () => {
+        this.server?.removeListener('error', reject);
+        resolve();
+      });
+    });
+  }
+
+  async stopServer(): Promise<void> {
+    if (this.server) {
+      await new Promise<void>(resolve => {
+        this.server?.close(() => resolve());
+      });
+      this.server = null;
+    }
+  }
+
+  private async handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    try {
+      if (!this.authorize(req)) {
+        sendJson(res, 401, { error: 'Unauthorized' });
+        return;
+      }
+
+      const method = req.method || 'GET';
+      const path = req.url?.split('?')[0] || '/';
+
+      if (method === 'GET' && path === '/cluster/v1/status') {
+        sendJson(res, 200, this.handlers.getStatus());
+        return;
+      }
+
+      if (method === 'POST' && path === '/cluster/v1/election/request-vote') {
+        const body = await readJsonBody(req);
+        const response = this.handlers.handleVoteRequest(body);
+        sendJson(res, 200, response);
+        return;
+      }
+
+      if (method === 'POST' && path === '/cluster/v1/election/heartbeat') {
+        const body = await readJsonBody(req);
+        const response = this.handlers.handleHeartbeat(body);
+        sendJson(res, 200, response);
+        return;
+      }
+
+      if (method === 'POST' && path === '/cluster/v1/events/delta') {
+        const body = (await readJsonBody(req)) as Partial<DeltaRequest>;
+        const vector = toVersionVector(body.version_vector);
+        const limit =
+          typeof body.limit === 'number' && Number.isFinite(body.limit) && body.limit > 0
+            ? Math.floor(body.limit)
+            : 2000;
+
+        const events = this.handlers.getDeltaFromCache(vector, limit);
+        sendJson(res, 200, {
+          events,
+          version_vector: this.handlers.getVersionVectorCache(),
+        } satisfies DeltaResponse);
+        return;
+      }
+
+      sendJson(res, 404, { error: 'Not found' });
+    } catch (error) {
+      if (error instanceof HttpRequestError) {
+        sendJson(res, error.statusCode, { error: error.message });
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      sendJson(res, 500, { error: message });
+    }
+  }
+
+  private authorize(req: IncomingMessage): boolean {
+    if (!this.config.auth_token) return true;
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return false;
+
+    const expected = `Bearer ${this.config.auth_token}`;
+    return authHeader === expected;
+  }
+}
+
+class HttpRequestError extends Error {
+  constructor(
+    public readonly statusCode: number,
+    message: string
+  ) {
+    super(message);
+    this.name = 'HttpRequestError';
+  }
+}
+
+async function readJsonBody(
+  req: IncomingMessage,
+  maxBytes: number = MAX_CLUSTER_REQUEST_BODY_BYTES
+): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+
+  for await (const chunk of req) {
+    const normalizedChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += normalizedChunk.length;
+
+    if (totalBytes > maxBytes) {
+      throw new HttpRequestError(413, `Payload too large (max ${maxBytes} bytes)`);
+    }
+
+    chunks.push(normalizedChunk);
+  }
+
+  if (chunks.length === 0) return {};
+
+  const raw = Buffer.concat(chunks).toString('utf-8');
+  if (!raw.trim()) return {};
+
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    throw new HttpRequestError(400, 'Invalid JSON payload');
+  }
+}
+
+function sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
+  res.statusCode = statusCode;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
+}
+
+function toVersionVector(input: unknown): VersionVector {
+  if (!input || typeof input !== 'object') return {};
+
+  const vector: VersionVector = {};
+
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    const num = typeof value === 'number' ? value : Number(value);
+    if (Number.isFinite(num) && num >= 0) {
+      vector[key] = Math.floor(num);
+    }
+  }
+
+  return vector;
+}

@@ -1,0 +1,112 @@
+// Licensed under the Hungry Ghost Hive License. See LICENSE.
+
+import type { ClusterConfig, ClusterPeerConfig } from '../config/schema.js';
+import type { RaftStateMachine } from './raft-state-machine.js';
+
+interface HeartbeatRequest {
+  term: number;
+  leader_id: string;
+}
+
+interface HeartbeatResponse {
+  term: number;
+  success: boolean;
+}
+
+export interface HeartbeatManagerDeps {
+  raft: RaftStateMachine;
+  postJson: <T>(peer: ClusterPeerConfig, path: string, body: unknown) => Promise<T | null>;
+  isActive: () => boolean;
+  handleBackgroundError: (error: unknown) => void;
+}
+
+export class HeartbeatManager {
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+
+  constructor(
+    private readonly config: ClusterConfig,
+    private readonly deps: HeartbeatManagerDeps
+  ) {}
+
+  startHeartbeatLoop(): void {
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.config.enabled) return;
+      if (this.deps.raft.role !== 'leader') return;
+      void this.sendHeartbeats().catch(error => this.deps.handleBackgroundError(error));
+    }, this.config.heartbeat_interval_ms);
+  }
+
+  stopHeartbeatLoop(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  async sendHeartbeats(): Promise<void> {
+    if (!this.deps.isActive()) return;
+
+    const { raft } = this.deps;
+
+    const heartbeat: HeartbeatRequest = {
+      term: raft.currentTerm,
+      leader_id: this.config.node_id,
+    };
+
+    raft.appendDurableEntry('heartbeat_sent', {
+      term: raft.currentTerm,
+      leader_id: this.config.node_id,
+      peer_count: this.config.peers.filter(peer => peer.id !== this.config.node_id).length,
+    });
+
+    await Promise.all(
+      this.config.peers
+        .filter(peer => peer.id !== this.config.node_id)
+        .map(async peer => {
+          const response = await this.deps.postJson<HeartbeatResponse>(
+            peer,
+            '/cluster/v1/election/heartbeat',
+            heartbeat
+          );
+
+          if (response && response.term > raft.currentTerm) {
+            raft.stepDown(response.term, peer.id);
+          }
+        })
+    );
+  }
+
+  handleHeartbeat(body: unknown): HeartbeatResponse {
+    const { raft } = this.deps;
+
+    const request = body as Partial<HeartbeatRequest>;
+    const term = Number(request.term || 0);
+    const leaderId = typeof request.leader_id === 'string' ? request.leader_id : null;
+
+    if (term < raft.currentTerm) {
+      return { term: raft.currentTerm, success: false };
+    }
+
+    const changed =
+      term > raft.currentTerm || leaderId !== raft.leaderId || raft.role !== 'follower';
+
+    if (term > raft.currentTerm) {
+      raft.stepDown(term, leaderId);
+    } else {
+      raft.role = 'follower';
+      raft.leaderId = leaderId;
+      raft.persistRaftState();
+    }
+
+    raft.resetElectionDeadline();
+
+    if (changed) {
+      raft.appendDurableEntry('heartbeat_received', {
+        term,
+        leader_id: leaderId,
+      });
+    }
+
+    return { term: raft.currentTerm, success: true };
+  }
+}
