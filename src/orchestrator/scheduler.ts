@@ -364,7 +364,12 @@ export class Scheduler {
               : undefined;
           if (!targetAgent) {
             try {
-              targetAgent = await this.spawnAgent('intermediate', teamId, team.name, team.repo_path);
+              targetAgent = await this.spawnAgent(
+                'intermediate',
+                teamId,
+                team.name,
+                team.repo_path
+              );
               agents.push(targetAgent);
             } catch (_error) {
               // Fall back to Senior
@@ -627,7 +632,13 @@ export class Scheduler {
         const toSpawn = neededSeniors - currentSeniors;
         for (let i = 0; i < toSpawn; i++) {
           try {
-            await this.spawnAgent('senior', team.id, team.name, team.repo_path, currentSeniors + i + 1);
+            await this.spawnAgent(
+              'senior',
+              team.id,
+              team.name,
+              team.repo_path,
+              currentSeniors + i + 1
+            );
             createLog(this.db, {
               agentId: 'scheduler',
               eventType: 'TEAM_SCALED_UP',
