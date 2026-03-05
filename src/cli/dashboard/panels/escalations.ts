@@ -4,6 +4,7 @@ import blessed, { type Widgets } from 'blessed';
 import { spawnSync } from 'child_process';
 import type { Database } from 'sql.js';
 import { getPendingEscalations, type EscalationRow } from '../../../db/queries/escalations.js';
+import type { DashboardContext } from '../index.js';
 
 // Store escalations for selection lookup
 let currentEscalations: EscalationRow[] = [];
@@ -21,7 +22,10 @@ function summarizeEscalationReason(reason: string): string {
   return truncate(reason, 38);
 }
 
-export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
+export function createEscalationsPanel(
+  screen: Widgets.Screen,
+  ctx: DashboardContext
+): Widgets.ListElement {
   const list = blessed.list({
     parent: screen,
     top: '55%+5',
@@ -53,6 +57,8 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Wi
     if (selectedIndex >= 0 && selectedIndex < currentEscalations.length) {
       const escalation = currentEscalations[selectedIndex];
 
+      // Pause the refresh timer so it cannot race with the post-detach update.
+      ctx.pauseRefresh();
       // Temporarily suspend blessed while handling escalation.
       const resumeScreen = screen.program.pause();
 
@@ -97,18 +103,23 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Wi
         // partial-update artifacts from blessed's incremental renderer.
         screen.realloc();
         try {
-          await updateEscalationsPanel(list, db);
+          // Use ctx.getDb() to get the current database — the original `db`
+          // reference captured at panel creation time may have been closed and
+          // replaced during a DB reload while tmux was attached.
+          await updateEscalationsPanel(list, ctx.getDb());
         } catch (err) {
           console.error('Failed to update escalations panel:', err);
         }
         screen.render();
+        // Resume the refresh timer now that the UI is restored.
+        ctx.resumeRefresh();
       }
 
       return;
     }
   });
 
-  updateEscalationsPanel(list, db).catch(err =>
+  updateEscalationsPanel(list, ctx.getDb()).catch(err =>
     console.error('Failed to update escalations panel:', err)
   );
 
@@ -124,6 +135,9 @@ export async function updateEscalationsPanel(
 
   if (escalations.length === 0) {
     currentEscalations = [];
+    // Clear items first to prevent blessed from leaving stale rows after
+    // screen pause/resume cycles (tmux attach/detach).
+    list.clearItems();
     list.setItems(['{green-fg}No pending escalations{/}']);
     return;
   }
@@ -135,5 +149,8 @@ export async function updateEscalationsPanel(
     return `${icon} ${esc.id}\n   ${target}\n   ${summary}`;
   });
 
+  // Clear items first to prevent blessed from leaving stale rows after
+  // screen pause/resume cycles (tmux attach/detach).
+  list.clearItems();
   list.setItems(items);
 }

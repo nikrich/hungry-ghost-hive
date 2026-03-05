@@ -40,6 +40,20 @@ export interface DashboardOptions {
 }
 
 /**
+ * Shared context passed to panels that need access to the current database
+ * and refresh timer control (e.g., panels that attach to tmux sessions).
+ *
+ * Panels must use `getDb()` instead of capturing a `db` reference at creation
+ * time — the underlying Database object is replaced on every reload, so a
+ * captured reference becomes stale (and closed) after the first DB change.
+ */
+export interface DashboardContext {
+  getDb: () => Database;
+  pauseRefresh: () => void;
+  resumeRefresh: () => void;
+}
+
+/**
  * Check if godmode is active by looking for any non-completed requirement with godmode enabled.
  */
 export function isGodmodeActive(db: Database): boolean {
@@ -83,13 +97,35 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
     tags: true,
   });
 
+  // Refresh timer state — declared early so DashboardContext closures can
+  // reference them; the actual scheduleRefresh implementation is assigned below
+  // after the refresh function is defined.
+  let currentTimeout: NodeJS.Timeout | null = null;
+  let refreshPaused = false;
+  let scheduleRefresh: () => void;
+
+  // Dashboard context — panels that attach to tmux use getDb() to always
+  // access the current Database instance, avoiding stale-reference bugs.
+  const ctx: DashboardContext = {
+    getDb: () => db.db,
+    pauseRefresh: () => {
+      refreshPaused = true;
+      if (currentTimeout) clearTimeout(currentTimeout);
+      currentTimeout = null;
+    },
+    resumeRefresh: () => {
+      refreshPaused = false;
+      scheduleRefresh();
+    },
+  };
+
   // Create panels
-  const agentsPanel = createAgentsPanel(screen, db.db);
+  const agentsPanel = createAgentsPanel(screen, ctx);
   const storiesPanel = createStoriesPanel(screen, db.db);
   const pipelinePanel = createPipelinePanel(screen, db.db);
   const activityPanel = createActivityPanel(screen, db.db);
   const mergeQueuePanel = createMergeQueuePanel(screen, db.db);
-  const escalationsPanel = createEscalationsPanel(screen, db.db);
+  const escalationsPanel = createEscalationsPanel(screen, ctx);
 
   // Footer
   blessed.box({
@@ -152,10 +188,11 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   };
 
   // Auto-refresh using recursive setTimeout to prevent overlapping refreshes
-  let currentTimeout: NodeJS.Timeout | null = null;
-  const scheduleRefresh = () => {
+  scheduleRefresh = () => {
     currentTimeout = setTimeout(async () => {
-      await refresh();
+      if (!refreshPaused) {
+        await refresh();
+      }
       scheduleRefresh();
     }, refreshInterval);
   };

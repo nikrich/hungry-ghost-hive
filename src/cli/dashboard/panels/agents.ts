@@ -10,6 +10,7 @@ import { getActiveAgents, type AgentRow } from '../../../db/queries/agents.js';
 import { getTeamById } from '../../../db/queries/teams.js';
 import { getHiveSessions } from '../../../tmux/manager.js';
 import { findHiveRoot, getHivePaths } from '../../../utils/paths.js';
+import type { DashboardContext } from '../index.js';
 
 function debugLog(msg: string) {
   appendFileSync('/tmp/hive-dashboard-debug.log', `${new Date().toISOString()} ${msg}\n`);
@@ -18,7 +19,7 @@ function debugLog(msg: string) {
 // Store agents for selection lookup
 let currentAgents: AgentRow[] = [];
 
-export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
+export function createAgentsPanel(screen: Widgets.Screen, ctx: DashboardContext): Widgets.ListElement {
   const list = blessed.list({
     parent: screen,
     top: 1,
@@ -58,6 +59,8 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
       const agent = currentAgents[agentIndex];
       debugLog(`Selected agent: ${agent.id}, tmux: ${agent.tmux_session}`);
       if (agent.tmux_session) {
+        // Pause the refresh timer so it cannot race with the post-detach update.
+        ctx.pauseRefresh();
         // Temporarily suspend blessed while attached to tmux.
         const resumeScreen = screen.program.pause();
 
@@ -68,19 +71,22 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
           });
         } finally {
           // Restore dashboard in the same process (do not spawn nested dashboards).
-          // spawnSync blocks the event loop so the refresh timer cannot fire and
-          // the captured `db` reference remains valid.
           resumeScreen();
           // Force full redraw — after tmux detach the terminal buffer is clobbered.
           // Use realloc() (dirty=true) so every cell is marked for redraw, preventing
           // partial-update artifacts from blessed's incremental renderer.
           screen.realloc();
           try {
-            await updateAgentsPanel(list, db);
+            // Use ctx.getDb() to get the current database — the original `db`
+            // reference captured at panel creation time may have been closed and
+            // replaced during a DB reload while tmux was attached.
+            await updateAgentsPanel(list, ctx.getDb());
           } catch (err) {
             debugLog(`Failed to refresh agents panel after tmux detach: ${err}`);
           }
           screen.render();
+          // Resume the refresh timer now that the UI is restored.
+          ctx.resumeRefresh();
         }
 
         return;
@@ -89,7 +95,7 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
   });
 
   // Initial data
-  updateAgentsPanel(list, db);
+  updateAgentsPanel(list, ctx.getDb());
 
   return list;
 }
@@ -181,6 +187,9 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
   if (displayAgents.length === 0) {
     currentAgents = [];
     debugLog('Setting empty data');
+    // Clear items first to prevent blessed from leaving stale rows after
+    // screen pause/resume cycles (tmux attach/detach).
+    list.clearItems();
     list.setItems([header, '{gray-fg}(no active agents){/}']);
     return;
   }
@@ -202,6 +211,9 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
   });
 
   debugLog(`Setting data with ${rows.length} rows`);
+  // Clear items first to prevent blessed from leaving stale rows after
+  // screen pause/resume cycles (tmux attach/detach).
+  list.clearItems();
   list.setItems([header, ...rows]);
 
   // Restore selection position (clamped to valid range)

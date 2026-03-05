@@ -4,7 +4,7 @@ import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createRequirement, updateRequirement } from '../../db/queries/requirements.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
-import { isGodmodeActive } from './index.js';
+import { isGodmodeActive, type DashboardContext } from './index.js';
 
 describe('isGodmodeActive', () => {
   let db: Database;
@@ -103,5 +103,47 @@ describe('isGodmodeActive', () => {
     updateRequirement(db, req.id, { status: 'planned' });
 
     expect(isGodmodeActive(db)).toBe(true);
+  });
+});
+
+describe('DashboardContext', () => {
+  it('getDb should always return the current database after replacement', async () => {
+    const db1 = await createTestDatabase();
+    const db2 = await createTestDatabase();
+
+    // Simulate how startDashboard creates the context with a mutable db ref
+    let currentDb = db1;
+    const ctx: DashboardContext = {
+      getDb: () => currentDb,
+      pauseRefresh: () => {},
+      resumeRefresh: () => {},
+    };
+
+    // Initially returns db1
+    expect(ctx.getDb()).toBe(db1);
+
+    // After "reload", returns db2 — not the stale db1
+    currentDb = db2;
+    expect(ctx.getDb()).toBe(db2);
+    expect(ctx.getDb()).not.toBe(db1);
+  });
+
+  it('pauseRefresh and resumeRefresh should toggle refresh state', () => {
+    let paused = false;
+    const ctx: DashboardContext = {
+      getDb: () => null as unknown as Database,
+      pauseRefresh: () => {
+        paused = true;
+      },
+      resumeRefresh: () => {
+        paused = false;
+      },
+    };
+
+    expect(paused).toBe(false);
+    ctx.pauseRefresh();
+    expect(paused).toBe(true);
+    ctx.resumeRefresh();
+    expect(paused).toBe(false);
   });
 });
