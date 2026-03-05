@@ -232,52 +232,61 @@ agentsCommand
       process.exit(1);
     }
 
-    await withHiveContext(async ({ root, db }) => {
-      const agent = getAgentByTmuxSession(db.db, sessionName);
-      if (!agent) {
-        console.error(chalk.red(`No agent found for tmux session: ${sessionName}`));
-        process.exit(1);
-      }
-
-      // Clean up worktree if one exists
-      if (agent.worktree_path) {
-        const result = removeWorktree(root, agent.worktree_path);
-        if (!result.success) {
-          console.error(
-            chalk.yellow(`Warning: Failed to remove worktree for ${agent.id}: ${result.error}`)
-          );
-        }
-      }
-
-      // Mark agent as terminated in DB
-      updateAgent(db.db, agent.id, {
-        status: 'terminated',
-        currentStoryId: null,
-      });
-
-      // Log the self-termination event
-      createLog(db.db, {
-        agentId: agent.id,
-        eventType: 'AGENT_TERMINATED',
-        message: `Agent self-terminated (session: ${sessionName})`,
-      });
-
-      db.save();
-
-      console.log(chalk.green(`✓ Agent ${agent.id} self-terminated.`));
-
-      // Kill own tmux session as the final action.
-      // Use a backgrounded shell command with a delay so the process can exit cleanly.
-      try {
-        execSync(`(sleep 1 && tmux kill-session -t ${shellEscape(sessionName)}) &`, {
-          stdio: 'ignore',
-          shell: '/bin/sh',
-        });
-      } catch (_error) {
-        // Best-effort: session may already be gone
-      }
-    });
+    await selfTerminate(sessionName);
   });
+
+export async function selfTerminate(sessionName: string): Promise<void> {
+  await withHiveContext(async ({ root, db }) => {
+    const agent = getAgentByTmuxSession(db.db, sessionName);
+    if (!agent) {
+      console.error(chalk.red(`No agent found for tmux session: ${sessionName}`));
+      process.exit(1);
+    }
+
+    if (agent.status === 'terminated') {
+      console.log(chalk.yellow(`Agent ${agent.id} is already terminated.`));
+      return;
+    }
+
+    // Clean up worktree if one exists
+    if (agent.worktree_path) {
+      const result = removeWorktree(root, agent.worktree_path);
+      if (!result.success) {
+        console.error(
+          chalk.yellow(`Warning: Failed to remove worktree for ${agent.id}: ${result.error}`)
+        );
+      }
+    }
+
+    // Mark agent as terminated in DB
+    updateAgent(db.db, agent.id, {
+      status: 'terminated',
+      currentStoryId: null,
+    });
+
+    // Log the self-termination event
+    createLog(db.db, {
+      agentId: agent.id,
+      eventType: 'AGENT_TERMINATED',
+      message: `Agent self-terminated (session: ${sessionName})`,
+    });
+
+    db.save();
+
+    console.log(chalk.green(`✓ Agent ${agent.id} self-terminated.`));
+
+    // Kill own tmux session as the final action.
+    // Use a backgrounded shell command with a delay so the process can exit cleanly.
+    try {
+      execSync(`(sleep 1 && tmux kill-session -t ${shellEscape(sessionName)}) &`, {
+        stdio: 'ignore',
+        shell: '/bin/sh',
+      });
+    } catch (_error) {
+      // Best-effort: session may already be gone
+    }
+  });
+}
 
 function getCurrentTmuxSession(): string | undefined {
   try {
