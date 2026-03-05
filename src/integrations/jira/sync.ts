@@ -102,6 +102,81 @@ export function jiraStatusToHiveStatus(
 }
 
 /**
+ * Create a JiraClient from environment variables.
+ * Shared by all sync functions in this module.
+ */
+function createJiraClient(tokenStore: TokenStore): JiraClient {
+  loadEnvIntoProcess();
+  return new JiraClient({
+    tokenStore,
+    clientId: process.env.JIRA_CLIENT_ID || '',
+    clientSecret: process.env.JIRA_CLIENT_SECRET || '',
+  });
+}
+
+/**
+ * Shared loop used by both bidirectional sync functions.
+ *
+ * For each story, fetches the current Jira status, converts it to a Hive status
+ * via the configured mapping, skips if unmapped, then delegates to `onMappedStatus`
+ * for the direction-specific action. Catches and logs per-story errors so one
+ * failing story does not abort the entire batch.
+ *
+ * @param db - Database instance (used for error logging)
+ * @param client - Authenticated JiraClient
+ * @param config - Jira configuration with status_mapping
+ * @param stories - Stories to process
+ * @param getIssueKey - Returns the Jira issue key for a given story row
+ * @param onMappedStatus - Called when a Jira status is successfully mapped;
+ *   returns true if the story was acted upon (counted toward the return value)
+ * @returns Number of stories acted upon
+ */
+async function processBidirectionalStatusSync(
+  db: Database,
+  client: JiraClient,
+  config: JiraConfig,
+  stories: StoryRow[],
+  getIssueKey: (story: StoryRow) => string,
+  onMappedStatus: (
+    story: StoryRow,
+    issueKey: string,
+    jiraStatusName: string,
+    mappedHiveStatus: string
+  ) => Promise<boolean>
+): Promise<number> {
+  let count = 0;
+  for (const story of stories) {
+    const issueKey = getIssueKey(story);
+    try {
+      const jiraIssue = await getIssue(client, issueKey, ['status']);
+      const jiraStatusName = jiraIssue.fields.status.name;
+      const mappedHiveStatus = jiraStatusToHiveStatus(jiraStatusName, config.status_mapping);
+      if (!mappedHiveStatus) {
+        logger.debug(
+          `No Hive status mapping for Jira status "${jiraStatusName}" (${issueKey}), skipping`
+        );
+        continue;
+      }
+      if (await onMappedStatus(story, issueKey, jiraStatusName, mappedHiveStatus)) {
+        count++;
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`Failed to sync Jira status for story ${story.id} (${issueKey}): ${message}`);
+      createLog(db, {
+        agentId: 'manager',
+        storyId: story.id,
+        eventType: 'JIRA_SYNC_WARNING',
+        status: 'warn',
+        message: `Failed to sync status: ${message}`,
+        metadata: { jiraKey: issueKey, error: message },
+      });
+    }
+  }
+  return count;
+}
+
+/**
  * Sync Jira issue statuses back to the Hive database.
  * This detects manual status changes in Jira (e.g., dragging cards on the board)
  * and updates the corresponding stories in the Hive database.
@@ -132,93 +207,59 @@ export async function syncJiraStatusesToHive(
     return 0;
   }
 
-  loadEnvIntoProcess();
+  const client = createJiraClient(tokenStore);
 
-  const client = new JiraClient({
-    tokenStore,
-    clientId: process.env.JIRA_CLIENT_ID || '',
-    clientSecret: process.env.JIRA_CLIENT_SECRET || '',
-  });
-
-  let updatedCount = 0;
-
-  for (const story of storiesWithJira) {
-    try {
-      // Fetch current Jira issue status
-      const jiraIssue = await getIssue(client, story.external_issue_key!, ['status']);
-      const jiraStatusName = jiraIssue.fields.status.name;
-
-      // Convert Jira status to Hive status
-      const mappedHiveStatus = jiraStatusToHiveStatus(jiraStatusName, config.status_mapping);
-
-      if (!mappedHiveStatus) {
-        logger.debug(
-          `No Hive status mapping for Jira status "${jiraStatusName}" (${story.external_issue_key}), skipping`
-        );
-        continue;
-      }
-
-      // Check if status differs from current Hive status
+  return processBidirectionalStatusSync(
+    db,
+    client,
+    config,
+    storiesWithJira,
+    story => story.external_issue_key!,
+    async (story, issueKey, jiraStatusName, mappedHiveStatus) => {
       // Guard: never regress status backward in the lifecycle
       if (isStatusRegression(story.status, mappedHiveStatus)) {
         logger.debug(
           `Skipping Jira sync for ${story.id}: would regress ${story.status} → ${mappedHiveStatus}`
         );
-        continue;
+        return false;
       }
 
-      if (mappedHiveStatus !== story.status) {
-        // Only allow forward transitions — never regress stories backward
-        if (!isForwardTransition(story.status, mappedHiveStatus)) {
-          logger.debug(
-            `Skipping backward Jira sync for story ${story.id} (${story.external_issue_key}): ` +
-              `would regress ${story.status} → ${mappedHiveStatus} (Jira: "${jiraStatusName}")`
-          );
-          continue;
-        }
+      if (mappedHiveStatus === story.status) return false;
 
-        // Update the story status in Hive
-        await withTransaction(db, () => {
-          updateStory(db, story.id, { status: mappedHiveStatus as StoryStatus });
-
-          createLog(db, {
-            agentId: 'manager',
-            storyId: story.id,
-            eventType: 'JIRA_SYNC_COMPLETED',
-            message: `Synced status from Jira: ${story.status} → ${mappedHiveStatus} (Jira: "${jiraStatusName}")`,
-            metadata: {
-              jiraKey: story.external_issue_key,
-              oldHiveStatus: story.status,
-              newHiveStatus: mappedHiveStatus,
-              jiraStatus: jiraStatusName,
-            },
-          });
-        });
-
+      // Only allow forward transitions — never regress stories backward
+      if (!isForwardTransition(story.status, mappedHiveStatus)) {
         logger.debug(
-          `Synced Jira status for story ${story.id} (${story.external_issue_key}): ${story.status} → ${mappedHiveStatus}`
+          `Skipping backward Jira sync for story ${story.id} (${issueKey}): ` +
+            `would regress ${story.status} → ${mappedHiveStatus} (Jira: "${jiraStatusName}")`
         );
-
-        updatedCount++;
+        return false;
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.warn(
-        `Failed to sync Jira status for story ${story.id} (${story.external_issue_key}): ${message}`
+
+      // Update the story status in Hive
+      await withTransaction(db, () => {
+        updateStory(db, story.id, { status: mappedHiveStatus as StoryStatus });
+
+        createLog(db, {
+          agentId: 'manager',
+          storyId: story.id,
+          eventType: 'JIRA_SYNC_COMPLETED',
+          message: `Synced status from Jira: ${story.status} → ${mappedHiveStatus} (Jira: "${jiraStatusName}")`,
+          metadata: {
+            jiraKey: issueKey,
+            oldHiveStatus: story.status,
+            newHiveStatus: mappedHiveStatus,
+            jiraStatus: jiraStatusName,
+          },
+        });
+      });
+
+      logger.debug(
+        `Synced Jira status for story ${story.id} (${issueKey}): ${story.status} → ${mappedHiveStatus}`
       );
 
-      createLog(db, {
-        agentId: 'manager',
-        storyId: story.id,
-        eventType: 'JIRA_SYNC_WARNING',
-        status: 'warn',
-        message: `Failed to sync status from Jira: ${message}`,
-        metadata: { jiraKey: story.external_issue_key, error: message },
-      });
+      return true;
     }
-  }
-
-  return updatedCount;
+  );
 }
 
 /**
@@ -374,13 +415,7 @@ export async function repairMissedAssignmentHooks(
     `Found ${storiesMissingSubtasks.length} assigned story(ies) missing Jira subtasks — repairing`
   );
 
-  loadEnvIntoProcess();
-
-  const client = new JiraClient({
-    tokenStore,
-    clientId: process.env.JIRA_CLIENT_ID || '',
-    clientSecret: process.env.JIRA_CLIENT_SECRET || '',
-  });
+  const client = createJiraClient(tokenStore);
 
   let repairedCount = 0;
 
@@ -482,13 +517,7 @@ export async function retrySprintAssignment(
 
   logger.info(`Found ${storiesNotInSprint.length} story(ies) not in sprint — retrying assignment`);
 
-  loadEnvIntoProcess();
-
-  const client = new JiraClient({
-    tokenStore,
-    clientId: process.env.JIRA_CLIENT_ID || '',
-    clientSecret: process.env.JIRA_CLIENT_SECRET || '',
-  });
+  const client = createJiraClient(tokenStore);
 
   const issueKeys = storiesNotInSprint.map(s => s.jira_issue_key!).filter(Boolean);
 
@@ -534,90 +563,56 @@ export async function syncHiveStatusesToJira(
     return 0;
   }
 
-  loadEnvIntoProcess();
+  const client = createJiraClient(tokenStore);
 
-  const client = new JiraClient({
-    tokenStore,
-    clientId: process.env.JIRA_CLIENT_ID || '',
-    clientSecret: process.env.JIRA_CLIENT_SECRET || '',
-  });
+  return processBidirectionalStatusSync(
+    db,
+    client,
+    config,
+    storiesWithJira,
+    story => story.jira_issue_key!,
+    async (story, issueKey, jiraStatusName, jiraStatusAsHiveStatus) => {
+      if (story.status === jiraStatusAsHiveStatus) return false;
 
-  let pushedCount = 0;
-
-  for (const story of storiesWithJira) {
-    try {
-      // Fetch current Jira issue status
-      const jiraIssue = await getIssue(client, story.jira_issue_key!, ['status']);
-      const jiraStatusName = jiraIssue.fields.status.name;
-
-      // Convert Jira status to Hive status to compare
-      const jiraStatusAsHiveStatus = jiraStatusToHiveStatus(jiraStatusName, config.status_mapping);
-
-      if (!jiraStatusAsHiveStatus) {
+      // Only push forward transitions — never regress Jira backward
+      if (!isForwardTransition(jiraStatusAsHiveStatus, story.status)) {
         logger.debug(
-          `No Hive status mapping for Jira status "${jiraStatusName}" (${story.jira_issue_key}), skipping`
+          `Skipping Hive-to-Jira push for story ${story.id} (${issueKey}): ` +
+            `would regress Jira from ${jiraStatusAsHiveStatus} → ${story.status} (Jira: "${jiraStatusName}")`
         );
-        continue;
+        return false;
       }
 
-      // Check if Hive status is ahead of Jira status
-      if (story.status !== jiraStatusAsHiveStatus) {
-        // Only push forward transitions — never regress Jira backward
-        if (!isForwardTransition(jiraStatusAsHiveStatus, story.status)) {
-          logger.debug(
-            `Skipping Hive-to-Jira push for story ${story.id} (${story.jira_issue_key}): ` +
-              `would regress Jira from ${jiraStatusAsHiveStatus} → ${story.status} (Jira: "${jiraStatusName}")`
-          );
-          continue;
-        }
-
-        // Push the Hive status to Jira
-        const transitioned = await transitionJiraIssue(
-          client,
-          story.jira_issue_key!,
-          story.status,
-          config.status_mapping
-        );
-
-        if (transitioned) {
-          createLog(db, {
-            agentId: 'manager',
-            storyId: story.id,
-            eventType: 'JIRA_SYNC_COMPLETED',
-            message: `Pushed status to Jira: ${jiraStatusAsHiveStatus} → ${story.status} (was Jira: "${jiraStatusName}")`,
-            metadata: {
-              jiraKey: story.jira_issue_key,
-              oldJiraStatus: jiraStatusName,
-              oldHiveStatus: jiraStatusAsHiveStatus,
-              newHiveStatus: story.status,
-            },
-          });
-
-          logger.debug(
-            `Pushed Hive status to Jira for story ${story.id} (${story.jira_issue_key}): ${jiraStatusAsHiveStatus} → ${story.status}`
-          );
-
-          pushedCount++;
-        }
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.warn(
-        `Failed to push Hive status to Jira for story ${story.id} (${story.jira_issue_key}): ${message}`
+      // Push the Hive status to Jira
+      const transitioned = await transitionJiraIssue(
+        client,
+        issueKey,
+        story.status,
+        config.status_mapping
       );
 
-      createLog(db, {
-        agentId: 'manager',
-        storyId: story.id,
-        eventType: 'JIRA_SYNC_WARNING',
-        status: 'warn',
-        message: `Failed to push status to Jira: ${message}`,
-        metadata: { jiraKey: story.jira_issue_key, error: message },
-      });
-    }
-  }
+      if (transitioned) {
+        createLog(db, {
+          agentId: 'manager',
+          storyId: story.id,
+          eventType: 'JIRA_SYNC_COMPLETED',
+          message: `Pushed status to Jira: ${jiraStatusAsHiveStatus} → ${story.status} (was Jira: "${jiraStatusName}")`,
+          metadata: {
+            jiraKey: issueKey,
+            oldJiraStatus: jiraStatusName,
+            oldHiveStatus: jiraStatusAsHiveStatus,
+            newHiveStatus: story.status,
+          },
+        });
 
-  return pushedCount;
+        logger.debug(
+          `Pushed Hive status to Jira for story ${story.id} (${issueKey}): ${jiraStatusAsHiveStatus} → ${story.status}`
+        );
+      }
+
+      return transitioned;
+    }
+  );
 }
 
 /**
