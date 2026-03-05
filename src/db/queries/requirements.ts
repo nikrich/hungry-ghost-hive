@@ -101,15 +101,25 @@ const requirementFieldMap: FieldMap = {
   title: 'title',
   description: 'description',
   status: 'status',
-  godmode: { column: 'godmode', transform: (v) => (v ? 1 : 0) },
+  godmode: { column: 'godmode', transform: v => (v ? 1 : 0) },
   targetBranch: 'target_branch',
   externalProvider: 'external_provider',
   featureBranch: 'feature_branch',
 };
 
 const requirementDualWritePairs = [
-  { current: 'externalEpicKey', legacy: 'jiraEpicKey', currentColumn: 'external_epic_key', legacyColumn: 'jira_epic_key' },
-  { current: 'externalEpicId', legacy: 'jiraEpicId', currentColumn: 'external_epic_id', legacyColumn: 'jira_epic_id' },
+  {
+    current: 'externalEpicKey',
+    legacy: 'jiraEpicKey',
+    currentColumn: 'external_epic_key',
+    legacyColumn: 'jira_epic_key',
+  },
+  {
+    current: 'externalEpicId',
+    legacy: 'jiraEpicId',
+    currentColumn: 'external_epic_id',
+    legacyColumn: 'jira_epic_id',
+  },
 ];
 
 export function updateRequirement(

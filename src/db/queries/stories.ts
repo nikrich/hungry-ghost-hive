@@ -174,7 +174,7 @@ const storyFieldMap: FieldMap = {
   description: 'description',
   acceptanceCriteria: {
     column: 'acceptance_criteria',
-    transform: (v) => (v ? JSON.stringify(v) : null),
+    transform: v => (v ? JSON.stringify(v) : null),
   },
   complexityScore: 'complexity_score',
   storyPoints: 'story_points',
@@ -183,15 +183,40 @@ const storyFieldMap: FieldMap = {
   branchName: 'branch_name',
   prUrl: 'pr_url',
   externalProvider: 'external_provider',
-  inSprint: { column: 'in_sprint', transform: (v) => (v ? 1 : 0) },
+  inSprint: { column: 'in_sprint', transform: v => (v ? 1 : 0) },
 };
 
 const storyDualWritePairs = [
-  { current: 'externalIssueKey', legacy: 'jiraIssueKey', currentColumn: 'external_issue_key', legacyColumn: 'jira_issue_key' },
-  { current: 'externalIssueId', legacy: 'jiraIssueId', currentColumn: 'external_issue_id', legacyColumn: 'jira_issue_id' },
-  { current: 'externalProjectKey', legacy: 'jiraProjectKey', currentColumn: 'external_project_key', legacyColumn: 'jira_project_key' },
-  { current: 'externalSubtaskKey', legacy: 'jiraSubtaskKey', currentColumn: 'external_subtask_key', legacyColumn: 'jira_subtask_key' },
-  { current: 'externalSubtaskId', legacy: 'jiraSubtaskId', currentColumn: 'external_subtask_id', legacyColumn: 'jira_subtask_id' },
+  {
+    current: 'externalIssueKey',
+    legacy: 'jiraIssueKey',
+    currentColumn: 'external_issue_key',
+    legacyColumn: 'jira_issue_key',
+  },
+  {
+    current: 'externalIssueId',
+    legacy: 'jiraIssueId',
+    currentColumn: 'external_issue_id',
+    legacyColumn: 'jira_issue_id',
+  },
+  {
+    current: 'externalProjectKey',
+    legacy: 'jiraProjectKey',
+    currentColumn: 'external_project_key',
+    legacyColumn: 'jira_project_key',
+  },
+  {
+    current: 'externalSubtaskKey',
+    legacy: 'jiraSubtaskKey',
+    currentColumn: 'external_subtask_key',
+    legacyColumn: 'jira_subtask_key',
+  },
+  {
+    current: 'externalSubtaskId',
+    legacy: 'jiraSubtaskId',
+    currentColumn: 'external_subtask_id',
+    legacyColumn: 'jira_subtask_id',
+  },
 ];
 
 export function updateStory(
