@@ -13,7 +13,7 @@ function createMockList() {
   return {
     calls,
     clearItems: vi.fn(() => calls.push('clearItems')),
-    setItems: vi.fn((items: string[]) => calls.push('setItems')),
+    setItems: vi.fn((_items: string[]) => calls.push('setItems')),
   };
 }
 
