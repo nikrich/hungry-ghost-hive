@@ -102,7 +102,9 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   // after the refresh function is defined.
   let currentTimeout: NodeJS.Timeout | null = null;
   let refreshPaused = false;
-  let scheduleRefresh: () => void;
+  // Initialised as a no-op; replaced with the real implementation once
+  // the refresh function is defined (which depends on panels created below).
+  let scheduleRefresh: () => void = () => {};
 
   // Dashboard context — panels that attach to tmux use getDb() to always
   // access the current Database instance, avoiding stale-reference bugs.
