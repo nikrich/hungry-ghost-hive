@@ -16,6 +16,10 @@ vi.mock('../../db/client.js', () => ({
   })),
 }));
 
+vi.mock('execa', () => ({
+  execa: vi.fn(),
+}));
+
 vi.mock('../../utils/paths.js', () => ({
   getHivePaths: vi.fn(() => ({
     hiveDir: '/tmp/.hive',
