@@ -2,6 +2,7 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
+import { execa } from 'execa';
 import { existsSync, mkdirSync } from 'fs';
 import ora from 'ora';
 import { join } from 'path';
@@ -62,6 +63,14 @@ export const initCommand = new Command('init')
         const db = await createDatabase(paths.dbPath);
         db.runMigrations();
         db.close();
+
+        // Initialize git repository if not already in one
+        spinner.text = 'Initializing git repository...';
+        try {
+          await execa('git', ['rev-parse', '--git-dir'], { cwd: rootDir });
+        } catch {
+          await execa('git', ['init'], { cwd: rootDir });
+        }
 
         // Create .gitkeep files
         if (!existsSync(join(paths.reposDir, '.gitkeep'))) {
