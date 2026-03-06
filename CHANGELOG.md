@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.43.1...hungry-ghost-hive-v0.43.2) (2026-03-06)
+
+
+### Bug Fixes
+
+* initialize git repository during hive init ([#509](https://github.com/nikrich/hungry-ghost-hive/issues/509)) ([8478a18](https://github.com/nikrich/hungry-ghost-hive/commit/8478a18763c6211a185a40e19886aff36cabb5db)), closes [#508](https://github.com/nikrich/hungry-ghost-hive/issues/508)
+
 ## [0.43.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.43.0...hungry-ghost-hive-v0.43.1) (2026-03-05)
 
 
