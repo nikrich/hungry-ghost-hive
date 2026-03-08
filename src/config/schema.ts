@@ -210,6 +210,9 @@ const AgentsConfigSchema = z.object({
   llm_timeout_ms: z.number().int().positive().default(1800000),
   // Max retries for LLM calls on timeout
   llm_max_retries: z.number().int().nonnegative().default(2),
+  // Enable Chrome browser automation via Claude in Chrome extension
+  // true = always enable, false = always disable, 'auto' = detect availability
+  chrome_enabled: z.union([z.boolean(), z.literal('auto')]).default('auto'),
 });
 
 // Manager daemon configuration
@@ -521,6 +524,9 @@ agents:
   llm_timeout_ms: 1800000
   # Max retries for LLM calls on timeout
   llm_max_retries: 2
+  # Enable Chrome browser automation (true, false, or auto)
+  # auto = detect if Claude CLI supports --chrome flag
+  chrome_enabled: auto
 
 # Manager daemon (micromanager nudge behavior)
 manager:
