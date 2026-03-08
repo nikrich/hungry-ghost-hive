@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.45.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.44.0...hungry-ghost-hive-v0.45.0) (2026-03-08)
+
+
+### Features
+
+* store stories as markdown files in .hive/stories/ ([#519](https://github.com/nikrich/hungry-ghost-hive/issues/519)) ([ac895cc](https://github.com/nikrich/hungry-ghost-hive/commit/ac895cc4e0a6c734b814412d4b1b043c2e85939a))
+* support multiple concurrent hive instances ([#520](https://github.com/nikrich/hungry-ghost-hive/issues/520)) ([782f8ae](https://github.com/nikrich/hungry-ghost-hive/commit/782f8ae9750fc88dd50e371bdca68499af46e122))
+
+
+### Bug Fixes
+
+* graceful worktree cleanup when path does not exist on disk ([#517](https://github.com/nikrich/hungry-ghost-hive/issues/517)) ([d1108a1](https://github.com/nikrich/hungry-ghost-hive/commit/d1108a1eec718b3d04b38c66de875275fb621fa5))
+
 ## [0.44.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.43.2...hungry-ghost-hive-v0.44.0) (2026-03-08)
 
 
