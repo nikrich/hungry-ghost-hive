@@ -144,8 +144,8 @@ export function resolveRuntimeModelForCli(model: string, cliTool: CliRuntimeType
   return model;
 }
 
+export { detectChromeAvailability, resolveChromeEnabled } from './chrome.js';
 export { ClaudeRuntimeBuilder } from './claude.js';
 export { CodexRuntimeBuilder } from './codex.js';
 export { GeminiRuntimeBuilder } from './gemini.js';
-export { detectChromeAvailability, resolveChromeEnabled } from './chrome.js';
 export type { CliRuntimeBuilder, CliRuntimeType, RuntimeSafetyMode };

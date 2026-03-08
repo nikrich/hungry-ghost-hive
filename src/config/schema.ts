@@ -212,9 +212,7 @@ const AgentsConfigSchema = z.object({
   llm_max_retries: z.number().int().nonnegative().default(2),
   // Enable Chrome browser automation via Claude in Chrome extension
   // true = always enable, false = always disable, 'auto' = detect availability
-  chrome_enabled: z
-    .union([z.boolean(), z.literal('auto')])
-    .default('auto'),
+  chrome_enabled: z.union([z.boolean(), z.literal('auto')]).default('auto'),
 });
 
 // Manager daemon configuration
