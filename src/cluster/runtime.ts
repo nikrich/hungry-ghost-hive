@@ -55,12 +55,32 @@ export interface ClusterSyncResult {
   durable_log_entries_appended: number;
 }
 
+export interface PeerReplicationLag {
+  peer_id: string;
+  peer_url: string;
+  reachable: boolean;
+  events_behind: number;
+  last_sync_at: string | null;
+  last_sync_duration_ms: number | null;
+  last_sync_events_applied: number;
+}
+
+export interface ReplicationLagSummary {
+  node_id: string;
+  total_local_events: number;
+  version_vector: VersionVector;
+  peers: PeerReplicationLag[];
+  last_sync_at: string | null;
+}
+
 export class ClusterRuntime {
   private started = false;
   private stopping = false;
 
   private eventCache: ClusterEvent[] = [];
   private versionVectorCache: VersionVector = {};
+  private peerLagMap = new Map<string, PeerReplicationLag>();
+  private lastSyncAt: string | null = null;
 
   private readonly raft: RaftStateMachine;
   private readonly heartbeat: HeartbeatManager;
@@ -89,6 +109,7 @@ export class ClusterRuntime {
       handleHeartbeat: body => this.heartbeat.handleHeartbeat(body),
       getDeltaFromCache: (vector, limit) => this.getDeltaFromCache(vector, limit),
       getVersionVectorCache: () => this.versionVectorCache,
+      getReplicationLag: () => this.getReplicationLag(),
     });
   }
 
@@ -136,6 +157,26 @@ export class ClusterRuntime {
   isLeader(): boolean {
     if (!this.config.enabled) return true;
     return this.raft.role === 'leader';
+  }
+
+  getReplicationLag(): ReplicationLagSummary {
+    return {
+      node_id: this.config.node_id,
+      total_local_events: this.eventCache.length,
+      version_vector: { ...this.versionVectorCache },
+      peers: this.config.peers
+        .filter(p => p.id !== this.config.node_id)
+        .map(p => this.peerLagMap.get(p.id) || {
+          peer_id: p.id,
+          peer_url: p.url,
+          reachable: false,
+          events_behind: 0,
+          last_sync_at: null,
+          last_sync_duration_ms: null,
+          last_sync_events_applied: 0,
+        }),
+      last_sync_at: this.lastSyncAt,
+    };
   }
 
   getStatus(): ClusterStatus {
@@ -201,15 +242,44 @@ export class ClusterRuntime {
     if (this.config.peers.length === 0) return 0;
 
     let applied = 0;
+    const syncTimestamp = new Date().toISOString();
+    this.lastSyncAt = syncTimestamp;
 
     for (const peer of this.config.peers) {
       if (peer.id === this.config.node_id) continue;
 
       const localVector = getVersionVector(db);
+      const syncStart = Date.now();
       const response = await this.requestDelta(peer, localVector, 4000);
-      if (!response || response.events.length === 0) continue;
 
-      applied += applyRemoteEvents(db, this.config.node_id, response.events);
+      if (!response) {
+        this.peerLagMap.set(peer.id, {
+          peer_id: peer.id,
+          peer_url: peer.url,
+          reachable: false,
+          events_behind: 0,
+          last_sync_at: syncTimestamp,
+          last_sync_duration_ms: Date.now() - syncStart,
+          last_sync_events_applied: 0,
+        });
+        continue;
+      }
+
+      const eventsBehind = response.events.length;
+      const peerApplied = eventsBehind > 0
+        ? applyRemoteEvents(db, this.config.node_id, response.events)
+        : 0;
+      applied += peerApplied;
+
+      this.peerLagMap.set(peer.id, {
+        peer_id: peer.id,
+        peer_url: peer.url,
+        reachable: true,
+        events_behind: eventsBehind,
+        last_sync_at: syncTimestamp,
+        last_sync_duration_ms: Date.now() - syncStart,
+        last_sync_events_applied: peerApplied,
+      });
     }
 
     return applied;
@@ -269,6 +339,22 @@ export class ClusterRuntime {
       `Cluster auth_token is required when listen_host is not loopback (received: ${this.config.listen_host})`
     );
   }
+}
+
+export async function fetchReplicationLag(
+  config: ClusterConfig
+): Promise<ReplicationLagSummary | null> {
+  if (!config.enabled) return null;
+
+  const host = config.listen_host === '0.0.0.0' ? '127.0.0.1' : config.listen_host;
+  const url = `http://${host}:${config.listen_port}/cluster/v1/replication-lag`;
+
+  return fetchClusterStatusOrPostJson<ReplicationLagSummary>(
+    url,
+    config.request_timeout_ms,
+    config.auth_token,
+    { method: 'GET' }
+  );
 }
 
 export async function fetchLocalClusterStatus(
