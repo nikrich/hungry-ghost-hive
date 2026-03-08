@@ -1,9 +1,13 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { CliRuntimeBuilder, RuntimeSafetyMode } from './types.js';
+import { CliRuntimeBuilder, RuntimeOptions, RuntimeSafetyMode } from './types.js';
 
 export class CodexRuntimeBuilder implements CliRuntimeBuilder {
-  buildSpawnCommand(model: string, safetyMode: RuntimeSafetyMode): string[] {
+  buildSpawnCommand(
+    model: string,
+    safetyMode: RuntimeSafetyMode,
+    _options?: RuntimeOptions
+  ): string[] {
     const approvalPolicy = safetyMode === 'safe' ? 'on-request' : 'never';
     const sandboxMode = safetyMode === 'safe' ? 'workspace-write' : 'danger-full-access';
     return [
@@ -17,7 +21,12 @@ export class CodexRuntimeBuilder implements CliRuntimeBuilder {
     ];
   }
 
-  buildResumeCommand(model: string, sessionId: string, safetyMode: RuntimeSafetyMode): string[] {
+  buildResumeCommand(
+    model: string,
+    sessionId: string,
+    safetyMode: RuntimeSafetyMode,
+    _options?: RuntimeOptions
+  ): string[] {
     const approvalPolicy = safetyMode === 'safe' ? 'on-request' : 'never';
     const sandboxMode = safetyMode === 'safe' ? 'workspace-write' : 'danger-full-access';
     return [

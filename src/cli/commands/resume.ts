@@ -91,8 +91,11 @@ export const resumeCommand = new Command('resume')
           const model = resolveRuntimeModelForCli(selectedModel, cliTool);
 
           // Build resume command using CLI runtime builder
+          const chromeEnabled = config.agents?.chrome_enabled === true && cliTool === 'claude';
           const runtimeBuilder = getCliRuntimeBuilder(cliTool);
-          const commandArgs = runtimeBuilder.buildResumeCommand(model, sessionName, safetyMode);
+          const commandArgs = runtimeBuilder.buildResumeCommand(model, sessionName, safetyMode, {
+            chrome: chromeEnabled,
+          });
 
           // Spawn new session
           await spawnTmuxSession({

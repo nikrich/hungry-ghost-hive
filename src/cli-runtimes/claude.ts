@@ -1,20 +1,37 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { CliRuntimeBuilder, RuntimeSafetyMode } from './types.js';
+import { CliRuntimeBuilder, RuntimeOptions, RuntimeSafetyMode } from './types.js';
 
 export class ClaudeRuntimeBuilder implements CliRuntimeBuilder {
-  buildSpawnCommand(model: string, safetyMode: RuntimeSafetyMode): string[] {
-    if (safetyMode === 'safe') {
-      return ['claude', '--model', model];
+  buildSpawnCommand(
+    model: string,
+    safetyMode: RuntimeSafetyMode,
+    options?: RuntimeOptions
+  ): string[] {
+    const args =
+      safetyMode === 'safe'
+        ? ['claude', '--model', model]
+        : ['claude', '--dangerously-skip-permissions', '--model', model];
+    if (options?.chrome) {
+      args.push('--chrome');
     }
-    return ['claude', '--dangerously-skip-permissions', '--model', model];
+    return args;
   }
 
-  buildResumeCommand(model: string, sessionId: string, safetyMode: RuntimeSafetyMode): string[] {
-    if (safetyMode === 'safe') {
-      return ['claude', '--model', model, '--resume', sessionId];
+  buildResumeCommand(
+    model: string,
+    sessionId: string,
+    safetyMode: RuntimeSafetyMode,
+    options?: RuntimeOptions
+  ): string[] {
+    const args =
+      safetyMode === 'safe'
+        ? ['claude', '--model', model, '--resume', sessionId]
+        : ['claude', '--dangerously-skip-permissions', '--model', model, '--resume', sessionId];
+    if (options?.chrome) {
+      args.push('--chrome');
     }
-    return ['claude', '--dangerously-skip-permissions', '--model', model, '--resume', sessionId];
+    return args;
   }
 
   getAutoApprovalFlag(safetyMode: RuntimeSafetyMode): string {

@@ -282,8 +282,11 @@ Respond in JSON format:
           const model = resolveRuntimeModelForCli(agentConfig.model, cliTool);
 
           // Build spawn command using CLI runtime builder (spawn fresh session, will be resumed later)
+          const chromeEnabled = config.agents?.chrome_enabled === true && cliTool === 'claude';
           const runtimeBuilder = getCliRuntimeBuilder(cliTool);
-          const commandArgs = runtimeBuilder.buildSpawnCommand(model, safetyMode);
+          const commandArgs = runtimeBuilder.buildSpawnCommand(model, safetyMode, {
+            chrome: chromeEnabled,
+          });
 
           await spawnTmuxSession({
             sessionName,

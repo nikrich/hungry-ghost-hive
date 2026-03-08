@@ -5,7 +5,7 @@ import { UnsupportedFeatureError, ValidationError } from '../errors/index.js';
 import { ClaudeRuntimeBuilder } from './claude.js';
 import { CodexRuntimeBuilder } from './codex.js';
 import { GeminiRuntimeBuilder } from './gemini.js';
-import { CliRuntimeBuilder, CliRuntimeType, RuntimeSafetyMode } from './types.js';
+import { CliRuntimeBuilder, CliRuntimeType, RuntimeOptions, RuntimeSafetyMode } from './types.js';
 
 const CODEX_CHATGPT_SAFE_MODEL = 'gpt-5.2-codex';
 
@@ -147,4 +147,4 @@ export function resolveRuntimeModelForCli(model: string, cliTool: CliRuntimeType
 export { ClaudeRuntimeBuilder } from './claude.js';
 export { CodexRuntimeBuilder } from './codex.js';
 export { GeminiRuntimeBuilder } from './gemini.js';
-export type { CliRuntimeBuilder, CliRuntimeType, RuntimeSafetyMode };
+export type { CliRuntimeBuilder, CliRuntimeType, RuntimeOptions, RuntimeSafetyMode };

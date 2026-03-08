@@ -205,6 +205,7 @@ describe('context-files module', () => {
         checkpoint_threshold: 14000,
         llm_timeout_ms: 1800000,
         llm_max_retries: 2,
+        chrome_enabled: 'auto',
       },
       manager: {
         fast_poll_interval: 15000,

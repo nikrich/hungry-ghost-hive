@@ -130,8 +130,11 @@ export async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<vo
     const safetyMode = agentConfig.safety_mode;
     const model = resolveRuntimeModelForCli(agentConfig.model, cliTool);
 
+    const chromeEnabled = config.agents?.chrome_enabled === true && cliTool === 'claude';
     const runtimeBuilder = getCliRuntimeBuilder(cliTool);
-    const commandArgs = runtimeBuilder.buildSpawnCommand(model, safetyMode);
+    const commandArgs = runtimeBuilder.buildSpawnCommand(model, safetyMode, {
+      chrome: chromeEnabled,
+    });
 
     // Look up active requirement and teams to provide context to the restarted tech lead
     const initialPrompt = await ctx.withDb(async db => {
