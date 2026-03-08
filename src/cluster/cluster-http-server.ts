@@ -7,11 +7,13 @@ import type { ClusterEvent, VersionVector } from './replication.js';
 interface DeltaRequest {
   version_vector: VersionVector;
   limit?: number;
+  fencing_token?: number;
 }
 
 interface DeltaResponse {
   events: ClusterEvent[];
   version_vector: VersionVector;
+  fencing_token: number;
 }
 
 const MAX_CLUSTER_REQUEST_BODY_BYTES = 1024 * 1024; // 1 MiB
@@ -22,6 +24,9 @@ export interface ClusterHttpHandlers {
   handleHeartbeat: (body: unknown) => unknown;
   getDeltaFromCache: (vector: VersionVector, limit: number) => ClusterEvent[];
   getVersionVectorCache: () => VersionVector;
+  getFencingToken: () => number;
+  validateFencingToken: (token: number) => boolean;
+  isLeaderLeaseValid: () => boolean;
 }
 
 export class ClusterHttpServer {
@@ -88,6 +93,18 @@ export class ClusterHttpServer {
 
       if (method === 'POST' && path === '/cluster/v1/events/delta') {
         const body = (await readJsonBody(req)) as Partial<DeltaRequest>;
+
+        // Validate fencing token if provided — reject stale-leader requests
+        if (typeof body.fencing_token === 'number') {
+          if (!this.handlers.validateFencingToken(body.fencing_token)) {
+            sendJson(res, 409, {
+              error: 'Fencing token rejected: stale leader epoch',
+              fencing_token: this.handlers.getFencingToken(),
+            });
+            return;
+          }
+        }
+
         const vector = toVersionVector(body.version_vector);
         const limit =
           typeof body.limit === 'number' && Number.isFinite(body.limit) && body.limit > 0
@@ -98,6 +115,7 @@ export class ClusterHttpServer {
         sendJson(res, 200, {
           events,
           version_vector: this.handlers.getVersionVectorCache(),
+          fencing_token: this.handlers.getFencingToken(),
         } satisfies DeltaResponse);
         return;
       }
