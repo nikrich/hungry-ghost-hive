@@ -5,8 +5,10 @@ import {
   ClaudeRuntimeBuilder,
   CodexRuntimeBuilder,
   GeminiRuntimeBuilder,
+  detectChromeAvailability,
   getCliRuntimeBuilder,
   resolveRuntimeModelForCli,
+  resolveChromeEnabled,
   selectCompatibleModelForCli,
   validateCliBinary,
   validateCliRuntime,
@@ -504,6 +506,162 @@ describe('CLI Runtime Builders', () => {
     it('should validate and return configured model when persisted model is missing', () => {
       const selected = selectCompatibleModelForCli('claude', null, 'claude-sonnet-4-5-20250929');
       expect(selected).toBe('claude-sonnet-4-5-20250929');
+    });
+  });
+
+  describe('detectChromeAvailability', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('should return true when claude --help output includes --chrome', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockResolvedValue({
+        stdout: 'Usage: claude [options]\n  --chrome    Enable Chrome integration\n',
+        stderr: '',
+        exitCode: 0,
+        command: 'claude --help',
+        escapedCommand: 'claude --help',
+        failed: false,
+        timedOut: false,
+        isCanceled: false,
+        killed: false,
+      } as any);
+
+      const result = await detectChromeAvailability();
+      expect(result).toBe(true);
+    });
+
+    it('should return false when claude --help output does not include --chrome', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockResolvedValue({
+        stdout: 'Usage: claude [options]\n  --model    Set the model\n',
+        stderr: '',
+        exitCode: 0,
+        command: 'claude --help',
+        escapedCommand: 'claude --help',
+        failed: false,
+        timedOut: false,
+        isCanceled: false,
+        killed: false,
+      } as any);
+
+      const result = await detectChromeAvailability();
+      expect(result).toBe(false);
+    });
+
+    it('should return true when --chrome appears in stderr', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockResolvedValue({
+        stdout: '',
+        stderr: 'Options:\n  --chrome    Enable Chrome integration\n',
+        exitCode: 0,
+        command: 'claude --help',
+        escapedCommand: 'claude --help',
+        failed: false,
+        timedOut: false,
+        isCanceled: false,
+        killed: false,
+      } as any);
+
+      const result = await detectChromeAvailability();
+      expect(result).toBe(true);
+    });
+
+    it('should return false when the command fails', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockRejectedValue(new Error('Command failed'));
+
+      const result = await detectChromeAvailability();
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('resolveChromeEnabled', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('should return true when configValue is explicitly true', async () => {
+      const result = await resolveChromeEnabled(true, 'claude');
+      expect(result).toBe(true);
+    });
+
+    it('should return true when configValue is explicitly true for non-claude tool', async () => {
+      const result = await resolveChromeEnabled(true, 'codex');
+      expect(result).toBe(true);
+    });
+
+    it('should return false when configValue is explicitly false', async () => {
+      const result = await resolveChromeEnabled(false, 'claude');
+      expect(result).toBe(false);
+    });
+
+    it('should return false when configValue is explicitly false for non-claude tool', async () => {
+      const result = await resolveChromeEnabled(false, 'gemini');
+      expect(result).toBe(false);
+    });
+
+    it('should return false for auto mode with codex CLI tool', async () => {
+      const result = await resolveChromeEnabled('auto', 'codex');
+      expect(result).toBe(false);
+    });
+
+    it('should return false for auto mode with gemini CLI tool', async () => {
+      const result = await resolveChromeEnabled('auto', 'gemini');
+      expect(result).toBe(false);
+    });
+
+    it('should detect chrome availability for auto mode with claude CLI tool when --chrome is available', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockResolvedValue({
+        stdout: 'Usage: claude [options]\n  --chrome    Enable Chrome integration\n',
+        stderr: '',
+        exitCode: 0,
+        command: 'claude --help',
+        escapedCommand: 'claude --help',
+        failed: false,
+        timedOut: false,
+        isCanceled: false,
+        killed: false,
+      } as any);
+
+      const result = await resolveChromeEnabled('auto', 'claude');
+      expect(result).toBe(true);
+    });
+
+    it('should return false for auto mode with claude CLI tool when --chrome is not available', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockResolvedValue({
+        stdout: 'Usage: claude [options]\n  --model    Set the model\n',
+        stderr: '',
+        exitCode: 0,
+        command: 'claude --help',
+        escapedCommand: 'claude --help',
+        failed: false,
+        timedOut: false,
+        isCanceled: false,
+        killed: false,
+      } as any);
+
+      const result = await resolveChromeEnabled('auto', 'claude');
+      expect(result).toBe(false);
+    });
+
+    it('should return false for auto mode with claude CLI tool when detection fails', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockRejectedValue(new Error('Command not found'));
+
+      const result = await resolveChromeEnabled('auto', 'claude');
+      expect(result).toBe(false);
     });
   });
 });
