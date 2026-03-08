@@ -32,6 +32,12 @@ export class RaftStateMachine {
   leaderId: string | null = null;
   lastHeartbeatReceivedAt = 0;
 
+  /**
+   * When true, this node is catching up from a snapshot and must not
+   * participate in leader elections until fully recovered.
+   */
+  isCatchingUp = false;
+
   /** Dynamic peer list that can be updated at runtime via membership changes. */
   private dynamicPeers: ClusterPeerConfig[] | null = null;
 
@@ -115,6 +121,12 @@ export class RaftStateMachine {
     this.electionTimer = setInterval(() => {
       if (!this.config.enabled) return;
       if (this.role === 'leader') return;
+      // Do not start elections while catching up from a snapshot — the node
+      // must not become leader until it has a complete, current state.
+      if (this.isCatchingUp) {
+        this.resetElectionDeadline();
+        return;
+      }
 
       if (Date.now() >= this.electionDeadline) {
         void this.startElection().catch(error => this.deps.handleBackgroundError(error));

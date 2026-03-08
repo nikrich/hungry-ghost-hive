@@ -105,5 +105,22 @@ export interface RaftSnapshot {
   created_at: string;
 }
 
+/**
+ * A full snapshot of all replicated tables at a given version vector.
+ * Used for snapshot-based state recovery when delta sync is insufficient.
+ */
+export interface ClusterSnapshot {
+  version_vector: VersionVector;
+  tables: Partial<Record<ReplicatedTable, Array<{ rowId: string; payload: Record<string, unknown> }>>>;
+}
+
+/**
+ * Progress indicator for snapshot-based catch-up.
+ */
+export interface CatchUpProgress {
+  applied: number;
+  total: number;
+}
+
 // Re-import Database type for TableAdapter interface
 import type { Database } from 'sql.js';

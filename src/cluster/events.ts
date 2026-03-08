@@ -96,6 +96,13 @@ export function ensureClusterTables(db: Database, nodeId: string): void {
   `
   );
 
+  // Add snapshot_version_vector column if it doesn't exist yet (backward-compat migration)
+  try {
+    run(db, 'ALTER TABLE cluster_state ADD COLUMN snapshot_version_vector TEXT');
+  } catch {
+    // Column already exists — ignore
+  }
+
   const state = queryOne<{ id: number }>(db, 'SELECT id FROM cluster_state WHERE id = 1');
   const now = new Date().toISOString();
 
@@ -126,6 +133,55 @@ export function getVersionVector(db: Database): VersionVector {
   }
 
   return vector;
+}
+
+/**
+ * Returns the snapshot version vector stored after the last snapshot-based recovery.
+ * Empty object if no snapshot has been applied.
+ */
+export function getSnapshotVersionVector(db: Database): VersionVector {
+  const row = queryOne<{ snapshot_version_vector: string | null }>(
+    db,
+    'SELECT snapshot_version_vector FROM cluster_state WHERE id = 1'
+  );
+
+  if (!row?.snapshot_version_vector) return {};
+
+  try {
+    return JSON.parse(row.snapshot_version_vector) as VersionVector;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Persists the snapshot version vector so that future delta requests start
+ * from this point rather than from the (empty) event log.
+ */
+export function setSnapshotVersionVector(db: Database, vector: VersionVector): void {
+  run(
+    db,
+    'UPDATE cluster_state SET snapshot_version_vector = ? WHERE id = 1',
+    [JSON.stringify(vector)]
+  );
+}
+
+/**
+ * Returns the effective version vector for delta-sync requests.
+ * Takes the max per actor between the event-log-derived vector and any
+ * snapshot vector stored from a previous snapshot-based recovery.
+ * This prevents re-requesting events that were already covered by a snapshot.
+ */
+export function getEffectiveVersionVector(db: Database): VersionVector {
+  const eventVector = getVersionVector(db);
+  const snapshotVector = getSnapshotVersionVector(db);
+
+  const effective: VersionVector = { ...snapshotVector };
+  for (const [actor, counter] of Object.entries(eventVector)) {
+    effective[actor] = Math.max(effective[actor] ?? 0, counter);
+  }
+
+  return effective;
 }
 
 export function getAllClusterEvents(db: Database): ClusterEvent[] {

@@ -138,6 +138,7 @@ describe('distributed runtime transport and status', () => {
       raft_last_applied: 0,
       raft_last_log_index: 9,
       peers: [{ id: 'peer-a', url: 'http://127.0.0.1:8080' }],
+      is_catching_up: false,
     } satisfies ClusterStatus);
   });
 
@@ -482,6 +483,9 @@ describe('distributed runtime sync behavior', () => {
       durable_log_entries_appended: 0,
       log_entries_compacted: 0,
       cluster_events_pruned: 0,
+      used_snapshot_recovery: false,
+      catch_up_applied: 0,
+      catch_up_total: 0,
     });
 
     db.close();

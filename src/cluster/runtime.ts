@@ -3,6 +3,7 @@
 import { join } from 'path';
 import type { Database } from 'sql.js';
 import type { ClusterConfig, ClusterPeerConfig } from '../config/schema.js';
+import { queryAll } from '../db/client.js';
 import {
   ClusterHttpServer,
   type MembershipJoinRequest,
@@ -17,13 +18,17 @@ import {
   ensureClusterTables,
   getAllClusterEvents,
   getClusterEventCount,
+  getEffectiveVersionVector,
   getVersionVector,
   mergeSimilarStories,
   pruneClusterEvents,
   scanLocalChanges,
+  setSnapshotVersionVector,
   type ClusterEvent,
   type VersionVector,
 } from './replication.js';
+import { REPLICATED_TABLES } from './adapters.js';
+import type { ClusterSnapshot } from './types.js';
 
 type NodeRole = 'leader' | 'follower' | 'candidate';
 
@@ -58,6 +63,8 @@ export interface ClusterStatus {
   raft_last_applied: number;
   raft_last_log_index: number;
   peers: Array<{ id: string; url: string }>;
+  /** True while the node is performing snapshot-based catch-up and not yet election-eligible. */
+  is_catching_up: boolean;
 }
 
 export interface ClusterSyncResult {
@@ -67,6 +74,12 @@ export interface ClusterSyncResult {
   durable_log_entries_appended: number;
   log_entries_compacted: number;
   cluster_events_pruned: number;
+  /** True when this sync triggered snapshot-based recovery rather than delta sync. */
+  used_snapshot_recovery: boolean;
+  /** Number of rows applied from the snapshot (0 when delta sync was used). */
+  catch_up_applied: number;
+  /** Total rows in the snapshot (0 when delta sync was used). */
+  catch_up_total: number;
 }
 
 export class ClusterRuntime {
@@ -76,6 +89,9 @@ export class ClusterRuntime {
   private eventCache: ClusterEvent[] = [];
   private versionVectorCache: VersionVector = {};
   private lastCompactionAt = 0;
+
+  /** Cached full snapshot refreshed on every sync, served to recovering nodes. */
+  private cachedSnapshot: ClusterSnapshot | null = null;
 
   private readonly raft: RaftStateMachine;
   private readonly heartbeat: HeartbeatManager;
@@ -113,6 +129,7 @@ export class ClusterRuntime {
       isLeaderLeaseValid: () => this.raft.isLeaderLeaseValid(),
       handleMembershipJoin: body => this.handleMembershipJoin(body),
       handleMembershipLeave: body => this.handleMembershipLeave(body),
+      getSnapshot: () => this.cachedSnapshot ?? { version_vector: {}, tables: {} },
     });
   }
 
@@ -181,6 +198,7 @@ export class ClusterRuntime {
       raft_last_applied: raftState?.last_applied || 0,
       raft_last_log_index: raftState?.last_log_index || 0,
       peers: this.raft.getPeers().map(peer => ({ id: peer.id, url: peer.url })),
+      is_catching_up: this.raft.isCatchingUp,
     };
   }
 
@@ -193,6 +211,9 @@ export class ClusterRuntime {
         durable_log_entries_appended: 0,
         log_entries_compacted: 0,
         cluster_events_pruned: 0,
+        used_snapshot_recovery: false,
+        catch_up_applied: 0,
+        catch_up_total: 0,
       };
     }
 
@@ -201,11 +222,17 @@ export class ClusterRuntime {
 
     ensureClusterTables(db, this.config.node_id);
 
+    // Refresh snapshot cache so the HTTP endpoint always serves current data
+    this.cachedSnapshot = this.buildSnapshot(db);
+
     const localEventsBefore = scanLocalChanges(db, this.config.node_id);
-    const imported = await this.pullEventsFromPeers(db);
+    const { imported, usedSnapshot, catchUpApplied, catchUpTotal } =
+      await this.pullEventsFromPeers(db);
     const merged = mergeSimilarStories(db, this.config.story_similarity_threshold);
     const localEventsAfter =
-      imported > 0 || merged > 0 ? scanLocalChanges(db, this.config.node_id) : 0;
+      imported > 0 || merged > 0 || usedSnapshot
+        ? scanLocalChanges(db, this.config.node_id)
+        : 0;
 
     this.refreshCache(db);
 
@@ -223,6 +250,9 @@ export class ClusterRuntime {
       durable_log_entries_appended: durableLogEntriesAppended,
       log_entries_compacted: logCompacted,
       cluster_events_pruned: eventsPruned,
+      used_snapshot_recovery: usedSnapshot,
+      catch_up_applied: catchUpApplied,
+      catch_up_total: catchUpTotal,
     };
   }
 
@@ -377,18 +407,25 @@ export class ClusterRuntime {
     this.versionVectorCache = getVersionVector(db);
   }
 
-  private async pullEventsFromPeers(db: Database): Promise<number> {
+  private async pullEventsFromPeers(db: Database): Promise<{
+    imported: number;
+    usedSnapshot: boolean;
+    catchUpApplied: number;
+    catchUpTotal: number;
+  }> {
     const peers = this.raft.getPeers();
-    if (peers.length === 0) return 0;
+    if (peers.length === 0) {
+      return { imported: 0, usedSnapshot: false, catchUpApplied: 0, catchUpTotal: 0 };
+    }
 
-    let applied = 0;
+    let imported = 0;
 
     for (const peer of peers) {
       if (peer.id === this.config.node_id) continue;
 
-      const localVector = getVersionVector(db);
+      const localVector = getEffectiveVersionVector(db);
       const response = await this.requestDelta(peer, localVector, 4000);
-      if (!response || response.events.length === 0) continue;
+      if (!response) continue;
 
       // If the peer advertises a higher fencing token, step down
       if (
@@ -398,11 +435,145 @@ export class ClusterRuntime {
         this.raft.stepDown(response.fencing_token, null);
       }
 
-      applied += applyRemoteEvents(db, this.config.node_id, response.events);
+      // Detect if the delta is insufficient (peer's log was truncated past our position)
+      if (this.isDeltaInsufficient(localVector, response.version_vector, response.events)) {
+        const recovery = await this.recoverFromSnapshot(db, peer);
+        if (recovery !== null) {
+          return {
+            imported: 0,
+            usedSnapshot: true,
+            catchUpApplied: recovery.applied,
+            catchUpTotal: recovery.total,
+          };
+        }
+        // Snapshot recovery failed — fall through and apply whatever delta we have
+      }
+
+      if (response.events.length > 0) {
+        imported += applyRemoteEvents(db, this.config.node_id, response.events);
+      }
     }
 
-    return applied;
+    // If we had been catching up and now the effective vector matches peers, mark done
+    if (this.raft.isCatchingUp) {
+      this.raft.isCatchingUp = false;
+    }
+
+    return { imported, usedSnapshot: false, catchUpApplied: 0, catchUpTotal: 0 };
   }
+
+  /**
+   * Returns true when the delta response is missing events the peer should have.
+   * This happens when the peer's event cache has been truncated (log compaction)
+   * and can no longer provide all events since our last known version.
+   */
+  private isDeltaInsufficient(
+    localVector: VersionVector,
+    peerVector: VersionVector,
+    receivedEvents: ClusterEvent[]
+  ): boolean {
+    // Count how many events we actually received per actor
+    const received: Record<string, number> = {};
+    for (const event of receivedEvents) {
+      received[event.version.actor_id] = (received[event.version.actor_id] ?? 0) + 1;
+    }
+
+    for (const [actorId, peerCounter] of Object.entries(peerVector)) {
+      const localCounter = localVector[actorId] ?? 0;
+      const needed = peerCounter - localCounter;
+      if (needed <= 0) continue;
+
+      const receivedCount = received[actorId] ?? 0;
+      if (receivedCount < needed) {
+        // We're missing events for this actor that the peer should have
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Requests a full snapshot from the given peer and applies it locally.
+   * Marks the node as no longer catching up once complete.
+   * Returns { applied, total } on success, null on failure.
+   */
+  private async recoverFromSnapshot(
+    db: Database,
+    peer: ClusterPeerConfig
+  ): Promise<{ applied: number; total: number } | null> {
+    this.raft.isCatchingUp = true;
+    this.raft.appendDurableEntry('runtime', {
+      event: 'snapshot_recovery_start',
+      node_id: this.config.node_id,
+      peer_id: peer.id,
+    });
+
+    const snapshot = await this.requestSnapshot(peer);
+    if (!snapshot) {
+      return null;
+    }
+
+    const { applied, total } = this.applySnapshot(db, snapshot);
+
+    this.raft.isCatchingUp = false;
+    this.raft.appendDurableEntry('runtime', {
+      event: 'snapshot_recovery_complete',
+      node_id: this.config.node_id,
+      peer_id: peer.id,
+      rows_applied: applied,
+      rows_total: total,
+    });
+
+    return { applied, total };
+  }
+
+  /**
+   * Applies a snapshot to the local database, upserting all rows from all tables.
+   * Stores the snapshot's version vector so future delta requests start from here.
+   */
+  private applySnapshot(db: Database, snapshot: ClusterSnapshot): { applied: number; total: number } {
+    let applied = 0;
+    let total = 0;
+
+    for (const adapter of REPLICATED_TABLES) {
+      const rows = snapshot.tables[adapter.table];
+      if (!rows) continue;
+      total += rows.length;
+      for (const row of rows) {
+        adapter.upsert(db, row.payload);
+        applied++;
+      }
+    }
+
+    // Record the snapshot version vector so future delta requests
+    // only ask for events newer than this snapshot
+    setSnapshotVersionVector(db, snapshot.version_vector);
+
+    return { applied, total };
+  }
+
+  /**
+   * Builds a full snapshot of all replicated tables from the current db state.
+   * Called during sync to keep cachedSnapshot fresh for the HTTP endpoint.
+   */
+  private buildSnapshot(db: Database): ClusterSnapshot {
+    const tables: ClusterSnapshot['tables'] = {};
+
+    for (const adapter of REPLICATED_TABLES) {
+      const rows = queryAll<Record<string, unknown>>(db, adapter.selectSql);
+      tables[adapter.table] = rows.map(row => ({
+        rowId: adapter.rowId(row),
+        payload: adapter.payload(row),
+      }));
+    }
+
+    return {
+      version_vector: getVersionVector(db),
+      tables,
+    };
+  }
+
 
   private async requestDelta(
     peer: ClusterPeerConfig,
@@ -414,6 +585,10 @@ export class ClusterRuntime {
       limit,
       fencing_token: this.raft.getFencingToken(),
     });
+  }
+
+  private async requestSnapshot(peer: ClusterPeerConfig): Promise<ClusterSnapshot | null> {
+    return this.getJson<ClusterSnapshot>(peer, '/cluster/v1/snapshot');
   }
 
   private getDeltaFromCache(remoteVersionVector: VersionVector, limit: number): ClusterEvent[] {
@@ -441,6 +616,18 @@ export class ClusterRuntime {
         method: 'POST',
         body,
       }
+    );
+  }
+
+  private async getJson<T>(peer: ClusterPeerConfig, path: string): Promise<T | null> {
+    const normalizedBase = peer.url.endsWith('/') ? peer.url : `${peer.url}/`;
+    const url = new URL(path.replace(/^\//, ''), normalizedBase).toString();
+
+    return fetchClusterStatusOrPostJson<T>(
+      url,
+      this.config.request_timeout_ms,
+      this.config.auth_token,
+      { method: 'GET' }
     );
   }
 
@@ -481,6 +668,7 @@ export async function fetchLocalClusterStatus(
       raft_last_applied: 0,
       raft_last_log_index: 0,
       peers: config.peers.map(peer => ({ id: peer.id, url: peer.url })),
+      is_catching_up: false,
     };
   }
 
@@ -545,6 +733,7 @@ function parseClusterStatus(input: Record<string, unknown>): ClusterStatus {
     raft_last_applied: toInt(input.raft_last_applied),
     raft_last_log_index: toInt(input.raft_last_log_index),
     peers,
+    is_catching_up: input.is_catching_up === true,
   };
 }
 
