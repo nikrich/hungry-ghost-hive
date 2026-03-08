@@ -14,7 +14,12 @@ import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.j
 import { createLog } from '../../db/queries/logs.js';
 import { createRequirement, updateRequirement } from '../../db/queries/requirements.js';
 import { getAllTeams } from '../../db/queries/teams.js';
-import { isTmuxAvailable, spawnTmuxSession } from '../../tmux/manager.js';
+import {
+  isTmuxAvailable,
+  isTmuxSessionRunning,
+  sendToTmuxSession,
+  spawnTmuxSession,
+} from '../../tmux/manager.js';
 import { getTechLeadSessionName } from '../../utils/instance.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 import { startDashboard } from '../dashboard/index.js';
@@ -222,24 +227,32 @@ export const reqCommand = new Command('req')
           );
 
           try {
-            // Build CLI command using the configured runtime for Tech Lead
-            const chromeEnabled =
-              config.agents?.chrome_enabled === true && techLeadCliTool === 'claude';
-            const commandArgs = getCliRuntimeBuilder(techLeadCliTool).buildSpawnCommand(
-              techLeadModel,
-              techLeadSafetyMode,
-              { chrome: chromeEnabled }
-            );
+            const sessionAlreadyRunning = await isTmuxSessionRunning(sessionName);
 
-            // Pass the prompt as initialPrompt so it's included as a CLI positional
-            // argument via $(cat ...). This delivers the full multi-line prompt
-            // reliably without tmux send-keys newline issues.
-            await spawnTmuxSession({
-              sessionName,
-              workDir: root,
-              commandArgs,
-              initialPrompt: techLeadPrompt,
-            });
+            if (sessionAlreadyRunning) {
+              // Session is already running — send the prompt to the existing session
+              // rather than killing it and losing in-progress work.
+              await sendToTmuxSession(sessionName, techLeadPrompt);
+            } else {
+              // Build CLI command using the configured runtime for Tech Lead
+              const chromeEnabled =
+                config.agents?.chrome_enabled === true && techLeadCliTool === 'claude';
+              const commandArgs = getCliRuntimeBuilder(techLeadCliTool).buildSpawnCommand(
+                techLeadModel,
+                techLeadSafetyMode,
+                { chrome: chromeEnabled }
+              );
+
+              // Pass the prompt as initialPrompt so it's included as a CLI positional
+              // argument via $(cat ...). This delivers the full multi-line prompt
+              // reliably without tmux send-keys newline issues.
+              await spawnTmuxSession({
+                sessionName,
+                workDir: root,
+                commandArgs,
+                initialPrompt: techLeadPrompt,
+              });
+            }
 
             // Update agent and log spawning/planning events (atomic transaction)
             await withTransaction(db.db, () => {
