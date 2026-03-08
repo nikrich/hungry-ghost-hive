@@ -33,6 +33,15 @@ interface DeltaResponse {
   version_vector: VersionVector;
 }
 
+export interface PeerReplicationMetrics {
+  peer_id: string;
+  events_behind: number;
+  last_sync_at: string | null;
+  last_sync_latency_ms: number | null;
+  last_sync_events_applied: number;
+  reachable: boolean;
+}
+
 export interface ClusterStatus {
   enabled: boolean;
   node_id: string;
@@ -46,6 +55,11 @@ export interface ClusterStatus {
   raft_last_applied: number;
   raft_last_log_index: number;
   peers: Array<{ id: string; url: string }>;
+  replication: {
+    peer_metrics: PeerReplicationMetrics[];
+    local_event_count: number;
+    last_sync_at: string | null;
+  };
 }
 
 export interface ClusterSyncResult {
@@ -61,6 +75,9 @@ export class ClusterRuntime {
 
   private eventCache: ClusterEvent[] = [];
   private versionVectorCache: VersionVector = {};
+  private peerMetrics: Map<string, PeerReplicationMetrics> = new Map();
+  private lastSyncAt: string | null = null;
+  private localEventCount = 0;
 
   private readonly raft: RaftStateMachine;
   private readonly heartbeat: HeartbeatManager;
@@ -141,6 +158,22 @@ export class ClusterRuntime {
   getStatus(): ClusterStatus {
     const raftState = this.raft.getRaftStoreState();
 
+    const peerMetricsList: PeerReplicationMetrics[] = [];
+    for (const peer of this.config.peers) {
+      if (peer.id === this.config.node_id) continue;
+      const metrics = this.peerMetrics.get(peer.id);
+      peerMetricsList.push(
+        metrics || {
+          peer_id: peer.id,
+          events_behind: 0,
+          last_sync_at: null,
+          last_sync_latency_ms: null,
+          last_sync_events_applied: 0,
+          reachable: false,
+        }
+      );
+    }
+
     return {
       enabled: this.config.enabled,
       node_id: this.config.node_id,
@@ -154,6 +187,11 @@ export class ClusterRuntime {
       raft_last_applied: raftState?.last_applied || 0,
       raft_last_log_index: raftState?.last_log_index || 0,
       peers: this.config.peers.map(peer => ({ id: peer.id, url: peer.url })),
+      replication: {
+        peer_metrics: peerMetricsList,
+        local_event_count: this.localEventCount,
+        last_sync_at: this.lastSyncAt,
+      },
     };
   }
 
@@ -184,34 +222,86 @@ export class ClusterRuntime {
       getAllClusterEvents(db)
     );
 
-    return {
+    const result: ClusterSyncResult = {
       local_events_emitted: localEventsBefore + localEventsAfter,
       imported_events_applied: imported,
       merged_duplicate_stories: merged,
       durable_log_entries_appended: durableLogEntriesAppended,
     };
+
+    if (result.imported_events_applied > 0 || result.local_events_emitted > 0) {
+      logClusterEvent('sync_cycle_complete', {
+        node_id: this.config.node_id,
+        role: this.raft.role,
+        ...result,
+      });
+    }
+
+    return result;
   }
 
   private refreshCache(db: Database): void {
-    this.eventCache = getAllClusterEvents(db).slice(-20000);
+    const allEvents = getAllClusterEvents(db);
+    this.eventCache = allEvents.slice(-20000);
     this.versionVectorCache = getVersionVector(db);
+    this.localEventCount = allEvents.length;
   }
 
   private async pullEventsFromPeers(db: Database): Promise<number> {
     if (this.config.peers.length === 0) return 0;
 
     let applied = 0;
+    const syncTimestamp = new Date().toISOString();
 
     for (const peer of this.config.peers) {
       if (peer.id === this.config.node_id) continue;
 
       const localVector = getVersionVector(db);
+      const startMs = Date.now();
       const response = await this.requestDelta(peer, localVector, 4000);
-      if (!response || response.events.length === 0) continue;
+      const latencyMs = Date.now() - startMs;
 
-      applied += applyRemoteEvents(db, this.config.node_id, response.events);
+      if (!response) {
+        this.peerMetrics.set(peer.id, {
+          peer_id: peer.id,
+          events_behind: this.peerMetrics.get(peer.id)?.events_behind ?? 0,
+          last_sync_at: syncTimestamp,
+          last_sync_latency_ms: latencyMs,
+          last_sync_events_applied: 0,
+          reachable: false,
+        });
+        logClusterEvent('sync_peer_unreachable', { peer_id: peer.id, latency_ms: latencyMs });
+        continue;
+      }
+
+      const peerEventsApplied =
+        response.events.length > 0
+          ? applyRemoteEvents(db, this.config.node_id, response.events)
+          : 0;
+      applied += peerEventsApplied;
+
+      const eventsBehind = computeEventsBehind(localVector, response.version_vector);
+
+      this.peerMetrics.set(peer.id, {
+        peer_id: peer.id,
+        events_behind: eventsBehind,
+        last_sync_at: syncTimestamp,
+        last_sync_latency_ms: latencyMs,
+        last_sync_events_applied: peerEventsApplied,
+        reachable: true,
+      });
+
+      if (peerEventsApplied > 0 || eventsBehind > 0) {
+        logClusterEvent('sync_peer_complete', {
+          peer_id: peer.id,
+          events_applied: peerEventsApplied,
+          events_behind: eventsBehind,
+          latency_ms: latencyMs,
+        });
+      }
     }
 
+    this.lastSyncAt = syncTimestamp;
     return applied;
   }
 
@@ -288,6 +378,11 @@ export async function fetchLocalClusterStatus(
       raft_last_applied: 0,
       raft_last_log_index: 0,
       peers: config.peers.map(peer => ({ id: peer.id, url: peer.url })),
+      replication: {
+        peer_metrics: [],
+        local_event_count: 0,
+        last_sync_at: null,
+      },
     };
   }
 
@@ -336,6 +431,28 @@ function parseClusterStatus(input: Record<string, unknown>): ClusterStatus {
         .filter((peer): peer is { id: string; url: string } => peer !== null)
     : [];
 
+  const replicationInput =
+    input.replication && typeof input.replication === 'object'
+      ? (input.replication as Record<string, unknown>)
+      : null;
+
+  const peerMetrics: PeerReplicationMetrics[] = [];
+  if (replicationInput && Array.isArray(replicationInput.peer_metrics)) {
+    for (const item of replicationInput.peer_metrics) {
+      if (!item || typeof item !== 'object') continue;
+      const m = item as Record<string, unknown>;
+      peerMetrics.push({
+        peer_id: typeof m.peer_id === 'string' ? m.peer_id : 'unknown',
+        events_behind: toInt(m.events_behind),
+        last_sync_at: typeof m.last_sync_at === 'string' ? m.last_sync_at : null,
+        last_sync_latency_ms:
+          typeof m.last_sync_latency_ms === 'number' ? m.last_sync_latency_ms : null,
+        last_sync_events_applied: toInt(m.last_sync_events_applied),
+        reachable: m.reachable === true,
+      });
+    }
+  }
+
   return {
     enabled: input.enabled !== false,
     node_id: typeof input.node_id === 'string' ? input.node_id : 'unknown',
@@ -349,6 +466,12 @@ function parseClusterStatus(input: Record<string, unknown>): ClusterStatus {
     raft_last_applied: toInt(input.raft_last_applied),
     raft_last_log_index: toInt(input.raft_last_log_index),
     peers,
+    replication: {
+      peer_metrics: peerMetrics,
+      local_event_count: toInt(replicationInput?.local_event_count),
+      last_sync_at:
+        typeof replicationInput?.last_sync_at === 'string' ? replicationInput.last_sync_at : null,
+    },
   };
 }
 
@@ -403,4 +526,31 @@ function isLoopbackHost(host: string): boolean {
     normalized === '::1' ||
     normalized === '[::1]'
   );
+}
+
+function computeEventsBehind(
+  localVector: VersionVector,
+  remoteVector: VersionVector
+): number {
+  let behind = 0;
+  for (const [actorId, remoteCounter] of Object.entries(remoteVector)) {
+    const localCounter = localVector[actorId] || 0;
+    if (remoteCounter > localCounter) {
+      behind += remoteCounter - localCounter;
+    }
+  }
+  return behind;
+}
+
+export function logClusterEvent(
+  event: string,
+  data: Record<string, unknown>
+): void {
+  const entry = {
+    ts: new Date().toISOString(),
+    component: 'cluster',
+    event,
+    ...data,
+  };
+  console.log(JSON.stringify(entry));
 }

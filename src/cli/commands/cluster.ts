@@ -102,6 +102,14 @@ clusterCommand
           `Raft: commit=${local.raft_commit_index} applied=${local.raft_last_applied} last_log=${local.raft_last_log_index}`
         )
       );
+
+      if (local.replication) {
+        console.log(
+          chalk.gray(
+            `Replication: events=${local.replication.local_event_count} last_sync=${local.replication.last_sync_at || 'never'}`
+          )
+        );
+      }
     }
 
     console.log(chalk.bold('\nPeers'));
@@ -120,6 +128,17 @@ clusterCommand
       console.log(
         `${marker} ${peer.id} term=${peer.status.term} leader=${peer.status.leader_id || 'unknown'} ${chalk.gray(peer.url)}`
       );
+    }
+
+    if (local?.replication?.peer_metrics && local.replication.peer_metrics.length > 0) {
+      console.log(chalk.bold('\nReplication Lag'));
+      for (const m of local.replication.peer_metrics) {
+        const reachableTag = m.reachable ? chalk.green('OK') : chalk.red('DOWN');
+        const lagTag =
+          m.events_behind > 0 ? chalk.yellow(`${m.events_behind} behind`) : chalk.green('in sync');
+        const latency = m.last_sync_latency_ms !== null ? `${m.last_sync_latency_ms}ms` : '-';
+        console.log(`  ${reachableTag} ${m.peer_id} ${lagTag} latency=${latency}`);
+      }
     }
 
     console.log();

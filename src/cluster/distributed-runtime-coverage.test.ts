@@ -135,6 +135,11 @@ describe('distributed runtime transport and status', () => {
       raft_last_applied: 0,
       raft_last_log_index: 9,
       peers: [{ id: 'peer-a', url: 'http://127.0.0.1:8080' }],
+      replication: {
+        peer_metrics: [],
+        local_event_count: 0,
+        last_sync_at: null,
+      },
     } satisfies ClusterStatus);
   });
 
