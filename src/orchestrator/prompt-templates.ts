@@ -274,7 +274,10 @@ export function generateSeniorPrompt(
       const externalInfo = s.external_subtask_key
         ? ` | External Subtask: ${s.external_subtask_key}`
         : '';
-      return `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'}${externalInfo})\n  ${s.description}`;
+      const descriptionOrMarkdown = s.markdown_path
+        ? `For full details, read the story markdown file: \`${s.markdown_path}\``
+        : s.description;
+      return `- [${s.id}] ${s.title} (complexity: ${s.complexity_score || '?'}${externalInfo})\n  ${descriptionOrMarkdown}`;
     })
     .join('\n\n');
 
