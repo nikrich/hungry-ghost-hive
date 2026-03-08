@@ -6,11 +6,13 @@ import type { RaftStateMachine } from './raft-state-machine.js';
 interface HeartbeatRequest {
   term: number;
   leader_id: string;
+  fencing_token: number;
 }
 
 interface HeartbeatResponse {
   term: number;
   success: boolean;
+  fencing_token: number;
 }
 
 export interface HeartbeatManagerDeps {
@@ -51,6 +53,7 @@ export class HeartbeatManager {
     const heartbeat: HeartbeatRequest = {
       term: raft.currentTerm,
       leader_id: this.config.node_id,
+      fencing_token: raft.getFencingToken(),
     };
 
     raft.appendDurableEntry('heartbeat_sent', {
@@ -69,8 +72,11 @@ export class HeartbeatManager {
             heartbeat
           );
 
-          if (response && response.term > raft.currentTerm) {
-            raft.stepDown(response.term, peer.id);
+          if (response) {
+            const remoteTerm = Math.max(response.term, response.fencing_token ?? 0);
+            if (remoteTerm > raft.currentTerm) {
+              raft.stepDown(remoteTerm, peer.id);
+            }
           }
         })
     );
@@ -82,9 +88,16 @@ export class HeartbeatManager {
     const request = body as Partial<HeartbeatRequest>;
     const term = Number(request.term || 0);
     const leaderId = typeof request.leader_id === 'string' ? request.leader_id : null;
+    const fencingToken = Number(request.fencing_token ?? term);
 
+    // Reject heartbeats from stale leaders
     if (term < raft.currentTerm) {
-      return { term: raft.currentTerm, success: false };
+      return { term: raft.currentTerm, success: false, fencing_token: raft.getFencingToken() };
+    }
+
+    // Reject if fencing token doesn't match the heartbeat term
+    if (fencingToken < term) {
+      return { term: raft.currentTerm, success: false, fencing_token: raft.getFencingToken() };
     }
 
     const changed =
@@ -98,15 +111,18 @@ export class HeartbeatManager {
       raft.persistRaftState();
     }
 
+    // Update lease: record that we received a valid heartbeat now
+    raft.lastHeartbeatReceivedAt = Date.now();
     raft.resetElectionDeadline();
 
     if (changed) {
       raft.appendDurableEntry('heartbeat_received', {
         term,
         leader_id: leaderId,
+        fencing_token: fencingToken,
       });
     }
 
-    return { term: raft.currentTerm, success: true };
+    return { term: raft.currentTerm, success: true, fencing_token: raft.getFencingToken() };
   }
 }

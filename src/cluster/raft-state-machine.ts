@@ -29,6 +29,7 @@ export class RaftStateMachine {
   currentTerm = 0;
   votedFor: string | null = null;
   leaderId: string | null = null;
+  lastHeartbeatReceivedAt = 0;
 
   private electionDeadline = 0;
   private electionInFlight = false;
@@ -39,6 +40,37 @@ export class RaftStateMachine {
     private readonly config: ClusterConfig,
     private readonly deps: RaftStateMachineDeps
   ) {}
+
+  /** Returns the leader lease window in milliseconds. */
+  get leaderLeaseDurationMs(): number {
+    return this.config.leader_lease_ms ?? this.config.heartbeat_interval_ms * 3;
+  }
+
+  /**
+   * Returns true when this follower has received a valid heartbeat
+   * from the current leader within the lease window.
+   */
+  isLeaderLeaseValid(): boolean {
+    if (this.role === 'leader') return true;
+    if (this.lastHeartbeatReceivedAt === 0) return false;
+    return Date.now() - this.lastHeartbeatReceivedAt < this.leaderLeaseDurationMs;
+  }
+
+  /**
+   * The fencing token is the current Raft term. Operations tagged with a
+   * lower term than ours must be rejected to prevent stale-leader writes.
+   */
+  getFencingToken(): number {
+    return this.currentTerm;
+  }
+
+  /**
+   * Validates a fencing token from a remote node. Returns true when the
+   * token is at least as recent as our current term.
+   */
+  validateFencingToken(token: number): boolean {
+    return token >= this.currentTerm;
+  }
 
   initializeRaftStore(hiveDir: string): void {
     if (this.raftStore) return;
@@ -195,6 +227,7 @@ export class RaftStateMachine {
     this.role = 'follower';
     this.votedFor = null;
     this.leaderId = leaderId;
+    this.lastHeartbeatReceivedAt = 0;
     this.resetElectionDeadline();
     this.persistRaftState();
 

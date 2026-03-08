@@ -31,6 +31,7 @@ interface ClusterStatusFetchOptions {
 interface DeltaResponse {
   events: ClusterEvent[];
   version_vector: VersionVector;
+  fencing_token?: number;
 }
 
 export interface ClusterStatus {
@@ -42,6 +43,9 @@ export interface ClusterStatus {
   is_leader: boolean;
   leader_id: string | null;
   leader_url: string | null;
+  fencing_token: number;
+  leader_lease_valid: boolean;
+  leader_lease_duration_ms: number;
   raft_commit_index: number;
   raft_last_applied: number;
   raft_last_log_index: number;
@@ -89,6 +93,9 @@ export class ClusterRuntime {
       handleHeartbeat: body => this.heartbeat.handleHeartbeat(body),
       getDeltaFromCache: (vector, limit) => this.getDeltaFromCache(vector, limit),
       getVersionVectorCache: () => this.versionVectorCache,
+      getFencingToken: () => this.raft.getFencingToken(),
+      validateFencingToken: token => this.raft.validateFencingToken(token),
+      isLeaderLeaseValid: () => this.raft.isLeaderLeaseValid(),
     });
   }
 
@@ -150,6 +157,9 @@ export class ClusterRuntime {
       is_leader: this.isLeader(),
       leader_id: this.raft.leaderId,
       leader_url: this.raft.getLeaderUrl(),
+      fencing_token: this.raft.getFencingToken(),
+      leader_lease_valid: this.raft.isLeaderLeaseValid(),
+      leader_lease_duration_ms: this.raft.leaderLeaseDurationMs,
       raft_commit_index: raftState?.commit_index || 0,
       raft_last_applied: raftState?.last_applied || 0,
       raft_last_log_index: raftState?.last_log_index || 0,
@@ -209,6 +219,14 @@ export class ClusterRuntime {
       const response = await this.requestDelta(peer, localVector, 4000);
       if (!response || response.events.length === 0) continue;
 
+      // If the peer advertises a higher fencing token, step down
+      if (
+        typeof response.fencing_token === 'number' &&
+        response.fencing_token > this.raft.currentTerm
+      ) {
+        this.raft.stepDown(response.fencing_token, null);
+      }
+
       applied += applyRemoteEvents(db, this.config.node_id, response.events);
     }
 
@@ -223,6 +241,7 @@ export class ClusterRuntime {
     return this.postJson<DeltaResponse>(peer, '/cluster/v1/events/delta', {
       version_vector: versionVector,
       limit,
+      fencing_token: this.raft.getFencingToken(),
     });
   }
 
@@ -284,6 +303,9 @@ export async function fetchLocalClusterStatus(
       is_leader: true,
       leader_id: config.node_id,
       leader_url: null,
+      fencing_token: 0,
+      leader_lease_valid: true,
+      leader_lease_duration_ms: config.leader_lease_ms ?? config.heartbeat_interval_ms * 3,
       raft_commit_index: 0,
       raft_last_applied: 0,
       raft_last_log_index: 0,
@@ -345,6 +367,9 @@ function parseClusterStatus(input: Record<string, unknown>): ClusterStatus {
     is_leader: input.is_leader === true,
     leader_id: typeof input.leader_id === 'string' ? input.leader_id : null,
     leader_url: typeof input.leader_url === 'string' ? input.leader_url : null,
+    fencing_token: toInt(input.fencing_token),
+    leader_lease_valid: input.leader_lease_valid === true,
+    leader_lease_duration_ms: toInt(input.leader_lease_duration_ms),
     raft_commit_index: toInt(input.raft_commit_index),
     raft_last_applied: toInt(input.raft_last_applied),
     raft_last_log_index: toInt(input.raft_last_log_index),
