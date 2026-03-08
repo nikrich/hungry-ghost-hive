@@ -250,10 +250,15 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       });
 
       // Update story
-      updateStory(this.db, story.id, {
-        prUrl,
-        status: 'pr_submitted',
-      }, this.storiesDir);
+      updateStory(
+        this.db,
+        story.id,
+        {
+          prUrl,
+          status: 'pr_submitted',
+        },
+        this.storiesDir
+      );
 
       this.log('STORY_PR_CREATED', `PR created: ${prUrl}`, {
         storyId: story.id,

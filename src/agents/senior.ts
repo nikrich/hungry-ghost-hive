@@ -118,10 +118,15 @@ This will help with story estimation and implementation.`;
 
   private async implementStory(story: StoryRow): Promise<void> {
     // Update assignment
-    updateStory(this.db, story.id, {
-      assignedAgentId: this.agentId,
-      status: 'in_progress',
-    }, this.storiesDir);
+    updateStory(
+      this.db,
+      story.id,
+      {
+        assignedAgentId: this.agentId,
+        status: 'in_progress',
+      },
+      this.storiesDir
+    );
     updateAgent(this.db, this.agentId, { currentStoryId: story.id });
 
     // Create feature branch
@@ -162,10 +167,15 @@ Let me know when you're ready to proceed or if you have questions.`;
     this.log('STORY_PROGRESS_UPDATE', response.substring(0, 200), { storyId: story.id });
 
     // Mark for review when done (simplified)
-    updateStory(this.db, story.id, {
-      branchName,
-      status: 'review',
-    }, this.storiesDir);
+    updateStory(
+      this.db,
+      story.id,
+      {
+        branchName,
+        status: 'review',
+      },
+      this.storiesDir
+    );
 
     this.log('STORY_COMPLETED', `Implementation complete, ready for review`, {
       storyId: story.id,

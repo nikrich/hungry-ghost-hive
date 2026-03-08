@@ -2,8 +2,8 @@
 
 import { nanoid } from 'nanoid';
 import type { Database } from 'sql.js';
-import { queryAll, queryOne, run, type StoryRow } from '../client.js';
 import { deleteStoryMarkdown, writeStoryMarkdown } from '../../utils/story-markdown.js';
+import { queryAll, queryOne, run, type StoryRow } from '../client.js';
 
 export type { StoryRow };
 
@@ -56,11 +56,7 @@ export interface UpdateStoryInput {
   inSprint?: boolean;
 }
 
-export function createStory(
-  db: Database,
-  input: CreateStoryInput,
-  storiesDir?: string
-): StoryRow {
+export function createStory(db: Database, input: CreateStoryInput, storiesDir?: string): StoryRow {
   const id = `STORY-${nanoid(6).toUpperCase()}`;
   const acceptanceCriteria = input.acceptanceCriteria
     ? JSON.stringify(input.acceptanceCriteria)
