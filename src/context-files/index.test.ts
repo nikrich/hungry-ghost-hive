@@ -108,6 +108,7 @@ describe('context-files module', () => {
       external_subtask_id: null,
       external_provider: null,
       in_sprint: 0,
+      markdown_path: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
