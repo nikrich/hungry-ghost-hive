@@ -2,7 +2,11 @@
 
 import type { Command } from 'commander';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getPullRequestById, updatePullRequest } from '../../db/queries/pull-requests.js';
+import {
+  getOpenPullRequestsByStory,
+  getPullRequestById,
+  updatePullRequest,
+} from '../../db/queries/pull-requests.js';
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
 
 // Mock dependencies
@@ -204,6 +208,62 @@ describe('pr command', () => {
       const submitCmd = prCommand.commands.find(cmd => cmd.name() === 'submit');
       const fromOpt = submitCmd?.options.find(opt => opt.long === '--from');
       expect(fromOpt).toBeDefined();
+    });
+
+    it('should auto-close existing PRs with different github_pr_number', async () => {
+      vi.mocked(getOpenPullRequestsByStory).mockReturnValue([
+        {
+          id: 'old-pr-1',
+          story_id: 'TEST-1',
+          team_id: 'team-1',
+          branch_name: 'feature/old-branch',
+          github_pr_number: 42,
+          github_pr_url: null,
+          submitted_by: null,
+          reviewed_by: null,
+          status: 'pending',
+          review_notes: null,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+          reviewed_at: null,
+        },
+      ]);
+
+      await run('submit', '--branch', 'feature/new-branch', '--story', 'TEST-1', '--pr-number', '99');
+
+      expect(updatePullRequest).toHaveBeenCalledWith(
+        expect.anything(),
+        'old-pr-1',
+        expect.objectContaining({ status: 'closed' })
+      );
+    });
+
+    it('should skip auto-close when resubmitting same github PR number', async () => {
+      vi.mocked(getOpenPullRequestsByStory).mockReturnValue([
+        {
+          id: 'existing-pr-1',
+          story_id: 'TEST-1',
+          team_id: 'team-1',
+          branch_name: 'feature/same-branch',
+          github_pr_number: 55,
+          github_pr_url: null,
+          submitted_by: null,
+          reviewed_by: null,
+          status: 'pending',
+          review_notes: null,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+          reviewed_at: null,
+        },
+      ]);
+
+      await run('submit', '--branch', 'feature/same-branch', '--story', 'TEST-1', '--pr-number', '55');
+
+      expect(updatePullRequest).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'existing-pr-1',
+        expect.objectContaining({ status: 'closed' })
+      );
     });
   });
 
