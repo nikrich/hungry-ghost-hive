@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { existsSync, mkdirSync, rmSync } from 'fs';
-import { join } from 'path';
 import { tmpdir } from 'os';
+import { join } from 'path';
 import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -2223,7 +2223,10 @@ describe('Scheduler Markdown File Writing', () => {
   let storiesDir: string;
 
   beforeEach(() => {
-    storiesDir = join(tmpdir(), `hive-test-stories-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    storiesDir = join(
+      tmpdir(),
+      `hive-test-stories-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
     mkdirSync(storiesDir, { recursive: true });
   });
 

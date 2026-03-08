@@ -401,10 +401,15 @@ export class Scheduler {
           await withTransaction(
             this.db,
             () => {
-              updateStory(this.db, story.id, {
-                assignedAgentId: targetAgent.id,
-                status: 'in_progress',
-              }, this.storiesDir);
+              updateStory(
+                this.db,
+                story.id,
+                {
+                  assignedAgentId: targetAgent.id,
+                  status: 'in_progress',
+                },
+                this.storiesDir
+              );
 
               updateAgent(this.db, targetAgent.id, {
                 status: 'working',
@@ -556,10 +561,15 @@ export class Scheduler {
 
       if (subtask) {
         // Persist subtask reference back to the story
-        updateStory(this.db, freshStory.id, {
-          externalSubtaskKey: subtask.key,
-          externalSubtaskId: subtask.id,
-        }, this.storiesDir);
+        updateStory(
+          this.db,
+          freshStory.id,
+          {
+            externalSubtaskKey: subtask.key,
+            externalSubtaskId: subtask.id,
+          },
+          this.storiesDir
+        );
         if (this.saveFn) this.saveFn();
 
         logger.info(`Created subtask ${subtask.key} for story ${freshStory.id}`);
@@ -716,10 +726,15 @@ export class Scheduler {
 
         // If agent was working on a story, mark it for reassignment
         if (agent.current_story_id) {
-          updateStory(this.db, agent.current_story_id, {
-            status: 'planned',
-            assignedAgentId: null,
-          }, this.storiesDir);
+          updateStory(
+            this.db,
+            agent.current_story_id,
+            {
+              status: 'planned',
+              assignedAgentId: null,
+            },
+            this.storiesDir
+          );
           revived.push(agent.current_story_id);
 
           // Sync status change to Jira (fire and forget)
@@ -729,7 +744,11 @@ export class Scheduler {
     }
 
     // Detect and recover orphaned stories (assigned to terminated agents)
-    const orphanedRecovered = detectAndRecoverOrphanedStories(this.db, this.config.rootDir, this.storiesDir);
+    const orphanedRecovered = detectAndRecoverOrphanedStories(
+      this.db,
+      this.config.rootDir,
+      this.storiesDir
+    );
 
     return { terminated, revived, orphanedRecovered };
   }
