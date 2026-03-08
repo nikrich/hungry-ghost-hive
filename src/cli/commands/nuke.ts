@@ -181,7 +181,7 @@ export const nukeCommand = new Command('nuke')
       .option('--force', 'Skip confirmation')
       .action(async (options: { force?: boolean }) => {
         try {
-          await withHiveContext(async ({ db, root }) => {
+          await withHiveContext(async ({ db, root, paths }) => {
             const count = queryOne<{ count: number }>(
               db.db,
               'SELECT COUNT(*) as count FROM agents'
@@ -206,7 +206,7 @@ export const nukeCommand = new Command('nuke')
             }
 
             // Kill all hive tmux sessions first (this should always work regardless of DB state)
-            const killed = await killAllHiveSessions();
+            const killed = await killAllHiveSessions(paths.hiveDir);
             console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
 
             // Remove agent worktrees from filesystem before deleting agents from DB
@@ -239,7 +239,9 @@ export const nukeCommand = new Command('nuke')
           ) {
             console.error(chalk.red(`\nDatabase is corrupted: ${message}`));
             console.log(chalk.yellow('Killing tmux sessions anyway...'));
-            const killed = await killAllHiveSessions();
+            const hiveRoot = findHiveRoot();
+            const hDir = hiveRoot ? getHivePaths(hiveRoot).hiveDir : undefined;
+            const killed = await killAllHiveSessions(hDir);
             console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
             console.log(
               chalk.yellow('Agent records could not be deleted from the corrupted database.')
@@ -316,7 +318,7 @@ export const nukeCommand = new Command('nuke')
       .option('--force', 'Skip confirmation')
       .action(async (options: { force?: boolean }) => {
         try {
-          await withHiveContext(async ({ db, root }) => {
+          await withHiveContext(async ({ db, root, paths }) => {
             console.log(chalk.red('\nThis will:'));
             console.log(chalk.yellow('  - Kill all hive tmux sessions'));
             console.log(chalk.yellow('  - Remove all agent git worktrees'));
@@ -340,7 +342,7 @@ export const nukeCommand = new Command('nuke')
             }
 
             // Kill all hive tmux sessions first (always works regardless of DB state)
-            const killed = await killAllHiveSessions();
+            const killed = await killAllHiveSessions(paths.hiveDir);
             console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
 
             // Remove agent worktrees from filesystem before deleting agents from DB
@@ -378,7 +380,9 @@ export const nukeCommand = new Command('nuke')
           ) {
             console.error(chalk.red(`\nDatabase is corrupted: ${message}`));
             console.log(chalk.yellow('Killing tmux sessions anyway...'));
-            const killed = await killAllHiveSessions();
+            const hiveRoot2 = findHiveRoot();
+            const hDir2 = hiveRoot2 ? getHivePaths(hiveRoot2).hiveDir : undefined;
+            const killed = await killAllHiveSessions(hDir2);
             console.log(chalk.gray(`Killed ${killed} tmux sessions.`));
             console.log(
               chalk.yellow('Data records could not be deleted from the corrupted database.')

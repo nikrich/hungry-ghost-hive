@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { nanoid } from 'nanoid';
 import { queryAll, queryOne, run } from '../../db/client.js';
+import { getTechLeadSessionName } from '../../utils/instance.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
 interface MessageRow {
@@ -24,12 +25,12 @@ msgCommand
   .command('send <to-session> <message>')
   .description('Send a message to another agent')
   .option('-s, --subject <subject>', 'Message subject')
-  .option('-f, --from <session>', 'Your session name (defaults to hive-tech-lead)')
+  .option('-f, --from <session>', 'Your session name (defaults to tech lead session)')
   .action(
     async (toSession: string, message: string, options: { subject?: string; from?: string }) => {
-      await withHiveContext(async ({ db }) => {
+      await withHiveContext(async ({ db, paths }) => {
         const id = `msg-${nanoid(8)}`;
-        const fromSession = options.from || 'hive-tech-lead';
+        const fromSession = options.from || getTechLeadSessionName(paths.hiveDir);
 
         run(
           db.db,
@@ -53,8 +54,8 @@ msgCommand
   .description('Check inbox for messages')
   .option('--all', 'Show all messages including read')
   .action(async (session: string | undefined, options: { all?: boolean }) => {
-    await withReadOnlyHiveContext(async ({ db }) => {
-      const targetSession = session || 'hive-tech-lead';
+    await withReadOnlyHiveContext(async ({ db, paths }) => {
+      const targetSession = session || getTechLeadSessionName(paths.hiveDir);
 
       let query = `
         SELECT * FROM messages
@@ -165,8 +166,8 @@ msgCommand
   .command('outbox [session]')
   .description('Check sent messages and their replies')
   .action(async (session: string | undefined) => {
-    await withReadOnlyHiveContext(async ({ db }) => {
-      const fromSession = session || 'hive-tech-lead';
+    await withReadOnlyHiveContext(async ({ db, paths }) => {
+      const fromSession = session || getTechLeadSessionName(paths.hiveDir);
 
       const messages = queryAll<MessageRow>(
         db.db,
