@@ -16,6 +16,13 @@ import {
   type ClusterEvent,
   type VersionVector,
 } from './replication.js';
+import {
+  createSnapshot,
+  loadLatestSnapshot,
+  saveSnapshot,
+  truncateClusterEvents,
+  type Snapshot,
+} from './snapshot.js';
 
 type NodeRole = 'leader' | 'follower' | 'candidate';
 
@@ -53,11 +60,15 @@ export interface ClusterSyncResult {
   imported_events_applied: number;
   merged_duplicate_stories: number;
   durable_log_entries_appended: number;
+  snapshot_created: boolean;
+  events_truncated: number;
+  log_entries_truncated: number;
 }
 
 export class ClusterRuntime {
   private started = false;
   private stopping = false;
+  private syncCount = 0;
 
   private eventCache: ClusterEvent[] = [];
   private versionVectorCache: VersionVector = {};
@@ -89,6 +100,7 @@ export class ClusterRuntime {
       handleHeartbeat: body => this.heartbeat.handleHeartbeat(body),
       getDeltaFromCache: (vector, limit) => this.getDeltaFromCache(vector, limit),
       getVersionVectorCache: () => this.versionVectorCache,
+      getLatestSnapshot: () => this.getLatestSnapshot(),
     });
   }
 
@@ -164,6 +176,9 @@ export class ClusterRuntime {
         imported_events_applied: 0,
         merged_duplicate_stories: 0,
         durable_log_entries_appended: 0,
+        snapshot_created: false,
+        events_truncated: 0,
+        log_entries_truncated: 0,
       };
     }
 
@@ -184,12 +199,52 @@ export class ClusterRuntime {
       getAllClusterEvents(db)
     );
 
+    this.syncCount += 1;
+
+    let snapshotCreated = false;
+    let eventsTruncated = 0;
+    let logEntriesTruncated = 0;
+
+    const interval = this.config.snapshot_interval_syncs;
+    if (interval > 0 && this.syncCount % interval === 0) {
+      const raftState = this.raft.getRaftStoreState();
+      const lastLogIndex = raftState?.last_log_index || 0;
+
+      const snapshotDir = join(hiveDir, 'cluster', 'snapshots');
+      const snapshot = createSnapshot(db, this.config.node_id, this.raft.currentTerm, lastLogIndex);
+      saveSnapshot(snapshotDir, snapshot);
+      snapshotCreated = true;
+
+      // Truncate old events from cluster_events table
+      eventsTruncated = truncateClusterEvents(db, snapshot.metadata.version_vector);
+
+      // Truncate old entries from raft-log.ndjson
+      const raftStore = this.raft.getRaftStore();
+      if (raftStore) {
+        logEntriesTruncated = raftStore.truncateLog(lastLogIndex);
+      }
+
+      this.refreshCache(db);
+    }
+
     return {
       local_events_emitted: localEventsBefore + localEventsAfter,
       imported_events_applied: imported,
       merged_duplicate_stories: merged,
       durable_log_entries_appended: durableLogEntriesAppended,
+      snapshot_created: snapshotCreated,
+      events_truncated: eventsTruncated,
+      log_entries_truncated: logEntriesTruncated,
     };
+  }
+
+  private getSnapshotDir(): string {
+    const hiveDir = this.options.hiveDir || join(process.cwd(), '.hive');
+    return join(hiveDir, 'cluster', 'snapshots');
+  }
+
+  private getLatestSnapshot(): Snapshot | null {
+    return loadLatestSnapshot(this.getSnapshotDir());
   }
 
   private refreshCache(db: Database): void {

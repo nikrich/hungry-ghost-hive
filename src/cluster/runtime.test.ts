@@ -32,6 +32,7 @@ describe('cluster runtime helpers', () => {
       sync_interval_ms: 5000,
       request_timeout_ms: 5000,
       story_similarity_threshold: 0.92,
+      snapshot_interval_syncs: 0,
     });
 
     expect(status).not.toBeNull();
@@ -67,6 +68,7 @@ describe('cluster runtime helpers', () => {
         sync_interval_ms: 200,
         request_timeout_ms: 500,
         story_similarity_threshold: 0.92,
+      snapshot_interval_syncs: 0,
       },
       { hiveDir }
     );
@@ -97,6 +99,7 @@ describe('cluster runtime helpers', () => {
       sync_interval_ms: 200,
       request_timeout_ms: 500,
       story_similarity_threshold: 0.92,
+      snapshot_interval_syncs: 0,
     };
 
     const { runtime: runtimeA, config: configA } = await startRuntimeWithRetries(

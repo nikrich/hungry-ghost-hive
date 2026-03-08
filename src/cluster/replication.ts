@@ -22,3 +22,13 @@ export { applyRemoteEvents, scanLocalChanges } from './sync.js';
 
 // Re-export story merge function
 export { mergeSimilarStories } from './story-merge.js';
+
+// Re-export snapshot functions
+export {
+  createSnapshot,
+  installSnapshot,
+  loadLatestSnapshot,
+  saveSnapshot,
+  truncateClusterEvents,
+} from './snapshot.js';
+export type { Snapshot, SnapshotMetadata } from './snapshot.js';

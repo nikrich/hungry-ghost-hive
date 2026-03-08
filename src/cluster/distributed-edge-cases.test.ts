@@ -458,6 +458,7 @@ describe('distributed runtime endpoint and election edge cases', () => {
       sync_interval_ms: 200,
       request_timeout_ms: 300,
       story_similarity_threshold: 0.8,
+      snapshot_interval_syncs: 0,
     });
 
     await runtime.start();
@@ -631,6 +632,7 @@ async function startRuntimeFixture(overrides: Partial<ClusterConfig>): Promise<{
     sync_interval_ms: 200,
     request_timeout_ms: 500,
     story_similarity_threshold: 0.8,
+    snapshot_interval_syncs: 0,
     ...overrides,
     public_url: overrides.public_url || `http://127.0.0.1:${port}`,
   };

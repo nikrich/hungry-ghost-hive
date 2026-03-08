@@ -129,6 +129,7 @@ async function createClusterFixtures(nodeIds: string[]): Promise<NodeFixture[]> 
         sync_interval_ms: 200,
         request_timeout_ms: 1000,
         story_similarity_threshold: 0.8,
+        snapshot_interval_syncs: 0,
       } satisfies ClusterConfig,
     };
   });

@@ -316,6 +316,8 @@ const ClusterConfigSchema = z
     request_timeout_ms: z.number().int().positive().default(5000),
     // Story similarity threshold [0..1] for duplicate merge detection
     story_similarity_threshold: z.number().min(0).max(1).default(0.92),
+    // Number of sync cycles between automatic snapshots (0 = disabled)
+    snapshot_interval_syncs: z.number().int().nonnegative().default(100),
   })
   .superRefine((cluster, ctx) => {
     if (!cluster.enabled) return;
@@ -602,5 +604,7 @@ cluster:
   request_timeout_ms: 5000
   # Duplicate story detection sensitivity
   story_similarity_threshold: 0.92
+  # Sync cycles between automatic snapshots (0 = disabled)
+  snapshot_interval_syncs: 100
 `;
 }

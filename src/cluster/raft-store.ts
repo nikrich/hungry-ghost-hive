@@ -180,6 +180,39 @@ export class RaftMetadataStore {
     return this.knownEventIds.has(eventId);
   }
 
+  truncateLog(beforeIndex: number): number {
+    if (!existsSync(this.logPath)) return 0;
+
+    const content = readFileSync(this.logPath, 'utf-8');
+    if (!content.trim()) return 0;
+
+    const lines = content.split('\n').filter(Boolean);
+    const kept: string[] = [];
+    let truncated = 0;
+
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line) as Partial<DurableRaftLogEntry>;
+        const index = typeof entry.index === 'number' ? entry.index : 0;
+
+        if (index >= beforeIndex) {
+          kept.push(line);
+        } else {
+          truncated += 1;
+        }
+      } catch {
+        // Skip malformed lines
+        truncated += 1;
+      }
+    }
+
+    const temp = `${this.logPath}.tmp`;
+    writeFileSync(temp, kept.length > 0 ? kept.join('\n') + '\n' : '', 'utf-8');
+    renameSync(temp, this.logPath);
+
+    return truncated;
+  }
+
   private loadOrCreateState(): DurableRaftState {
     if (existsSync(this.statePath)) {
       try {

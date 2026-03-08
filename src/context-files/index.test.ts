@@ -242,6 +242,7 @@ describe('context-files module', () => {
         sync_interval_ms: 5000,
         request_timeout_ms: 5000,
         story_similarity_threshold: 0.92,
+        snapshot_interval_syncs: 100,
       },
       merge_queue: {
         max_age_hours: 1,

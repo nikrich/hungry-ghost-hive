@@ -3,6 +3,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
 import type { ClusterConfig } from '../config/schema.js';
 import type { ClusterEvent, VersionVector } from './replication.js';
+import type { Snapshot } from './snapshot.js';
 
 interface DeltaRequest {
   version_vector: VersionVector;
@@ -22,6 +23,7 @@ export interface ClusterHttpHandlers {
   handleHeartbeat: (body: unknown) => unknown;
   getDeltaFromCache: (vector: VersionVector, limit: number) => ClusterEvent[];
   getVersionVectorCache: () => VersionVector;
+  getLatestSnapshot: () => Snapshot | null;
 }
 
 export class ClusterHttpServer {
@@ -83,6 +85,16 @@ export class ClusterHttpServer {
         const body = await readJsonBody(req);
         const response = this.handlers.handleHeartbeat(body);
         sendJson(res, 200, response);
+        return;
+      }
+
+      if (method === 'GET' && path === '/cluster/v1/snapshot') {
+        const snapshot = this.handlers.getLatestSnapshot();
+        if (!snapshot) {
+          sendJson(res, 404, { error: 'No snapshot available' });
+          return;
+        }
+        sendJson(res, 200, snapshot);
         return;
       }
 

@@ -469,6 +469,7 @@ describe('distributed runtime sync behavior', () => {
       sync_interval_ms: 250,
       request_timeout_ms: 300,
       story_similarity_threshold: 0.8,
+      snapshot_interval_syncs: 0,
     });
 
     const result = await runtime.sync(db);
@@ -477,6 +478,9 @@ describe('distributed runtime sync behavior', () => {
       imported_events_applied: 0,
       merged_duplicate_stories: 0,
       durable_log_entries_appended: 0,
+      snapshot_created: false,
+      events_truncated: 0,
+      log_entries_truncated: 0,
     });
 
     db.close();
@@ -730,6 +734,7 @@ async function buildConfig(overrides: Partial<ClusterConfig> = {}): Promise<Clus
     sync_interval_ms: 200,
     request_timeout_ms: 600,
     story_similarity_threshold: 0.8,
+    snapshot_interval_syncs: 0,
   };
 
   return {
