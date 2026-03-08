@@ -20,6 +20,7 @@ import {
 import { createTeam } from '../db/queries/teams.js';
 import * as worktreeModule from '../git/worktree.js';
 import * as tmuxModule from '../tmux/manager.js';
+import { generateSessionName } from '../tmux/manager.js';
 import { getAgentWorkload, selectAgentWithLeastWorkload } from './agent-selector.js';
 import {
   getCapacityPoints,
@@ -1953,6 +1954,9 @@ describe('Scheduler checkScaling', () => {
       repoPath: 'test',
     });
 
+    const gapHiveDir = join(mockConfig.rootDir, '.hive');
+    const gapSessionPrefix = generateSessionName('senior', team.name, undefined, gapHiveDir);
+
     for (const index of [2, 3, 4, 5]) {
       db.run(
         `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
@@ -1961,7 +1965,7 @@ describe('Scheduler checkScaling', () => {
           `senior-gap-${index}`,
           'senior',
           team.id,
-          `hive-senior-${team.name}-${index}`,
+          `${gapSessionPrefix}-${index}`,
           'working',
           `STORY-EXISTING-${index}`,
         ]
@@ -1983,7 +1987,7 @@ describe('Scheduler checkScaling', () => {
         db.run(
           `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
-          ['senior-gap-6', 'senior', team.id, `hive-senior-${team.name}-6`, 'idle']
+          ['senior-gap-6', 'senior', team.id, `${gapSessionPrefix}-6`, 'idle']
         );
         return {
           id: 'senior-gap-6',
@@ -1991,7 +1995,7 @@ describe('Scheduler checkScaling', () => {
           team_id: team.id,
           status: 'idle',
           current_story_id: null,
-          tmux_session: `hive-senior-${team.name}-6`,
+          tmux_session: `${gapSessionPrefix}-6`,
         };
       });
 
@@ -2104,10 +2108,13 @@ describe('Scheduler checkScaling', () => {
       repoPath: 'test',
     });
 
+    const hiveDir = join(mockConfig.rootDir, '.hive');
+    const expectedSession = generateSessionName('senior', team.name, undefined, hiveDir);
+
     db.run(
       `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      ['senior-guard-1', 'senior', team.id, `hive-senior-${team.name}`, 'working', 'STORY-ACTIVE']
+      ['senior-guard-1', 'senior', team.id, expectedSession, 'working', 'STORY-ACTIVE']
     );
 
     const isRunningSpy = vi.spyOn(tmuxModule, 'isTmuxSessionRunning').mockResolvedValue(true);

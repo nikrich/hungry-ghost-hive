@@ -231,10 +231,7 @@ export function pruneClusterEvents(db: Database, retainCount: number): number {
     [retainCount]
   );
 
-  const afterRow = queryOne<{ total: number }>(
-    db,
-    'SELECT COUNT(*) as total FROM cluster_events'
-  );
+  const afterRow = queryOne<{ total: number }>(db, 'SELECT COUNT(*) as total FROM cluster_events');
   return total - (afterRow?.total || 0);
 }
 
