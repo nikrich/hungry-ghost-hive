@@ -3,7 +3,13 @@
 import { join } from 'path';
 import type { Database } from 'sql.js';
 import type { ClusterConfig, ClusterPeerConfig } from '../config/schema.js';
-import { ClusterHttpServer } from './cluster-http-server.js';
+import {
+  ClusterHttpServer,
+  type MembershipJoinRequest,
+  type MembershipJoinResponse,
+  type MembershipLeaveRequest,
+  type MembershipLeaveResponse,
+} from './cluster-http-server.js';
 import { HeartbeatManager } from './heartbeat-manager.js';
 import { RaftStateMachine } from './raft-state-machine.js';
 import {
@@ -85,6 +91,10 @@ export class ClusterRuntime {
       postJson: (peer, path, body) => this.postJson(peer, path, body),
       isActive: () => this.started && !this.stopping,
       handleBackgroundError: error => this.handleBackgroundError(error),
+      onPeersUpdated: peers => {
+        // Follower received updated peer list from leader via heartbeat
+        this.raft.setPeers(peers);
+      },
     });
 
     this.httpServer = new ClusterHttpServer(config, {
@@ -96,6 +106,8 @@ export class ClusterRuntime {
       getFencingToken: () => this.raft.getFencingToken(),
       validateFencingToken: token => this.raft.validateFencingToken(token),
       isLeaderLeaseValid: () => this.raft.isLeaderLeaseValid(),
+      handleMembershipJoin: body => this.handleMembershipJoin(body),
+      handleMembershipLeave: body => this.handleMembershipLeave(body),
     });
   }
 
@@ -163,7 +175,7 @@ export class ClusterRuntime {
       raft_commit_index: raftState?.commit_index || 0,
       raft_last_applied: raftState?.last_applied || 0,
       raft_last_log_index: raftState?.last_log_index || 0,
-      peers: this.config.peers.map(peer => ({ id: peer.id, url: peer.url })),
+      peers: this.raft.getPeers().map(peer => ({ id: peer.id, url: peer.url })),
     };
   }
 
@@ -202,17 +214,122 @@ export class ClusterRuntime {
     };
   }
 
+  handleMembershipJoin(request: MembershipJoinRequest): MembershipJoinResponse {
+    const peers = this.raft.getPeers();
+    const leaderUrl = this.raft.getLeaderUrl();
+
+    // If not the leader, redirect to leader
+    if (this.raft.role !== 'leader') {
+      return {
+        success: false,
+        leader_id: this.raft.leaderId,
+        leader_url: leaderUrl,
+        peers: peers.map(p => ({ id: p.id, url: p.url })),
+        term: this.raft.currentTerm,
+      };
+    }
+
+    // Check if peer already exists
+    const existing = peers.find(p => p.id === request.node_id);
+    if (existing) {
+      // Update URL if changed
+      if (existing.url !== request.url) {
+        const updated = peers.map(p =>
+          p.id === request.node_id ? { id: p.id, url: request.url } : p
+        );
+        this.raft.setPeers(updated);
+        this.raft.appendDurableEntry('membership_change', {
+          action: 'update',
+          node_id: request.node_id,
+          url: request.url,
+          peer_count: updated.length,
+        });
+      }
+      return {
+        success: true,
+        leader_id: this.raft.leaderId,
+        leader_url: this.config.public_url,
+        peers: this.raft.getPeers().map(p => ({ id: p.id, url: p.url })),
+        term: this.raft.currentTerm,
+      };
+    }
+
+    // Add new peer
+    const newPeer: ClusterPeerConfig = { id: request.node_id, url: request.url };
+    const updated = [...peers, newPeer];
+    this.raft.setPeers(updated);
+
+    this.raft.appendDurableEntry('membership_change', {
+      action: 'join',
+      node_id: request.node_id,
+      url: request.url,
+      peer_count: updated.length,
+    });
+
+    return {
+      success: true,
+      leader_id: this.raft.leaderId,
+      leader_url: this.config.public_url,
+      peers: updated.map(p => ({ id: p.id, url: p.url })),
+      term: this.raft.currentTerm,
+    };
+  }
+
+  handleMembershipLeave(request: MembershipLeaveRequest): MembershipLeaveResponse {
+    const peers = this.raft.getPeers();
+
+    // If not the leader, cannot process leave
+    if (this.raft.role !== 'leader') {
+      return {
+        success: false,
+        peers: peers.map(p => ({ id: p.id, url: p.url })),
+      };
+    }
+
+    // Cannot remove self (leader) — leader must transfer leadership first
+    if (request.node_id === this.config.node_id) {
+      return {
+        success: false,
+        peers: peers.map(p => ({ id: p.id, url: p.url })),
+      };
+    }
+
+    const existing = peers.find(p => p.id === request.node_id);
+    if (!existing) {
+      // Already gone
+      return {
+        success: true,
+        peers: peers.map(p => ({ id: p.id, url: p.url })),
+      };
+    }
+
+    const updated = peers.filter(p => p.id !== request.node_id);
+    this.raft.setPeers(updated);
+
+    this.raft.appendDurableEntry('membership_change', {
+      action: 'leave',
+      node_id: request.node_id,
+      peer_count: updated.length,
+    });
+
+    return {
+      success: true,
+      peers: updated.map(p => ({ id: p.id, url: p.url })),
+    };
+  }
+
   private refreshCache(db: Database): void {
     this.eventCache = getAllClusterEvents(db).slice(-20000);
     this.versionVectorCache = getVersionVector(db);
   }
 
   private async pullEventsFromPeers(db: Database): Promise<number> {
-    if (this.config.peers.length === 0) return 0;
+    const peers = this.raft.getPeers();
+    if (peers.length === 0) return 0;
 
     let applied = 0;
 
-    for (const peer of this.config.peers) {
+    for (const peer of peers) {
       if (peer.id === this.config.node_id) continue;
 
       const localVector = getVersionVector(db);

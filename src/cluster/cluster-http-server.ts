@@ -18,6 +18,28 @@ interface DeltaResponse {
 
 const MAX_CLUSTER_REQUEST_BODY_BYTES = 1024 * 1024; // 1 MiB
 
+export interface MembershipJoinRequest {
+  node_id: string;
+  url: string;
+}
+
+export interface MembershipJoinResponse {
+  success: boolean;
+  leader_id: string | null;
+  leader_url: string | null;
+  peers: Array<{ id: string; url: string }>;
+  term: number;
+}
+
+export interface MembershipLeaveRequest {
+  node_id: string;
+}
+
+export interface MembershipLeaveResponse {
+  success: boolean;
+  peers: Array<{ id: string; url: string }>;
+}
+
 export interface ClusterHttpHandlers {
   getStatus: () => unknown;
   handleVoteRequest: (body: unknown) => unknown;
@@ -27,6 +49,8 @@ export interface ClusterHttpHandlers {
   getFencingToken: () => number;
   validateFencingToken: (token: number) => boolean;
   isLeaderLeaseValid: () => boolean;
+  handleMembershipJoin: (body: MembershipJoinRequest) => MembershipJoinResponse;
+  handleMembershipLeave: (body: MembershipLeaveRequest) => MembershipLeaveResponse;
 }
 
 export class ClusterHttpServer {
@@ -117,6 +141,31 @@ export class ClusterHttpServer {
           version_vector: this.handlers.getVersionVectorCache(),
           fencing_token: this.handlers.getFencingToken(),
         } satisfies DeltaResponse);
+        return;
+      }
+
+      if (method === 'POST' && path === '/cluster/v1/membership/join') {
+        const body = (await readJsonBody(req)) as Partial<MembershipJoinRequest>;
+        if (typeof body.node_id !== 'string' || typeof body.url !== 'string') {
+          sendJson(res, 400, { error: 'node_id and url are required' });
+          return;
+        }
+        const response = this.handlers.handleMembershipJoin({
+          node_id: body.node_id,
+          url: body.url,
+        });
+        sendJson(res, response.success ? 200 : 307, response);
+        return;
+      }
+
+      if (method === 'POST' && path === '/cluster/v1/membership/leave') {
+        const body = (await readJsonBody(req)) as Partial<MembershipLeaveRequest>;
+        if (typeof body.node_id !== 'string') {
+          sendJson(res, 400, { error: 'node_id is required' });
+          return;
+        }
+        const response = this.handlers.handleMembershipLeave({ node_id: body.node_id });
+        sendJson(res, response.success ? 200 : 400, response);
         return;
       }
 
