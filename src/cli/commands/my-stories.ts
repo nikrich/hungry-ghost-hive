@@ -228,7 +228,7 @@ myStoriesCommand
         process.exit(1);
       }
 
-      await withHiveContext(async ({ db }) => {
+      await withHiveContext(async ({ paths, db }) => {
         const agent = requireAgentBySession(db.db, options.session);
 
         if (!agent.team_id) {
@@ -245,19 +245,28 @@ myStoriesCommand
           ? trimmedTitle
           : `Refactor: ${trimmedTitle}`;
 
-        const story = createStory(db.db, {
-          teamId: agent.team_id,
-          title: normalizedTitle,
-          description: options.description.trim(),
-          acceptanceCriteria:
-            options.criteria && options.criteria.length > 0 ? options.criteria : null,
-        });
+        const story = createStory(
+          db.db,
+          {
+            teamId: agent.team_id,
+            title: normalizedTitle,
+            description: options.description.trim(),
+            acceptanceCriteria:
+              options.criteria && options.criteria.length > 0 ? options.criteria : null,
+          },
+          paths.storiesDir
+        );
 
-        const updatedStory = updateStory(db.db, story.id, {
-          complexityScore: points,
-          storyPoints: points,
-          status,
-        });
+        const updatedStory = updateStory(
+          db.db,
+          story.id,
+          {
+            complexityScore: points,
+            storyPoints: points,
+            status,
+          },
+          paths.storiesDir
+        );
 
         createLog(db.db, {
           agentId: agent.id,

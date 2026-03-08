@@ -87,23 +87,32 @@ storiesCommand
       criteria?: string[];
       json?: boolean;
     }) => {
-      await withHiveContext(async ({ root, db }) => {
+      await withHiveContext(async ({ root, paths, db }) => {
         // Create local story
-        const story = createStory(db.db, {
-          requirementId: options.requirement || null,
-          teamId: options.team || null,
-          title: options.title,
-          description: options.description,
-          acceptanceCriteria: options.criteria || null,
-        });
+        const story = createStory(
+          db.db,
+          {
+            requirementId: options.requirement || null,
+            teamId: options.team || null,
+            title: options.title,
+            description: options.description,
+            acceptanceCriteria: options.criteria || null,
+          },
+          paths.storiesDir
+        );
 
         // Update with optional fields
         if (options.points !== undefined || options.complexity !== undefined) {
-          updateStory(db.db, story.id, {
-            storyPoints: options.points ?? null,
-            complexityScore: options.complexity ?? null,
-            status: 'estimated',
-          });
+          updateStory(
+            db.db,
+            story.id,
+            {
+              storyPoints: options.points ?? null,
+              complexityScore: options.complexity ?? null,
+              status: 'estimated',
+            },
+            paths.storiesDir
+          );
         }
 
         // Sync to PM provider if configured

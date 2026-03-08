@@ -562,6 +562,12 @@ const MIGRATIONS: MigrationDefinition[] = [
       `);
     },
   },
+  {
+    name: '015-add-story-markdown-path.sql',
+    up: db => {
+      db.run('ALTER TABLE stories ADD COLUMN markdown_path TEXT');
+    },
+  },
 ];
 
 function runMigrations(db: SqlJsDatabase): void {
@@ -833,6 +839,7 @@ export interface StoryRow {
   external_subtask_id: string | null;
   external_provider: string | null;
   in_sprint: number;
+  markdown_path: string | null;
   created_at: string;
   updated_at: string;
 }

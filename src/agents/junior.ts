@@ -111,7 +111,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
         .substring(0, 30)}`;
 
     if (!this.story.branch_name) {
-      updateStory(this.db, this.story.id, { branchName });
+      updateStory(this.db, this.story.id, { branchName }, this.storiesDir);
     }
 
     const prompt = `I need to implement this simple story:
@@ -149,7 +149,7 @@ Please help me identify which files I need to read and modify.`;
     this.log('STORY_PROGRESS_UPDATE', 'Making code changes', { storyId: this.story.id });
 
     // Complete
-    updateStory(this.db, this.story.id, { status: 'review' });
+    updateStory(this.db, this.story.id, { status: 'review' }, this.storiesDir);
     this.log('STORY_COMPLETED', 'Implementation complete, ready for review', {
       storyId: this.story.id,
       branchName,

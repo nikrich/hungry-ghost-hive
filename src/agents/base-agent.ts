@@ -10,6 +10,7 @@ import {
 import { updateAgentHeartbeat } from '../db/queries/heartbeat.js';
 import { createLog, type EventType } from '../db/queries/logs.js';
 import type { LLMProvider, Message } from '../llm/provider.js';
+import { findHiveRoot, getHivePaths } from '../utils/paths.js';
 
 /** Interval in ms between agent heartbeats */
 const HEARTBEAT_INTERVAL_MS = 10000;
@@ -51,6 +52,7 @@ export abstract class BaseAgent {
   protected agentType: AgentType;
   protected teamId: string | null;
   protected workDir: string;
+  protected storiesDir: string | undefined;
   protected config: AgentContext['config'];
   protected messages: Message[] = [];
   protected memoryState: MemoryState;
@@ -65,6 +67,9 @@ export abstract class BaseAgent {
     this.teamId = context.agentRow.team_id;
     this.workDir = context.workDir;
     this.config = context.config;
+
+    const hiveRoot = findHiveRoot(context.workDir);
+    this.storiesDir = hiveRoot ? getHivePaths(hiveRoot).storiesDir : undefined;
 
     // Load or initialize memory state
     if (context.agentRow.memory_state) {

@@ -106,7 +106,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
 
     // Update story with branch name if not set
     if (!this.story.branch_name) {
-      updateStory(this.db, this.story.id, { branchName });
+      updateStory(this.db, this.story.id, { branchName }, this.storiesDir);
     }
 
     const prompt = `Implement this story:
@@ -144,7 +144,7 @@ Begin implementation.`;
     this.log('STORY_PROGRESS_UPDATE', 'Code changes proposed', { storyId: this.story.id });
 
     // Mark as complete
-    updateStory(this.db, this.story.id, { status: 'review' });
+    updateStory(this.db, this.story.id, { status: 'review' }, this.storiesDir);
     this.log('STORY_COMPLETED', 'Implementation complete, ready for review', {
       storyId: this.story.id,
       branchName,

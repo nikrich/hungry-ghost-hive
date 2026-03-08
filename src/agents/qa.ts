@@ -98,7 +98,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
             storyId: story.id,
           }
         );
-        updateStory(this.db, story.id, { status: 'qa_failed' });
+        updateStory(this.db, story.id, { status: 'qa_failed' }, this.storiesDir);
         this.checkAndEscalate(story);
         return;
       }
@@ -124,7 +124,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
     if (this.qaConfig.testCommand) {
       const testsPassed = await this.runTests(story.id);
       if (!testsPassed) {
-        updateStory(this.db, story.id, { status: 'qa_failed' });
+        updateStory(this.db, story.id, { status: 'qa_failed' }, this.storiesDir);
         this.checkAndEscalate(story);
         return;
       }
@@ -199,7 +199,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
   private async createPR(story: StoryRow): Promise<void> {
     if (!story.branch_name) {
       this.log('STORY_PR_CREATED', 'No branch name, skipping PR creation', { storyId: story.id });
-      updateStory(this.db, story.id, { status: 'pr_submitted' });
+      updateStory(this.db, story.id, { status: 'pr_submitted' }, this.storiesDir);
       return;
     }
 
@@ -250,10 +250,15 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       });
 
       // Update story
-      updateStory(this.db, story.id, {
-        prUrl,
-        status: 'pr_submitted',
-      });
+      updateStory(
+        this.db,
+        story.id,
+        {
+          prUrl,
+          status: 'pr_submitted',
+        },
+        this.storiesDir
+      );
 
       this.log('STORY_PR_CREATED', `PR created: ${prUrl}`, {
         storyId: story.id,
@@ -267,7 +272,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       });
 
       // Still mark as pr_submitted since QA passed
-      updateStory(this.db, story.id, { status: 'pr_submitted' });
+      updateStory(this.db, story.id, { status: 'pr_submitted' }, this.storiesDir);
     }
   }
 

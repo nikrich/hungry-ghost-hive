@@ -102,6 +102,7 @@ describe('paths utility', () => {
         agentsDir: join(rootDir, '.hive', 'agents'),
         logsDir: join(rootDir, '.hive', 'logs'),
         reposDir: join(rootDir, 'repos'),
+        storiesDir: join(rootDir, '.hive', 'stories'),
       });
     });
 
@@ -128,6 +129,7 @@ describe('paths utility', () => {
       expect(result.configPath).toContain(result.hiveDir);
       expect(result.agentsDir).toContain(result.hiveDir);
       expect(result.logsDir).toContain(result.hiveDir);
+      expect(result.storiesDir).toContain(result.hiveDir);
       expect(result.reposDir).not.toContain(result.hiveDir);
     });
 
@@ -153,6 +155,12 @@ describe('paths utility', () => {
       const result = paths.getHivePaths(rootDir);
 
       expect(result.logsDir).toContain(paths.LOGS_DIR_NAME);
+    });
+
+    it('should use STORIES_DIR_NAME constant for stories directory', () => {
+      const result = paths.getHivePaths(rootDir);
+
+      expect(result.storiesDir).toBe(join(rootDir, '.hive', paths.STORIES_DIR_NAME));
     });
   });
 
