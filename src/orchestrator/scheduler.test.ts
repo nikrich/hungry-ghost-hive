@@ -1,8 +1,11 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import { existsSync, mkdirSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getLogsByEventType } from '../db/queries/logs.js';
 import { createPullRequest } from '../db/queries/pull-requests.js';
@@ -141,6 +144,7 @@ CREATE TABLE IF NOT EXISTS stories (
     assigned_agent_id TEXT REFERENCES agents(id),
     branch_name TEXT,
     pr_url TEXT,
+    markdown_path TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -792,6 +796,50 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(recovered.length).toBe(2);
     expect(recovered).toContain(story1.id);
     expect(recovered).toContain(story2.id);
+  });
+
+  it('should write markdown files when storiesDir is provided during orphan recovery', () => {
+    const storiesDir = join(tmpdir(), `hive-test-stories-${Date.now()}`);
+    mkdirSync(storiesDir, { recursive: true });
+
+    try {
+      const team = createTeam(db, {
+        name: 'MD Test Team',
+        repoUrl: 'https://github.com/test/repo',
+        repoPath: 'test',
+      });
+
+      const terminatedAgentId = 'agent-md-terminated';
+      db.run(
+        `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        [terminatedAgentId, 'intermediate', team.id, 'terminated']
+      );
+
+      const story = createStory(db, {
+        teamId: team.id,
+        title: 'Story with Markdown',
+        description: 'Should get a markdown file on recovery',
+      });
+      updateStory(db, story.id, {
+        assignedAgentId: terminatedAgentId,
+        status: 'in_progress',
+      });
+
+      const recovered = detectAndRecoverOrphanedStories(db, '/tmp', storiesDir);
+
+      expect(recovered).toContain(story.id);
+
+      // Verify markdown file was written
+      const mdPath = join(storiesDir, `${story.id}.md`);
+      expect(existsSync(mdPath)).toBe(true);
+
+      // Verify markdown_path was set in DB
+      const updatedStory = getStoryById(db, story.id);
+      expect(updatedStory?.markdown_path).toBe(mdPath);
+    } finally {
+      rmSync(storiesDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -2168,6 +2216,72 @@ describe('Scheduler checkScaling', () => {
     expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
 
     spawnSeniorSpy.mockRestore();
+  });
+});
+
+describe('Scheduler Markdown File Writing', () => {
+  let storiesDir: string;
+
+  beforeEach(() => {
+    storiesDir = join(
+      tmpdir(),
+      `hive-test-stories-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    mkdirSync(storiesDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(storiesDir, { recursive: true, force: true });
+  });
+
+  it('should write markdown files when assigning stories via scheduler', async () => {
+    const team = createTeam(db, {
+      name: 'MD Write Team',
+      repoUrl: 'https://github.com/test/repo',
+      repoPath: 'test',
+    });
+
+    // Create an idle senior agent
+    db.run(
+      `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      ['senior-md-1', 'senior', team.id, 'idle']
+    );
+
+    const story = createStory(db, {
+      teamId: team.id,
+      title: 'Markdown Test Story',
+      description: 'Should get a markdown file on assignment',
+    });
+    updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+
+    // Create scheduler with rootDir pointing to a temp dir that has .hive/stories/
+    const hiveRoot = join(tmpdir(), `hive-md-root-${Date.now()}`);
+    const hiveStoriesDir = join(hiveRoot, '.hive', 'stories');
+    mkdirSync(hiveStoriesDir, { recursive: true });
+
+    const mdScheduler = new Scheduler(db, {
+      ...mockConfig,
+      rootDir: hiveRoot,
+    } as any);
+
+    // Mock spawnSenior to avoid actual tmux operations
+    vi.spyOn(mdScheduler as any, 'sendAssignmentHandoff').mockResolvedValue(undefined);
+
+    const result = await mdScheduler.assignStories();
+
+    expect(result.assigned).toBe(1);
+
+    // Verify markdown file was written
+    const mdPath = join(hiveStoriesDir, `${story.id}.md`);
+    expect(existsSync(mdPath)).toBe(true);
+
+    // Verify markdown_path was set in DB
+    const updatedStory = getStoryById(db, story.id);
+    expect(updatedStory?.markdown_path).toBe(mdPath);
+    expect(updatedStory?.status).toBe('in_progress');
+
+    rmSync(hiveRoot, { recursive: true, force: true });
   });
 });
 

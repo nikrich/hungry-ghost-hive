@@ -14,7 +14,11 @@ import {
  * Detect and recover orphaned stories (assigned to terminated agents).
  * Returns the story IDs that were recovered.
  */
-export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): string[] {
+export function detectAndRecoverOrphanedStories(
+  db: Database,
+  rootDir: string,
+  storiesDir?: string
+): string[] {
   const orphanedAssignments = getStoriesWithOrphanedAssignments(db);
   const staleInProgressStories = getStaleInProgressStoriesWithoutAssignment(db);
   const inconsistentInProgressAssignments = getInProgressStoriesWithInconsistentAssignments(db);
@@ -26,10 +30,15 @@ export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): 
       if (recoveredSet.has(assignment.id)) continue;
 
       // Update story in single atomic operation
-      updateStory(db, assignment.id, {
-        assignedAgentId: null,
-        status: 'planned',
-      });
+      updateStory(
+        db,
+        assignment.id,
+        {
+          assignedAgentId: null,
+          status: 'planned',
+        },
+        storiesDir
+      );
       createLog(db, {
         agentId: 'scheduler',
         storyId: assignment.id,
@@ -52,10 +61,15 @@ export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): 
     try {
       if (recoveredSet.has(story.id)) continue;
 
-      updateStory(db, story.id, {
-        assignedAgentId: null,
-        status: 'planned',
-      });
+      updateStory(
+        db,
+        story.id,
+        {
+          assignedAgentId: null,
+          status: 'planned',
+        },
+        storiesDir
+      );
       createLog(db, {
         agentId: 'scheduler',
         storyId: story.id,
@@ -78,10 +92,15 @@ export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): 
     try {
       if (recoveredSet.has(assignment.id)) continue;
 
-      updateStory(db, assignment.id, {
-        assignedAgentId: null,
-        status: 'planned',
-      });
+      updateStory(
+        db,
+        assignment.id,
+        {
+          assignedAgentId: null,
+          status: 'planned',
+        },
+        storiesDir
+      );
       createLog(db, {
         agentId: 'scheduler',
         storyId: assignment.id,
