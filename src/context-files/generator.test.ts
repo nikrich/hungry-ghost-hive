@@ -197,6 +197,61 @@ describe('generator module', () => {
       const result = formatStoriesForContext(stories);
       expect(result).not.toContain('Acceptance Criteria');
     });
+
+    it('should include markdown_path reference when set on a story', () => {
+      const stories: StoryRow[] = [
+        {
+          id: 'STORY-1',
+          title: 'Story With Markdown',
+          description: 'DB description',
+          status: 'in_progress',
+          complexity_score: 3,
+          story_points: 3,
+          team_id: 'team-1',
+          requirement_id: null,
+          acceptance_criteria: null,
+          assigned_agent_id: null,
+          branch_name: null,
+          pr_url: null,
+          jira_issue_key: null,
+          jira_issue_id: null,
+          markdown_path: '/stories/STORY-1.md',
+          created_at: '2024-01-01',
+          updated_at: '2024-01-01',
+        } as StoryRow,
+      ];
+
+      const result = formatStoriesForContext(stories);
+      expect(result).toContain('/stories/STORY-1.md');
+      expect(result).toContain('Full Story Details');
+    });
+
+    it('should not include markdown reference when markdown_path is null', () => {
+      const stories: StoryRow[] = [
+        {
+          id: 'STORY-1',
+          title: 'Story Without Markdown',
+          description: 'DB only description',
+          status: 'planned',
+          complexity_score: 2,
+          story_points: 2,
+          team_id: 'team-1',
+          requirement_id: null,
+          acceptance_criteria: null,
+          assigned_agent_id: null,
+          branch_name: null,
+          pr_url: null,
+          jira_issue_key: null,
+          jira_issue_id: null,
+          markdown_path: null,
+          created_at: '2024-01-01',
+          updated_at: '2024-01-01',
+        } as StoryRow,
+      ];
+
+      const result = formatStoriesForContext(stories);
+      expect(result).not.toContain('Full Story Details');
+    });
   });
 
   describe('formatQualityChecks', () => {

@@ -53,7 +53,7 @@ export function formatStoriesForContext(stories: StoryRow[]): string {
 - **Complexity**: ${story.complexity_score || 'Not estimated'}
 - **Story Points**: ${story.story_points || 'Not estimated'}
 - **Description**: ${story.description}
-${
+${story.markdown_path ? `- **Full Story Details**: Read \`${story.markdown_path}\` for complete requirements and acceptance criteria\n` : ''}${
   story.acceptance_criteria && story.acceptance_criteria.length > 0
     ? `**Acceptance Criteria**:\n${(Array.isArray(story.acceptance_criteria) ? story.acceptance_criteria : JSON.parse(story.acceptance_criteria || '[]')).map((c: string) => `  - ${c}`).join('\n')}`
     : ''

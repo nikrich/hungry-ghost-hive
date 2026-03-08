@@ -164,6 +164,82 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('complexity: ?');
     });
 
+    it('should include markdown_path in prompt when set on a story', () => {
+      const stories: StoryRow[] = [
+        {
+          id: 'STORY-003',
+          title: 'Story With Markdown',
+          description: 'DB description',
+          complexity_score: 3,
+          status: 'planned',
+          team_id: 'team-1',
+          requirement_id: null,
+          acceptance_criteria: null,
+          story_points: null,
+          assigned_agent_id: null,
+          branch_name: null,
+          pr_url: null,
+          jira_issue_key: null,
+          jira_issue_id: null,
+          jira_project_key: null,
+          jira_subtask_key: null,
+          jira_subtask_id: null,
+          external_issue_key: null,
+          external_issue_id: null,
+          external_project_key: null,
+          external_subtask_key: null,
+          external_subtask_id: null,
+          external_provider: null,
+          in_sprint: 0,
+          markdown_path: '/stories/STORY-003.md',
+          created_at: '2024-01-01',
+          updated_at: '2024-01-01',
+        },
+      ];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories);
+
+      expect(prompt).toContain('/stories/STORY-003.md');
+      expect(prompt).toContain('read the story markdown file');
+    });
+
+    it('should fall back to DB description when markdown_path is null', () => {
+      const stories: StoryRow[] = [
+        {
+          id: 'STORY-004',
+          title: 'Story Without Markdown',
+          description: 'DB only description',
+          complexity_score: 2,
+          status: 'planned',
+          team_id: 'team-1',
+          requirement_id: null,
+          acceptance_criteria: null,
+          story_points: null,
+          assigned_agent_id: null,
+          branch_name: null,
+          pr_url: null,
+          jira_issue_key: null,
+          jira_issue_id: null,
+          jira_project_key: null,
+          jira_subtask_key: null,
+          jira_subtask_id: null,
+          external_issue_key: null,
+          external_issue_id: null,
+          external_project_key: null,
+          external_subtask_key: null,
+          external_subtask_id: null,
+          external_provider: null,
+          in_sprint: 0,
+          markdown_path: null,
+          created_at: '2024-01-01',
+          updated_at: '2024-01-01',
+        },
+      ];
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories);
+
+      expect(prompt).toContain('DB only description');
+      expect(prompt).not.toContain('read the story markdown file');
+    });
+
     it('should handle empty stories list', () => {
       const stories: StoryRow[] = [];
       const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, stories);
