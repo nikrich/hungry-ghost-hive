@@ -62,8 +62,13 @@ prCommand
         teamId = story.team_id;
 
         // Auto-close any existing open PRs for this story
+        const incomingPrNumber = options.prNumber ? parseInt(options.prNumber, 10) : null;
         const existingPRs = getOpenPullRequestsByStory(db.db, storyId);
         for (const existingPR of existingPRs) {
+          // Skip auto-close if this is a resubmit of the same GitHub PR
+          if (incomingPrNumber !== null && existingPR.github_pr_number === incomingPrNumber) {
+            continue;
+          }
           updatePullRequest(db.db, existingPR.id, { status: 'closed' });
           createLog(db.db, {
             agentId: options.from || 'system',
