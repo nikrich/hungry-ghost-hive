@@ -229,7 +229,15 @@ describe('pr command', () => {
         },
       ]);
 
-      await run('submit', '--branch', 'feature/new-branch', '--story', 'TEST-1', '--pr-number', '99');
+      await run(
+        'submit',
+        '--branch',
+        'feature/new-branch',
+        '--story',
+        'TEST-1',
+        '--pr-number',
+        '99'
+      );
 
       expect(updatePullRequest).toHaveBeenCalledWith(
         expect.anything(),
@@ -257,7 +265,15 @@ describe('pr command', () => {
         },
       ]);
 
-      await run('submit', '--branch', 'feature/same-branch', '--story', 'TEST-1', '--pr-number', '55');
+      await run(
+        'submit',
+        '--branch',
+        'feature/same-branch',
+        '--story',
+        'TEST-1',
+        '--pr-number',
+        '55'
+      );
 
       expect(updatePullRequest).not.toHaveBeenCalledWith(
         expect.anything(),

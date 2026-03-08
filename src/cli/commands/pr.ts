@@ -66,10 +66,7 @@ prCommand
         const existingPRs = getOpenPullRequestsByStory(db.db, storyId);
         for (const existingPR of existingPRs) {
           // Skip auto-close if this is a resubmit of the same GitHub PR
-          if (
-            incomingPrNumber !== null &&
-            existingPR.github_pr_number === incomingPrNumber
-          ) {
+          if (incomingPrNumber !== null && existingPR.github_pr_number === incomingPrNumber) {
             continue;
           }
           updatePullRequest(db.db, existingPR.id, { status: 'closed' });
