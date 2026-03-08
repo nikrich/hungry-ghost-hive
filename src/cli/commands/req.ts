@@ -14,7 +14,12 @@ import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.j
 import { createLog } from '../../db/queries/logs.js';
 import { createRequirement, updateRequirement } from '../../db/queries/requirements.js';
 import { getAllTeams } from '../../db/queries/teams.js';
-import { isTmuxAvailable, isTmuxSessionRunning, sendToTmuxSession, spawnTmuxSession } from '../../tmux/manager.js';
+import {
+  isTmuxAvailable,
+  isTmuxSessionRunning,
+  sendToTmuxSession,
+  spawnTmuxSession,
+} from '../../tmux/manager.js';
 import { getTechLeadSessionName } from '../../utils/instance.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 import { startDashboard } from '../dashboard/index.js';

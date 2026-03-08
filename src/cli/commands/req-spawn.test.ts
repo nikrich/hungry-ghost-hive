@@ -107,10 +107,9 @@ describe('req command - tech lead session routing', () => {
   it('spawns a new session when no session is running', async () => {
     vi.mocked(tmuxManager.isTmuxSessionRunning).mockResolvedValue(false);
 
-    await reqCommand.parseAsync(
-      ['node', 'req', 'Build a new feature', '--target-branch', 'main'],
-      { from: 'user' }
-    );
+    await reqCommand.parseAsync(['node', 'req', 'Build a new feature', '--target-branch', 'main'], {
+      from: 'user',
+    });
 
     expect(tmuxManager.spawnTmuxSession).toHaveBeenCalledOnce();
     expect(tmuxManager.sendToTmuxSession).not.toHaveBeenCalled();
@@ -119,10 +118,9 @@ describe('req command - tech lead session routing', () => {
   it('sends prompt to existing session when session is already running', async () => {
     vi.mocked(tmuxManager.isTmuxSessionRunning).mockResolvedValue(true);
 
-    await reqCommand.parseAsync(
-      ['node', 'req', 'Add another feature', '--target-branch', 'main'],
-      { from: 'user' }
-    );
+    await reqCommand.parseAsync(['node', 'req', 'Add another feature', '--target-branch', 'main'], {
+      from: 'user',
+    });
 
     expect(tmuxManager.sendToTmuxSession).toHaveBeenCalledOnce();
     expect(tmuxManager.spawnTmuxSession).not.toHaveBeenCalled();
@@ -131,10 +129,9 @@ describe('req command - tech lead session routing', () => {
   it('sends prompt to existing session with the correct session name', async () => {
     vi.mocked(tmuxManager.isTmuxSessionRunning).mockResolvedValue(true);
 
-    await reqCommand.parseAsync(
-      ['node', 'req', 'Fix the scheduler', '--target-branch', 'main'],
-      { from: 'user' }
-    );
+    await reqCommand.parseAsync(['node', 'req', 'Fix the scheduler', '--target-branch', 'main'], {
+      from: 'user',
+    });
 
     expect(tmuxManager.sendToTmuxSession).toHaveBeenCalledWith(
       'hive-tech-lead',
@@ -145,10 +142,9 @@ describe('req command - tech lead session routing', () => {
   it('spawns session with correct session name when session is not running', async () => {
     vi.mocked(tmuxManager.isTmuxSessionRunning).mockResolvedValue(false);
 
-    await reqCommand.parseAsync(
-      ['node', 'req', 'Fix the scheduler', '--target-branch', 'main'],
-      { from: 'user' }
-    );
+    await reqCommand.parseAsync(['node', 'req', 'Fix the scheduler', '--target-branch', 'main'], {
+      from: 'user',
+    });
 
     expect(tmuxManager.spawnTmuxSession).toHaveBeenCalledWith(
       expect.objectContaining({ sessionName: 'hive-tech-lead' })
