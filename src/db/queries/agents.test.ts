@@ -402,5 +402,28 @@ describe('agents queries', () => {
 
       expect(updated?.memory_state).toBe(longMemory);
     });
+
+    it('should update browser_tab_id for Chrome tab isolation', () => {
+      const agent = createAgent(db, { type: 'intermediate', teamId });
+
+      const updated = updateAgent(db, agent.id, { browserTabId: 42 });
+
+      expect(updated?.browser_tab_id).toBe(42);
+    });
+
+    it('should clear browser_tab_id when set to null', () => {
+      const agent = createAgent(db, { type: 'intermediate', teamId });
+      updateAgent(db, agent.id, { browserTabId: 42 });
+
+      const cleared = updateAgent(db, agent.id, { browserTabId: null });
+
+      expect(cleared?.browser_tab_id).toBeNull();
+    });
+
+    it('should default browser_tab_id to null on agent creation', () => {
+      const agent = createAgent(db, { type: 'intermediate', teamId });
+
+      expect(agent.browser_tab_id).toBeNull();
+    });
   });
 });

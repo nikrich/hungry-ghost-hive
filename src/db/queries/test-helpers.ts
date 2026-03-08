@@ -25,7 +25,7 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
 
     CREATE TABLE IF NOT EXISTS agents (
       id TEXT PRIMARY KEY,
-      type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa', 'feature_test')),
+      type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa', 'feature_test', 'auditor')),
       team_id TEXT REFERENCES teams(id),
       tmux_session TEXT,
       model TEXT,
@@ -34,6 +34,7 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       memory_state TEXT,
       last_seen TIMESTAMP,
       worktree_path TEXT,
+      browser_tab_id INTEGER,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );

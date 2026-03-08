@@ -2,6 +2,7 @@
 
 import { join } from 'path';
 import type { Database } from 'sql.js';
+import { chromeTabManager } from '../cli-runtimes/chrome-tab-manager.js';
 import {
   getCliRuntimeBuilder,
   resolveRuntimeModelForCli,
@@ -697,10 +698,14 @@ export class Scheduler {
           this.removeAgentWorktree(agent.worktree_path, agent.id);
         }
 
+        // Release browser tab registration if agent had one
+        chromeTabManager.releaseTab(agent.id);
+
         updateAgent(this.db, agent.id, {
           status: 'terminated',
           currentStoryId: null,
           worktreePath: null,
+          browserTabId: null,
         });
         createLog(this.db, {
           agentId: agent.id,
@@ -851,11 +856,15 @@ export class Scheduler {
             this.removeAgentWorktree(agent.worktree_path, agent.id);
           }
 
+          // Release browser tab registration if agent had one
+          chromeTabManager.releaseTab(agent.id);
+
           // Update database
           updateAgent(this.db, agent.id, {
             status: 'terminated',
             currentStoryId: null,
             worktreePath: null,
+            browserTabId: null,
           });
 
           // Log the event

@@ -769,6 +769,7 @@ export interface AgentRow {
   last_seen: string | null;
   cli_tool: string;
   worktree_path: string | null;
+  browser_tab_id: number | null;
   created_at: string;
   updated_at: string;
 }

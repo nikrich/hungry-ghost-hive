@@ -30,6 +30,7 @@ export interface UpdateAgentInput {
   currentStoryId?: string | null;
   memoryState?: string | null;
   worktreePath?: string | null;
+  browserTabId?: number | null;
   createdAt?: string;
 }
 
@@ -121,6 +122,10 @@ export function updateAgent(
   if (input.worktreePath !== undefined) {
     updates.push('worktree_path = ?');
     values.push(input.worktreePath);
+  }
+  if (input.browserTabId !== undefined) {
+    updates.push('browser_tab_id = ?');
+    values.push(input.browserTabId !== null ? String(input.browserTabId) : null);
   }
   if (input.createdAt !== undefined) {
     updates.push('created_at = ?');
