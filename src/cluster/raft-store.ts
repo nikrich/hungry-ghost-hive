@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { ClusterEvent } from './replication.js';
+import type { RaftSnapshot, VersionVector } from './types.js';
 
 export type DurableLogEntryType =
   | 'runtime'
@@ -44,6 +45,15 @@ export interface DurableRaftLogEntry {
   created_at: string;
 }
 
+export interface CompactionResult {
+  /** Number of log entries removed */
+  entries_removed: number;
+  /** Number of log entries retained (after snapshot index) */
+  entries_retained: number;
+  /** The snapshot index */
+  snapshot_index: number;
+}
+
 interface RaftStoreOptions {
   clusterDir: string;
   nodeId: string;
@@ -52,19 +62,23 @@ interface RaftStoreOptions {
 export class RaftMetadataStore {
   private readonly statePath: string;
   private readonly logPath: string;
+  private readonly snapshotPath: string;
   private readonly nodeId: string;
 
   private state: DurableRaftState;
   private knownEventIds = new Set<string>();
+  private snapshot: RaftSnapshot | null = null;
 
   constructor(options: RaftStoreOptions) {
     this.nodeId = options.nodeId;
     this.statePath = join(options.clusterDir, 'raft-state.json');
     this.logPath = join(options.clusterDir, 'raft-log.ndjson');
+    this.snapshotPath = join(options.clusterDir, 'raft-snapshot.json');
 
     mkdirSync(options.clusterDir, { recursive: true });
 
     this.state = this.loadOrCreateState();
+    this.loadSnapshot();
     this.rebuildFromLog();
     this.persistState();
   }
@@ -179,6 +193,157 @@ export class RaftMetadataStore {
 
   hasEvent(eventId: string): boolean {
     return this.knownEventIds.has(eventId);
+  }
+
+  getSnapshot(): RaftSnapshot | null {
+    return this.snapshot;
+  }
+
+  getLogEntryCount(): number {
+    if (!existsSync(this.logPath)) return 0;
+    try {
+      const content = readFileSync(this.logPath, 'utf-8');
+      if (!content.trim()) return 0;
+      return content.split('\n').filter(Boolean).length;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Create a snapshot at the current state, capturing the version vector
+   * and known event IDs for deduplication continuity.
+   */
+  createSnapshot(versionVector: VersionVector): RaftSnapshot {
+    const snapshot: RaftSnapshot = {
+      last_included_index: this.state.last_log_index,
+      last_included_term: this.state.last_log_term,
+      version_vector: { ...versionVector },
+      known_event_ids: Array.from(this.knownEventIds),
+      created_at: new Date().toISOString(),
+    };
+
+    this.persistSnapshot(snapshot);
+    this.snapshot = snapshot;
+    return snapshot;
+  }
+
+  /**
+   * Compact the raft log by removing all entries at or before the snapshot index.
+   * Only entries after the snapshot index are retained.
+   */
+  compactLog(): CompactionResult {
+    if (!this.snapshot) {
+      return { entries_removed: 0, entries_retained: 0, snapshot_index: 0 };
+    }
+
+    const snapshotIndex = this.snapshot.last_included_index;
+
+    if (!existsSync(this.logPath)) {
+      return { entries_removed: 0, entries_retained: 0, snapshot_index: snapshotIndex };
+    }
+
+    let content: string;
+    try {
+      content = readFileSync(this.logPath, 'utf-8');
+    } catch {
+      return { entries_removed: 0, entries_retained: 0, snapshot_index: snapshotIndex };
+    }
+
+    if (!content.trim()) {
+      return { entries_removed: 0, entries_retained: 0, snapshot_index: snapshotIndex };
+    }
+
+    const lines = content.split('\n').filter(Boolean);
+    const retained: string[] = [];
+    let removed = 0;
+
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line) as Partial<DurableRaftLogEntry>;
+        const index = toNonNegativeInt(entry.index);
+        if (index > snapshotIndex) {
+          retained.push(line);
+        } else {
+          removed++;
+        }
+      } catch {
+        // Drop malformed lines during compaction
+        removed++;
+      }
+    }
+
+    // Atomic write: write to temp file then rename
+    try {
+      const temp = `${this.logPath}.tmp`;
+      writeFileSync(temp, retained.length > 0 ? retained.join('\n') + '\n' : '', 'utf-8');
+      renameSync(temp, this.logPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
+
+    return {
+      entries_removed: removed,
+      entries_retained: retained.length,
+      snapshot_index: snapshotIndex,
+    };
+  }
+
+  private loadSnapshot(): void {
+    if (!existsSync(this.snapshotPath)) return;
+
+    try {
+      const raw = readFileSync(this.snapshotPath, 'utf-8');
+      const parsed = JSON.parse(raw) as Partial<RaftSnapshot>;
+
+      if (
+        typeof parsed.last_included_index !== 'number' ||
+        typeof parsed.last_included_term !== 'number'
+      ) {
+        return;
+      }
+
+      this.snapshot = {
+        last_included_index: parsed.last_included_index,
+        last_included_term: parsed.last_included_term,
+        version_vector: parsed.version_vector || {},
+        known_event_ids: Array.isArray(parsed.known_event_ids) ? parsed.known_event_ids : [],
+        created_at: parsed.created_at || new Date().toISOString(),
+      };
+
+      // Restore known event IDs from snapshot
+      for (const id of this.snapshot.known_event_ids) {
+        this.knownEventIds.add(id);
+      }
+
+      // Ensure state reflects at least the snapshot's progress
+      this.state.last_log_index = Math.max(
+        this.state.last_log_index,
+        this.snapshot.last_included_index
+      );
+      this.state.last_log_term = Math.max(
+        this.state.last_log_term,
+        this.snapshot.last_included_term
+      );
+      this.state.commit_index = Math.max(this.state.commit_index, this.state.last_log_index);
+      this.state.last_applied = Math.max(this.state.last_applied, this.state.commit_index);
+    } catch {
+      // Ignore corrupt snapshots; the log is still authoritative.
+    }
+  }
+
+  private persistSnapshot(snapshot: RaftSnapshot): void {
+    try {
+      const temp = `${this.snapshotPath}.tmp`;
+      writeFileSync(temp, JSON.stringify(snapshot, null, 2), 'utf-8');
+      renameSync(temp, this.snapshotPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
   }
 
   private loadOrCreateState(): DurableRaftState {

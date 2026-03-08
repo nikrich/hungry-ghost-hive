@@ -319,6 +319,12 @@ const ClusterConfigSchema = z
     leader_lease_ms: z.number().int().positive().optional(),
     // Story similarity threshold [0..1] for duplicate merge detection
     story_similarity_threshold: z.number().min(0).max(1).default(0.92),
+    // Maximum raft log entries before triggering compaction (0 = disabled)
+    max_log_entries: z.number().int().nonnegative().optional(),
+    // Maximum cluster_events rows to retain after pruning (0 = disabled)
+    max_cluster_events: z.number().int().nonnegative().optional(),
+    // Minimum interval between compaction runs in milliseconds
+    compaction_interval_ms: z.number().int().nonnegative().optional(),
   })
   .superRefine((cluster, ctx) => {
     if (!cluster.enabled) return;

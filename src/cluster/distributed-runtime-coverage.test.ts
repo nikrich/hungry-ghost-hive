@@ -480,6 +480,8 @@ describe('distributed runtime sync behavior', () => {
       imported_events_applied: 0,
       merged_duplicate_stories: 0,
       durable_log_entries_appended: 0,
+      log_entries_compacted: 0,
+      cluster_events_pruned: 0,
     });
 
     db.close();

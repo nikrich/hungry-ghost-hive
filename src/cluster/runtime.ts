@@ -16,8 +16,10 @@ import {
   applyRemoteEvents,
   ensureClusterTables,
   getAllClusterEvents,
+  getClusterEventCount,
   getVersionVector,
   mergeSimilarStories,
+  pruneClusterEvents,
   scanLocalChanges,
   type ClusterEvent,
   type VersionVector,
@@ -63,6 +65,8 @@ export interface ClusterSyncResult {
   imported_events_applied: number;
   merged_duplicate_stories: number;
   durable_log_entries_appended: number;
+  log_entries_compacted: number;
+  cluster_events_pruned: number;
 }
 
 export class ClusterRuntime {
@@ -71,6 +75,7 @@ export class ClusterRuntime {
 
   private eventCache: ClusterEvent[] = [];
   private versionVectorCache: VersionVector = {};
+  private lastCompactionAt = 0;
 
   private readonly raft: RaftStateMachine;
   private readonly heartbeat: HeartbeatManager;
@@ -186,6 +191,8 @@ export class ClusterRuntime {
         imported_events_applied: 0,
         merged_duplicate_stories: 0,
         durable_log_entries_appended: 0,
+        log_entries_compacted: 0,
+        cluster_events_pruned: 0,
       };
     }
 
@@ -206,11 +213,16 @@ export class ClusterRuntime {
       getAllClusterEvents(db)
     );
 
+    // Run compaction if thresholds are met and enough time has elapsed
+    const { logCompacted, eventsPruned } = this.maybeCompact(db);
+
     return {
       local_events_emitted: localEventsBefore + localEventsAfter,
       imported_events_applied: imported,
       merged_duplicate_stories: merged,
       durable_log_entries_appended: durableLogEntriesAppended,
+      log_entries_compacted: logCompacted,
+      cluster_events_pruned: eventsPruned,
     };
   }
 
@@ -316,6 +328,48 @@ export class ClusterRuntime {
       success: true,
       peers: updated.map(p => ({ id: p.id, url: p.url })),
     };
+  }
+
+  private maybeCompact(db: Database): { logCompacted: number; eventsPruned: number } {
+    const now = Date.now();
+    const interval = this.config.compaction_interval_ms ?? 300000;
+
+    // Respect minimum interval between compaction runs
+    if (interval > 0 && now - this.lastCompactionAt < interval) {
+      return { logCompacted: 0, eventsPruned: 0 };
+    }
+
+    let logCompacted = 0;
+    let eventsPruned = 0;
+
+    // Compact raft log if threshold exceeded
+    const maxLogEntries = this.config.max_log_entries ?? 10000;
+    if (maxLogEntries > 0) {
+      const logCount = this.raft.getLogEntryCount();
+      if (logCount > maxLogEntries) {
+        const versionVector = getVersionVector(db);
+        const result = this.raft.createSnapshotAndCompact(versionVector);
+        logCompacted = result.entries_removed;
+      }
+    }
+
+    // Prune cluster_events if threshold exceeded
+    const maxEvents = this.config.max_cluster_events ?? 50000;
+    if (maxEvents > 0) {
+      const eventCount = getClusterEventCount(db);
+      if (eventCount > maxEvents) {
+        eventsPruned = pruneClusterEvents(db, maxEvents);
+        if (eventsPruned > 0) {
+          this.refreshCache(db);
+        }
+      }
+    }
+
+    if (logCompacted > 0 || eventsPruned > 0) {
+      this.lastCompactionAt = now;
+    }
+
+    return { logCompacted, eventsPruned };
   }
 
   private refreshCache(db: Database): void {

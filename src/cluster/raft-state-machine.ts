@@ -2,8 +2,9 @@
 
 import { join } from 'path';
 import type { ClusterConfig, ClusterPeerConfig } from '../config/schema.js';
-import type { DurableLogEntryType } from './raft-store.js';
+import type { CompactionResult, DurableLogEntryType } from './raft-store.js';
 import { RaftMetadataStore } from './raft-store.js';
+import type { VersionVector } from './types.js';
 
 type NodeRole = 'leader' | 'follower' | 'candidate';
 
@@ -301,6 +302,19 @@ export class RaftStateMachine {
     last_log_index: number;
   } | null {
     return this.raftStore?.getState() ?? null;
+  }
+
+  getLogEntryCount(): number {
+    return this.raftStore?.getLogEntryCount() ?? 0;
+  }
+
+  createSnapshotAndCompact(versionVector: VersionVector): CompactionResult {
+    if (!this.raftStore) {
+      return { entries_removed: 0, entries_retained: 0, snapshot_index: 0 };
+    }
+
+    this.raftStore.createSnapshot(versionVector);
+    return this.raftStore.compactLog();
   }
 
   getLeaderUrl(): string | null {
