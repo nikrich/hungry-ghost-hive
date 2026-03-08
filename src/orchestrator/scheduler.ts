@@ -1008,6 +1008,8 @@ export class Scheduler {
       const includeProgressUpdates = this.shouldIncludeProgressUpdates();
       const hiveDir = join(this.config.rootDir, '.hive');
       const techLeadSession = getTechLeadSessionName(hiveDir);
+      const chromeEnabled =
+        this.config.hiveConfig?.agents?.chrome_enabled === true && cliTool === 'claude';
       let prompt: string;
 
       if (type === 'senior') {
@@ -1018,7 +1020,7 @@ export class Scheduler {
           worktreePath,
           stories,
           targetBranch,
-          { includeProgressUpdates, techLeadSession },
+          { includeProgressUpdates, techLeadSession, chromeEnabled },
           sessionName
         );
       } else if (type === 'intermediate') {
@@ -1028,7 +1030,7 @@ export class Scheduler {
           worktreePath,
           sessionName,
           targetBranch,
-          { includeProgressUpdates, techLeadSession }
+          { includeProgressUpdates, techLeadSession, chromeEnabled }
         );
       } else if (type === 'junior') {
         prompt = generateJuniorPrompt(
@@ -1037,7 +1039,7 @@ export class Scheduler {
           worktreePath,
           sessionName,
           targetBranch,
-          { includeProgressUpdates, techLeadSession }
+          { includeProgressUpdates, techLeadSession, chromeEnabled }
         );
       } else if (type === 'feature_test' && featureTestContext) {
         prompt = generateFeatureTestPrompt(
@@ -1048,11 +1050,12 @@ export class Scheduler {
           featureTestContext.featureBranch,
           featureTestContext.requirementId,
           featureTestContext.e2eTestsPath,
-          { includeProgressUpdates, techLeadSession }
+          { includeProgressUpdates, techLeadSession, chromeEnabled }
         );
       } else if (type === 'auditor') {
         prompt = generateAuditorPrompt(sessionName, worktreePath, team?.repo_url || '', {
           techLeadSession,
+          chromeEnabled,
         });
       } else {
         prompt = generateQAPrompt(
@@ -1060,13 +1063,12 @@ export class Scheduler {
           team?.repo_url || '',
           worktreePath,
           sessionName,
-          targetBranch
+          targetBranch,
+          { chromeEnabled }
         );
       }
 
       // Build CLI command using the configured runtime
-      const chromeEnabled =
-        this.config.hiveConfig?.agents?.chrome_enabled === true && cliTool === 'claude';
       const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(
         runtimeModel,
         safetyMode,

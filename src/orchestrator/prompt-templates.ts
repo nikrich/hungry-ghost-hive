@@ -6,6 +6,8 @@ export interface AgentPromptOptions {
   includeProgressUpdates?: boolean;
   /** The tech lead tmux session name for messaging. Defaults to 'hive-tech-lead' for backwards compatibility. */
   techLeadSession?: string;
+  /** Whether Chrome browser tools are enabled for this agent session. */
+  chromeEnabled?: boolean;
 }
 
 /**
@@ -64,6 +66,35 @@ function shouldIncludeProgressUpdates(options?: AgentPromptOptions): boolean {
 
 function resolveTechLeadSession(options?: AgentPromptOptions): string {
   return options?.techLeadSession || 'hive-tech-lead';
+}
+
+/**
+ * Generate the Chrome tab isolation section for agent prompts.
+ * Instructs agents to create a dedicated tab at session start and use it
+ * exclusively for all browser operations, preventing tab interference between
+ * concurrent agents.
+ */
+function chromeTabIsolationSection(): string {
+  return `# Chrome Browser Tab Isolation
+Chrome browser tools are enabled for this session. Each agent must use its own dedicated tab to prevent interference with other agents running concurrently.
+
+## Tab Lifecycle
+
+**At session start**, create your dedicated tab immediately:
+\`\`\`
+Use mcp__claude-in-chrome__tabs_create_mcp to create a new tab.
+Store the returned tab ID — you will use it for all browser operations.
+\`\`\`
+
+**For all browser operations**, always pass your stored tab ID to every \`mcp__claude-in-chrome__*\` tool call. Never interact with tabs you did not create.
+
+**If your tab is closed externally** (tool returns a tab-not-found error):
+\`\`\`
+Call mcp__claude-in-chrome__tabs_create_mcp again to get a new tab ID.
+Update your stored tab ID and continue.
+\`\`\`
+
+**At session end**, close your tab using the browser tools to free resources.`;
 }
 
 function repositorySection(repoPath: string, repoUrl: string): string {
@@ -248,10 +279,11 @@ export function generateSeniorPrompt(
     .join('\n\n');
 
   const sessionName = sessionNameOverride || formatSeniorSessionName(teamName);
+  const chromeSection = options?.chromeEnabled ? '\n\n' + chromeTabIsolationSection() : '';
 
   return `You are a Senior Developer on Team ${teamName}.
 Your tmux session: ${sessionName}
-
+${chromeSection}
 ${repositorySection(repoPath, repoUrl)}
 
 ## Your Responsibilities
@@ -327,10 +359,11 @@ export function generateIntermediatePrompt(
   const includeProgressUpdates = shouldIncludeProgressUpdates(options);
   const techLeadSession = resolveTechLeadSession(options);
   const seniorSession = formatSeniorSessionName(teamName);
+  const chromeSection = options?.chromeEnabled ? '\n\n' + chromeTabIsolationSection() : '';
 
   return `You are an Intermediate Developer on Team ${teamName}.
 Your tmux session: ${sessionName}
-
+${chromeSection}
 ${repositorySection(repoPath, repoUrl)}
 
 ## Your Responsibilities
@@ -399,10 +432,11 @@ export function generateJuniorPrompt(
   const includeProgressUpdates = shouldIncludeProgressUpdates(options);
   const techLeadSession = resolveTechLeadSession(options);
   const seniorSession = formatSeniorSessionName(teamName);
+  const chromeSection = options?.chromeEnabled ? '\n\n' + chromeTabIsolationSection() : '';
 
   return `You are a Junior Developer on Team ${teamName}.
 Your tmux session: ${sessionName}
-
+${chromeSection}
 ${repositorySection(repoPath, repoUrl)}
 
 ## Your Responsibilities
@@ -465,11 +499,13 @@ export function generateQAPrompt(
   repoUrl: string,
   repoPath: string,
   sessionName: string,
-  targetBranch: string = 'main'
+  targetBranch: string = 'main',
+  options?: AgentPromptOptions
 ): string {
+  const chromeSection = options?.chromeEnabled ? '\n\n' + chromeTabIsolationSection() : '';
   return `You are a QA Engineer on Team ${teamName}.
 Your tmux session: ${sessionName}
-
+${chromeSection}
 ${repositorySection(repoPath, repoUrl)}
 
 ## Your Responsibilities
@@ -567,6 +603,7 @@ export function generateFeatureTestPrompt(
 ): string {
   const includeProgressUpdates = shouldIncludeProgressUpdates(options);
   const techLeadSession = resolveTechLeadSession(options);
+  const chromeSection = options?.chromeEnabled ? '\n\n' + chromeTabIsolationSection() : '';
   const reportResultsSection = includeProgressUpdates
     ? `**If all tests pass:**
 \`\`\`bash
@@ -592,7 +629,7 @@ hive msg send ${techLeadSession} "E2E tests FAILED for ${requirementId} on ${fea
 
   return `You are a Feature Test Agent on Team ${teamName}.
 Your tmux session: ${sessionName}
-
+${chromeSection}
 ${repositorySection(repoPath, repoUrl)}
 
 ## Your Mission
@@ -670,9 +707,10 @@ export function generateAuditorPrompt(
   options?: AgentPromptOptions
 ): string {
   const techLeadSession = resolveTechLeadSession(options);
+  const chromeSection = options?.chromeEnabled ? '\n\n' + chromeTabIsolationSection() : '';
   return `You are a Hive Auditor Agent.
 Your tmux session: ${sessionName}
-
+${chromeSection}
 ${repositorySection(repoPath, repoUrl)}
 
 ## Your Mission
