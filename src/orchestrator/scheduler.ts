@@ -1052,7 +1052,15 @@ export class Scheduler {
       }
 
       // Build CLI command using the configured runtime
-      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(runtimeModel, safetyMode);
+      const chromeEnabled =
+        this.config.hiveConfig?.agents?.chrome_enabled === true && cliTool === 'claude';
+      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(
+        runtimeModel,
+        safetyMode,
+        {
+          chrome: chromeEnabled,
+        }
+      );
 
       // Pass the prompt as initialPrompt so it's included as a CLI positional
       // argument via $(cat ...). This delivers the full multi-line prompt
