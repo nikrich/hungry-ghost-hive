@@ -245,7 +245,12 @@ export class Scheduler {
       const activeSeniors = getAgentsByTeam(this.db, teamId).filter(
         a => a.type === 'senior' && a.status !== 'terminated'
       );
-      const seniorSessionPrefix = generateSessionName('senior', team.name, undefined, join(this.config.rootDir, '.hive'));
+      const seniorSessionPrefix = generateSessionName(
+        'senior',
+        team.name,
+        undefined,
+        join(this.config.rootDir, '.hive')
+      );
       const indexedSeniorSessions = activeSeniors
         .map(senior => {
           if (!senior.tmux_session) return null;
@@ -1046,7 +1051,9 @@ export class Scheduler {
           { includeProgressUpdates, techLeadSession }
         );
       } else if (type === 'auditor') {
-        prompt = generateAuditorPrompt(sessionName, worktreePath, team?.repo_url || '', { techLeadSession });
+        prompt = generateAuditorPrompt(sessionName, worktreePath, team?.repo_url || '', {
+          techLeadSession,
+        });
       } else {
         prompt = generateQAPrompt(
           teamName,
