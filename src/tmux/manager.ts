@@ -4,6 +4,11 @@ import { execa } from 'execa';
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, isAbsolute, join, resolve } from 'path';
+import {
+  buildInstanceSessionName,
+  getInstancePrefix,
+  getManagerSessionName,
+} from '../utils/instance.js';
 
 // --- Named constants (extracted from inline magic numbers) ---
 
@@ -162,8 +167,12 @@ export async function listTmuxSessions(): Promise<TmuxSession[]> {
   }
 }
 
-export async function getHiveSessions(): Promise<TmuxSession[]> {
+export async function getHiveSessions(hiveDir?: string): Promise<TmuxSession[]> {
   const sessions = await listTmuxSessions();
+  if (hiveDir) {
+    const prefix = getInstancePrefix(hiveDir);
+    return sessions.filter(s => s.name.startsWith(prefix));
+  }
   return sessions.filter(s => s.name.startsWith('hive-'));
 }
 
@@ -235,8 +244,8 @@ export async function killTmuxSession(sessionName: string): Promise<void> {
   }
 }
 
-export async function killAllHiveSessions(): Promise<number> {
-  const sessions = await getHiveSessions();
+export async function killAllHiveSessions(hiveDir?: string): Promise<number> {
+  const sessions = await getHiveSessions(hiveDir);
   let killed = 0;
 
   for (const session of sessions) {
@@ -513,7 +522,15 @@ export async function autoApprovePermission(
   return false;
 }
 
-export function generateSessionName(agentType: string, teamName?: string, index?: number): string {
+export function generateSessionName(
+  agentType: string,
+  teamName?: string,
+  index?: number,
+  hiveDir?: string
+): string {
+  if (hiveDir) {
+    return buildInstanceSessionName(hiveDir, agentType, teamName, index);
+  }
   let name = `hive-${agentType}`;
   if (teamName) {
     name += `-${teamName}`;
@@ -526,12 +543,23 @@ export function generateSessionName(agentType: string, teamName?: string, index?
 
 const MANAGER_SESSION = 'hive-manager';
 
-export async function isManagerRunning(): Promise<boolean> {
-  return isTmuxSessionRunning(MANAGER_SESSION);
+export function getManagerSession(hiveDir?: string): string {
+  if (hiveDir) {
+    return getManagerSessionName(hiveDir);
+  }
+  return MANAGER_SESSION;
 }
 
-export async function startManager(interval = DEFAULT_MANAGER_INTERVAL): Promise<boolean> {
-  if (await isManagerRunning()) {
+export async function isManagerRunning(hiveDir?: string): Promise<boolean> {
+  return isTmuxSessionRunning(getManagerSession(hiveDir));
+}
+
+export async function startManager(
+  interval = DEFAULT_MANAGER_INTERVAL,
+  hiveDir?: string
+): Promise<boolean> {
+  const session = getManagerSession(hiveDir);
+  if (await isTmuxSessionRunning(session)) {
     return false; // Already running
   }
 
@@ -539,22 +567,23 @@ export async function startManager(interval = DEFAULT_MANAGER_INTERVAL): Promise
   const sessionEnv = buildTmuxSessionEnv(workDir);
 
   // Start the manager in a detached tmux session
-  await execa('tmux', ['new-session', '-d', '-s', MANAGER_SESSION, '-c', workDir], {
+  await execa('tmux', ['new-session', '-d', '-s', session, '-c', workDir], {
     env: sessionEnv,
   });
 
   // Send the manager command
   const managerCommand = `${buildHiveInvokeCommand()} manager start -i ${interval}`;
-  await execa('tmux', ['send-keys', '-t', MANAGER_SESSION, managerCommand, 'Enter']);
+  await execa('tmux', ['send-keys', '-t', session, managerCommand, 'Enter']);
 
   return true;
 }
 
-export async function stopManager(): Promise<boolean> {
-  if (!(await isManagerRunning())) {
+export async function stopManager(hiveDir?: string): Promise<boolean> {
+  const session = getManagerSession(hiveDir);
+  if (!(await isTmuxSessionRunning(session))) {
     return false; // Not running
   }
 
-  await killTmuxSession(MANAGER_SESSION);
+  await killTmuxSession(session);
   return true;
 }

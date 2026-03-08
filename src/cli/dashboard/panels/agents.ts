@@ -9,6 +9,7 @@ import type { ModelsConfig } from '../../../config/schema.js';
 import { getActiveAgents, type AgentRow } from '../../../db/queries/agents.js';
 import { getTeamById } from '../../../db/queries/teams.js';
 import { getHiveSessions } from '../../../tmux/manager.js';
+import { getManagerSessionName } from '../../../utils/instance.js';
 import { findHiveRoot, getHivePaths } from '../../../utils/paths.js';
 
 function debugLog(msg: string) {
@@ -125,8 +126,11 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
   }
 
   // Check for manager session (not in DB)
-  const hiveSessions = await getHiveSessions();
-  const managerSession = hiveSessions.find(s => s.name === 'hive-manager');
+  const hiveRoot = findHiveRoot();
+  const hDir = hiveRoot ? getHivePaths(hiveRoot).hiveDir : undefined;
+  const managerName = hDir ? getManagerSessionName(hDir) : 'hive-manager';
+  const hiveSessions = await getHiveSessions(hDir);
+  const managerSession = hiveSessions.find(s => s.name === managerName);
 
   // Build combined list - manager first if running
   const displayAgents: DisplayAgent[] = [];
@@ -137,7 +141,7 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
       id: 'manager',
       type: 'manager' as AgentRow['type'],
       team_id: null,
-      tmux_session: 'hive-manager',
+      tmux_session: managerName,
       model: '-',
       status: 'working',
       current_story_id: null,

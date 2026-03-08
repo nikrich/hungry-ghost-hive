@@ -18,8 +18,10 @@ export const assignCommand = new Command('assign')
   .action(async (options: { dryRun?: boolean }) => {
     // Track if we need to start the manager after DB is closed
     let shouldStartManager = false;
+    let savedHiveDir: string | undefined;
 
     await withHiveContext(async ({ root, paths, db }) => {
+      savedHiveDir = paths.hiveDir;
       const spinner = ora('Assigning stories...').start();
 
       try {
@@ -167,7 +169,7 @@ export const assignCommand = new Command('assign')
         // Determine if we should start the manager, but don't start it yet
         // Wait until after withHiveContext closes the DB to prevent race condition
         if (result.assigned > 0) {
-          shouldStartManager = !(await isManagerRunning());
+          shouldStartManager = !(await isManagerRunning(paths.hiveDir));
         }
 
         console.log();
@@ -185,7 +187,7 @@ export const assignCommand = new Command('assign')
     // This prevents the race condition where manager loads stale DB state
     if (shouldStartManager) {
       const spinner = ora('Starting manager daemon...').start();
-      const started = await startManager(60);
+      const started = await startManager(60, savedHiveDir);
       if (started) {
         spinner.succeed(chalk.green('Manager daemon started (checking every 60s)'));
       } else {

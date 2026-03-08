@@ -4,6 +4,8 @@ import type { StoryRow } from '../db/client.js';
 
 export interface AgentPromptOptions {
   includeProgressUpdates?: boolean;
+  /** The tech lead tmux session name for messaging. Defaults to 'hive-tech-lead' for backwards compatibility. */
+  techLeadSession?: string;
 }
 
 /**
@@ -58,6 +60,10 @@ export function formatSeniorSessionName(teamName: string): string {
 
 function shouldIncludeProgressUpdates(options?: AgentPromptOptions): boolean {
   return options?.includeProgressUpdates ?? true;
+}
+
+function resolveTechLeadSession(options?: AgentPromptOptions): string {
+  return options?.techLeadSession || 'hive-tech-lead';
 }
 
 function repositorySection(repoPath: string, repoUrl: string): string {
@@ -231,6 +237,7 @@ export function generateSeniorPrompt(
   sessionNameOverride?: string
 ): string {
   const includeProgressUpdates = shouldIncludeProgressUpdates(options);
+  const techLeadSession = resolveTechLeadSession(options);
   const storyList = stories
     .map(s => {
       const externalInfo = s.external_subtask_key
@@ -283,7 +290,7 @@ hive pr queue
 ## Communication with Tech Lead
 If you have questions or need guidance, message the Tech Lead:
 \`\`\`bash
-hive msg send hive-tech-lead "Your question here" --from ${sessionName}
+hive msg send ${techLeadSession} "Your question here" --from ${sessionName}
 \`\`\`
 
 Check for replies:
@@ -318,6 +325,7 @@ export function generateIntermediatePrompt(
   options?: AgentPromptOptions
 ): string {
   const includeProgressUpdates = shouldIncludeProgressUpdates(options);
+  const techLeadSession = resolveTechLeadSession(options);
   const seniorSession = formatSeniorSessionName(teamName);
 
   return `You are an Intermediate Developer on Team ${teamName}.
@@ -354,7 +362,7 @@ ${prSubmissionSection(sessionName, targetBranch)}
 If you have questions, message your Senior or the Tech Lead:
 \`\`\`bash
 hive msg send ${seniorSession} "Your question" --from ${sessionName}
-hive msg send hive-tech-lead "Your question" --from ${sessionName}
+hive msg send ${techLeadSession} "Your question" --from ${sessionName}
 \`\`\`
 
 Check for replies:
@@ -389,6 +397,7 @@ export function generateJuniorPrompt(
   options?: AgentPromptOptions
 ): string {
   const includeProgressUpdates = shouldIncludeProgressUpdates(options);
+  const techLeadSession = resolveTechLeadSession(options);
   const seniorSession = formatSeniorSessionName(teamName);
 
   return `You are a Junior Developer on Team ${teamName}.
@@ -425,7 +434,7 @@ ${prSubmissionSection(sessionName, targetBranch)}
 If you have questions, message your Senior or the Tech Lead:
 \`\`\`bash
 hive msg send ${seniorSession} "Your question" --from ${sessionName}
-hive msg send hive-tech-lead "Your question" --from ${sessionName}
+hive msg send ${techLeadSession} "Your question" --from ${sessionName}
 \`\`\`
 
 Check for replies:
@@ -557,6 +566,7 @@ export function generateFeatureTestPrompt(
   options?: AgentPromptOptions
 ): string {
   const includeProgressUpdates = shouldIncludeProgressUpdates(options);
+  const techLeadSession = resolveTechLeadSession(options);
   const reportResultsSection = includeProgressUpdates
     ? `**If all tests pass:**
 \`\`\`bash
@@ -572,12 +582,12 @@ Report results directly to the Tech Lead:
 
 **If all tests pass:**
 \`\`\`bash
-hive msg send hive-tech-lead "E2E tests PASSED for ${requirementId} on ${featureBranch}. [Include test summary: X passed, 0 failed. Total time: Xs]" --from ${sessionName}
+hive msg send ${techLeadSession} "E2E tests PASSED for ${requirementId} on ${featureBranch}. [Include test summary: X passed, 0 failed. Total time: Xs]" --from ${sessionName}
 \`\`\`
 
 **If any tests fail:**
 \`\`\`bash
-hive msg send hive-tech-lead "E2E tests FAILED for ${requirementId} on ${featureBranch}. [Include failure details: X passed, Y failed. Failed tests: list. Error details: summary]" --from ${sessionName}
+hive msg send ${techLeadSession} "E2E tests FAILED for ${requirementId} on ${featureBranch}. [Include failure details: X passed, Y failed. Failed tests: list. Error details: summary]" --from ${sessionName}
 \`\`\``;
 
   return `You are a Feature Test Agent on Team ${teamName}.
@@ -631,7 +641,7 @@ ${reportResultsSection}
 ## Communication
 If you encounter issues running the tests, message the Tech Lead:
 \`\`\`bash
-hive msg send hive-tech-lead "Issue running E2E tests for ${requirementId}: [describe issue]" --from ${sessionName}
+hive msg send ${techLeadSession} "Issue running E2E tests for ${requirementId}: [describe issue]" --from ${sessionName}
 \`\`\`
 
 Check for replies:
@@ -656,8 +666,10 @@ Start by checking out the feature branch and reading the TESTING.md file.`;
 export function generateAuditorPrompt(
   sessionName: string,
   repoPath: string,
-  repoUrl: string
+  repoUrl: string,
+  options?: AgentPromptOptions
 ): string {
+  const techLeadSession = resolveTechLeadSession(options);
   return `You are a Hive Auditor Agent.
 Your tmux session: ${sessionName}
 
@@ -725,7 +737,7 @@ tmux send-keys -t <session-name> Enter
 **Other unfixable issues:** Any issue you cannot resolve with the above actions.
 - Escalate to tech lead:
 \`\`\`bash
-hive msg send hive-tech-lead "AUDITOR: <description of issue, including agent id and story id>" --from ${sessionName}
+hive msg send ${techLeadSession} "AUDITOR: <description of issue, including agent id and story id>" --from ${sessionName}
 \`\`\`
 
 ### 5. Self-terminate

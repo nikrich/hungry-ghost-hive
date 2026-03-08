@@ -3,7 +3,6 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { createHash } from 'crypto';
-import { join } from 'path';
 import { ClusterRuntime, fetchLocalClusterStatus } from '../../../cluster/runtime.js';
 import { loadConfig } from '../../../config/loader.js';
 import type { HiveConfig } from '../../../config/schema.js';
@@ -26,6 +25,7 @@ import { AgentState } from '../../../state-detectors/types.js';
 import {
   captureTmuxPane,
   getHiveSessions,
+  getManagerSession,
   isManagerRunning,
   isTmuxSessionRunning,
   killTmuxSession,
@@ -34,6 +34,7 @@ import {
 import type { WithLockFn } from '../../../utils/auto-merge.js';
 import { autoMergeApprovedPRs } from '../../../utils/auto-merge.js';
 import type { CLITool } from '../../../utils/cli-commands.js';
+import { getManagerLockPath, getTechLeadSessionName } from '../../../utils/instance.js';
 import { withHiveContext, withHiveRoot } from '../../../utils/with-hive-context.js';
 import {
   agentStates,
@@ -265,7 +266,7 @@ managerCommand
     const config = loadConfig(paths.hiveDir);
     let clusterRuntime: ClusterRuntime | null = null;
 
-    const lockPath = join(paths.hiveDir, 'manager.lock');
+    const lockPath = getManagerLockPath(paths.hiveDir);
 
     // Acquire manager lock to ensure singleton
     let releaseLock: (() => Promise<void>) | null = null;
@@ -474,10 +475,12 @@ managerCommand
   .command('status')
   .description('Check if the manager daemon is running')
   .action(async () => {
-    const running = await isManagerRunning();
+    const { paths } = withHiveRoot(c => c);
+    const managerSession = getManagerSession(paths.hiveDir);
+    const running = await isManagerRunning(paths.hiveDir);
     if (running) {
-      console.log(chalk.green('Manager daemon is running (hive-manager tmux session)'));
-      console.log(chalk.gray('To view: tmux attach -t hive-manager'));
+      console.log(chalk.green(`Manager daemon is running (${managerSession} tmux session)`));
+      console.log(chalk.gray(`To view: tmux attach -t ${managerSession}`));
       console.log(chalk.gray('To stop: hive manager stop'));
     } else {
       console.log(chalk.yellow('Manager daemon is not running'));
@@ -490,7 +493,8 @@ managerCommand
   .command('stop')
   .description('Stop the manager daemon')
   .action(async () => {
-    const stopped = await stopManagerSession();
+    const { paths: stopPaths } = withHiveRoot(c => c);
+    const stopped = await stopManagerSession(stopPaths.hiveDir);
     if (stopped) {
       console.log(chalk.green('Manager daemon stopped'));
     } else {
@@ -535,8 +539,9 @@ async function managerCheck(
       const syncResult = await clusterRuntime.sync(db.db);
       if (!clusterRuntime.isLeader()) {
         const status = clusterRuntime.getStatus();
-        if (await isTmuxSessionRunning('hive-tech-lead')) {
-          await killTmuxSession('hive-tech-lead');
+        const techLeadSession = getTechLeadSessionName(paths.hiveDir);
+        if (await isTmuxSessionRunning(techLeadSession)) {
+          await killTmuxSession(techLeadSession);
         }
         const details = [];
         if (syncResult.local_events_emitted > 0) {
@@ -648,8 +653,8 @@ async function managerCheck(
 
   // Discover active tmux sessions
   verboseLogCtx(ctx, 'Step: discover hive tmux sessions');
-  const sessions = await getHiveSessions();
-  ctx.hiveSessions = sessions.filter(s => s.name.startsWith('hive-'));
+  const sessions = await getHiveSessions(ctx.paths.hiveDir);
+  ctx.hiveSessions = sessions;
   verboseLogCtx(ctx, `Discovered ${ctx.hiveSessions.length} hive session(s)`);
   await resolveOrphanedSessionEscalations(ctx);
 
@@ -966,7 +971,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
 
   // Phase 2: Per-session processing (tmux/AI outside lock, DB writes under brief locks)
   for (const session of ctx.hiveSessions) {
-    if (session.name === 'hive-manager') continue;
+    if (session.name === getManagerSession(ctx.paths.hiveDir)) continue;
 
     const agent = ctx.agentsBySessionName.get(session.name);
 

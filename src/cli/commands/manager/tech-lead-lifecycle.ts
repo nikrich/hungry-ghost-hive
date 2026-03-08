@@ -15,6 +15,7 @@ import {
   spawnTmuxSession,
 } from '../../../tmux/manager.js';
 import type { CLITool } from '../../../utils/cli-commands.js';
+import { getTechLeadSessionName } from '../../../utils/instance.js';
 import { findHiveRoot as findHiveRootFromDir, getHivePaths } from '../../../utils/paths.js';
 import { generateTechLeadPrompt } from '../req.js';
 import { detectAgentState } from './agent-monitoring.js';
@@ -150,10 +151,12 @@ export async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<vo
           activeReq.description,
           teams,
           activeReq.godmode === 1,
-          activeReq.target_branch || 'main'
+          activeReq.target_branch || 'main',
+          getTechLeadSessionName(paths.hiveDir)
         );
       }
 
+      const techLeadInbox = getTechLeadSessionName(paths.hiveDir);
       return `You are the Tech Lead of Hive, an AI development team orchestrator.
 
 You have been restarted to refresh your context. No active requirement is currently being planned.
@@ -167,7 +170,7 @@ hive status
 
 2. Check your inbox for messages from developers:
 \`\`\`bash
-hive msg inbox hive-tech-lead
+hive msg inbox ${techLeadInbox}
 \`\`\`
 
 3. If there are pending requirements, begin planning them. If all work is complete, monitor for new requirements.`;

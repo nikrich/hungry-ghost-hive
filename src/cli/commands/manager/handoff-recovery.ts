@@ -10,6 +10,7 @@ import { createLog } from '../../../db/queries/logs.js';
 import { updateRequirement } from '../../../db/queries/requirements.js';
 import { getStoriesByStatus, updateStory } from '../../../db/queries/stories.js';
 import { isTmuxSessionRunning } from '../../../tmux/manager.js';
+import { getTechLeadSessionName } from '../../../utils/instance.js';
 import {
   createManagerNudgeEnvelope,
   sendToTmuxSession,
@@ -86,14 +87,15 @@ async function nudgeTechLeadForStalledHandoff(
   estimatedCount: number
 ): Promise<boolean> {
   // Brief lock for DB read
+  const fallbackSession = getTechLeadSessionName(ctx.paths.hiveDir);
   const techLeadInfo = await ctx.withDb(async db => {
     const techLead = getTechLead(db.db);
     return techLead
       ? {
-          sessionName: techLead.tmux_session || 'hive-tech-lead',
+          sessionName: techLead.tmux_session || fallbackSession,
           cliTool: (techLead.cli_tool || 'claude') as CLITool,
         }
-      : { sessionName: 'hive-tech-lead', cliTool: 'claude' as CLITool };
+      : { sessionName: fallbackSession, cliTool: 'claude' as CLITool };
   });
 
   if (!(await isTmuxSessionRunning(techLeadInfo.sessionName))) {

@@ -92,7 +92,8 @@ export function getAgentRoleDescription(agentType: string): string {
 /**
  * Format hive msg command examples
  */
-export function formatHiveMsgCommands(agentId?: string): string {
+export function formatHiveMsgCommands(agentId?: string, techLeadSession?: string): string {
+  const tlSession = techLeadSession || 'hive-tech-lead';
   return `
 ## Communication with Hive Team
 
@@ -103,7 +104,7 @@ Use \`hive msg\` to communicate with other team members:
 hive msg send hive-senior-<team> "Your question here"
 
 # Send a message to the tech lead
-hive msg send hive-tech-lead "Your question here"
+hive msg send ${tlSession} "Your question here"
 
 # Check your inbox
 hive msg inbox ${agentId || 'your-agent-id'}

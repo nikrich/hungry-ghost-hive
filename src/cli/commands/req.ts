@@ -15,6 +15,7 @@ import { createLog } from '../../db/queries/logs.js';
 import { createRequirement, updateRequirement } from '../../db/queries/requirements.js';
 import { getAllTeams } from '../../db/queries/teams.js';
 import { isTmuxAvailable, spawnTmuxSession } from '../../tmux/manager.js';
+import { getTechLeadSessionName } from '../../utils/instance.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 import { startDashboard } from '../dashboard/index.js';
 
@@ -209,14 +210,15 @@ export const reqCommand = new Command('req')
           });
 
           // Spawn Tech Lead tmux session
-          const sessionName = `hive-tech-lead`;
+          const sessionName = getTechLeadSessionName(paths.hiveDir);
           const techLeadPrompt = generateTechLeadPrompt(
             req.id,
             title,
             description,
             teams,
             options.godmode,
-            targetBranch
+            targetBranch,
+            sessionName
           );
 
           try {
@@ -321,8 +323,10 @@ export function generateTechLeadPrompt(
   description: string,
   teams: { id: string; name: string; repo_path: string; repo_url: string }[],
   godmode?: boolean,
-  targetBranch?: string
+  targetBranch?: string,
+  techLeadSession?: string
 ): string {
+  const tlSession = techLeadSession || 'hive-tech-lead';
   const teamList = teams.map(t => `- ${t.name}: ${t.repo_path} (${t.repo_url})`).join('\n');
   const godmodeNotice = godmode
     ? `
@@ -387,7 +391,7 @@ The SQLite database is at .hive/hive.db
 
 Check your inbox for messages from developers:
 \`\`\`bash
-hive msg inbox hive-tech-lead
+hive msg inbox ${tlSession}
 \`\`\`
 
 Read a specific message:
@@ -400,7 +404,7 @@ Reply to a message:
 hive msg reply <msg-id> "Your response here"
 \`\`\`
 
-**IMPORTANT:** Periodically run \`hive msg inbox hive-tech-lead\` to check if any developers need guidance. Answer their questions promptly to keep the team unblocked.
+**IMPORTANT:** Periodically run \`hive msg inbox ${tlSession}\` to check if any developers need guidance. Answer their questions promptly to keep the team unblocked.
 
 When done planning, update the requirement status to 'planned' and run \`hive assign\` to spawn Senior developers who will implement the stories.
 `;

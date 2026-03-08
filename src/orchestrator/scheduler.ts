@@ -1,5 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
+import { join } from 'path';
 import type { Database } from 'sql.js';
 import {
   getCliRuntimeBuilder,
@@ -45,6 +46,7 @@ import {
   spawnTmuxSession,
   startManager,
 } from '../tmux/manager.js';
+import { getTechLeadSessionName } from '../utils/instance.js';
 import * as logger from '../utils/logger.js';
 import { selectAgentWithLeastWorkload } from './agent-selector.js';
 import { getCapacityPoints, selectStoriesForCapacity } from './capacity-planner.js';
@@ -243,7 +245,7 @@ export class Scheduler {
       const activeSeniors = getAgentsByTeam(this.db, teamId).filter(
         a => a.type === 'senior' && a.status !== 'terminated'
       );
-      const seniorSessionPrefix = generateSessionName('senior', team.name);
+      const seniorSessionPrefix = generateSessionName('senior', team.name, undefined, join(this.config.rootDir, '.hive'));
       const indexedSeniorSessions = activeSeniors
         .map(senior => {
           if (!senior.tmux_session) return null;
@@ -670,7 +672,7 @@ export class Scheduler {
     `
     );
 
-    const liveSessions = await getHiveSessions();
+    const liveSessions = await getHiveSessions(join(this.config.rootDir, '.hive'));
     const liveSessionNames = new Set(liveSessions.map(s => s.name));
 
     let terminated = 0;
@@ -885,8 +887,9 @@ export class Scheduler {
   }
 
   private async ensureManagerRunning(): Promise<void> {
-    if (!(await isManagerRunning())) {
-      await startManager(DEFAULT_MANAGER_INTERVAL_SECONDS);
+    const hiveDir = join(this.config.rootDir, '.hive');
+    if (!(await isManagerRunning(hiveDir))) {
+      await startManager(DEFAULT_MANAGER_INTERVAL_SECONDS, hiveDir);
     }
   }
 
@@ -907,10 +910,11 @@ export class Scheduler {
     }
   ): Promise<AgentRow> {
     // Auditor uses a timestamp-based session name since it's ephemeral
+    const hiveDir = join(this.config.rootDir, '.hive');
     const sessionName =
       type === 'auditor'
-        ? `hive-auditor-${Date.now()}`
-        : generateSessionName(type, teamName, index);
+        ? generateSessionName('auditor', `${Date.now()}`, undefined, hiveDir)
+        : generateSessionName(type, teamName, index, hiveDir);
 
     // Prevent creating duplicate agents on same tmux session (for senior agents)
     if (type === 'senior') {
@@ -997,6 +1001,8 @@ export class Scheduler {
       // Build the initial prompt for this agent type
       const team = getTeamById(this.db, teamId);
       const includeProgressUpdates = this.shouldIncludeProgressUpdates();
+      const hiveDir = join(this.config.rootDir, '.hive');
+      const techLeadSession = getTechLeadSessionName(hiveDir);
       let prompt: string;
 
       if (type === 'senior') {
@@ -1007,7 +1013,7 @@ export class Scheduler {
           worktreePath,
           stories,
           targetBranch,
-          { includeProgressUpdates },
+          { includeProgressUpdates, techLeadSession },
           sessionName
         );
       } else if (type === 'intermediate') {
@@ -1017,7 +1023,7 @@ export class Scheduler {
           worktreePath,
           sessionName,
           targetBranch,
-          { includeProgressUpdates }
+          { includeProgressUpdates, techLeadSession }
         );
       } else if (type === 'junior') {
         prompt = generateJuniorPrompt(
@@ -1026,7 +1032,7 @@ export class Scheduler {
           worktreePath,
           sessionName,
           targetBranch,
-          { includeProgressUpdates }
+          { includeProgressUpdates, techLeadSession }
         );
       } else if (type === 'feature_test' && featureTestContext) {
         prompt = generateFeatureTestPrompt(
@@ -1037,10 +1043,10 @@ export class Scheduler {
           featureTestContext.featureBranch,
           featureTestContext.requirementId,
           featureTestContext.e2eTestsPath,
-          { includeProgressUpdates }
+          { includeProgressUpdates, techLeadSession }
         );
       } else if (type === 'auditor') {
-        prompt = generateAuditorPrompt(sessionName, worktreePath, team?.repo_url || '');
+        prompt = generateAuditorPrompt(sessionName, worktreePath, team?.repo_url || '', { techLeadSession });
       } else {
         prompt = generateQAPrompt(
           teamName,
