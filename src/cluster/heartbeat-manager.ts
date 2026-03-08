@@ -7,6 +7,7 @@ interface HeartbeatRequest {
   term: number;
   leader_id: string;
   fencing_token: number;
+  peers?: Array<{ id: string; url: string }>;
 }
 
 interface HeartbeatResponse {
@@ -20,6 +21,7 @@ export interface HeartbeatManagerDeps {
   postJson: <T>(peer: ClusterPeerConfig, path: string, body: unknown) => Promise<T | null>;
   isActive: () => boolean;
   handleBackgroundError: (error: unknown) => void;
+  onPeersUpdated?: (peers: ClusterPeerConfig[]) => void;
 }
 
 export class HeartbeatManager {
@@ -49,21 +51,23 @@ export class HeartbeatManager {
     if (!this.deps.isActive()) return;
 
     const { raft } = this.deps;
+    const peers = raft.getPeers();
 
     const heartbeat: HeartbeatRequest = {
       term: raft.currentTerm,
       leader_id: this.config.node_id,
       fencing_token: raft.getFencingToken(),
+      peers: peers.map(p => ({ id: p.id, url: p.url })),
     };
 
     raft.appendDurableEntry('heartbeat_sent', {
       term: raft.currentTerm,
       leader_id: this.config.node_id,
-      peer_count: this.config.peers.filter(peer => peer.id !== this.config.node_id).length,
+      peer_count: peers.filter(peer => peer.id !== this.config.node_id).length,
     });
 
     await Promise.all(
-      this.config.peers
+      peers
         .filter(peer => peer.id !== this.config.node_id)
         .map(async peer => {
           const response = await this.deps.postJson<HeartbeatResponse>(
@@ -115,6 +119,16 @@ export class HeartbeatManager {
     raft.lastHeartbeatReceivedAt = Date.now();
     raft.resetElectionDeadline();
 
+    // Apply peer list from leader if present
+    const requestPeers = (request as { peers?: unknown }).peers;
+    if (Array.isArray(requestPeers)) {
+      const parsed = parsePeerList(requestPeers);
+      if (parsed.length > 0) {
+        raft.setPeers(parsed);
+        this.deps.onPeersUpdated?.(parsed);
+      }
+    }
+
     if (changed) {
       raft.appendDurableEntry('heartbeat_received', {
         term,
@@ -125,4 +139,16 @@ export class HeartbeatManager {
 
     return { term: raft.currentTerm, success: true, fencing_token: raft.getFencingToken() };
   }
+}
+
+function parsePeerList(input: unknown[]): ClusterPeerConfig[] {
+  const peers: ClusterPeerConfig[] = [];
+  for (const item of input) {
+    if (!item || typeof item !== 'object') continue;
+    const p = item as { id?: unknown; url?: unknown };
+    if (typeof p.id === 'string' && typeof p.url === 'string') {
+      peers.push({ id: p.id, url: p.url });
+    }
+  }
+  return peers;
 }

@@ -31,6 +31,9 @@ export class RaftStateMachine {
   leaderId: string | null = null;
   lastHeartbeatReceivedAt = 0;
 
+  /** Dynamic peer list that can be updated at runtime via membership changes. */
+  private dynamicPeers: ClusterPeerConfig[] | null = null;
+
   private electionDeadline = 0;
   private electionInFlight = false;
   private electionTimer: NodeJS.Timeout | null = null;
@@ -40,6 +43,16 @@ export class RaftStateMachine {
     private readonly config: ClusterConfig,
     private readonly deps: RaftStateMachineDeps
   ) {}
+
+  /** Returns the active peer list (dynamic if set, otherwise static config). */
+  getPeers(): ClusterPeerConfig[] {
+    return this.dynamicPeers ?? this.config.peers;
+  }
+
+  /** Replaces the dynamic peer list. */
+  setPeers(peers: ClusterPeerConfig[]): void {
+    this.dynamicPeers = peers;
+  }
 
   /** Returns the leader lease window in milliseconds. */
   get leaderLeaseDurationMs(): number {
@@ -137,7 +150,7 @@ export class RaftStateMachine {
 
     try {
       await Promise.all(
-        this.config.peers
+        this.getPeers()
           .filter(peer => peer.id !== this.config.node_id)
           .map(async peer => {
             const response = await this.deps.postJson<VoteResponse>(
@@ -240,7 +253,7 @@ export class RaftStateMachine {
   }
 
   quorum(): number {
-    const nodes = this.config.peers.length + 1;
+    const nodes = this.getPeers().length + 1;
     return Math.floor(nodes / 2) + 1;
   }
 
@@ -294,7 +307,7 @@ export class RaftStateMachine {
     if (!this.leaderId) return null;
     if (this.leaderId === this.config.node_id) return this.config.public_url;
 
-    const peer = this.config.peers.find(item => item.id === this.leaderId);
+    const peer = this.getPeers().find(item => item.id === this.leaderId);
     return peer?.url || null;
   }
 }

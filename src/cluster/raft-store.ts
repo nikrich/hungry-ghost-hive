@@ -13,7 +13,8 @@ export type DurableLogEntryType =
   | 'heartbeat_sent'
   | 'heartbeat_received'
   | 'state_transition'
-  | 'cluster_event';
+  | 'cluster_event'
+  | 'membership_change';
 
 export interface DurableRaftState {
   node_id: string;
