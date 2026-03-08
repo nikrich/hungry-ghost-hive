@@ -4,6 +4,7 @@
 export type {
   ClusterEvent,
   ClusterEventVersion,
+  RaftSnapshot,
   ReplicatedTable,
   ReplicationOp,
   VersionVector,
@@ -13,8 +14,10 @@ export type {
 export {
   ensureClusterTables,
   getAllClusterEvents,
+  getClusterEventCount,
   getDeltaEvents,
   getVersionVector,
+  pruneClusterEvents,
 } from './events.js';
 
 // Re-export sync functions

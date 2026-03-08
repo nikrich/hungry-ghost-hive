@@ -92,5 +92,18 @@ export interface TableAdapter {
   delete: (db: Database, rowId: string) => void;
 }
 
+export interface RaftSnapshot {
+  /** Log index at which this snapshot was taken */
+  last_included_index: number;
+  /** Raft term at the snapshot point */
+  last_included_term: number;
+  /** Version vector capturing all actors' progress at snapshot time */
+  version_vector: VersionVector;
+  /** Known event IDs at the time of snapshotting (for deduplication) */
+  known_event_ids: string[];
+  /** ISO timestamp when the snapshot was created */
+  created_at: string;
+}
+
 // Re-import Database type for TableAdapter interface
 import type { Database } from 'sql.js';

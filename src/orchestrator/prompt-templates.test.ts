@@ -890,3 +890,190 @@ describe('Prompt Templates', () => {
     });
   });
 });
+
+describe('Chrome Tab Isolation', () => {
+  const teamName = 'TestTeam';
+  const repoUrl = 'https://github.com/test/repo.git';
+  const repoPath = 'repos/test-repo';
+  const sessionName = 'hive-test-session';
+
+  const CHROME_TAB_MARKER = 'Chrome Browser Tab Isolation';
+  const CHROME_TAB_CREATE = 'tabs_create_mcp';
+
+  describe('generateSeniorPrompt', () => {
+    it('should include chrome tab isolation section when chromeEnabled is true', () => {
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, [], 'main', {
+        chromeEnabled: true,
+      });
+      expect(prompt).toContain(CHROME_TAB_MARKER);
+      expect(prompt).toContain(CHROME_TAB_CREATE);
+    });
+
+    it('should not include chrome tab isolation section when chromeEnabled is false', () => {
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, [], 'main', {
+        chromeEnabled: false,
+      });
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+
+    it('should not include chrome tab isolation section when chromeEnabled is not set', () => {
+      const prompt = generateSeniorPrompt(teamName, repoUrl, repoPath, []);
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+  });
+
+  describe('generateIntermediatePrompt', () => {
+    it('should include chrome tab isolation section when chromeEnabled is true', () => {
+      const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName, 'main', {
+        chromeEnabled: true,
+      });
+      expect(prompt).toContain(CHROME_TAB_MARKER);
+      expect(prompt).toContain(CHROME_TAB_CREATE);
+    });
+
+    it('should not include chrome tab isolation section when chromeEnabled is false', () => {
+      const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName, 'main', {
+        chromeEnabled: false,
+      });
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+
+    it('should not include chrome tab isolation section when options not provided', () => {
+      const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName);
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+  });
+
+  describe('generateJuniorPrompt', () => {
+    it('should include chrome tab isolation section when chromeEnabled is true', () => {
+      const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName, 'main', {
+        chromeEnabled: true,
+      });
+      expect(prompt).toContain(CHROME_TAB_MARKER);
+      expect(prompt).toContain(CHROME_TAB_CREATE);
+    });
+
+    it('should not include chrome tab isolation section when chromeEnabled is false', () => {
+      const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName, 'main', {
+        chromeEnabled: false,
+      });
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+
+    it('should not include chrome tab isolation section when options not provided', () => {
+      const prompt = generateJuniorPrompt(teamName, repoUrl, repoPath, sessionName);
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+  });
+
+  describe('generateQAPrompt', () => {
+    it('should include chrome tab isolation section when chromeEnabled is true', () => {
+      const prompt = generateQAPrompt(teamName, repoUrl, repoPath, sessionName, 'main', {
+        chromeEnabled: true,
+      });
+      expect(prompt).toContain(CHROME_TAB_MARKER);
+      expect(prompt).toContain(CHROME_TAB_CREATE);
+    });
+
+    it('should not include chrome tab isolation section when chromeEnabled is false', () => {
+      const prompt = generateQAPrompt(teamName, repoUrl, repoPath, sessionName, 'main', {
+        chromeEnabled: false,
+      });
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+
+    it('should not include chrome tab isolation section when options not provided', () => {
+      const prompt = generateQAPrompt(teamName, repoUrl, repoPath, sessionName);
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+  });
+
+  describe('generateFeatureTestPrompt', () => {
+    it('should include chrome tab isolation section when chromeEnabled is true', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        'feature/test',
+        'REQ-001',
+        'e2e/tests',
+        { chromeEnabled: true }
+      );
+      expect(prompt).toContain(CHROME_TAB_MARKER);
+      expect(prompt).toContain(CHROME_TAB_CREATE);
+    });
+
+    it('should not include chrome tab isolation section when chromeEnabled is false', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        'feature/test',
+        'REQ-001',
+        'e2e/tests',
+        { chromeEnabled: false }
+      );
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+
+    it('should not include chrome tab isolation section when options not provided', () => {
+      const prompt = generateFeatureTestPrompt(
+        teamName,
+        repoUrl,
+        repoPath,
+        sessionName,
+        'feature/test',
+        'REQ-001',
+        'e2e/tests'
+      );
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+  });
+
+  describe('generateAuditorPrompt', () => {
+    it('should include chrome tab isolation section when chromeEnabled is true', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl, {
+        chromeEnabled: true,
+      });
+      expect(prompt).toContain(CHROME_TAB_MARKER);
+      expect(prompt).toContain(CHROME_TAB_CREATE);
+    });
+
+    it('should not include chrome tab isolation section when chromeEnabled is false', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl, {
+        chromeEnabled: false,
+      });
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+
+    it('should not include chrome tab isolation section when options not provided', () => {
+      const prompt = generateAuditorPrompt(sessionName, repoPath, repoUrl);
+      expect(prompt).not.toContain(CHROME_TAB_MARKER);
+    });
+  });
+
+  describe('tab isolation instructions content', () => {
+    it('should instruct agents to store and reuse tab ID', () => {
+      const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName, 'main', {
+        chromeEnabled: true,
+      });
+      expect(prompt).toContain('tab ID');
+    });
+
+    it('should instruct agents to recreate tab when closed externally', () => {
+      const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName, 'main', {
+        chromeEnabled: true,
+      });
+      expect(prompt).toContain('closed externally');
+    });
+
+    it('should warn agents not to use other agents tabs', () => {
+      const prompt = generateIntermediatePrompt(teamName, repoUrl, repoPath, sessionName, 'main', {
+        chromeEnabled: true,
+      });
+      expect(prompt).toContain('Never interact with tabs you did not create');
+    });
+  });
+});
