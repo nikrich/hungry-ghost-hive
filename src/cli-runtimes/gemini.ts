@@ -1,14 +1,23 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { CliRuntimeBuilder, RuntimeSafetyMode } from './types.js';
+import { CliRuntimeBuilder, RuntimeOptions, RuntimeSafetyMode } from './types.js';
 
 export class GeminiRuntimeBuilder implements CliRuntimeBuilder {
-  buildSpawnCommand(model: string, safetyMode: RuntimeSafetyMode): string[] {
+  buildSpawnCommand(
+    model: string,
+    safetyMode: RuntimeSafetyMode,
+    _options?: RuntimeOptions
+  ): string[] {
     const sandboxMode = safetyMode === 'safe' ? 'workspace-write' : 'none';
     return ['gemini', '--model', model, '--sandbox', sandboxMode];
   }
 
-  buildResumeCommand(model: string, sessionId: string, safetyMode: RuntimeSafetyMode): string[] {
+  buildResumeCommand(
+    model: string,
+    sessionId: string,
+    safetyMode: RuntimeSafetyMode,
+    _options?: RuntimeOptions
+  ): string[] {
     const sandboxMode = safetyMode === 'safe' ? 'workspace-write' : 'none';
     return ['gemini', '--model', model, '--sandbox', sandboxMode, '--resume', sessionId];
   }

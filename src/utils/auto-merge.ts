@@ -29,6 +29,7 @@ const PR_MERGE_TIMEOUT_MS = 60000;
 interface GitHubPRState {
   state: string;
   mergeable: string;
+  mergeStateStatus: string;
 }
 
 /**
@@ -149,6 +150,8 @@ export async function autoMergeApprovedPRs(
     claimed: ClaimedPR;
     outcome:
       | { type: 'merged' }
+      | { type: 'auto_merge_pending' }
+      | { type: 'branch_updated' }
       | { type: 'already_closed'; prState: GitHubPRState }
       | { type: 'conflicts' }
       | { type: 'unknown_state' }
@@ -163,10 +166,9 @@ export async function autoMergeApprovedPRs(
     try {
       // Check PR state
       let prState: GitHubPRState;
-      let mergeableStatus: boolean;
       try {
         const prViewOutput = execSync(
-          `gh pr view ${pr.github_pr_number} --json state,mergeable${repoFlag}`,
+          `gh pr view ${pr.github_pr_number} --json state,mergeable,mergeStateStatus${repoFlag}`,
           {
             stdio: 'pipe',
             cwd: repoCwd,
@@ -175,7 +177,6 @@ export async function autoMergeApprovedPRs(
           }
         );
         prState = JSON.parse(prViewOutput);
-        mergeableStatus = prState.mergeable === 'MERGEABLE';
       } catch {
         results.push({ claimed, outcome: { type: 'unknown_state' } });
         continue;
@@ -186,7 +187,22 @@ export async function autoMergeApprovedPRs(
         continue;
       }
 
-      if (!mergeableStatus) {
+      // Update stale branches that are behind the base branch
+      if (prState.mergeStateStatus === 'BEHIND') {
+        try {
+          execSync(`gh pr update-branch ${pr.github_pr_number}${repoFlag}`, {
+            stdio: 'pipe',
+            cwd: repoCwd,
+            timeout: PR_MERGE_TIMEOUT_MS,
+          });
+          results.push({ claimed, outcome: { type: 'branch_updated' } });
+        } catch {
+          results.push({ claimed, outcome: { type: 'unknown_state' } });
+        }
+        continue;
+      }
+
+      if (prState.mergeable !== 'MERGEABLE') {
         results.push({ claimed, outcome: { type: 'conflicts' } });
         continue;
       }
@@ -198,7 +214,32 @@ export async function autoMergeApprovedPRs(
           cwd: repoCwd,
           timeout: PR_MERGE_TIMEOUT_MS,
         });
-        results.push({ claimed, outcome: { type: 'merged' } });
+
+        // Verify actual merge state: --auto may queue the merge rather than merge immediately
+        let postMergeState: GitHubPRState;
+        try {
+          const postMergeOutput = execSync(
+            `gh pr view ${pr.github_pr_number} --json state,mergeable,mergeStateStatus${repoFlag}`,
+            {
+              stdio: 'pipe',
+              cwd: repoCwd,
+              encoding: 'utf-8',
+              timeout: PR_STATE_CHECK_TIMEOUT_MS,
+            }
+          );
+          postMergeState = JSON.parse(postMergeOutput);
+        } catch {
+          // If we can't re-check, assume it merged (command succeeded)
+          results.push({ claimed, outcome: { type: 'merged' } });
+          continue;
+        }
+
+        if (postMergeState.state === 'MERGED') {
+          results.push({ claimed, outcome: { type: 'merged' } });
+        } else {
+          // PR is OPEN with auto-merge enabled — GitHub will merge when CI passes
+          results.push({ claimed, outcome: { type: 'auto_merge_pending' } });
+        }
       } catch (mergeErr) {
         results.push({
           claimed,
@@ -337,6 +378,38 @@ export async function autoMergeApprovedPRs(
             });
             syncStatusForStory(root, phaseDb.db, storyId, 'merged');
           }
+          break;
+        }
+
+        case 'auto_merge_pending': {
+          createLog(phaseDb.db, {
+            agentId: 'manager',
+            storyId: pr.story_id || undefined,
+            eventType: 'PR_MERGE_SKIPPED',
+            status: 'info',
+            message: `PR #${pr.github_pr_number} is queued for auto-merge, waiting for CI checks to complete`,
+            metadata: { pr_id: pr.id },
+          });
+          break;
+        }
+
+        case 'branch_updated': {
+          // Reset to 'approved' so the PR is retried on the next cycle once CI passes
+          await withTransaction(
+            phaseDb.db,
+            () => {
+              updatePullRequest(phaseDb.db, pr.id, { status: 'approved' });
+              createLog(phaseDb.db, {
+                agentId: 'manager',
+                storyId: pr.story_id || undefined,
+                eventType: 'PR_MERGE_SKIPPED',
+                status: 'info',
+                message: `Updated stale branch for PR #${pr.github_pr_number} (was behind base branch), will retry merge`,
+                metadata: { pr_id: pr.id },
+              });
+            },
+            () => phaseDb.save()
+          );
           break;
         }
 

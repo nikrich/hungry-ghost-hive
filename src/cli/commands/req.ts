@@ -221,9 +221,12 @@ export const reqCommand = new Command('req')
 
           try {
             // Build CLI command using the configured runtime for Tech Lead
+            const chromeEnabled =
+              config.agents?.chrome_enabled === true && techLeadCliTool === 'claude';
             const commandArgs = getCliRuntimeBuilder(techLeadCliTool).buildSpawnCommand(
               techLeadModel,
-              techLeadSafetyMode
+              techLeadSafetyMode,
+              { chrome: chromeEnabled }
             );
 
             // Pass the prompt as initialPrompt so it's included as a CLI positional
