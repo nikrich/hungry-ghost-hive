@@ -90,6 +90,7 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       external_subtask_id TEXT,
       external_provider TEXT,
       in_sprint INTEGER DEFAULT 0,
+      markdown_path TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );

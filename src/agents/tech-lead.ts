@@ -196,23 +196,35 @@ Respond in JSON format:
     const storyIds: string[] = [];
     const storyIdMap: Record<string, string> = {};
 
+    const hiveRoot = findHiveRoot(this.workDir);
+    const storiesDir = hiveRoot ? getHivePaths(hiveRoot).storiesDir : undefined;
+
     for (const story of analysis.stories) {
       const team = this.teams.find(t => t.name === story.teamName);
 
-      const storyRow = createStory(this.db, {
-        requirementId: this.requirement!.id,
-        teamId: team?.id,
-        title: story.title,
-        description: story.description,
-        acceptanceCriteria: story.acceptanceCriteria,
-      });
+      const storyRow = createStory(
+        this.db,
+        {
+          requirementId: this.requirement!.id,
+          teamId: team?.id,
+          title: story.title,
+          description: story.description,
+          acceptanceCriteria: story.acceptanceCriteria,
+        },
+        storiesDir
+      );
 
       // Update with complexity
-      updateStory(this.db, storyRow.id, {
-        complexityScore: story.estimatedComplexity,
-        storyPoints: story.estimatedComplexity,
-        status: 'estimated',
-      });
+      updateStory(
+        this.db,
+        storyRow.id,
+        {
+          complexityScore: story.estimatedComplexity,
+          storyPoints: story.estimatedComplexity,
+          status: 'estimated',
+        },
+        storiesDir
+      );
 
       storyIds.push(storyRow.id);
       storyIdMap[story.title] = storyRow.id;

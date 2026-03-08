@@ -121,7 +121,7 @@ This will help with story estimation and implementation.`;
     updateStory(this.db, story.id, {
       assignedAgentId: this.agentId,
       status: 'in_progress',
-    });
+    }, this.storiesDir);
     updateAgent(this.db, this.agentId, { currentStoryId: story.id });
 
     // Create feature branch
@@ -165,7 +165,7 @@ Let me know when you're ready to proceed or if you have questions.`;
     updateStory(this.db, story.id, {
       branchName,
       status: 'review',
-    });
+    }, this.storiesDir);
 
     this.log('STORY_COMPLETED', `Implementation complete, ready for review`, {
       storyId: story.id,
@@ -176,7 +176,7 @@ Let me know when you're ready to proceed or if you have questions.`;
   private async reviewStory(story: StoryRow): Promise<void> {
     if (story.assigned_agent_id === this.agentId) {
       // Self-review, move to QA
-      updateStory(this.db, story.id, { status: 'qa' });
+      updateStory(this.db, story.id, { status: 'qa' }, this.storiesDir);
       this.log('STORY_REVIEW_REQUESTED', 'Self-implemented, moving to QA', { storyId: story.id });
       return;
     }
@@ -207,14 +207,14 @@ If issues found, describe them. If approved, confirm.`;
 
     if (hasIssues) {
       // Send back for fixes
-      updateStory(this.db, story.id, { status: 'in_progress' });
+      updateStory(this.db, story.id, { status: 'in_progress' }, this.storiesDir);
       this.log('STORY_PROGRESS_UPDATE', 'Review issues found, sent back for fixes', {
         storyId: story.id,
         review: review.substring(0, 200),
       });
     } else {
       // Approve and move to QA
-      updateStory(this.db, story.id, { status: 'qa' });
+      updateStory(this.db, story.id, { status: 'qa' }, this.storiesDir);
       this.log('STORY_REVIEW_REQUESTED', 'Review passed, moving to QA', { storyId: story.id });
     }
   }

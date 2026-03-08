@@ -3,6 +3,7 @@
 import { nanoid } from 'nanoid';
 import type { Database } from 'sql.js';
 import { queryAll, queryOne, run, type StoryRow } from '../client.js';
+import { deleteStoryMarkdown, writeStoryMarkdown } from '../../utils/story-markdown.js';
 
 export type { StoryRow };
 
@@ -55,7 +56,11 @@ export interface UpdateStoryInput {
   inSprint?: boolean;
 }
 
-export function createStory(db: Database, input: CreateStoryInput): StoryRow {
+export function createStory(
+  db: Database,
+  input: CreateStoryInput,
+  storiesDir?: string
+): StoryRow {
   const id = `STORY-${nanoid(6).toUpperCase()}`;
   const acceptanceCriteria = input.acceptanceCriteria
     ? JSON.stringify(input.acceptanceCriteria)
@@ -80,7 +85,15 @@ export function createStory(db: Database, input: CreateStoryInput): StoryRow {
     ]
   );
 
-  return getStoryById(db, id)!;
+  const story = getStoryById(db, id)!;
+
+  if (storiesDir) {
+    const markdownPath = writeStoryMarkdown(storiesDir, story);
+    run(db, 'UPDATE stories SET markdown_path = ? WHERE id = ?', [markdownPath, id]);
+    story.markdown_path = markdownPath;
+  }
+
+  return story;
 }
 
 export function getStoryById(db: Database, id: string): StoryRow | undefined {
@@ -170,7 +183,8 @@ export function getStoryPointsByTeam(db: Database, teamId: string): number {
 export function updateStory(
   db: Database,
   id: string,
-  input: UpdateStoryInput
+  input: UpdateStoryInput,
+  storiesDir?: string
 ): StoryRow | undefined {
   const updates: string[] = ['updated_at = ?'];
   const values: (string | number | null)[] = [new Date().toISOString()];
@@ -271,10 +285,24 @@ export function updateStory(
 
   values.push(id);
   run(db, `UPDATE stories SET ${updates.join(', ')} WHERE id = ?`, values);
-  return getStoryById(db, id);
+
+  const updatedStory = getStoryById(db, id);
+
+  if (storiesDir && updatedStory) {
+    const markdownPath = writeStoryMarkdown(storiesDir, updatedStory);
+    if (updatedStory.markdown_path !== markdownPath) {
+      run(db, 'UPDATE stories SET markdown_path = ? WHERE id = ?', [markdownPath, id]);
+      updatedStory.markdown_path = markdownPath;
+    }
+  }
+
+  return updatedStory;
 }
 
-export function deleteStory(db: Database, id: string): void {
+export function deleteStory(db: Database, id: string, storiesDir?: string): void {
+  if (storiesDir) {
+    deleteStoryMarkdown(storiesDir, id);
+  }
   run(db, 'DELETE FROM story_dependencies WHERE story_id = ? OR depends_on_story_id = ?', [id, id]);
   run(db, 'DELETE FROM stories WHERE id = ?', [id]);
 }

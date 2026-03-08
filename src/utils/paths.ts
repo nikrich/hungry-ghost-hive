@@ -7,6 +7,7 @@ export const HIVE_DIR_NAME = '.hive';
 export const REPOS_DIR_NAME = 'repos';
 export const AGENTS_DIR_NAME = 'agents';
 export const LOGS_DIR_NAME = 'logs';
+export const STORIES_DIR_NAME = 'stories';
 
 export interface HivePaths {
   root: string;
@@ -16,6 +17,7 @@ export interface HivePaths {
   agentsDir: string;
   logsDir: string;
   reposDir: string;
+  storiesDir: string;
 }
 
 export function findHiveRoot(startDir: string = process.cwd()): string | null {
@@ -43,6 +45,7 @@ export function getHivePaths(rootDir: string): HivePaths {
     agentsDir: join(hiveDir, AGENTS_DIR_NAME),
     logsDir: join(hiveDir, LOGS_DIR_NAME),
     reposDir: join(rootDir, REPOS_DIR_NAME),
+    storiesDir: join(hiveDir, STORIES_DIR_NAME),
   };
 }
 
