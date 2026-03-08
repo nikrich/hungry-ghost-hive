@@ -14,7 +14,7 @@ import {
  * Detect and recover orphaned stories (assigned to terminated agents).
  * Returns the story IDs that were recovered.
  */
-export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): string[] {
+export function detectAndRecoverOrphanedStories(db: Database, rootDir: string, storiesDir?: string): string[] {
   const orphanedAssignments = getStoriesWithOrphanedAssignments(db);
   const staleInProgressStories = getStaleInProgressStoriesWithoutAssignment(db);
   const inconsistentInProgressAssignments = getInProgressStoriesWithInconsistentAssignments(db);
@@ -29,7 +29,7 @@ export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): 
       updateStory(db, assignment.id, {
         assignedAgentId: null,
         status: 'planned',
-      });
+      }, storiesDir);
       createLog(db, {
         agentId: 'scheduler',
         storyId: assignment.id,
@@ -55,7 +55,7 @@ export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): 
       updateStory(db, story.id, {
         assignedAgentId: null,
         status: 'planned',
-      });
+      }, storiesDir);
       createLog(db, {
         agentId: 'scheduler',
         storyId: story.id,
@@ -81,7 +81,7 @@ export function detectAndRecoverOrphanedStories(db: Database, rootDir: string): 
       updateStory(db, assignment.id, {
         assignedAgentId: null,
         status: 'planned',
-      });
+      }, storiesDir);
       createLog(db, {
         agentId: 'scheduler',
         storyId: assignment.id,

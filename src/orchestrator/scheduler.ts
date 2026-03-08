@@ -48,6 +48,7 @@ import {
 } from '../tmux/manager.js';
 import { getTechLeadSessionName } from '../utils/instance.js';
 import * as logger from '../utils/logger.js';
+import { getHivePaths } from '../utils/paths.js';
 import { selectAgentWithLeastWorkload } from './agent-selector.js';
 import { getCapacityPoints, selectStoriesForCapacity } from './capacity-planner.js';
 import { areDependenciesSatisfied, topologicalSort } from './dependency-resolver.js';
@@ -104,6 +105,10 @@ export class Scheduler {
     this.config = config;
     this.saveFn = config.saveFn;
     this.pmQueue = new PMOperationQueue();
+  }
+
+  private get storiesDir(): string {
+    return getHivePaths(this.config.rootDir).storiesDir;
   }
 
   /**
@@ -399,7 +404,7 @@ export class Scheduler {
               updateStory(this.db, story.id, {
                 assignedAgentId: targetAgent.id,
                 status: 'in_progress',
-              });
+              }, this.storiesDir);
 
               updateAgent(this.db, targetAgent.id, {
                 status: 'working',
@@ -554,7 +559,7 @@ export class Scheduler {
         updateStory(this.db, freshStory.id, {
           externalSubtaskKey: subtask.key,
           externalSubtaskId: subtask.id,
-        });
+        }, this.storiesDir);
         if (this.saveFn) this.saveFn();
 
         logger.info(`Created subtask ${subtask.key} for story ${freshStory.id}`);
@@ -714,7 +719,7 @@ export class Scheduler {
           updateStory(this.db, agent.current_story_id, {
             status: 'planned',
             assignedAgentId: null,
-          });
+          }, this.storiesDir);
           revived.push(agent.current_story_id);
 
           // Sync status change to Jira (fire and forget)
@@ -724,7 +729,7 @@ export class Scheduler {
     }
 
     // Detect and recover orphaned stories (assigned to terminated agents)
-    const orphanedRecovered = detectAndRecoverOrphanedStories(this.db, this.config.rootDir);
+    const orphanedRecovered = detectAndRecoverOrphanedStories(this.db, this.config.rootDir, this.storiesDir);
 
     return { terminated, revived, orphanedRecovered };
   }
