@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.44.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.43.2...hungry-ghost-hive-v0.44.0) (2026-03-08)
+
+
+### Features
+
+* add chrome config option and detection utility ([#511](https://github.com/nikrich/hungry-ghost-hive/issues/511)) ([0ed53b1](https://github.com/nikrich/hungry-ghost-hive/commit/0ed53b1720752df2a99aba45ba636d91f2faae0e))
+* pass --chrome flag to Claude CLI when chrome is enabled ([#513](https://github.com/nikrich/hungry-ghost-hive/issues/513)) ([043c1d4](https://github.com/nikrich/hungry-ghost-hive/commit/043c1d4ef8c3e0e530d9412149933bf3ccb0fa8d))
+
+
+### Bug Fixes
+
+* skip auto-close of existing PR when same GitHub PR number ([#516](https://github.com/nikrich/hungry-ghost-hive/issues/516)) ([30e8e77](https://github.com/nikrich/hungry-ghost-hive/commit/30e8e77f02aa0dba6ff5aae02c2f0b05366732fd))
+* verify actual merge state and update stale branches in auto-merge ([#514](https://github.com/nikrich/hungry-ghost-hive/issues/514)) ([5b225df](https://github.com/nikrich/hungry-ghost-hive/commit/5b225df0dbe421a73cb301a386d50d58feda5300))
+
 ## [0.43.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.43.1...hungry-ghost-hive-v0.43.2) (2026-03-06)
 
 
