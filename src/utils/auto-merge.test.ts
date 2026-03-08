@@ -21,6 +21,11 @@ vi.mock('./paths.js', () => ({
   getHivePaths: vi.fn(() => ({ hiveDir: '/mock/hive' })),
 }));
 
+vi.mock('../connectors/project-management/operations.js', () => ({
+  postLifecycleComment: vi.fn().mockResolvedValue(undefined),
+  syncStatusForStory: vi.fn(),
+}));
+
 import { loadConfig } from '../config/loader.js';
 import { autoMergeApprovedPRs } from './auto-merge.js';
 
@@ -264,6 +269,82 @@ describe('auto-merge functionality', () => {
       expect(result).toBe(0);
       // loadConfig should have been called
       expect(mockLoadConfig).toHaveBeenCalledWith('/mock/hive');
+    });
+
+    it('should keep PR as queued when auto-merge is pending (PR still open after gh pr merge --auto)', async () => {
+      const pr = createPullRequest(db, {
+        storyId,
+        teamId,
+        branchName: 'feature/auto-merge-pending',
+        githubPrNumber: 456,
+      });
+      updatePullRequest(db, pr.id, { status: 'approved' });
+
+      mockLoadConfig.mockReturnValue({
+        integrations: {
+          autonomy: { level: 'full' },
+          source_control: { provider: 'github' },
+          project_management: { provider: 'none' },
+        },
+      } as any);
+
+      // Mock execSync: first call returns OPEN+MERGEABLE, merge command succeeds,
+      // second call (post-merge check) returns OPEN (auto-merge pending)
+      const mockExecSync = vi.fn();
+      mockExecSync
+        .mockReturnValueOnce(
+          JSON.stringify({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' })
+        )
+        .mockReturnValueOnce(undefined) // gh pr merge --auto
+        .mockReturnValueOnce(
+          JSON.stringify({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED' })
+        );
+
+      vi.doMock('child_process', () => ({ execSync: mockExecSync }));
+
+      const dbClient = { db, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+      const result = await autoMergeApprovedPRs('/mock/root', dbClient);
+
+      // Should return 0 because the PR was not actually merged yet
+      expect(result).toBe(0);
+      // PR should remain 'queued' (not rolled back to 'approved' or advanced to 'merged')
+      expect(getPullRequestById(db, pr.id)?.status).toBe('queued');
+    });
+
+    it('should reset stale branch PR to approved after updating behind branch', async () => {
+      const pr = createPullRequest(db, {
+        storyId,
+        teamId,
+        branchName: 'feature/stale-branch',
+        githubPrNumber: 789,
+      });
+      updatePullRequest(db, pr.id, { status: 'approved' });
+
+      mockLoadConfig.mockReturnValue({
+        integrations: {
+          autonomy: { level: 'full' },
+          source_control: { provider: 'github' },
+          project_management: { provider: 'none' },
+        },
+      } as any);
+
+      // Mock execSync: PR state shows BEHIND, then gh pr update-branch succeeds
+      const mockExecSync = vi.fn();
+      mockExecSync
+        .mockReturnValueOnce(
+          JSON.stringify({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'BEHIND' })
+        )
+        .mockReturnValueOnce(undefined); // gh pr update-branch
+
+      vi.doMock('child_process', () => ({ execSync: mockExecSync }));
+
+      const dbClient = { db, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+      const result = await autoMergeApprovedPRs('/mock/root', dbClient);
+
+      // Should return 0 because no merge happened yet
+      expect(result).toBe(0);
+      // PR should be reset to 'approved' to be retried on next cycle
+      expect(getPullRequestById(db, pr.id)?.status).toBe('approved');
     });
 
     it('should skip approved PRs marked for manual merge', async () => {
