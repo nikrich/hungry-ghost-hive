@@ -646,6 +646,174 @@ describe('durable raft metadata store', () => {
   });
 });
 
+describe('log compaction and snapshotting', () => {
+  it('creates a snapshot and compacts the raft log', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hive-compaction-'));
+    tempDirs.push(dir);
+
+    const store = new RaftMetadataStore({ clusterDir: dir, nodeId: 'node-compact' });
+    store.setState({ current_term: 5 });
+
+    // Append 20 entries
+    for (let i = 0; i < 20; i++) {
+      store.appendEntry({ type: 'runtime', metadata: { seq: i } });
+    }
+
+    expect(store.getLogEntryCount()).toBe(20);
+    expect(store.getState().last_log_index).toBe(20);
+
+    // Create snapshot at current state
+    const snapshot = store.createSnapshot({ 'node-compact': 10 });
+    expect(snapshot.last_included_index).toBe(20);
+    expect(snapshot.last_included_term).toBe(5);
+    expect(snapshot.version_vector).toEqual({ 'node-compact': 10 });
+    expect(existsSync(join(dir, 'raft-snapshot.json'))).toBe(true);
+
+    // Compact the log
+    const result = store.compactLog();
+    expect(result.entries_removed).toBe(20);
+    expect(result.entries_retained).toBe(0);
+    expect(result.snapshot_index).toBe(20);
+    expect(store.getLogEntryCount()).toBe(0);
+  });
+
+  it('retains entries after the snapshot index during compaction', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hive-compaction-'));
+    tempDirs.push(dir);
+
+    const store = new RaftMetadataStore({ clusterDir: dir, nodeId: 'node-retain' });
+
+    // Append 10 entries
+    for (let i = 0; i < 10; i++) {
+      store.appendEntry({ type: 'runtime', metadata: { seq: i } });
+    }
+
+    // Snapshot at index 5 (manually set to test partial compaction)
+    const snapshot = store.createSnapshot({ 'node-retain': 5 });
+    expect(snapshot.last_included_index).toBe(10);
+
+    // Append 5 more entries AFTER snapshot
+    for (let i = 0; i < 5; i++) {
+      store.appendEntry({ type: 'runtime', metadata: { seq: 10 + i } });
+    }
+
+    expect(store.getLogEntryCount()).toBe(15);
+
+    const result = store.compactLog();
+    expect(result.entries_removed).toBe(10);
+    expect(result.entries_retained).toBe(5);
+    expect(store.getLogEntryCount()).toBe(5);
+  });
+
+  it('restores snapshot and event IDs across restarts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hive-snapshot-restart-'));
+    tempDirs.push(dir);
+
+    const first = new RaftMetadataStore({ clusterDir: dir, nodeId: 'node-snap' });
+    first.setState({ current_term: 3 });
+
+    const events: ClusterEvent[] = [
+      buildStoryEvent({
+        event_id: 'node-a:1',
+        row_id: 'STORY-A',
+        version: { actor_id: 'node-a', actor_counter: 1, logical_ts: 1000 },
+      }),
+      buildStoryEvent({
+        event_id: 'node-b:1',
+        row_id: 'STORY-B',
+        version: { actor_id: 'node-b', actor_counter: 1, logical_ts: 2000 },
+      }),
+    ];
+    first.appendClusterEvents(events, 3);
+    first.createSnapshot({ 'node-a': 1, 'node-b': 1 });
+    first.compactLog();
+
+    // Restart
+    const second = new RaftMetadataStore({ clusterDir: dir, nodeId: 'node-snap' });
+    const restored = second.getState();
+    const snap = second.getSnapshot();
+
+    expect(restored.last_log_index).toBeGreaterThanOrEqual(2);
+    expect(snap).not.toBeNull();
+    expect(snap!.version_vector).toEqual({ 'node-a': 1, 'node-b': 1 });
+
+    // Event IDs should be restored from snapshot
+    expect(second.hasEvent('node-a:1')).toBe(true);
+    expect(second.hasEvent('node-b:1')).toBe(true);
+
+    // Deduplication should still work
+    const deduped = second.appendClusterEvents(events, 3);
+    expect(deduped).toBe(0);
+  });
+
+  it('compaction without snapshot is a no-op', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hive-no-snap-'));
+    tempDirs.push(dir);
+
+    const store = new RaftMetadataStore({ clusterDir: dir, nodeId: 'node-nosn' });
+    for (let i = 0; i < 5; i++) {
+      store.appendEntry({ type: 'runtime', metadata: { seq: i } });
+    }
+
+    const result = store.compactLog();
+    expect(result.entries_removed).toBe(0);
+    expect(result.entries_retained).toBe(0);
+    expect(store.getLogEntryCount()).toBe(5);
+  });
+});
+
+describe('cluster_events pruning', () => {
+  it('prunes old events keeping the most recent ones', async () => {
+    const db = await createTestDatabase();
+    ensureClusterTables(db, 'node-prune');
+
+    // Emit 10 events
+    for (let i = 0; i < 10; i++) {
+      const { emitLocalEvent } = await import('./events.js');
+      emitLocalEvent(db, 'node-prune', {
+        table_name: 'stories',
+        row_id: `STORY-${i}`,
+        op: 'upsert',
+        payload: storyPayload(`STORY-${i}`),
+      });
+    }
+
+    const { getClusterEventCount, pruneClusterEvents } = await import('./events.js');
+    expect(getClusterEventCount(db)).toBe(10);
+
+    // Prune to keep only 5
+    const pruned = pruneClusterEvents(db, 5);
+    expect(pruned).toBe(5);
+    expect(getClusterEventCount(db)).toBe(5);
+
+    db.close();
+  });
+
+  it('does not prune when count is below threshold', async () => {
+    const db = await createTestDatabase();
+    ensureClusterTables(db, 'node-no-prune');
+
+    const { emitLocalEvent } = await import('./events.js');
+    for (let i = 0; i < 3; i++) {
+      emitLocalEvent(db, 'node-no-prune', {
+        table_name: 'stories',
+        row_id: `STORY-${i}`,
+        op: 'upsert',
+        payload: storyPayload(`STORY-${i}`),
+      });
+    }
+
+    const { getClusterEventCount, pruneClusterEvents } = await import('./events.js');
+    expect(getClusterEventCount(db)).toBe(3);
+
+    const pruned = pruneClusterEvents(db, 10);
+    expect(pruned).toBe(0);
+    expect(getClusterEventCount(db)).toBe(3);
+
+    db.close();
+  });
+});
+
 function storyPayload(
   id: string,
   overrides: Partial<Record<string, unknown>> = {}

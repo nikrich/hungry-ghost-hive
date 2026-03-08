@@ -204,6 +204,45 @@ export function emitLocalEvent(
   );
 }
 
+/**
+ * Prune old cluster_events rows, retaining only the most recent `retainCount` events.
+ * Returns the number of rows deleted.
+ */
+export function pruneClusterEvents(db: Database, retainCount: number): number {
+  if (retainCount <= 0) return 0;
+
+  const countRow = queryOne<{ total: number }>(db, 'SELECT COUNT(*) as total FROM cluster_events');
+  const total = countRow?.total || 0;
+
+  if (total <= retainCount) return 0;
+
+  // Delete events that are not in the most recent `retainCount` by logical_ts ordering.
+  // We keep the newest events and delete the oldest.
+  run(
+    db,
+    `
+    DELETE FROM cluster_events
+    WHERE event_id NOT IN (
+      SELECT event_id FROM cluster_events
+      ORDER BY logical_ts DESC, actor_id DESC, actor_counter DESC
+      LIMIT ?
+    )
+  `,
+    [retainCount]
+  );
+
+  const afterRow = queryOne<{ total: number }>(
+    db,
+    'SELECT COUNT(*) as total FROM cluster_events'
+  );
+  return total - (afterRow?.total || 0);
+}
+
+export function getClusterEventCount(db: Database): number {
+  const row = queryOne<{ total: number }>(db, 'SELECT COUNT(*) as total FROM cluster_events');
+  return row?.total || 0;
+}
+
 export function fetchTableSnapshots(db: Database, adapter: TableAdapter): TableRowSnapshot[] {
   const rows = queryAll<Record<string, unknown>>(db, adapter.selectSql);
 
