@@ -142,9 +142,16 @@ clusterCommand
           continue;
         }
 
-        const lagColor = peer.events_behind === 0 ? chalk.green : peer.events_behind > 100 ? chalk.red : chalk.yellow;
-        const lagLabel = peer.events_behind === 0 ? 'IN_SYNC' : `${peer.events_behind} events behind`;
-        const duration = peer.last_sync_duration_ms !== null ? ` ${peer.last_sync_duration_ms}ms` : '';
+        const lagColor =
+          peer.events_behind === 0
+            ? chalk.green
+            : peer.events_behind > 100
+              ? chalk.red
+              : chalk.yellow;
+        const lagLabel =
+          peer.events_behind === 0 ? 'IN_SYNC' : `${peer.events_behind} events behind`;
+        const duration =
+          peer.last_sync_duration_ms !== null ? ` ${peer.last_sync_duration_ms}ms` : '';
         console.log(
           `  ${lagColor(lagLabel)} ${peer.peer_id} applied=${peer.last_sync_events_applied}${duration}`
         );
@@ -181,7 +188,9 @@ clusterCommand
 
     if (!lagSummary) {
       if (options.json) {
-        console.log(JSON.stringify({ error: 'Unable to fetch replication lag from local runtime' }, null, 2));
+        console.log(
+          JSON.stringify({ error: 'Unable to fetch replication lag from local runtime' }, null, 2)
+        );
       } else {
         console.log(chalk.red('Unable to fetch replication lag from local runtime.'));
         console.log(chalk.gray('Start it with: hive manager start'));
@@ -212,15 +221,19 @@ clusterCommand
     } else {
       for (const peer of lagSummary.peers) {
         if (!peer.reachable) {
-          console.log(
-            `  ${chalk.red('UNREACHABLE')} ${peer.peer_id} ${chalk.gray(peer.peer_url)}`
-          );
+          console.log(`  ${chalk.red('UNREACHABLE')} ${peer.peer_id} ${chalk.gray(peer.peer_url)}`);
           console.log(chalk.gray(`    Last sync: ${peer.last_sync_at || 'never'}`));
           continue;
         }
 
-        const lagColor = peer.events_behind === 0 ? chalk.green : peer.events_behind > 100 ? chalk.red : chalk.yellow;
-        const lagLabel = peer.events_behind === 0 ? 'IN_SYNC' : `${peer.events_behind} events behind`;
+        const lagColor =
+          peer.events_behind === 0
+            ? chalk.green
+            : peer.events_behind > 100
+              ? chalk.red
+              : chalk.yellow;
+        const lagLabel =
+          peer.events_behind === 0 ? 'IN_SYNC' : `${peer.events_behind} events behind`;
         console.log(`  ${lagColor(lagLabel)} ${peer.peer_id} ${chalk.gray(peer.peer_url)}`);
         console.log(
           chalk.gray(

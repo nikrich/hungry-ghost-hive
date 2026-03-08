@@ -205,17 +205,21 @@ export class ClusterRuntime {
       node_id: this.config.node_id,
       total_local_events: this.eventCache.length,
       version_vector: { ...this.versionVectorCache },
-      peers: this.raft.getPeers()
+      peers: this.raft
+        .getPeers()
         .filter(p => p.id !== this.config.node_id)
-        .map(p => this.peerLagMap.get(p.id) || {
-          peer_id: p.id,
-          peer_url: p.url,
-          reachable: false,
-          events_behind: 0,
-          last_sync_at: null,
-          last_sync_duration_ms: null,
-          last_sync_events_applied: 0,
-        }),
+        .map(
+          p =>
+            this.peerLagMap.get(p.id) || {
+              peer_id: p.id,
+              peer_url: p.url,
+              reachable: false,
+              events_behind: 0,
+              last_sync_at: null,
+              last_sync_duration_ms: null,
+              last_sync_events_applied: 0,
+            }
+        ),
       last_sync_at: this.lastSyncAt,
     };
   }

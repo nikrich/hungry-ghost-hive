@@ -134,7 +134,11 @@ describe('replication lag tracking', () => {
     const response = await fetch(url);
     expect(response.ok).toBe(true);
 
-    const body = (await response.json()) as { node_id: string; peers: unknown[]; last_sync_at: string | null };
+    const body = (await response.json()) as {
+      node_id: string;
+      peers: unknown[];
+      last_sync_at: string | null;
+    };
     expect(body.node_id).toBe('node-lag-http');
     expect(body.peers).toEqual([]);
     expect(body.last_sync_at).toBeNull();
