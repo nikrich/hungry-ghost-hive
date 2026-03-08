@@ -2260,7 +2260,7 @@ describe('Scheduler Markdown File Writing', () => {
     const mdScheduler = new Scheduler(db, {
       ...mockConfig,
       rootDir: hiveRoot,
-    });
+    } as any);
 
     // Mock spawnSenior to avoid actual tmux operations
     vi.spyOn(mdScheduler as any, 'sendAssignmentHandoff').mockResolvedValue(undefined);
