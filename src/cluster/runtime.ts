@@ -528,10 +528,7 @@ function isLoopbackHost(host: string): boolean {
   );
 }
 
-function computeEventsBehind(
-  localVector: VersionVector,
-  remoteVector: VersionVector
-): number {
+function computeEventsBehind(localVector: VersionVector, remoteVector: VersionVector): number {
   let behind = 0;
   for (const [actorId, remoteCounter] of Object.entries(remoteVector)) {
     const localCounter = localVector[actorId] || 0;
@@ -542,10 +539,7 @@ function computeEventsBehind(
   return behind;
 }
 
-export function logClusterEvent(
-  event: string,
-  data: Record<string, unknown>
-): void {
+export function logClusterEvent(event: string, data: Record<string, unknown>): void {
   const entry = {
     ts: new Date().toISOString(),
     component: 'cluster',

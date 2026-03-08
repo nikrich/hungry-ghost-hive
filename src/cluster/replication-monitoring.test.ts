@@ -6,8 +6,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ClusterConfig } from '../config/schema.js';
-import { createDatabase } from '../db/client.js';
-import { run } from '../db/client.js';
+import { createDatabase, run } from '../db/client.js';
 import { ClusterRuntime, fetchLocalClusterStatus, logClusterEvent } from './runtime.js';
 
 const tempRoots: string[] = [];
