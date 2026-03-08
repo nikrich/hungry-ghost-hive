@@ -7,12 +7,19 @@ vi.mock('child_process', () => ({
   execSync: vi.fn(),
 }));
 
+vi.mock('fs', () => ({
+  existsSync: vi.fn(() => true),
+}));
+
 import { execSync } from 'child_process';
+import { existsSync } from 'fs';
 
 const mockExecSync = vi.mocked(execSync);
+const mockExistsSync = vi.mocked(existsSync);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockExistsSync.mockReturnValue(true);
 });
 
 describe('removeWorktree', () => {
@@ -80,5 +87,41 @@ describe('removeWorktree', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('Unknown error');
+  });
+
+  it('should return success without running git when worktree path does not exist on disk', () => {
+    mockExistsSync.mockReturnValue(false);
+
+    const result = removeWorktree('/root', 'repos/team-agent-stale');
+
+    expect(result.success).toBe(true);
+    expect(result.fullWorktreePath).toBe('/root/repos/team-agent-stale');
+    expect(mockExecSync).not.toHaveBeenCalled();
+  });
+
+  it('should log debug message when path missing and HIVE_DEBUG is set', () => {
+    mockExistsSync.mockReturnValue(false);
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    process.env.HIVE_DEBUG = '1';
+
+    removeWorktree('/root', 'repos/team-agent-stale');
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('does not exist on disk, skipping removal')
+    );
+
+    delete process.env.HIVE_DEBUG;
+    consoleSpy.mockRestore();
+  });
+
+  it('should not log when path missing and HIVE_DEBUG is not set', () => {
+    mockExistsSync.mockReturnValue(false);
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    delete process.env.HIVE_DEBUG;
+
+    removeWorktree('/root', 'repos/team-agent-stale');
+
+    expect(consoleSpy).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 });

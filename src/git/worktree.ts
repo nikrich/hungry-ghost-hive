@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { execSync } from 'child_process';
+import { existsSync } from 'fs';
 
 export interface RemoveWorktreeResult {
   success: boolean;
@@ -24,6 +25,13 @@ export function removeWorktree(
   const fullWorktreePath = `${rootDir}/${worktreePath}`;
 
   if (!worktreePath) {
+    return { success: true, fullWorktreePath };
+  }
+
+  if (!existsSync(fullWorktreePath)) {
+    if (process.env.HIVE_DEBUG) {
+      console.log(`[debug] worktree path ${fullWorktreePath} does not exist on disk, skipping removal`);
+    }
     return { success: true, fullWorktreePath };
   }
 
