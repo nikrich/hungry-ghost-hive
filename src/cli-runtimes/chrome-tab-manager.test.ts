@@ -53,7 +53,7 @@ describe('ChromeTabManager', () => {
       expect(manager.getTab('agent-gamma')).toBe(30);
     });
 
-    it('agents cannot access each other\'s tabs', () => {
+    it("agents cannot access each other's tabs", () => {
       manager.registerTab('agent-alpha', 10);
       manager.registerTab('agent-beta', 20);
 
