@@ -378,15 +378,11 @@ describe('partition healing scenarios', () => {
     });
 
     // Old leader (term 5) tries to send heartbeat after partition heals
-    const staleRes = await postJson(
-      fixture.config.public_url,
-      '/cluster/v1/election/heartbeat',
-      {
-        term: 5,
-        leader_id: 'old-leader',
-        fencing_token: 5,
-      }
-    );
+    const staleRes = await postJson(fixture.config.public_url, '/cluster/v1/election/heartbeat', {
+      term: 5,
+      leader_id: 'old-leader',
+      fencing_token: 5,
+    });
 
     expect(staleRes.success).toBe(false);
     expect(staleRes.fencing_token).toBe(10);
