@@ -111,7 +111,9 @@ export interface RaftSnapshot {
  */
 export interface ClusterSnapshot {
   version_vector: VersionVector;
-  tables: Partial<Record<ReplicatedTable, Array<{ rowId: string; payload: Record<string, unknown> }>>>;
+  tables: Partial<
+    Record<ReplicatedTable, Array<{ rowId: string; payload: Record<string, unknown> }>>
+  >;
 }
 
 /**

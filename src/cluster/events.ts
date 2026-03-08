@@ -159,11 +159,9 @@ export function getSnapshotVersionVector(db: Database): VersionVector {
  * from this point rather than from the (empty) event log.
  */
 export function setSnapshotVersionVector(db: Database, vector: VersionVector): void {
-  run(
-    db,
-    'UPDATE cluster_state SET snapshot_version_vector = ? WHERE id = 1',
-    [JSON.stringify(vector)]
-  );
+  run(db, 'UPDATE cluster_state SET snapshot_version_vector = ? WHERE id = 1', [
+    JSON.stringify(vector),
+  ]);
 }
 
 /**
@@ -287,10 +285,7 @@ export function pruneClusterEvents(db: Database, retainCount: number): number {
     [retainCount]
   );
 
-  const afterRow = queryOne<{ total: number }>(
-    db,
-    'SELECT COUNT(*) as total FROM cluster_events'
-  );
+  const afterRow = queryOne<{ total: number }>(db, 'SELECT COUNT(*) as total FROM cluster_events');
   return total - (afterRow?.total || 0);
 }
 

@@ -14,10 +14,12 @@
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import type { Database } from 'sql.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ClusterConfig } from '../config/schema.js';
 import { run } from '../db/client.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
-import type { Database } from 'sql.js';
+import { RaftStateMachine } from './raft-state-machine.js';
 import {
   ensureClusterTables,
   getEffectiveVersionVector,
@@ -26,8 +28,6 @@ import {
   scanLocalChanges,
   setSnapshotVersionVector,
 } from './replication.js';
-import { RaftStateMachine } from './raft-state-machine.js';
-import type { ClusterConfig } from '../config/schema.js';
 
 const tempDirs: string[] = [];
 
@@ -158,7 +158,7 @@ describe('getEffectiveVersionVector', () => {
     ensureClusterTables(db, 'node-a');
 
     // Simulate snapshot-based recovery: no local events yet, but snapshot applied
-    setSnapshotVersionVector(db, { 'leader': 500 });
+    setSnapshotVersionVector(db, { leader: 500 });
 
     const effective = getEffectiveVersionVector(db);
 
@@ -270,30 +270,22 @@ describe('delta sufficiency detection', () => {
 
   it('returns false when received events cover all needed (short outage)', () => {
     // Local is 10 behind, peer sends 10 events — sufficient
-    const result = isDeltaInsufficient(
-      { 'leader': 90 },
-      { 'leader': 100 },
-      { 'leader': 10 }
-    );
+    const result = isDeltaInsufficient({ leader: 90 }, { leader: 100 }, { leader: 10 });
     expect(result).toBe(false);
   });
 
   it('returns true when received events are fewer than needed (long outage / log truncated)', () => {
     // Local is 1000 behind, peer only sent 4000 events for a different actor
     const result = isDeltaInsufficient(
-      { 'leader': 0 },
-      { 'leader': 5000 },
-      { 'leader': 4000 } // cache can only provide 4000, but 5000 needed
+      { leader: 0 },
+      { leader: 5000 },
+      { leader: 4000 } // cache can only provide 4000, but 5000 needed
     );
     expect(result).toBe(true);
   });
 
   it('returns false when already caught up (no events needed)', () => {
-    const result = isDeltaInsufficient(
-      { 'leader': 100 },
-      { 'leader': 100 },
-      {}
-    );
+    const result = isDeltaInsufficient({ leader: 100 }, { leader: 100 }, {});
     expect(result).toBe(false);
   });
 
@@ -301,8 +293,8 @@ describe('delta sufficiency detection', () => {
     // A node that just joined and the peer has 25000 events (exceeds 20k cache)
     const result = isDeltaInsufficient(
       {},
-      { 'leader': 25000 },
-      { 'leader': 20000 } // got max cache size, still missing 5000
+      { leader: 25000 },
+      { leader: 20000 } // got max cache size, still missing 5000
     );
     expect(result).toBe(true);
   });
@@ -364,10 +356,20 @@ describe('applying snapshot to local database', () => {
          complexity_score, story_points, status, assigned_agent_id, branch_name, pr_url, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        payload.id, payload.requirement_id, payload.team_id, payload.title,
-        payload.description, payload.acceptance_criteria, payload.complexity_score,
-        payload.story_points, payload.status, payload.assigned_agent_id,
-        payload.branch_name, payload.pr_url, payload.created_at, payload.updated_at,
+        payload.id,
+        payload.requirement_id,
+        payload.team_id,
+        payload.title,
+        payload.description,
+        payload.acceptance_criteria,
+        payload.complexity_score,
+        payload.story_points,
+        payload.status,
+        payload.assigned_agent_id,
+        payload.branch_name,
+        payload.pr_url,
+        payload.created_at,
+        payload.updated_at,
       ]
     );
     setSnapshotVersionVector(db, snapshotVersionVector);

@@ -4,6 +4,7 @@ import { join } from 'path';
 import type { Database } from 'sql.js';
 import type { ClusterConfig, ClusterPeerConfig } from '../config/schema.js';
 import { queryAll } from '../db/client.js';
+import { REPLICATED_TABLES } from './adapters.js';
 import {
   ClusterHttpServer,
   type MembershipJoinRequest,
@@ -27,7 +28,6 @@ import {
   type ClusterEvent,
   type VersionVector,
 } from './replication.js';
-import { REPLICATED_TABLES } from './adapters.js';
 import type { ClusterSnapshot } from './types.js';
 
 type NodeRole = 'leader' | 'follower' | 'candidate';
@@ -230,9 +230,7 @@ export class ClusterRuntime {
       await this.pullEventsFromPeers(db);
     const merged = mergeSimilarStories(db, this.config.story_similarity_threshold);
     const localEventsAfter =
-      imported > 0 || merged > 0 || usedSnapshot
-        ? scanLocalChanges(db, this.config.node_id)
-        : 0;
+      imported > 0 || merged > 0 || usedSnapshot ? scanLocalChanges(db, this.config.node_id) : 0;
 
     this.refreshCache(db);
 
@@ -532,7 +530,10 @@ export class ClusterRuntime {
    * Applies a snapshot to the local database, upserting all rows from all tables.
    * Stores the snapshot's version vector so future delta requests start from here.
    */
-  private applySnapshot(db: Database, snapshot: ClusterSnapshot): { applied: number; total: number } {
+  private applySnapshot(
+    db: Database,
+    snapshot: ClusterSnapshot
+  ): { applied: number; total: number } {
     let applied = 0;
     let total = 0;
 
@@ -573,7 +574,6 @@ export class ClusterRuntime {
       tables,
     };
   }
-
 
   private async requestDelta(
     peer: ClusterPeerConfig,
