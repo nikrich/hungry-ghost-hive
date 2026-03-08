@@ -23,6 +23,16 @@ vi.mock('../../utils/with-hive-context.js', () => ({
   ),
 }));
 
+vi.mock('fs', async importOriginal => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return {
+    ...actual,
+    existsSync: vi.fn(() => true),
+    unlinkSync: vi.fn(),
+  };
+});
+
+import { existsSync } from 'fs';
 import { queryAll, run } from '../../db/client.js';
 import { removeWorktree } from '../../git/worktree.js';
 import { killAllHiveSessions } from '../../tmux/manager.js';
@@ -31,6 +41,7 @@ import { nukeCommand } from './nuke.js';
 describe('nuke command', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(existsSync).mockReturnValue(true);
   });
 
   describe('command structure', () => {
@@ -144,6 +155,26 @@ describe('nuke command', () => {
       await agentsCmd?.parseAsync(['--force'], { from: 'user' });
 
       expect(killAllHiveSessions).toHaveBeenCalled();
+    });
+
+    it('should skip worktree removal when path does not exist on disk', async () => {
+      vi.mocked(queryAll).mockReturnValue([{ worktree_path: 'repos/team-agent-stale' }]);
+      vi.mocked(existsSync).mockReturnValue(false);
+
+      const agentsCmd = nukeCommand.commands.find(cmd => cmd.name() === 'agents');
+      await agentsCmd?.parseAsync(['--force'], { from: 'user' });
+
+      expect(removeWorktree).not.toHaveBeenCalled();
+    });
+
+    it('should call removeWorktree when worktree path exists on disk', async () => {
+      vi.mocked(queryAll).mockReturnValue([{ worktree_path: 'repos/team-agent-abc123' }]);
+      vi.mocked(existsSync).mockReturnValue(true);
+
+      const agentsCmd = nukeCommand.commands.find(cmd => cmd.name() === 'agents');
+      await agentsCmd?.parseAsync(['--force'], { from: 'user' });
+
+      expect(removeWorktree).toHaveBeenCalledWith('/root', 'repos/team-agent-abc123');
     });
   });
 

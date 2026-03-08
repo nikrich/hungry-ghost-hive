@@ -3,7 +3,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { existsSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import readline from 'readline';
 import { queryAll, queryOne, run } from '../../db/client.js';
 import { removeWorktree } from '../../git/worktree.js';
@@ -101,6 +101,13 @@ async function removeAgentWorktrees(
   let removed = 0;
   for (const agent of agents) {
     if (agent.worktree_path) {
+      const fullPath = resolve(root, agent.worktree_path);
+      if (!existsSync(fullPath)) {
+        if (process.env.HIVE_DEBUG) {
+          console.log(`[debug] skipping missing worktree: ${fullPath}`);
+        }
+        continue;
+      }
       const result = removeWorktree(root, agent.worktree_path);
       if (result.success) {
         removed++;
