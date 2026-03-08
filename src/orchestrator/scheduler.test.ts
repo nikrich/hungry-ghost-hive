@@ -111,13 +111,15 @@ CREATE TABLE IF NOT EXISTS teams (
 
 CREATE TABLE IF NOT EXISTS agents (
     id TEXT PRIMARY KEY,
-    type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa')),
+    type TEXT NOT NULL CHECK (type IN ('tech_lead', 'senior', 'intermediate', 'junior', 'qa', 'feature_test', 'auditor')),
     team_id TEXT REFERENCES teams(id),
     tmux_session TEXT,
     model TEXT,
     status TEXT DEFAULT 'idle' CHECK (status IN ('idle', 'working', 'blocked', 'terminated')),
     current_story_id TEXT,
     memory_state TEXT,
+    last_seen TIMESTAMP,
+    worktree_path TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -16,8 +16,11 @@ export {
   getAllClusterEvents,
   getClusterEventCount,
   getDeltaEvents,
+  getEffectiveVersionVector,
+  getSnapshotVersionVector,
   getVersionVector,
   pruneClusterEvents,
+  setSnapshotVersionVector,
 } from './events.js';
 
 // Re-export sync functions

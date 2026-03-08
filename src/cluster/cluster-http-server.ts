@@ -51,6 +51,8 @@ export interface ClusterHttpHandlers {
   isLeaderLeaseValid: () => boolean;
   handleMembershipJoin: (body: MembershipJoinRequest) => MembershipJoinResponse;
   handleMembershipLeave: (body: MembershipLeaveRequest) => MembershipLeaveResponse;
+  /** Returns a full snapshot of all replicated tables for state recovery. */
+  getSnapshot: () => unknown;
 }
 
 export class ClusterHttpServer {
@@ -98,6 +100,11 @@ export class ClusterHttpServer {
 
       if (method === 'GET' && path === '/cluster/v1/status') {
         sendJson(res, 200, this.handlers.getStatus());
+        return;
+      }
+
+      if (method === 'GET' && path === '/cluster/v1/snapshot') {
+        sendJson(res, 200, this.handlers.getSnapshot());
         return;
       }
 
