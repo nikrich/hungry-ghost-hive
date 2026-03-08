@@ -30,7 +30,9 @@ export function removeWorktree(
 
   if (!existsSync(fullWorktreePath)) {
     if (process.env.HIVE_DEBUG) {
-      console.log(`[debug] worktree path ${fullWorktreePath} does not exist on disk, skipping removal`);
+      console.log(
+        `[debug] worktree path ${fullWorktreePath} does not exist on disk, skipping removal`
+      );
     }
     return { success: true, fullWorktreePath };
   }

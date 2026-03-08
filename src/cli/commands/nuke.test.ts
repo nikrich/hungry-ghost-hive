@@ -23,7 +23,7 @@ vi.mock('../../utils/with-hive-context.js', () => ({
   ),
 }));
 
-vi.mock('fs', async (importOriginal) => {
+vi.mock('fs', async importOriginal => {
   const actual = await importOriginal<typeof import('fs')>();
   return {
     ...actual,
