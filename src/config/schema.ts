@@ -314,6 +314,9 @@ const ClusterConfigSchema = z
     sync_interval_ms: z.number().int().positive().default(5000),
     // Outbound HTTP request timeout for peer calls
     request_timeout_ms: z.number().int().positive().default(5000),
+    // Leader lease window in ms; followers reject commands from leaders
+    // whose last heartbeat is older than this. Defaults to 3× heartbeat_interval_ms.
+    leader_lease_ms: z.number().int().positive().optional(),
     // Story similarity threshold [0..1] for duplicate merge detection
     story_similarity_threshold: z.number().min(0).max(1).default(0.92),
   })
@@ -600,6 +603,8 @@ cluster:
   # State replication cadence
   sync_interval_ms: 5000
   request_timeout_ms: 5000
+  # Leader lease window (default: 3× heartbeat_interval_ms)
+  # leader_lease_ms: 6000
   # Duplicate story detection sensitivity
   story_similarity_threshold: 0.92
 `;
