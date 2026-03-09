@@ -172,7 +172,7 @@ function makeMockCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheck
     root: '/test/project',
     verbose: false,
     config: { manager: {} } as any,
-    paths: { hiveDir: '/test/project/.hive' } as any,
+    paths: { hiveDir: '/test/project/.hive', storiesDir: '/test/project/.hive/stories' } as any,
     withDb: vi.fn(async (fn: any) => fn(mockDb, {})),
     hiveSessions: [],
     counters: {
@@ -341,7 +341,7 @@ describe('autoRejectCommentOnlyReviews', () => {
       expect.anything(),
       'STORY-001',
       { status: 'qa_failed' },
-      undefined
+      '/test/project/.hive/stories'
     );
     expect(createLog).toHaveBeenCalledWith(
       expect.anything(),

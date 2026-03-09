@@ -272,6 +272,7 @@ export async function syncMergedPRsFromGitHub(
   const teams = getAllTeams(db);
   if (teams.length === 0) return 0;
 
+  const storiesDir = getHivePaths(root).storiesDir;
   let storiesUpdated = 0;
 
   for (const team of teams) {
@@ -334,7 +335,6 @@ export async function syncMergedPRsFromGitHub(
         continue;
       }
 
-      const storiesDir = getHivePaths(root).storiesDir;
       await withTransaction(db, () => {
         for (const update of toUpdate) {
           updateStory(db, update.storyId, { status: 'merged', assignedAgentId: null }, storiesDir);
