@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.46.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.45.0...hungry-ghost-hive-v0.46.0) (2026-03-09)
+
+
+### Features
+
+* add cluster health, events, join, and leave CLI commands ([#535](https://github.com/nikrich/hungry-ghost-hive/issues/535)) ([6ae22e9](https://github.com/nikrich/hungry-ghost-hive/commit/6ae22e9bb3b2d0a6d4e5d82d666c4caa892e26c8))
+* add fencing tokens and leader lease validation for partition safety ([#523](https://github.com/nikrich/hungry-ghost-hive/issues/523)) ([c9f4543](https://github.com/nikrich/hungry-ghost-hive/commit/c9f45438a6997e494bb25a5d82c5e4506016f251))
+* add log compaction and snapshotting for raft log and cluster events ([#529](https://github.com/nikrich/hungry-ghost-hive/issues/529)) ([5427adb](https://github.com/nikrich/hungry-ghost-hive/commit/5427adb5be19fa7bf65f6644f86737823a29225d))
+* add replication lag tracking and observability ([#534](https://github.com/nikrich/hungry-ghost-hive/issues/534)) ([038a86f](https://github.com/nikrich/hungry-ghost-hive/commit/038a86f2943bd99687e71432ceb47d6fa2a82991))
+* implement Chrome tab isolation for concurrent agents ([#530](https://github.com/nikrich/hungry-ghost-hive/issues/530)) ([9f721eb](https://github.com/nikrich/hungry-ghost-hive/commit/9f721ebdf045f8d7e3b73c4ef54f69713f7fc1e9))
+* implement dynamic cluster membership join/leave protocol ([#528](https://github.com/nikrich/hungry-ghost-hive/issues/528)) ([5b77ec2](https://github.com/nikrich/hungry-ghost-hive/commit/5b77ec2dff21f86b7b111976ada991f08866541d))
+* implement offline node state recovery and catch-up ([#532](https://github.com/nikrich/hungry-ghost-hive/issues/532)) ([b4b435f](https://github.com/nikrich/hungry-ghost-hive/commit/b4b435fa08657156f48735c1042b7200048e3ec1))
+* include story markdown path in agent prompts when available ([#531](https://github.com/nikrich/hungry-ghost-hive/issues/531)) ([0ee1b3f](https://github.com/nikrich/hungry-ghost-hive/commit/0ee1b3f1e4c598a22c2490150126a5e2f0be5632))
+* write story markdown files during scheduler operations ([#527](https://github.com/nikrich/hungry-ghost-hive/issues/527)) ([5e8124f](https://github.com/nikrich/hungry-ghost-hive/commit/5e8124f5785732a7ae6db52519592b16d8cb9fa6))
+
+
+### Bug Fixes
+
+* correct scheduler test session names and formatting issues ([bc85f7c](https://github.com/nikrich/hungry-ghost-hive/commit/bc85f7c4a5fe0dad82cab9212b6d71bc3e060fdf))
+* prevent req command from killing running tech lead session ([#521](https://github.com/nikrich/hungry-ghost-hive/issues/521)) ([544d0e8](https://github.com/nikrich/hungry-ghost-hive/commit/544d0e8640f12012c39afe5d9f6f5652b5fbe372))
+
 ## [0.45.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.44.0...hungry-ghost-hive-v0.45.0) (2026-03-08)
 
 
