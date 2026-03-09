@@ -110,6 +110,27 @@ describe('JiraAuthConnector', () => {
       expect(result.success).toBe(false);
     });
 
+    it('should store tokens at rootDir/.env (not rootDir/.hive/.env)', async () => {
+      const { startJiraOAuthFlow, storeJiraTokens } = await import('../../auth/jira-oauth.js');
+      const { TokenStore } = await import('../../auth/token-store.js');
+      vi.mocked(startJiraOAuthFlow).mockResolvedValue({
+        accessToken: 'access-123',
+        refreshToken: 'refresh-456',
+        cloudId: 'cloud-789',
+        siteUrl: 'https://test.atlassian.net',
+        expiresIn: 3600,
+      });
+
+      await connector.authenticate({
+        clientId: 'cid',
+        clientSecret: 'sec',
+        rootDir: '/project/.hive',
+      });
+
+      expect(TokenStore).toHaveBeenCalledWith('/project/.hive/.env');
+      expect(storeJiraTokens).toHaveBeenCalled();
+    });
+
     it('should return failure on auth error', async () => {
       const { startJiraOAuthFlow } = await import('../../auth/jira-oauth.js');
       vi.mocked(startJiraOAuthFlow).mockRejectedValue(new Error('OAuth flow timed out'));

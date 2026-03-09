@@ -37,7 +37,7 @@ export class JiraAuthConnector implements IAuthConnector {
       const rootDir = options?.rootDir as string | undefined;
       if (rootDir) {
         const { join } = await import('path');
-        const envPath = join(rootDir, '.hive', '.env');
+        const envPath = join(rootDir, '.env');
         const tokenStore = new TokenStore(envPath);
         await storeJiraTokens(tokenStore, result);
       }
