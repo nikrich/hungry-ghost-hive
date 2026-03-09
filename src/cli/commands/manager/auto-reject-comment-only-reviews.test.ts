@@ -337,9 +337,12 @@ describe('autoRejectCommentOnlyReviews', () => {
         reviewNotes: expect.stringContaining('Coverage below 80%'),
       })
     );
-    expect(updateStory).toHaveBeenCalledWith(expect.anything(), 'STORY-001', {
-      status: 'qa_failed',
-    });
+    expect(updateStory).toHaveBeenCalledWith(
+      expect.anything(),
+      'STORY-001',
+      { status: 'qa_failed' },
+      undefined
+    );
     expect(createLog).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

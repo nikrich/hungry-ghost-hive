@@ -290,7 +290,12 @@ export async function autoMergeApprovedPRs(
                     updateAgent(phaseDb.db, agent.id, { currentStoryId: null, status: 'idle' });
                   }
                 }
-                updateStory(phaseDb.db, pr.story_id, { status: 'merged', assignedAgentId: null });
+                updateStory(
+                  phaseDb.db,
+                  pr.story_id,
+                  { status: 'merged', assignedAgentId: null },
+                  paths.storiesDir
+                );
                 createLog(phaseDb.db, {
                   agentId: 'manager',
                   storyId: pr.story_id,
@@ -344,7 +349,7 @@ export async function autoMergeApprovedPRs(
             () => {
               updatePullRequest(phaseDb.db, pr.id, { status: 'merged' });
               if (storyId) {
-                updateStory(phaseDb.db, storyId, { status: 'merged' });
+                updateStory(phaseDb.db, storyId, { status: 'merged' }, paths.storiesDir);
                 const story = getStoryById(phaseDb.db, storyId);
                 if (story?.assigned_agent_id) {
                   const agent = getAgentById(phaseDb.db, story.assigned_agent_id);

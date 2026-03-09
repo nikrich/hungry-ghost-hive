@@ -271,7 +271,7 @@ export async function autoRejectCommentOnlyReviews(ctx: ManagerCheckContext): Pr
             reviewNotes: reason,
           });
           if (candidate.storyId) {
-            updateStory(db.db, candidate.storyId, { status: 'qa_failed' });
+            updateStory(db.db, candidate.storyId, { status: 'qa_failed' }, ctx.paths.storiesDir);
           }
           createLog(db.db, {
             agentId: 'manager',
@@ -333,7 +333,7 @@ export async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void>
         await withTransaction(
           db.db,
           () => {
-            updateStory(db.db, storyId, { status: 'qa_failed' });
+            updateStory(db.db, storyId, { status: 'qa_failed' }, ctx.paths.storiesDir);
             createLog(db.db, {
               agentId: 'manager',
               eventType: 'STORY_QA_FAILED',

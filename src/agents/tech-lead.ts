@@ -340,7 +340,7 @@ Respond in JSON format:
       );
 
       for (const story of teamStories) {
-        updateStory(this.db, story.id, { status: 'planned' });
+        updateStory(this.db, story.id, { status: 'planned' }, this.storiesDir);
         this.log('STORY_ASSIGNED', `Story ${story.id} assigned to team ${team.name}`, {
           storyId: story.id,
           teamId,

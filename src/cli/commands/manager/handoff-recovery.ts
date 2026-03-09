@@ -166,7 +166,7 @@ async function promoteEstimatedStoriesToPlanned(
 
     await withTransaction(db.db, () => {
       for (const story of stories) {
-        updateStory(db.db, story.id, { status: 'planned' });
+        updateStory(db.db, story.id, { status: 'planned' }, ctx.paths.storiesDir);
         count++;
       }
 

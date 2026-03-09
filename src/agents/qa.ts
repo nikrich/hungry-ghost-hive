@@ -107,7 +107,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
     // Run quality checks
     const qualityPassed = await this.runQualityChecks(story.id);
     if (!qualityPassed) {
-      updateStory(this.db, story.id, { status: 'qa_failed' });
+      updateStory(this.db, story.id, { status: 'qa_failed' }, this.storiesDir);
       this.checkAndEscalate(story);
       return;
     }
@@ -115,7 +115,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
     // Run build
     const buildPassed = await this.runBuild(story.id);
     if (!buildPassed) {
-      updateStory(this.db, story.id, { status: 'qa_failed' });
+      updateStory(this.db, story.id, { status: 'qa_failed' }, this.storiesDir);
       this.checkAndEscalate(story);
       return;
     }

@@ -109,7 +109,7 @@ prCommand
         }
 
         // Update story status
-        updateStory(db.db, storyId, { status: 'pr_submitted' });
+        updateStory(db.db, storyId, { status: 'pr_submitted' }, paths.storiesDir);
 
         // Sync status change to Jira
         await syncStatusForStory(root, db.db, storyId, 'pr_submitted');
@@ -313,7 +313,7 @@ prCommand
   .option('--from <session>', 'QA agent session')
   .option('--no-merge', 'Approve without merging (manual merge needed)')
   .action(async (prId: string, options: { notes?: string; from?: string; merge?: boolean }) => {
-    await withHiveContext(async ({ root, db }) => {
+    await withHiveContext(async ({ root, paths, db }) => {
       const pr = requirePullRequest(db.db, prId);
 
       if (pr.status === 'merged') {
@@ -384,7 +384,7 @@ prCommand
       });
 
       if (storyId && newStatus === 'merged') {
-        updateStory(db.db, storyId, { status: 'merged' });
+        updateStory(db.db, storyId, { status: 'merged' }, paths.storiesDir);
       }
 
       db.save();
@@ -435,7 +435,7 @@ prCommand
   .requiredOption('-r, --reason <reason>', 'Reason for rejection')
   .option('--from <session>', 'QA agent session')
   .action(async (prId: string, options: { reason: string; from?: string }) => {
-    await withHiveContext(async ({ root, db }) => {
+    await withHiveContext(async ({ root, paths, db }) => {
       const pr = requirePullRequest(db.db, prId);
 
       updatePullRequest(db.db, prId, {
@@ -450,7 +450,7 @@ prCommand
         storyId = extractStoryIdFromBranch(pr.branch_name);
       }
       if (storyId) {
-        updateStory(db.db, storyId, { status: 'qa_failed' });
+        updateStory(db.db, storyId, { status: 'qa_failed' }, paths.storiesDir);
       }
 
       db.save();

@@ -242,7 +242,14 @@ export async function syncStoryToProvider(
     const envPath = join(paths.hiveDir, '.env');
     const tokenStore = await getOrCreateTokenStore(envPath);
 
-    const result = await syncStoryToJira(db, tokenStore, pmConfig.jira, story, teamName);
+    const result = await syncStoryToJira(
+      db,
+      tokenStore,
+      pmConfig.jira,
+      story,
+      teamName,
+      paths.storiesDir
+    );
     if (!result) return null;
     return { key: result.jiraKey, id: result.jiraId };
   }
@@ -284,7 +291,8 @@ export async function syncRequirementToProvider(
       pmConfig.jira,
       requirement as any,
       storyIds,
-      teamName
+      teamName,
+      paths.storiesDir
     );
 
     return {

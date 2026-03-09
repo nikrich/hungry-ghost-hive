@@ -9,6 +9,7 @@ import { createPullRequest } from '../db/queries/pull-requests.js';
 import { updateStory } from '../db/queries/stories.js';
 import { getAllTeams } from '../db/queries/teams.js';
 import { GH_CLI_TIMEOUT_MS } from './github-cli.js';
+import { getHivePaths } from './paths.js';
 import { extractStoryIdFromBranch } from './story-id.js';
 
 const GITHUB_PR_LIST_LIMIT = 20;
@@ -333,9 +334,10 @@ export async function syncMergedPRsFromGitHub(
         continue;
       }
 
+      const storiesDir = getHivePaths(root).storiesDir;
       await withTransaction(db, () => {
         for (const update of toUpdate) {
-          updateStory(db, update.storyId, { status: 'merged', assignedAgentId: null });
+          updateStory(db, update.storyId, { status: 'merged', assignedAgentId: null }, storiesDir);
           createLog(db, {
             agentId: 'manager',
             storyId: update.storyId,

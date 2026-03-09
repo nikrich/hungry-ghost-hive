@@ -506,7 +506,8 @@ describe('syncUnsyncedStoriesToJira', () => {
       baseConfig,
       expect.objectContaining({ id: 'REQ-TEST' }),
       [story.id],
-      'team-test'
+      'team-test',
+      undefined
     );
   });
 
@@ -577,6 +578,7 @@ describe('syncUnsyncedStoriesToJira', () => {
       baseConfig,
       expect.objectContaining({ id: 'REQ-GUARD' }),
       [story2.id],
+      undefined,
       undefined
     );
   });

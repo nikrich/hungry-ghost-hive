@@ -209,7 +209,8 @@ export async function syncRequirementToJira(
   config: JiraConfig,
   requirement: RequirementRow,
   storyIds: string[],
-  teamName?: string
+  teamName?: string,
+  storiesDir?: string
 ): Promise<JiraSyncResult> {
   // Ensure Jira client credentials from .hive/.env are in process.env
   loadEnvIntoProcess();
@@ -330,12 +331,17 @@ export async function syncRequirementToJira(
       const jiraStory = await createIssue(client, { fields } as any);
 
       // Update local story with external integration info
-      updateStory(db, storyId, {
-        externalIssueKey: jiraStory.key,
-        externalIssueId: jiraStory.id,
-        externalProjectKey: config.project_key,
-        externalProvider: 'jira',
-      });
+      updateStory(
+        db,
+        storyId,
+        {
+          externalIssueKey: jiraStory.key,
+          externalIssueId: jiraStory.id,
+          externalProjectKey: config.project_key,
+          externalProvider: 'jira',
+        },
+        storiesDir
+      );
 
       // Record sync state
       createSyncRecord(db, {
@@ -385,7 +391,7 @@ export async function syncRequirementToJira(
   const movedToSprint = await tryMoveToActiveSprint(client, config, createdStoryKeys);
   if (movedToSprint) {
     for (const { storyId } of result.stories) {
-      updateStory(db, storyId, { inSprint: true });
+      updateStory(db, storyId, { inSprint: true }, storiesDir);
     }
   }
 
@@ -402,7 +408,8 @@ export async function syncStoryToJira(
   tokenStore: TokenStore,
   config: JiraConfig,
   story: StoryRow,
-  teamName?: string
+  teamName?: string,
+  storiesDir?: string
 ): Promise<{ jiraKey: string; jiraId: string } | null> {
   loadEnvIntoProcess();
 
@@ -449,12 +456,17 @@ export async function syncStoryToJira(
   const jiraStory = await createIssue(client, { fields } as any);
 
   // Update local story with external integration info
-  updateStory(db, story.id, {
-    externalIssueKey: jiraStory.key,
-    externalIssueId: jiraStory.id,
-    externalProjectKey: config.project_key,
-    externalProvider: 'jira',
-  });
+  updateStory(
+    db,
+    story.id,
+    {
+      externalIssueKey: jiraStory.key,
+      externalIssueId: jiraStory.id,
+      externalProjectKey: config.project_key,
+      externalProvider: 'jira',
+    },
+    storiesDir
+  );
 
   // Record sync
   createSyncRecord(db, {
@@ -467,7 +479,7 @@ export async function syncStoryToJira(
   // Move to active sprint
   const movedToSprint = await tryMoveToActiveSprint(client, config, [jiraStory.key]);
   if (movedToSprint) {
-    updateStory(db, story.id, { inSprint: true });
+    updateStory(db, story.id, { inSprint: true }, storiesDir);
   }
 
   return { jiraKey: jiraStory.key, jiraId: jiraStory.id };

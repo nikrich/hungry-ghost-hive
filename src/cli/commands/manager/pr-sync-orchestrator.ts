@@ -112,7 +112,12 @@ export async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
       if (toUpdate.length > 0) {
         await withTransaction(db.db, () => {
           for (const update of toUpdate) {
-            updateStory(db.db, update.storyId, { status: 'merged', assignedAgentId: null });
+            updateStory(
+              db.db,
+              update.storyId,
+              { status: 'merged', assignedAgentId: null },
+              ctx.paths.storiesDir
+            );
             const cleanup = cleanupAgentsReferencingMergedStory(db.db, update.storyId);
             createLog(db.db, {
               agentId: 'manager',
@@ -575,7 +580,12 @@ export async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promis
           });
 
           if (!result.candidate.storyId) return;
-          updateStory(db.db, result.candidate.storyId, { status: 'merged', assignedAgentId: null });
+          updateStory(
+            db.db,
+            result.candidate.storyId,
+            { status: 'merged', assignedAgentId: null },
+            ctx.paths.storiesDir
+          );
           const cleanup = cleanupAgentsReferencingMergedStory(db.db, result.candidate.storyId);
           createLog(db.db, {
             agentId: 'manager',

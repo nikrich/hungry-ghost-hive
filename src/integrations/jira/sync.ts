@@ -136,7 +136,8 @@ async function processBidirectionalStatusSync(
 export async function syncJiraStatusesToHive(
   db: Database,
   tokenStore: TokenStore,
-  config: JiraConfig
+  config: JiraConfig,
+  storiesDir?: string
 ): Promise<number> {
   // Skip if no status mapping configured
   if (!config.status_mapping || Object.keys(config.status_mapping).length === 0) {
@@ -184,7 +185,7 @@ export async function syncJiraStatusesToHive(
 
       // Update the story status in Hive
       await withTransaction(db, () => {
-        updateStory(db, story.id, { status: mappedHiveStatus as StoryStatus });
+        updateStory(db, story.id, { status: mappedHiveStatus as StoryStatus }, storiesDir);
 
         createLog(db, {
           agentId: 'manager',
@@ -224,7 +225,8 @@ export async function syncJiraStatusesToHive(
 export async function syncUnsyncedStoriesToJira(
   db: Database,
   tokenStore: TokenStore,
-  config: JiraConfig
+  config: JiraConfig,
+  storiesDir?: string
 ): Promise<number> {
   // Find stories that have no external_issue_key but are not in draft status
   const unsyncedStories = queryAll<StoryRow>(
@@ -291,7 +293,8 @@ export async function syncUnsyncedStoriesToJira(
         config,
         requirement,
         confirmedStoryIds,
-        teamName
+        teamName,
+        storiesDir
       );
 
       syncedCount += result.stories.length;
@@ -338,7 +341,8 @@ export async function syncUnsyncedStoriesToJira(
 export async function repairMissedAssignmentHooks(
   db: Database,
   tokenStore: TokenStore,
-  config: JiraConfig
+  config: JiraConfig,
+  storiesDir?: string
 ): Promise<number> {
   // Find stories that:
   // - Have an external_issue_key (synced to a PM provider)
@@ -382,10 +386,15 @@ export async function repairMissedAssignmentHooks(
 
       if (subtask) {
         // Persist subtask reference
-        updateStory(db, story.id, {
-          externalSubtaskKey: subtask.key,
-          externalSubtaskId: subtask.id,
-        });
+        updateStory(
+          db,
+          story.id,
+          {
+            externalSubtaskKey: subtask.key,
+            externalSubtaskId: subtask.id,
+          },
+          storiesDir
+        );
 
         logger.info(
           `Repaired: created Jira subtask ${subtask.key} for story ${story.id} (agent: ${agentName})`
@@ -447,7 +456,8 @@ export async function repairMissedAssignmentHooks(
 export async function retrySprintAssignment(
   db: Database,
   tokenStore: TokenStore,
-  config: JiraConfig
+  config: JiraConfig,
+  storiesDir?: string
 ): Promise<number> {
   const storiesNotInSprint = queryAll<StoryRow>(
     db,
@@ -471,7 +481,7 @@ export async function retrySprintAssignment(
   const moved = await tryMoveToActiveSprint(client, config, issueKeys);
   if (moved) {
     for (const story of storiesNotInSprint) {
-      updateStory(db, story.id, { inSprint: true });
+      updateStory(db, story.id, { inSprint: true }, storiesDir);
     }
     return storiesNotInSprint.length;
   }
@@ -596,16 +606,16 @@ export async function syncFromJira(root: string, db: Database): Promise<number> 
     await tokenStore.loadFromEnv(envPath);
 
     // First: push any unsynced stories TO Jira
-    await syncUnsyncedStoriesToJira(db, tokenStore, jiraConfig);
+    await syncUnsyncedStoriesToJira(db, tokenStore, jiraConfig, paths.storiesDir);
 
     // Then: repair any assigned stories that missed the Jira assignment hook
-    await repairMissedAssignmentHooks(db, tokenStore, jiraConfig);
+    await repairMissedAssignmentHooks(db, tokenStore, jiraConfig, paths.storiesDir);
 
     // Retry sprint assignment for stories that failed to move into a sprint
-    await retrySprintAssignment(db, tokenStore, jiraConfig);
+    await retrySprintAssignment(db, tokenStore, jiraConfig, paths.storiesDir);
 
     // Next: pull status updates FROM Jira
-    const pulledCount = await syncJiraStatusesToHive(db, tokenStore, jiraConfig);
+    const pulledCount = await syncJiraStatusesToHive(db, tokenStore, jiraConfig, paths.storiesDir);
 
     // Finally: push Hive status updates TO Jira
     await syncHiveStatusesToJira(db, tokenStore, jiraConfig);

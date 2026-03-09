@@ -352,7 +352,7 @@ export async function autoProgressDoneStory(
     verboseLogCtx(ctx, `autoProgressDoneStory: story=${story.id}, openPRs=${openPRs.length}`);
     if (openPRs.length > 0) {
       if (story.status !== 'pr_submitted') {
-        updateStory(db.db, story.id, { status: 'pr_submitted' });
+        updateStory(db.db, story.id, { status: 'pr_submitted' }, ctx.paths.storiesDir);
         createLog(db.db, {
           agentId: 'manager',
           storyId: story.id,
@@ -381,7 +381,12 @@ export async function autoProgressDoneStory(
     await withTransaction(
       db.db,
       () => {
-        updateStory(db.db, story.id, { status: 'pr_submitted', branchName: branch });
+        updateStory(
+          db.db,
+          story.id,
+          { status: 'pr_submitted', branchName: branch },
+          ctx.paths.storiesDir
+        );
         createPullRequest(db.db, {
           storyId: story.id,
           teamId: story.team_id || null,
@@ -554,7 +559,12 @@ export async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext)
       db.db,
       () => {
         for (const story of recoverableStories) {
-          updateStory(db.db, story.id, { status: 'planned', assignedAgentId: null });
+          updateStory(
+            db.db,
+            story.id,
+            { status: 'planned', assignedAgentId: null },
+            ctx.paths.storiesDir
+          );
           createLog(db.db, {
             agentId: 'manager',
             storyId: story.id,
