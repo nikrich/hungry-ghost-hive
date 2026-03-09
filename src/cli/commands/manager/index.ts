@@ -257,7 +257,8 @@ managerCommand
   .command('start')
   .description('Start the manager daemon (runs every 60s)')
   .option('-i, --interval <seconds>', 'Check interval in seconds', '60')
-  .option('-v, --verbose', 'Show detailed manager check logs')
+  .option('-v, --verbose', 'Show detailed manager check logs (default: true)')
+  .option('--no-verbose', 'Suppress verbose manager check logs')
   .option('--once', 'Run once and exit')
   .action(async (options: { interval: string; verbose?: boolean; once?: boolean }) => {
     const { root, paths } = withHiveRoot(ctx => ctx);
@@ -310,7 +311,7 @@ managerCommand
       );
     }
 
-    const verbose = options.verbose === true;
+    const verbose = options.verbose !== false;
     let checkInProgress = false;
     let checkQueued = false;
 
@@ -386,7 +387,8 @@ managerCommand
 managerCommand
   .command('check')
   .description('Run a single manager check')
-  .option('-v, --verbose', 'Show detailed manager check logs')
+  .option('-v, --verbose', 'Show detailed manager check logs (default: true)')
+  .option('--no-verbose', 'Suppress verbose manager check logs')
   .action(async (options: { verbose?: boolean }) => {
     const { root, paths } = withHiveRoot(ctx => ctx);
     const config = loadConfig(paths.hiveDir);
@@ -411,7 +413,7 @@ managerCommand
       }
     }
 
-    await managerCheck(root, config, undefined, options.verbose === true);
+    await managerCheck(root, config, undefined, options.verbose !== false);
   });
 
 // Run health check to sync agents with tmux
