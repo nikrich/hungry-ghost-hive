@@ -46,6 +46,7 @@ export interface ClusterHttpHandlers {
   handleHeartbeat: (body: unknown) => unknown;
   getDeltaFromCache: (vector: VersionVector, limit: number) => ClusterEvent[];
   getVersionVectorCache: () => VersionVector;
+  getReplicationLag: () => unknown;
   getFencingToken: () => number;
   validateFencingToken: (token: number) => boolean;
   isLeaderLeaseValid: () => boolean;
@@ -119,6 +120,11 @@ export class ClusterHttpServer {
         const body = await readJsonBody(req);
         const response = this.handlers.handleHeartbeat(body);
         sendJson(res, 200, response);
+        return;
+      }
+
+      if (method === 'GET' && path === '/cluster/v1/replication-lag') {
+        sendJson(res, 200, this.handlers.getReplicationLag());
         return;
       }
 
