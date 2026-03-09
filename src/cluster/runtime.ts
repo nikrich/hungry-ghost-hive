@@ -744,6 +744,64 @@ export async function fetchReplicationLag(
   );
 }
 
+/**
+ * Fetches recent cluster events from the local runtime via the delta endpoint.
+ * Uses an empty version vector to request recent events up to the given limit.
+ */
+export async function fetchLocalClusterEvents(
+  config: ClusterConfig,
+  limit: number = 50
+): Promise<ClusterEvent[] | null> {
+  if (!config.enabled) return null;
+
+  const host = config.listen_host === '0.0.0.0' ? '127.0.0.1' : config.listen_host;
+  const url = `http://${host}:${config.listen_port}/cluster/v1/events/delta`;
+
+  const response = await fetchClusterStatusOrPostJson<{ events: ClusterEvent[] }>(
+    url,
+    config.request_timeout_ms,
+    config.auth_token,
+    { method: 'POST', body: { version_vector: {}, limit } }
+  );
+
+  return response?.events ?? null;
+}
+
+/**
+ * POSTs to the local cluster runtime at the given path.
+ */
+export async function postToLocalCluster<T>(
+  config: ClusterConfig,
+  path: string,
+  body: unknown
+): Promise<T | null> {
+  if (!config.enabled) return null;
+
+  const host = config.listen_host === '0.0.0.0' ? '127.0.0.1' : config.listen_host;
+  const url = `http://${host}:${config.listen_port}${path}`;
+
+  return fetchClusterStatusOrPostJson<T>(url, config.request_timeout_ms, config.auth_token, {
+    method: 'POST',
+    body,
+  });
+}
+
+/**
+ * POSTs to a peer cluster node at the given URL and path.
+ */
+export async function postToPeerCluster<T>(
+  peerUrl: string,
+  path: string,
+  body: unknown,
+  options: ClusterStatusFetchOptions
+): Promise<T | null> {
+  const url = `${peerUrl.replace(/\/$/, '')}${path}`;
+  return fetchClusterStatusOrPostJson<T>(url, options.timeoutMs, options.authToken, {
+    method: 'POST',
+    body,
+  });
+}
+
 export async function fetchLocalClusterStatus(
   config: ClusterConfig
 ): Promise<ClusterStatus | null> {
