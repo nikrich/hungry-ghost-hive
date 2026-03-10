@@ -166,7 +166,7 @@ export async function syncOpenGitHubPRs(
       // Check if the story exists and is active (not merged)
       const storyRows = queryAll<{ id: string; status: string }>(
         db,
-        `SELECT id, status FROM stories WHERE id = ? AND status != 'merged'`,
+        `SELECT id, status FROM stories WHERE id = ? COLLATE NOCASE AND status != 'merged'`,
         [storyId]
       );
 
@@ -413,7 +413,7 @@ export async function closeStaleGitHubPRs(
           `
           SELECT id, github_pr_number
           FROM pull_requests
-          WHERE story_id = ?
+          WHERE story_id = ? COLLATE NOCASE
           AND status NOT IN ('closed')
           ORDER BY created_at DESC
         `,

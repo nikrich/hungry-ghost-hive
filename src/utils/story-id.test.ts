@@ -75,5 +75,20 @@ describe('Story ID utilities', () => {
       expect(normalizeStoryId('Story-FIX-004')).toBe('STORY-FIX-004');
       expect(normalizeStoryId('STORY-REF-022')).toBe('STORY-REF-022');
     });
+
+    it('should handle mixed-case story IDs', () => {
+      expect(normalizeStoryId('Story-PRCASE-001')).toBe('STORY-PRCASE-001');
+      expect(normalizeStoryId('story-prcase-001')).toBe('STORY-PRCASE-001');
+      expect(normalizeStoryId('STORY-PRCASE-001')).toBe('STORY-PRCASE-001');
+    });
+  });
+
+  describe('extractStoryIdFromBranch mixed-case', () => {
+    it('should return uppercase story IDs when story segment is mixed case', () => {
+      // 'Story' prefix with uppercase ID segments → normalize to uppercase
+      expect(extractStoryIdFromBranch('feature/Story-PRCASE-001-fix')).toBe('STORY-PRCASE-001');
+      expect(extractStoryIdFromBranch('feature/STORY-PRCASE-001-fix')).toBe('STORY-PRCASE-001');
+      expect(extractStoryIdFromBranch('Story-ABC-123')).toBe('STORY-ABC-123');
+    });
   });
 });

@@ -7,12 +7,13 @@ import { queryOne } from '../db/client.js';
 import { getAgentById } from '../db/queries/agents.js';
 import { getPullRequestById } from '../db/queries/pull-requests.js';
 import { getStoryById } from '../db/queries/stories.js';
+import { normalizeStoryId } from './story-id.js';
 
 /**
  * Require a story by ID, exit with error if not found.
  */
 export function requireStory(db: Database, storyId: string): StoryRow {
-  const story = getStoryById(db, storyId);
+  const story = getStoryById(db, normalizeStoryId(storyId));
   if (!story) {
     console.error(chalk.red(`Story not found: ${storyId}`));
     process.exit(1);

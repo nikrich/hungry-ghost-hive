@@ -79,7 +79,7 @@ vi.mock('../../utils/pr-sync.js', () => ({
 
 vi.mock('../../utils/story-id.js', () => ({
   extractStoryIdFromBranch: vi.fn(),
-  normalizeStoryId: vi.fn(id => id),
+  normalizeStoryId: vi.fn((id: string) => id.toUpperCase()),
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
@@ -244,6 +244,21 @@ describe('pr command', () => {
         'old-pr-1',
         expect.objectContaining({ status: 'closed' })
       );
+    });
+
+    it('should normalize mixed-case story IDs and look up open PRs with uppercase ID', async () => {
+      await run(
+        'submit',
+        '--branch',
+        'feature/story-test-1-fix',
+        '--story',
+        'story-test-1',
+        '--pr-number',
+        '10'
+      );
+
+      // normalizeStoryId mock uppercases; getOpenPullRequestsByStory should be called with 'STORY-TEST-1'
+      expect(getOpenPullRequestsByStory).toHaveBeenCalledWith(expect.anything(), 'STORY-TEST-1');
     });
 
     it('should skip auto-close when resubmitting same github PR number', async () => {

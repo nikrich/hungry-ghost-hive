@@ -93,7 +93,7 @@ export function createStory(db: Database, input: CreateStoryInput, storiesDir?: 
 }
 
 export function getStoryById(db: Database, id: string): StoryRow | undefined {
-  return queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE id = ?', [id]);
+  return queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE id = ? COLLATE NOCASE', [id]);
 }
 
 export function getStoriesByRequirement(db: Database, requirementId: string): StoryRow[] {
