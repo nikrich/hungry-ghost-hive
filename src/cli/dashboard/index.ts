@@ -83,13 +83,24 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
     tags: true,
   });
 
+  // Paused flag — set to true while a panel is handling tmux attachment so
+  // the background scheduleRefresh() timer skips its render and avoids a
+  // double-render race after the terminal is restored.
+  let refreshPaused = false;
+  const pauseRefresh = () => {
+    refreshPaused = true;
+  };
+  const resumeRefresh = () => {
+    refreshPaused = false;
+  };
+
   // Create panels
-  const agentsPanel = createAgentsPanel(screen, db.db);
+  const agentsPanel = createAgentsPanel(screen, db.db, pauseRefresh, resumeRefresh);
   const storiesPanel = createStoriesPanel(screen, db.db);
   const pipelinePanel = createPipelinePanel(screen, db.db);
   const activityPanel = createActivityPanel(screen, db.db);
   const mergeQueuePanel = createMergeQueuePanel(screen, db.db);
-  const escalationsPanel = createEscalationsPanel(screen, db.db);
+  const escalationsPanel = createEscalationsPanel(screen, db.db, pauseRefresh, resumeRefresh);
 
   // Footer
   blessed.box({
@@ -113,6 +124,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
 
   // Refresh function - only reloads database when file has changed
   const refresh = async () => {
+    if (refreshPaused) return;
     try {
       // Check if database file has been modified
       const currentMtime = statSync(dbPath).mtimeMs;

@@ -21,7 +21,12 @@ function summarizeEscalationReason(reason: string): string {
   return truncate(reason, 38);
 }
 
-export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
+export function createEscalationsPanel(
+  screen: Widgets.Screen,
+  db: Database,
+  pauseRefresh: () => void,
+  resumeRefresh: () => void
+): Widgets.ListElement {
   const list = blessed.list({
     parent: screen,
     top: '55%+5',
@@ -53,6 +58,9 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Wi
     if (selectedIndex >= 0 && selectedIndex < currentEscalations.length) {
       const escalation = currentEscalations[selectedIndex];
 
+      // Pause the background refresh timer so it cannot fire a concurrent
+      // render while we are restoring the terminal after tmux detach.
+      pauseRefresh();
       // Temporarily suspend blessed while handling escalation.
       const resumeScreen = screen.program.pause();
 
@@ -102,6 +110,9 @@ export function createEscalationsPanel(screen: Widgets.Screen, db: Database): Wi
           console.error('Failed to update escalations panel:', err);
         }
         screen.render();
+        // Allow the background refresh timer to render again now that the
+        // single explicit render above has fully completed.
+        resumeRefresh();
       }
 
       return;

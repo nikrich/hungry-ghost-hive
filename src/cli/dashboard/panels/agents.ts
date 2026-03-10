@@ -19,7 +19,12 @@ function debugLog(msg: string) {
 // Store agents for selection lookup
 let currentAgents: AgentRow[] = [];
 
-export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets.ListElement {
+export function createAgentsPanel(
+  screen: Widgets.Screen,
+  db: Database,
+  pauseRefresh: () => void,
+  resumeRefresh: () => void
+): Widgets.ListElement {
   const list = blessed.list({
     parent: screen,
     top: 1,
@@ -59,6 +64,9 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
       const agent = currentAgents[agentIndex];
       debugLog(`Selected agent: ${agent.id}, tmux: ${agent.tmux_session}`);
       if (agent.tmux_session) {
+        // Pause the background refresh timer so it cannot fire a concurrent
+        // render while we are restoring the terminal after tmux detach.
+        pauseRefresh();
         // Temporarily suspend blessed while attached to tmux.
         const resumeScreen = screen.program.pause();
 
@@ -69,8 +77,6 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
           });
         } finally {
           // Restore dashboard in the same process (do not spawn nested dashboards).
-          // spawnSync blocks the event loop so the refresh timer cannot fire and
-          // the captured `db` reference remains valid.
           resumeScreen();
           // Force full redraw — after tmux detach the terminal buffer is clobbered.
           // Use realloc() (dirty=true) so every cell is marked for redraw, preventing
@@ -82,6 +88,9 @@ export function createAgentsPanel(screen: Widgets.Screen, db: Database): Widgets
             debugLog(`Failed to refresh agents panel after tmux detach: ${err}`);
           }
           screen.render();
+          // Allow the background refresh timer to render again now that the
+          // single explicit render above has fully completed.
+          resumeRefresh();
         }
 
         return;
