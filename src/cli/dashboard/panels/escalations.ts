@@ -100,6 +100,13 @@ export function createEscalationsPanel(
       } finally {
         // Restore dashboard in the same process (do not spawn nested dashboards).
         resumeScreen();
+        // Explicitly reset terminal state before asking blessed to redraw.
+        // After tmux detach the scroll region and cursor position are corrupted,
+        // which causes header duplication and truncated first characters.
+        // clear() writes ESC[2J + ESC[H, flush() drains the write buffer so the
+        // terminal processes the reset before realloc() marks dirty cells.
+        screen.program.clear();
+        screen.program.flush();
         // Force full redraw — after tmux detach the terminal buffer is clobbered.
         // Use realloc() (dirty=true) so every cell is marked for redraw, preventing
         // partial-update artifacts from blessed's incremental renderer.
