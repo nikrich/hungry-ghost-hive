@@ -3,6 +3,7 @@
 import { nanoid } from 'nanoid';
 import type { Database } from 'sql.js';
 import { extractPRNumber } from '../../utils/github.js';
+import { normalizeStoryId } from '../../utils/story-id.js';
 import { queryAll, queryOne, run, type PullRequestRow, type StoryRow } from '../client.js';
 
 export type { PullRequestRow };
@@ -50,7 +51,7 @@ export function createPullRequest(db: Database, input: CreatePullRequestInput): 
   `,
     [
       id,
-      input.storyId || null,
+      input.storyId ? normalizeStoryId(input.storyId) : null,
       input.teamId || null,
       input.branchName,
       prNumber,
@@ -206,7 +207,7 @@ export function getOpenPullRequestsByStory(db: Database, storyId: string): PullR
     db,
     `
     SELECT * FROM pull_requests
-    WHERE story_id = ? AND status IN ('queued', 'reviewing')
+    WHERE story_id = ? COLLATE NOCASE AND status IN ('queued', 'reviewing')
     ORDER BY created_at ASC
   `,
     [storyId]

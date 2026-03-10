@@ -337,9 +337,10 @@ export async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
     const prsByStory = new Map<string, Array<{ id: string; github_pr_number: number | null }>>();
     for (const pr of allPRs) {
       if (!pr.story_id) continue;
-      const existing = prsByStory.get(pr.story_id) || [];
+      const key = pr.story_id.toUpperCase();
+      const existing = prsByStory.get(key) || [];
       existing.push({ id: pr.id, github_pr_number: pr.github_pr_number });
-      prsByStory.set(pr.story_id, existing);
+      prsByStory.set(key, existing);
     }
     return {
       teamInfos: teams.map(t => ({
