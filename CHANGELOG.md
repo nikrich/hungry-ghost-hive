@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.47.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.46.0...hungry-ghost-hive-v0.47.0) (2026-03-10)
+
+
+### Features
+
+* make manager verbose mode default with --no-verbose opt-out ([#538](https://github.com/nikrich/hungry-ghost-hive/issues/538)) ([5bda739](https://github.com/nikrich/hungry-ghost-hive/commit/5bda7394648c3a08c397de66cf3d1de402e0fa54))
+
+
+### Bug Fixes
+
+* correct Jira auth .env path to use rootDir directly ([#536](https://github.com/nikrich/hungry-ghost-hive/issues/536)) ([80dc85a](https://github.com/nikrich/hungry-ghost-hive/commit/80dc85a6bd3d102dbbd5c885308ae059d178bccd))
+* prevent double-render after tmux detach in dashboard ([#541](https://github.com/nikrich/hungry-ghost-hive/issues/541)) ([d7b8831](https://github.com/nikrich/hungry-ghost-hive/commit/d7b8831c555800e1e58d78b28dab00fdbb6187db))
+
 ## [0.46.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.45.0...hungry-ghost-hive-v0.46.0) (2026-03-09)
 
 
