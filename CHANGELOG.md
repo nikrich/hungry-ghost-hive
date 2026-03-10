@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.47.0...hungry-ghost-hive-v0.47.1) (2026-03-10)
+
+
+### Bug Fixes
+
+* resolve story ID case sensitivity in PR submit and sync paths ([#542](https://github.com/nikrich/hungry-ghost-hive/issues/542)) ([64f15c2](https://github.com/nikrich/hungry-ghost-hive/commit/64f15c2afbcbed84f54926f24d8f58d3f7403392))
+
 ## [0.47.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.46.0...hungry-ghost-hive-v0.47.0) (2026-03-10)
 
 
