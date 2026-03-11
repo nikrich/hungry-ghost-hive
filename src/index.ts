@@ -31,6 +31,7 @@ import {
   storiesCommand,
   teamsCommand,
   versionCommand,
+  webCommand,
 } from './cli/commands/index.js';
 import { bootstrapConnectors } from './connectors/bootstrap.js';
 import { getVersion } from './utils/version.js';
@@ -89,6 +90,9 @@ program.addCommand(prCommand);
 
 // Manager (micromanager daemon)
 program.addCommand(managerCommand);
+
+// Web dashboard
+program.addCommand(webCommand);
 
 // Dashboard command
 program

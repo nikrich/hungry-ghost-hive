@@ -25,3 +25,4 @@ export { statusCommand } from './status.js';
 export { storiesCommand } from './stories.js';
 export { teamsCommand } from './teams.js';
 export { versionCommand } from './version.js';
+export { webCommand } from './web.js';

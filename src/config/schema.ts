@@ -289,6 +289,28 @@ const E2ETestsConfigSchema = z.object({
   path: z.string().min(1),
 });
 
+// Web dashboard configuration
+const WebConfigSchema = z
+  .object({
+    // HTTP bind host for web dashboard
+    host: z.string().min(1).default('127.0.0.1'),
+    // HTTP bind port for web dashboard
+    port: z.number().int().min(1).max(65535).default(8788),
+    // Bearer token for web API (required when host is not loopback)
+    auth_token: z.string().min(1).optional(),
+    // DB polling interval for real-time updates (ms)
+    refresh_interval_ms: z.number().int().positive().default(3000),
+  })
+  .superRefine((web, ctx) => {
+    if (!isLoopbackHost(web.host) && !web.auth_token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['auth_token'],
+        message: 'auth_token is required when web.host is not loopback',
+      });
+    }
+  });
+
 // Distributed cluster configuration (feature-flagged)
 const ClusterConfigSchema = z
   .object({
@@ -353,6 +375,7 @@ export const HiveConfigSchema = z.object({
   merge_queue: MergeQueueConfigSchema.default({}),
   logging: LoggingConfigSchema.default({}),
   cluster: ClusterConfigSchema.default({}),
+  web: WebConfigSchema.default({}),
   e2e_tests: E2ETestsConfigSchema.optional(),
 });
 
@@ -374,6 +397,7 @@ export type MergeQueueConfig = z.infer<typeof MergeQueueConfigSchema>;
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
 export type ClusterPeerConfig = z.infer<typeof ClusterPeerSchema>;
 export type ClusterConfig = z.infer<typeof ClusterConfigSchema>;
+export type WebConfig = z.infer<typeof WebConfigSchema>;
 export type E2ETestsConfig = z.infer<typeof E2ETestsConfigSchema>;
 export type HiveConfig = z.infer<typeof HiveConfigSchema>;
 
@@ -617,5 +641,15 @@ cluster:
   # leader_lease_ms: 6000
   # Duplicate story detection sensitivity
   story_similarity_threshold: 0.92
+
+# Web dashboard (browser-based monitoring UI)
+web:
+  # HTTP listen address for web dashboard
+  host: 127.0.0.1
+  port: 8788
+  # Required when host is not loopback
+  # auth_token: your-secret-token
+  # DB polling interval for real-time updates (ms)
+  refresh_interval_ms: 3000
 `;
 }

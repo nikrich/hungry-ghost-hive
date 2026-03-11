@@ -246,6 +246,11 @@ describe('context-files module', () => {
       merge_queue: {
         max_age_hours: 1,
       },
+      web: {
+        host: '127.0.0.1',
+        port: 8788,
+        refresh_interval_ms: 3000,
+      },
     };
 
     it('should create a new context file if it does not exist', () => {
