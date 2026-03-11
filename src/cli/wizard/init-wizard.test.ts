@@ -59,7 +59,7 @@ describe('Init Wizard', () => {
         integrations: {
           source_control: { provider: 'github' },
           project_management: { provider: 'none' },
-          autonomy: { level: 'full' },
+          autonomy: { level: 'full', allow_preexisting_ci_failures: true },
         },
         agent_runtime: 'claude',
       });
@@ -96,7 +96,10 @@ describe('Init Wizard', () => {
 
       expect(result.integrations.source_control).toEqual({ provider: 'github' });
       expect(result.integrations.project_management.provider).toBe('jira');
-      expect(result.integrations.autonomy).toEqual({ level: 'partial' });
+      expect(result.integrations.autonomy).toEqual({
+        level: 'partial',
+        allow_preexisting_ci_failures: true,
+      });
       expect(result.agent_runtime).toBe('claude');
     });
 
@@ -149,7 +152,7 @@ describe('Init Wizard', () => {
         integrations: {
           source_control: { provider: 'github' },
           project_management: { provider: 'none' },
-          autonomy: { level: 'full' },
+          autonomy: { level: 'full', allow_preexisting_ci_failures: true },
         },
         agent_runtime: 'claude',
       });
@@ -218,7 +221,10 @@ describe('Init Wizard', () => {
 
       expect(result.integrations.source_control).toEqual({ provider: 'github' });
       expect(result.integrations.project_management.provider).toBe('jira');
-      expect(result.integrations.autonomy).toEqual({ level: 'partial' });
+      expect(result.integrations.autonomy).toEqual({
+        level: 'partial',
+        allow_preexisting_ci_failures: true,
+      });
       expect(result.agent_runtime).toBe('codex');
     });
 

@@ -193,7 +193,7 @@ describe('context-files module', () => {
       integrations: {
         source_control: { provider: 'github' },
         project_management: { provider: 'none' },
-        autonomy: { level: 'full' },
+        autonomy: { level: 'full', allow_preexisting_ci_failures: true },
       },
       github: { base_branch: 'main', pr_template: '' },
       qa: {

@@ -291,7 +291,7 @@ async function buildResult(
   const integrations: IntegrationsConfig = {
     source_control: { provider: sourceControl },
     project_management: { provider: projectManagement },
-    autonomy: { level: autonomy },
+    autonomy: { level: autonomy, allow_preexisting_ci_failures: true },
   };
 
   // If Jira is selected, run OAuth and setup wizard
