@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import type { Command } from 'commander';
+import { execa } from 'execa';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getOpenPullRequestsByStory,
@@ -10,6 +11,10 @@ import {
 import { autoMergeApprovedPRs } from '../../utils/auto-merge.js';
 
 // Mock dependencies
+vi.mock('execa', () => ({
+  execa: vi.fn(),
+}));
+
 vi.mock('../../cluster/runtime.js', () => ({
   fetchLocalClusterStatus: vi.fn(),
 }));
@@ -259,6 +264,49 @@ describe('pr command', () => {
 
       // normalizeStoryId mock uppercases; getOpenPullRequestsByStory should be called with 'STORY-TEST-1'
       expect(getOpenPullRequestsByStory).toHaveBeenCalledWith(expect.anything(), 'STORY-TEST-1');
+    });
+
+    it('should not close GitHub PR when auto-closing duplicate internal PR records', async () => {
+      vi.mocked(getOpenPullRequestsByStory).mockReturnValue([
+        {
+          id: 'old-pr-1',
+          story_id: 'TEST-1',
+          team_id: 'team-1',
+          branch_name: 'feature/old-branch',
+          github_pr_number: 42,
+          github_pr_url: 'https://github.com/test/repo/pull/42',
+          submitted_by: null,
+          reviewed_by: null,
+          status: 'queued',
+          review_notes: null,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+          reviewed_at: null,
+        },
+      ]);
+
+      await run(
+        'submit',
+        '--branch',
+        'feature/new-branch',
+        '--story',
+        'TEST-1',
+        '--pr-number',
+        '99'
+      );
+
+      // Internal DB record should be closed
+      expect(updatePullRequest).toHaveBeenCalledWith(
+        expect.anything(),
+        'old-pr-1',
+        expect.objectContaining({ status: 'closed' })
+      );
+      // GitHub PR must NOT be closed via gh CLI
+      expect(execa).not.toHaveBeenCalledWith(
+        'gh',
+        expect.arrayContaining(['pr', 'close']),
+        expect.anything()
+      );
     });
 
     it('should skip auto-close when resubmitting same github PR number', async () => {
