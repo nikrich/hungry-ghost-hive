@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.47.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.47.2...hungry-ghost-hive-v0.47.3) (2026-03-11)
+
+
+### Bug Fixes
+
+* bypass pre-existing CI failures when auto-merging PRs ([#547](https://github.com/nikrich/hungry-ghost-hive/issues/547)) ([8c46dd5](https://github.com/nikrich/hungry-ghost-hive/commit/8c46dd5cda7c69e12626db1793280ade50751e7c))
+* do not close GitHub PR when submitting to hive merge queue ([#548](https://github.com/nikrich/hungry-ghost-hive/issues/548)) ([906f671](https://github.com/nikrich/hungry-ghost-hive/commit/906f671de923592150e097f95b328373a349404d))
+* resolve wrong .env path in hive auth jira command ([#549](https://github.com/nikrich/hungry-ghost-hive/issues/549)) ([1fdcbb5](https://github.com/nikrich/hungry-ghost-hive/commit/1fdcbb5a86214acee53238e4f5c9b0c2b5913ea8))
+
 ## [0.47.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.47.1...hungry-ghost-hive-v0.47.2) (2026-03-10)
 
 
