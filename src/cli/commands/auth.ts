@@ -129,7 +129,7 @@ authCommand
   .description('Re-run GitHub OAuth Device Flow to update authentication token')
   .action(async () => {
     try {
-      const { paths } = withHiveRoot(ctx => ctx);
+      const { root } = withHiveRoot(ctx => ctx);
       const clientId = process.env.GITHUB_OAUTH_CLIENT_ID;
       if (!clientId) {
         console.error(chalk.red('Error: GITHUB_OAUTH_CLIENT_ID environment variable is not set.'));
@@ -142,7 +142,7 @@ authCommand
 
       const result = await runGitHubDeviceFlow({
         clientId,
-        rootDir: paths.hiveDir,
+        rootDir: root,
       });
 
       console.log();
@@ -166,7 +166,7 @@ authCommand
   .description('Re-run Jira OAuth 2.0 (3LO) to update authentication tokens')
   .action(async () => {
     try {
-      const { root, paths } = withHiveRoot(ctx => ctx);
+      const { root } = withHiveRoot(ctx => ctx);
 
       // Load stored credentials from .hive/.env, then check env vars, then prompt
       loadEnvIntoProcess(root);
@@ -198,7 +198,7 @@ authCommand
       });
 
       // Store tokens using TokenStore
-      const envPath = getEnvFilePath(paths.hiveDir);
+      const envPath = getEnvFilePath(root);
       const tokenStore = new TokenStore(envPath);
       await tokenStore.loadFromEnv(envPath);
       await storeJiraTokens(tokenStore, result);

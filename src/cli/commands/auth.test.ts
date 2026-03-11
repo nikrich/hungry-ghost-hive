@@ -20,6 +20,24 @@ vi.mock('../../auth/token-store.js', () => ({
   })),
 }));
 
+vi.mock('../../auth/env-store.js', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../auth/env-store.js')>('../../auth/env-store.js');
+  return {
+    ...actual,
+    loadEnvIntoProcess: vi.fn(),
+    writeEnvEntries: vi.fn(),
+  };
+});
+
+vi.mock('@inquirer/prompts', () => ({
+  input: vi.fn().mockResolvedValue('mock-value'),
+}));
+
+vi.mock('../../utils/open-browser.js', () => ({
+  openBrowser: vi.fn().mockResolvedValue(undefined),
+}));
+
 let mockHiveRoot: string | null = null;
 
 vi.mock('../../utils/with-hive-context.js', () => ({
@@ -97,6 +115,39 @@ describe('auth command', () => {
           process.env.JIRA_OAUTH_CLIENT_ID = oldClientId;
         }
       }
+    });
+
+    it('should construct TokenStore with root/.hive/.env (not root/.hive/.hive/.env)', async () => {
+      const { startJiraOAuthFlow, storeJiraTokens } = await import('../../auth/jira-oauth.js');
+      const { TokenStore } = await import('../../auth/token-store.js');
+
+      vi.mocked(startJiraOAuthFlow).mockResolvedValue({
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        cloudId: 'cloud-id',
+        siteUrl: 'https://example.atlassian.net',
+        expiresIn: 3600,
+      });
+      vi.mocked(storeJiraTokens).mockResolvedValue(undefined);
+
+      process.env.JIRA_OAUTH_CLIENT_ID = 'test-client-id';
+      process.env.JIRA_OAUTH_CLIENT_SECRET = 'test-client-secret';
+
+      const jiraCmd = authCommand.commands.find(cmd => cmd.name() === 'jira');
+      expect(jiraCmd).toBeDefined();
+
+      try {
+        await jiraCmd!.parseAsync([], { from: 'user' });
+      } catch {
+        // command may exit; we only care about the TokenStore constructor call
+      }
+
+      const TokenStoreMock = vi.mocked(TokenStore);
+      expect(TokenStoreMock).toHaveBeenCalled();
+      const envPathArg = TokenStoreMock.mock.calls[0][0] as string;
+      // Must end with .hive/.env, never .hive/.hive/.env
+      expect(envPathArg).toMatch(/\.hive[/\\]\.env$/);
+      expect(envPathArg).not.toMatch(/\.hive[/\\]\.hive/);
     });
   });
 
