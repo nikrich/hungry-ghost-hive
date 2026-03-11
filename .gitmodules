@@ -1,0 +1,4 @@
+[submodule "repos/verigate"]
+	path = repos/verigate
+	url = https://github.com/VeriGate-Org/verigate
+	branch = main
