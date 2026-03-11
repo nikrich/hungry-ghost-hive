@@ -166,7 +166,7 @@ authCommand
   .description('Re-run Jira OAuth 2.0 (3LO) to update authentication tokens')
   .action(async () => {
     try {
-      const { root, paths } = withHiveRoot(ctx => ctx);
+      const { root } = withHiveRoot(ctx => ctx);
 
       // Load stored credentials from .hive/.env, then check env vars, then prompt
       loadEnvIntoProcess(root);
