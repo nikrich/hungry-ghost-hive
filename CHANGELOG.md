@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.47.1...hungry-ghost-hive-v0.47.2) (2026-03-10)
+
+
+### Bug Fixes
+
+* reset terminal state before realloc after tmux detach ([#544](https://github.com/nikrich/hungry-ghost-hive/issues/544)) ([91437da](https://github.com/nikrich/hungry-ghost-hive/commit/91437da4847130e7019b127bf794d3e0764a996e))
+
 ## [0.47.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.47.0...hungry-ghost-hive-v0.47.1) (2026-03-10)
 
 
