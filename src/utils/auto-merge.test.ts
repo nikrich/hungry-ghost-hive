@@ -27,7 +27,7 @@ vi.mock('../connectors/project-management/operations.js', () => ({
 }));
 
 import { loadConfig } from '../config/loader.js';
-import { autoMergeApprovedPRs } from './auto-merge.js';
+import { autoMergeApprovedPRs, checkPreexistingCIFailures } from './auto-merge.js';
 
 const mockLoadConfig = vi.mocked(loadConfig);
 
@@ -379,6 +379,218 @@ describe('auto-merge functionality', () => {
       const result = await autoMergeApprovedPRs('/mock/root', dbClient);
       expect(result).toBe(0);
       expect(getPullRequestById(db, pr.id)?.status).toBe('approved');
+    });
+
+    it('should bypass BLOCKED status when all CI failures are pre-existing on base branch', async () => {
+      const pr = createPullRequest(db, {
+        storyId,
+        teamId,
+        branchName: 'feature/preexisting-ci',
+        githubPrNumber: 555,
+      });
+      updatePullRequest(db, pr.id, { status: 'approved' });
+
+      mockLoadConfig.mockReturnValue({
+        integrations: {
+          autonomy: { level: 'full', allow_preexisting_ci_failures: true },
+          source_control: { provider: 'github' },
+          project_management: { provider: 'none' },
+        },
+      } as any);
+
+      const mockExecSync = vi.fn();
+      // 1. gh pr view → BLOCKED but MERGEABLE
+      mockExecSync.mockReturnValueOnce(
+        JSON.stringify({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED' })
+      );
+      // 2. gh pr checks → one failing check
+      mockExecSync.mockReturnValueOnce(
+        JSON.stringify([
+          { name: 'build', state: 'SUCCESS' },
+          { name: 'lint', state: 'FAIL' },
+        ])
+      );
+      // 3. gh pr view baseRefName
+      mockExecSync.mockReturnValueOnce(JSON.stringify({ baseRefName: 'main' }));
+      // 4. gh api base branch check-runs → same check failing
+      mockExecSync.mockReturnValueOnce(
+        JSON.stringify([
+          { name: 'build', conclusion: 'success' },
+          { name: 'lint', conclusion: 'failure' },
+        ])
+      );
+      // 5. gh pr merge --admin → success
+      mockExecSync.mockReturnValueOnce(undefined);
+
+      vi.doMock('child_process', () => ({ execSync: mockExecSync }));
+
+      const dbClient = { db, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+      const result = await autoMergeApprovedPRs('/mock/root', dbClient);
+
+      expect(result).toBe(1);
+      expect(getPullRequestById(db, pr.id)?.status).toBe('merged');
+    });
+
+    it('should not bypass BLOCKED status when PR has new CI failures not on base branch', async () => {
+      const pr = createPullRequest(db, {
+        storyId,
+        teamId,
+        branchName: 'feature/new-ci-failure',
+        githubPrNumber: 556,
+      });
+      updatePullRequest(db, pr.id, { status: 'approved' });
+
+      mockLoadConfig.mockReturnValue({
+        integrations: {
+          autonomy: { level: 'full', allow_preexisting_ci_failures: true },
+          source_control: { provider: 'github' },
+          project_management: { provider: 'none' },
+        },
+      } as any);
+
+      const mockExecSync = vi.fn();
+      // 1. gh pr view → BLOCKED but MERGEABLE
+      mockExecSync.mockReturnValueOnce(
+        JSON.stringify({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED' })
+      );
+      // 2. gh pr checks → two failing checks
+      mockExecSync.mockReturnValueOnce(
+        JSON.stringify([
+          { name: 'build', state: 'FAIL' },
+          { name: 'lint', state: 'FAIL' },
+        ])
+      );
+      // 3. gh pr view baseRefName
+      mockExecSync.mockReturnValueOnce(JSON.stringify({ baseRefName: 'main' }));
+      // 4. gh api base branch check-runs → only lint fails on base
+      mockExecSync.mockReturnValueOnce(
+        JSON.stringify([
+          { name: 'build', conclusion: 'success' },
+          { name: 'lint', conclusion: 'failure' },
+        ])
+      );
+
+      vi.doMock('child_process', () => ({ execSync: mockExecSync }));
+
+      const dbClient = { db, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+      const result = await autoMergeApprovedPRs('/mock/root', dbClient);
+
+      // Should not merge — 'build' is a new failure
+      expect(result).toBe(0);
+      // PR should be reset to approved (ci_blocked outcome)
+      expect(getPullRequestById(db, pr.id)?.status).toBe('approved');
+    });
+
+    it('should skip BLOCKED PR when allow_preexisting_ci_failures is false', async () => {
+      const pr = createPullRequest(db, {
+        storyId,
+        teamId,
+        branchName: 'feature/ci-blocked-no-bypass',
+        githubPrNumber: 557,
+      });
+      updatePullRequest(db, pr.id, { status: 'approved' });
+
+      mockLoadConfig.mockReturnValue({
+        integrations: {
+          autonomy: { level: 'full', allow_preexisting_ci_failures: false },
+          source_control: { provider: 'github' },
+          project_management: { provider: 'none' },
+        },
+      } as any);
+
+      const mockExecSync = vi.fn();
+      // gh pr view → BLOCKED but MERGEABLE
+      mockExecSync.mockReturnValueOnce(
+        JSON.stringify({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED' })
+      );
+
+      vi.doMock('child_process', () => ({ execSync: mockExecSync }));
+
+      const dbClient = { db, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+      const result = await autoMergeApprovedPRs('/mock/root', dbClient);
+
+      expect(result).toBe(0);
+      expect(getPullRequestById(db, pr.id)?.status).toBe('approved');
+    });
+  });
+
+  describe('checkPreexistingCIFailures', () => {
+    it('should return bypassed=true when all PR failures exist on base branch', () => {
+      const mockExecSync = vi.fn();
+      // gh pr checks
+      mockExecSync.mockReturnValueOnce(
+        JSON.stringify([
+          { name: 'build', state: 'SUCCESS' },
+          { name: 'lint', state: 'FAIL' },
+          { name: 'test', state: 'FAIL' },
+        ])
+      );
+      // gh pr view baseRefName
+      mockExecSync.mockReturnValueOnce(JSON.stringify({ baseRefName: 'main' }));
+      // gh api check-runs
+      mockExecSync.mockReturnValueOnce(
+        JSON.stringify([
+          { name: 'build', conclusion: 'success' },
+          { name: 'lint', conclusion: 'failure' },
+          { name: 'test', conclusion: 'failure' },
+        ])
+      );
+
+      const result = checkPreexistingCIFailures(
+        123,
+        '/repo',
+        '',
+        'owner/repo',
+        mockExecSync as any
+      );
+      expect(result.bypassed).toBe(true);
+      expect(result.bypassedChecks).toEqual(expect.arrayContaining(['lint', 'test']));
+    });
+
+    it('should return bypassed=false when PR has unique failures', () => {
+      const mockExecSync = vi.fn();
+      mockExecSync.mockReturnValueOnce(JSON.stringify([{ name: 'build', state: 'FAIL' }]));
+      mockExecSync.mockReturnValueOnce(JSON.stringify({ baseRefName: 'main' }));
+      mockExecSync.mockReturnValueOnce(JSON.stringify([{ name: 'build', conclusion: 'success' }]));
+
+      const result = checkPreexistingCIFailures(
+        123,
+        '/repo',
+        '',
+        'owner/repo',
+        mockExecSync as any
+      );
+      expect(result.bypassed).toBe(false);
+    });
+
+    it('should return bypassed=false when no PR checks are failing', () => {
+      const mockExecSync = vi.fn();
+      mockExecSync.mockReturnValueOnce(JSON.stringify([{ name: 'build', state: 'SUCCESS' }]));
+
+      const result = checkPreexistingCIFailures(
+        123,
+        '/repo',
+        '',
+        'owner/repo',
+        mockExecSync as any
+      );
+      expect(result.bypassed).toBe(false);
+      expect(result.bypassedChecks).toEqual([]);
+    });
+
+    it('should return bypassed=false when execSync throws', () => {
+      const mockExecSync = vi.fn().mockImplementation(() => {
+        throw new Error('gh not found');
+      });
+
+      const result = checkPreexistingCIFailures(
+        123,
+        '/repo',
+        '',
+        'owner/repo',
+        mockExecSync as any
+      );
+      expect(result.bypassed).toBe(false);
     });
   });
 });

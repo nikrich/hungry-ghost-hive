@@ -44,7 +44,81 @@ interface ClaimedPR {
   pr: PullRequestRow;
   repoCwd: string;
   repoFlag: string;
+  repoSlug: string | null;
   teamId: string | null;
+}
+
+/**
+ * Compare CI check failures between a PR and its base branch.
+ * Returns bypassed=true when every failing check on the PR also fails on the base branch.
+ */
+export function checkPreexistingCIFailures(
+  prNumber: number,
+  repoCwd: string,
+  repoFlag: string,
+  repoSlug: string | null,
+  execSyncFn: typeof import('child_process').execSync
+): { bypassed: boolean; bypassedChecks: string[] } {
+  try {
+    // Get failing checks on the PR
+    const prChecksRaw = execSyncFn(`gh pr checks ${prNumber} --json name,state${repoFlag}`, {
+      stdio: 'pipe',
+      cwd: repoCwd,
+      encoding: 'utf-8',
+      timeout: PR_STATE_CHECK_TIMEOUT_MS,
+    }) as string;
+    const prChecks: Array<{ name: string; state: string }> = JSON.parse(prChecksRaw);
+    const prFailingNames = new Set(prChecks.filter(c => c.state === 'FAIL').map(c => c.name));
+
+    if (prFailingNames.size === 0) return { bypassed: false, bypassedChecks: [] };
+
+    // Get the base branch ref
+    const baseRefRaw = execSyncFn(`gh pr view ${prNumber} --json baseRefName${repoFlag}`, {
+      stdio: 'pipe',
+      cwd: repoCwd,
+      encoding: 'utf-8',
+      timeout: PR_STATE_CHECK_TIMEOUT_MS,
+    }) as string;
+    const { baseRefName } = JSON.parse(baseRefRaw);
+
+    // Determine repo slug for API call
+    let slug = repoSlug;
+    if (!slug) {
+      try {
+        slug = (
+          execSyncFn('gh repo view --json nameWithOwner -q .nameWithOwner', {
+            stdio: 'pipe',
+            cwd: repoCwd,
+            encoding: 'utf-8',
+            timeout: PR_STATE_CHECK_TIMEOUT_MS,
+          }) as string
+        ).trim();
+      } catch {
+        return { bypassed: false, bypassedChecks: [] };
+      }
+    }
+
+    // Get check runs on the base branch
+    const baseChecksRaw = execSyncFn(
+      `gh api repos/${slug}/commits/${baseRefName}/check-runs --jq '.check_runs'`,
+      { stdio: 'pipe', cwd: repoCwd, encoding: 'utf-8', timeout: PR_STATE_CHECK_TIMEOUT_MS }
+    ) as string;
+    const baseCheckRuns: Array<{ name: string; conclusion: string }> = JSON.parse(baseChecksRaw);
+    const baseFailingNames = new Set(
+      baseCheckRuns.filter(c => c.conclusion === 'failure').map(c => c.name)
+    );
+
+    // Check if all PR failures also fail on base
+    const prOnlyFailures = [...prFailingNames].filter(name => !baseFailingNames.has(name));
+
+    if (prOnlyFailures.length === 0) {
+      return { bypassed: true, bypassedChecks: [...prFailingNames] };
+    }
+
+    return { bypassed: false, bypassedChecks: [] };
+  } catch {
+    return { bypassed: false, bypassedChecks: [] };
+  }
 }
 
 /**
@@ -130,6 +204,7 @@ export async function autoMergeApprovedPRs(
         pr,
         repoCwd,
         repoFlag: repoSlug ? ` -R ${repoSlug}` : '',
+        repoSlug,
         teamId,
       });
     }
@@ -154,6 +229,8 @@ export async function autoMergeApprovedPRs(
       | { type: 'branch_updated' }
       | { type: 'already_closed'; prState: GitHubPRState }
       | { type: 'conflicts' }
+      | { type: 'ci_blocked' }
+      | { type: 'ci_bypassed'; bypassedChecks: string[] }
       | { type: 'unknown_state' }
       | { type: 'merge_failed'; error: Error };
   }
@@ -204,6 +281,44 @@ export async function autoMergeApprovedPRs(
 
       if (prState.mergeable !== 'MERGEABLE') {
         results.push({ claimed, outcome: { type: 'conflicts' } });
+        continue;
+      }
+
+      // Handle BLOCKED mergeStateStatus (CI checks failing)
+      if (prState.mergeStateStatus === 'BLOCKED') {
+        if (config.integrations.autonomy.allow_preexisting_ci_failures) {
+          const ciResult = checkPreexistingCIFailures(
+            pr.github_pr_number!,
+            repoCwd,
+            repoFlag,
+            claimed.repoSlug,
+            execSync
+          );
+          if (ciResult.bypassed) {
+            // All CI failures also exist on the base branch — attempt merge with admin bypass
+            try {
+              execSync(
+                `gh pr merge ${pr.github_pr_number} --squash --delete-branch --admin${repoFlag}`,
+                { stdio: 'pipe', cwd: repoCwd, timeout: PR_MERGE_TIMEOUT_MS }
+              );
+              results.push({
+                claimed,
+                outcome: { type: 'ci_bypassed', bypassedChecks: ciResult.bypassedChecks },
+              });
+            } catch (mergeErr) {
+              results.push({
+                claimed,
+                outcome: {
+                  type: 'merge_failed',
+                  error: mergeErr instanceof Error ? mergeErr : new Error(String(mergeErr)),
+                },
+              });
+            }
+            continue;
+          }
+        }
+        // New CI failures or config disabled — skip
+        results.push({ claimed, outcome: { type: 'ci_blocked' } });
         continue;
       }
 
@@ -334,6 +449,70 @@ export async function autoMergeApprovedPRs(
             message: `Skipped auto-merge of PR ${pr.id} (GitHub PR #${pr.github_pr_number}): PR has merge conflicts`,
             metadata: { pr_id: pr.id },
           });
+          break;
+        }
+
+        case 'ci_blocked': {
+          await withTransaction(
+            phaseDb.db,
+            () => {
+              updatePullRequest(phaseDb.db, pr.id, { status: 'approved' });
+              createLog(phaseDb.db, {
+                agentId: 'manager',
+                storyId: pr.story_id || undefined,
+                eventType: 'PR_MERGE_SKIPPED',
+                status: 'warn',
+                message: `Skipped auto-merge of PR #${pr.github_pr_number}: CI checks are failing (not pre-existing on base branch)`,
+                metadata: { pr_id: pr.id },
+              });
+            },
+            () => phaseDb.save()
+          );
+          break;
+        }
+
+        case 'ci_bypassed': {
+          const storyId = pr.story_id;
+          const bypassedChecks = result.outcome.bypassedChecks;
+          await withTransaction(
+            phaseDb.db,
+            () => {
+              updatePullRequest(phaseDb.db, pr.id, { status: 'merged' });
+              if (storyId) {
+                updateStory(phaseDb.db, storyId, { status: 'merged' });
+                const story = getStoryById(phaseDb.db, storyId);
+                if (story?.assigned_agent_id) {
+                  const agent = getAgentById(phaseDb.db, story.assigned_agent_id);
+                  if (agent && agent.current_story_id === storyId) {
+                    updateAgent(phaseDb.db, agent.id, { currentStoryId: null, status: 'idle' });
+                  }
+                }
+                createLog(phaseDb.db, {
+                  agentId: 'manager',
+                  storyId,
+                  eventType: 'STORY_MERGED',
+                  message: `Story auto-merged from GitHub PR #${pr.github_pr_number} (bypassed pre-existing CI failures: ${bypassedChecks.join(', ')})`,
+                });
+              } else {
+                createLog(phaseDb.db, {
+                  agentId: 'manager',
+                  eventType: 'PR_MERGED',
+                  message: `PR ${pr.id} auto-merged (GitHub PR #${pr.github_pr_number}, bypassed pre-existing CI failures: ${bypassedChecks.join(', ')})`,
+                  metadata: { pr_id: pr.id },
+                });
+              }
+            },
+            () => phaseDb.save()
+          );
+
+          mergedCount++;
+
+          if (storyId) {
+            postLifecycleComment(phaseDb.db, paths.hiveDir, config, storyId, 'merged').catch(() => {
+              /* non-fatal */
+            });
+            syncStatusForStory(root, phaseDb.db, storyId, 'merged');
+          }
           break;
         }
 

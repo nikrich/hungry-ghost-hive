@@ -140,6 +140,8 @@ const ProjectManagementConfigSchema = z.object({
 const AutonomyConfigSchema = z.object({
   // Agent autonomy level
   level: z.enum(['full', 'partial']).default('full'),
+  // When true, PRs whose only CI failures also fail on the base branch are still merged
+  allow_preexisting_ci_failures: z.boolean().default(true),
 });
 
 // Integrations configuration
@@ -405,6 +407,8 @@ integrations:
   # Agent autonomy level (full, partial)
   autonomy:
     level: full
+    # Merge PRs whose CI failures also exist on the base branch
+    allow_preexisting_ci_failures: true
 
 # Model assignments per agent tier
 models:
