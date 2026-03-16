@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.47.3...hungry-ghost-hive-v0.47.4) (2026-03-16)
+
+
+### Bug Fixes
+
+* expand Jira OAuth scope instructions in init wizard ([#554](https://github.com/nikrich/hungry-ghost-hive/issues/554)) ([923c7e9](https://github.com/nikrich/hungry-ghost-hive/commit/923c7e94bdb124866a843ea3b98925e8b455dca2))
+
 ## [0.47.3](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.47.2...hungry-ghost-hive-v0.47.3) (2026-03-11)
 
 
