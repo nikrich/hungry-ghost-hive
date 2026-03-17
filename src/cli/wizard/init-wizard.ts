@@ -305,7 +305,22 @@ async function buildResult(
     console.log(chalk.gray('  1. Go to https://developer.atlassian.com/console/myapps/'));
     console.log(chalk.gray('  2. Create a new app with OAuth 2.0 (3LO)'));
     console.log(chalk.gray('  3. Add callback URL: http://127.0.0.1:9876/callback'));
-    console.log(chalk.gray('  4. Enable scopes: read:jira-work, write:jira-work, offline_access'));
+    console.log(chalk.gray('  4. Enable the following scopes:'));
+    console.log(chalk.gray(''));
+    console.log(chalk.gray('     Jira API'));
+    console.log(chalk.gray('       read:jira-work'));
+    console.log(chalk.gray('       write:jira-work'));
+    console.log(chalk.gray('       read:jira-user'));
+    console.log(chalk.gray(''));
+    console.log(chalk.gray('     Jira Software API'));
+    console.log(chalk.gray('       read:board-scope:jira-software'));
+    console.log(chalk.gray('       write:board-scope:jira-software'));
+    console.log(chalk.gray('       read:sprint:jira-software'));
+    console.log(chalk.gray('       write:sprint:jira-software'));
+    console.log(chalk.gray(''));
+    console.log(chalk.gray('     Confluence API'));
+    console.log(chalk.gray('       read:confluence-content.all'));
+    console.log(chalk.gray(''));
     console.log();
 
     // Get OAuth credentials from environment or prompt user
