@@ -2,7 +2,7 @@ name: Release Please
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: write
@@ -19,6 +19,8 @@ jobs:
         uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: ${{ github.ref == 'refs/heads/develop' }}
+          prerelease-type: alpha
 
   publish:
     needs: release-please
@@ -43,7 +45,7 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish
+        run: npm publish ${{ github.ref == 'refs/heads/develop' && '--tag alpha' || '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
