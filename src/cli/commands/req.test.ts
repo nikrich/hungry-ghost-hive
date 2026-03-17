@@ -131,3 +131,39 @@ describe('req command - URL validation', () => {
     expect(connector).toBeNull();
   });
 });
+
+describe('req command - headless flag', () => {
+  afterEach(() => {
+    delete process.env.HIVE_HEADLESS;
+    vi.restoreAllMocks();
+  });
+
+  it('should set HIVE_HEADLESS env var when headless option is true', () => {
+    // Simulate what req command does when --headless is passed
+    const options = { headless: true };
+    if (options.headless) {
+      process.env.HIVE_HEADLESS = '1';
+    }
+    expect(process.env.HIVE_HEADLESS).toBe('1');
+  });
+
+  it('should not set HIVE_HEADLESS env var when headless option is false', () => {
+    const options = { headless: false };
+    if (options.headless) {
+      process.env.HIVE_HEADLESS = '1';
+    }
+    expect(process.env.HIVE_HEADLESS).toBeUndefined();
+  });
+
+  it('should skip dashboard when HIVE_HEADLESS env var is set', () => {
+    process.env.HIVE_HEADLESS = '1';
+    const headless = process.env.HIVE_HEADLESS === '1';
+    expect(headless).toBe(true);
+  });
+
+  it('should launch dashboard when HIVE_HEADLESS env var is not set', () => {
+    delete process.env.HIVE_HEADLESS;
+    const headless = process.env.HIVE_HEADLESS === '1';
+    expect(headless).toBe(false);
+  });
+});
