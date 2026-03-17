@@ -43,7 +43,14 @@ const program = new Command();
 program
   .name('hive')
   .description('AI Agent Orchestrator - Manage agile software development teams of AI agents')
-  .version(getVersion());
+  .version(getVersion())
+  .option('--headless', 'Skip TUI dashboard auto-launch for all commands')
+  .hook('preAction', (_thisCommand, actionCommand) => {
+    const globalOpts = program.opts<{ headless?: boolean }>();
+    if (globalOpts.headless || actionCommand.opts<{ headless?: boolean }>().headless) {
+      process.env.HIVE_HEADLESS = '1';
+    }
+  });
 
 // Core commands
 program.addCommand(versionCommand);

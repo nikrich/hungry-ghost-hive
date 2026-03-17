@@ -32,6 +32,7 @@ export const reqCommand = new Command('req')
   .option('--dry-run', 'Create requirement without spawning agents')
   .option('--godmode', 'Enable godmode - use most powerful models for all agents')
   .option('--target-branch <branch>', 'Target branch for PRs (skips interactive prompt)')
+  .option('--headless', 'Skip TUI dashboard auto-launch after submitting requirement')
   .action(
     async (
       requirement: string | undefined,
@@ -41,6 +42,7 @@ export const reqCommand = new Command('req')
         dryRun?: boolean;
         godmode?: boolean;
         targetBranch?: string;
+        headless?: boolean;
       }
     ) => {
       await withHiveContext(async ({ root, paths, db }) => {
@@ -284,12 +286,15 @@ export const reqCommand = new Command('req')
             console.log(chalk.cyan(`  tmux attach -t ${sessionName}`));
             console.log();
 
-            // Launch dashboard
-            try {
-              await startDashboard();
-            } catch (dashboardErr) {
-              console.warn(chalk.yellow('⚠️  Failed to start dashboard'));
-              console.error(dashboardErr);
+            // Launch dashboard (skip if --headless flag or HIVE_HEADLESS env var is set)
+            const headless = options.headless || process.env.HIVE_HEADLESS === '1';
+            if (!headless) {
+              try {
+                await startDashboard();
+              } catch (dashboardErr) {
+                console.warn(chalk.yellow('⚠️  Failed to start dashboard'));
+                console.error(dashboardErr);
+              }
             }
           } catch (tmuxErr) {
             spinner.warn(chalk.yellow('Requirement created but failed to spawn Tech Lead'));
