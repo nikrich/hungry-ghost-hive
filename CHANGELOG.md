@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.48.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.47.4...hungry-ghost-hive-v0.48.0) (2026-03-17)
+
+
+### Features
+
+* add --headless flag to skip TUI dashboard auto-launch ([#556](https://github.com/nikrich/hungry-ghost-hive/issues/556)) ([c821f20](https://github.com/nikrich/hungry-ghost-hive/commit/c821f2007314390c008de900f15b8edeffcb36be))
+
 ## [0.47.4](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.47.3...hungry-ghost-hive-v0.47.4) (2026-03-16)
 
 
