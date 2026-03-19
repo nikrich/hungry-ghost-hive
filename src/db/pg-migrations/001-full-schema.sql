@@ -184,6 +184,22 @@ CREATE TABLE IF NOT EXISTS integration_sync (
     PRIMARY KEY (id, workspace_id)
 );
 
+-- Token Usage
+CREATE TABLE IF NOT EXISTS token_usage (
+    id SERIAL,
+    workspace_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    story_id TEXT,
+    requirement_id TEXT,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    model TEXT,
+    session_id TEXT,
+    recorded_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (id, workspace_id)
+);
+
 -- Indexes (all scoped to workspace_id for query performance)
 CREATE INDEX IF NOT EXISTS idx_agent_logs_agent ON agent_logs(workspace_id, agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_logs_story ON agent_logs(workspace_id, story_id);
@@ -207,3 +223,8 @@ CREATE INDEX IF NOT EXISTS idx_integration_sync_provider ON integration_sync(wor
 CREATE INDEX IF NOT EXISTS idx_integration_sync_status ON integration_sync(workspace_id, sync_status);
 CREATE INDEX IF NOT EXISTS idx_integration_sync_last_synced ON integration_sync(workspace_id, last_synced_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_integration_sync_unique ON integration_sync(workspace_id, entity_type, entity_id, provider);
+CREATE INDEX IF NOT EXISTS idx_token_usage_agent_id ON token_usage(workspace_id, agent_id);
+CREATE INDEX IF NOT EXISTS idx_token_usage_story_id ON token_usage(workspace_id, story_id);
+CREATE INDEX IF NOT EXISTS idx_token_usage_requirement_id ON token_usage(workspace_id, requirement_id);
+CREATE INDEX IF NOT EXISTS idx_token_usage_session_id ON token_usage(workspace_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_token_usage_recorded_at ON token_usage(workspace_id, recorded_at);
