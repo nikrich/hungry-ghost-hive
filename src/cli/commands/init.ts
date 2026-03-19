@@ -26,6 +26,10 @@ export const initCommand = new Command('init')
   .option('--jira-project <key>', 'Jira project key (for non-interactive mode)')
   .option('--e2e-test-path <path>', 'Path to E2E tests directory')
   .option('--distributed', 'Use Postgres for distributed multi-workspace mode')
+  .option(
+    '--workspace <id>',
+    'Use a specific workspace ID (distributed mode only, resumes existing workspace)'
+  )
   .action(
     async (options: {
       force?: boolean;
@@ -37,7 +41,12 @@ export const initCommand = new Command('init')
       jiraProject?: string;
       e2eTestPath?: string;
       distributed?: boolean;
+      workspace?: string;
     }) => {
+      // --workspace implies --distributed
+      if (options.workspace) {
+        options.distributed = true;
+      }
       const rootDir = process.cwd();
       const paths = getHivePaths(rootDir);
 
@@ -65,7 +74,7 @@ export const initCommand = new Command('init')
         // Initialize database
         if (options.distributed) {
           spinner.text = 'Validating Postgres connection...';
-          await initDistributedDatabase(paths.workspaceIdPath);
+          await initDistributedDatabase(paths.workspaceIdPath, options.workspace);
         } else {
           spinner.text = 'Initializing database...';
           const db = await createDatabase(paths.dbPath);
@@ -129,9 +138,14 @@ export const initCommand = new Command('init')
         console.log(chalk.gray('  3. View dashboard:'));
         console.log(chalk.cyan('     hive dashboard'));
         if (options.distributed) {
+          const { readFileSync } = await import('fs');
+          const wsId = readFileSync(paths.workspaceIdPath, 'utf-8').trim();
           console.log();
           console.log(chalk.gray('  Distributed mode enabled. Database: Postgres'));
-          console.log(chalk.gray(`  Workspace ID stored in: ${paths.workspaceIdPath}`));
+          console.log(chalk.gray(`  Workspace ID: ${wsId}`));
+          console.log();
+          console.log(chalk.gray('  To resume this workspace from another directory:'));
+          console.log(chalk.cyan(`     hive init --workspace ${wsId}`));
         }
         console.log();
       } catch (err) {
@@ -144,9 +158,12 @@ export const initCommand = new Command('init')
 
 /**
  * Initialize distributed mode: validate HIVE_DATABASE_URL, test connection,
- * generate workspace_id, and run Postgres migrations.
+ * generate or reuse workspace_id, and run Postgres migrations.
  */
-async function initDistributedDatabase(workspaceIdPath: string): Promise<void> {
+async function initDistributedDatabase(
+  workspaceIdPath: string,
+  existingWorkspaceId?: string
+): Promise<void> {
   // Load .env if available
   try {
     const dotenv = await import('dotenv');
@@ -164,8 +181,8 @@ async function initDistributedDatabase(workspaceIdPath: string): Promise<void> {
     );
   }
 
-  // Generate unique workspace ID
-  const workspaceId = nanoid();
+  // Use provided workspace ID or generate a new one
+  const workspaceId = existingWorkspaceId || nanoid();
   writeFileSync(workspaceIdPath, workspaceId, 'utf-8');
 
   // Test connection and run migrations
