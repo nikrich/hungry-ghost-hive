@@ -3,12 +3,14 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { execa } from 'execa';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { nanoid } from 'nanoid';
 import ora from 'ora';
 import { join } from 'path';
 import { createDefaultConfig, loadConfig, saveConfig } from '../../config/loader.js';
 import type { HiveConfig } from '../../config/schema.js';
 import { createDatabase } from '../../db/client.js';
+import { createPostgresProvider } from '../../db/postgres-provider.js';
 import { getHivePaths, isHiveWorkspace } from '../../utils/paths.js';
 import type { AgentRuntime } from '../wizard/init-wizard.js';
 import { runInitWizard } from '../wizard/init-wizard.js';
@@ -23,6 +25,7 @@ export const initCommand = new Command('init')
   .option('--agent-runtime <runtime>', 'Agent runtime (claude, codex)')
   .option('--jira-project <key>', 'Jira project key (for non-interactive mode)')
   .option('--e2e-test-path <path>', 'Path to E2E tests directory')
+  .option('--distributed', 'Use Postgres for distributed multi-workspace mode')
   .action(
     async (options: {
       force?: boolean;
@@ -33,6 +36,7 @@ export const initCommand = new Command('init')
       agentRuntime?: string;
       jiraProject?: string;
       e2eTestPath?: string;
+      distributed?: boolean;
     }) => {
       const rootDir = process.cwd();
       const paths = getHivePaths(rootDir);
@@ -59,10 +63,15 @@ export const initCommand = new Command('init')
         createDefaultConfig(paths.hiveDir);
 
         // Initialize database
-        spinner.text = 'Initializing database...';
-        const db = await createDatabase(paths.dbPath);
-        db.runMigrations();
-        db.close();
+        if (options.distributed) {
+          spinner.text = 'Validating Postgres connection...';
+          await initDistributedDatabase(paths.workspaceIdPath);
+        } else {
+          spinner.text = 'Initializing database...';
+          const db = await createDatabase(paths.dbPath);
+          db.runMigrations();
+          db.close();
+        }
 
         // Initialize git repository if not already in one
         spinner.text = 'Initializing git repository...';
@@ -106,6 +115,9 @@ export const initCommand = new Command('init')
             }
           }
         }
+        if (options.distributed) {
+          config.distributed = true;
+        }
         saveConfig(paths.hiveDir, config);
 
         console.log();
@@ -116,6 +128,11 @@ export const initCommand = new Command('init')
         console.log(chalk.cyan('     hive req "Your requirement here"'));
         console.log(chalk.gray('  3. View dashboard:'));
         console.log(chalk.cyan('     hive dashboard'));
+        if (options.distributed) {
+          console.log();
+          console.log(chalk.gray('  Distributed mode enabled. Database: Postgres'));
+          console.log(chalk.gray(`  Workspace ID stored in: ${paths.workspaceIdPath}`));
+        }
         console.log();
       } catch (err) {
         spinner.fail(chalk.red('Failed to initialize Hive workspace'));
@@ -124,6 +141,37 @@ export const initCommand = new Command('init')
       }
     }
   );
+
+/**
+ * Initialize distributed mode: validate HIVE_DATABASE_URL, test connection,
+ * generate workspace_id, and run Postgres migrations.
+ */
+async function initDistributedDatabase(workspaceIdPath: string): Promise<void> {
+  // Load .env if available
+  try {
+    const dotenv = await import('dotenv');
+    dotenv.config();
+  } catch {
+    // dotenv not available
+  }
+
+  const connectionString = process.env.HIVE_DATABASE_URL;
+  if (!connectionString) {
+    throw new Error(
+      'HIVE_DATABASE_URL environment variable is not set.\n' +
+        'Set it in your environment or in a .env file before running hive init --distributed.\n' +
+        'Example: HIVE_DATABASE_URL=postgres://user:pass@host:5432/hive'
+    );
+  }
+
+  // Generate unique workspace ID
+  const workspaceId = nanoid();
+  writeFileSync(workspaceIdPath, workspaceId, 'utf-8');
+
+  // Test connection and run migrations
+  const provider = await createPostgresProvider(workspaceId);
+  await provider.close();
+}
 
 function applyAgentRuntimePreset(config: HiveConfig, agentRuntime: AgentRuntime): void {
   const provider = agentRuntime === 'codex' ? 'openai' : 'anthropic';

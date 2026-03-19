@@ -85,5 +85,10 @@ describe('init command', () => {
       const jiraOpt = initCommand.options.find(opt => opt.long === '--jira-project');
       expect(jiraOpt).toBeDefined();
     });
+
+    it('should have --distributed option', () => {
+      const distributedOpt = initCommand.options.find(opt => opt.long === '--distributed');
+      expect(distributedOpt).toBeDefined();
+    });
   });
 });

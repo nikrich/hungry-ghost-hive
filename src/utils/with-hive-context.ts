@@ -2,6 +2,7 @@
 
 import chalk from 'chalk';
 import { join } from 'path';
+import { loadConfig } from '../config/loader.js';
 import {
   getDatabase,
   getReadOnlyDatabase,
@@ -9,7 +10,8 @@ import {
   type ReadOnlyDatabaseClient,
 } from '../db/client.js';
 import { acquireLock } from '../db/lock.js';
-import { findHiveRoot, getHivePaths, type HivePaths } from './paths.js';
+import { createPostgresProvider } from '../db/postgres-provider.js';
+import { findHiveRoot, getHivePaths, getWorkspaceId, type HivePaths } from './paths.js';
 
 export interface HiveContext {
   root: string;
@@ -38,8 +40,25 @@ function resolveRoot(): { root: string; paths: HivePaths } {
   return { root, paths };
 }
 
+/**
+ * Check if this workspace is running in distributed (Postgres) mode.
+ */
+function isDistributedMode(paths: HivePaths): boolean {
+  try {
+    const config = loadConfig(paths.hiveDir);
+    return config.distributed === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | T): Promise<T> {
   const { root, paths } = resolveRoot();
+
+  if (isDistributedMode(paths)) {
+    return withDistributedHiveContext(root, paths, fn);
+  }
+
   const dbLockPath = join(paths.hiveDir, 'db');
 
   // Acquire database lock to prevent concurrent access and race conditions
@@ -93,16 +112,85 @@ export async function withHiveContext<T>(fn: (ctx: HiveContext) => Promise<T> | 
   }
 }
 
+async function withDistributedHiveContext<T>(
+  root: string,
+  paths: HivePaths,
+  fn: (ctx: HiveContext) => Promise<T> | T
+): Promise<T> {
+  const workspaceId = getWorkspaceId(paths);
+  if (!workspaceId) {
+    throw new Error(
+      'Distributed mode is enabled but workspace.id file is missing. ' +
+        'Re-run "hive init --distributed" to fix.'
+    );
+  }
+
+  const provider = await createPostgresProvider(workspaceId);
+  // Create a DatabaseClient-compatible wrapper around the Postgres provider
+  const db: DatabaseClient = {
+    db: null as never, // No sql.js database in distributed mode
+    provider,
+    close: () => {
+      provider.close();
+    },
+    save: () => {
+      provider.save();
+    },
+    runMigrations: () => {
+      provider.runMigrations();
+    },
+  };
+
+  try {
+    return await fn({ root, paths, db });
+  } finally {
+    await provider.close();
+  }
+}
+
 export async function withReadOnlyHiveContext<T>(
   fn: (ctx: ReadOnlyHiveContext) => Promise<T> | T
 ): Promise<T> {
   const { root, paths } = resolveRoot();
+
+  if (isDistributedMode(paths)) {
+    return withDistributedReadOnlyHiveContext(root, paths, fn);
+  }
 
   const db = await getReadOnlyDatabase(paths.hiveDir);
   try {
     return await fn({ root, paths, db });
   } finally {
     db.close();
+  }
+}
+
+async function withDistributedReadOnlyHiveContext<T>(
+  root: string,
+  paths: HivePaths,
+  fn: (ctx: ReadOnlyHiveContext) => Promise<T> | T
+): Promise<T> {
+  const workspaceId = getWorkspaceId(paths);
+  if (!workspaceId) {
+    throw new Error(
+      'Distributed mode is enabled but workspace.id file is missing. ' +
+        'Re-run "hive init --distributed" to fix.'
+    );
+  }
+
+  const provider = await createPostgresProvider(workspaceId);
+  const db: ReadOnlyDatabaseClient = {
+    db: null as never, // No sql.js database in distributed mode
+    provider,
+    close: () => {
+      provider.close();
+    },
+  };
+
+  try {
+    return await fn({ root, paths, db });
+  } finally {
+    await provider.close();
   }
 }
 
