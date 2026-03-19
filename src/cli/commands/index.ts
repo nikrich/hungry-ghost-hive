@@ -24,4 +24,5 @@ export { resumeCommand } from './resume.js';
 export { statusCommand } from './status.js';
 export { storiesCommand } from './stories.js';
 export { teamsCommand } from './teams.js';
+export { tokensCommand } from './tokens.js';
 export { versionCommand } from './version.js';
