@@ -30,6 +30,7 @@ import {
   statusCommand,
   storiesCommand,
   teamsCommand,
+  tokensCommand,
   versionCommand,
 } from './cli/commands/index.js';
 import { bootstrapConnectors } from './connectors/bootstrap.js';
@@ -90,6 +91,9 @@ program.addCommand(msgCommand);
 program.addCommand(myStoriesCommand);
 program.addCommand(progressCommand);
 program.addCommand(approachCommand);
+
+// Token usage
+program.addCommand(tokensCommand);
 
 // PR and merge queue
 program.addCommand(prCommand);
