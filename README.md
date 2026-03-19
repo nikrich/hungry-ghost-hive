@@ -364,6 +364,27 @@ hive progress -m "All tests passing" --from <session> --done
 hive approach --from <session>
 ```
 
+### Token Usage
+
+```bash
+# View token usage overview across all agents and stories
+hive tokens
+hive tokens --since 2024-01-01        # Filter by start date
+hive tokens --until 2024-12-31        # Filter by end date
+hive tokens --since 2024-01-01 --until 2024-12-31
+hive tokens --json                    # Output as JSON
+
+# View token usage for a specific agent
+hive tokens agent <agent-id>
+hive tokens agent hive-senior-alpha
+hive tokens agent hive-senior-alpha --json
+
+# View token usage for a specific story
+hive tokens story <story-id>
+hive tokens story STORY-001
+hive tokens story STORY-001 --json
+```
+
 ## Architecture
 
 ### Directory Structure
