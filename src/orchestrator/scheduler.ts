@@ -1143,7 +1143,7 @@ export class Scheduler {
    */
   private async isGodmodeActive(): Promise<boolean> {
     const activeRequirements = await this.provider.queryAll<RequirementRow>(
-      `SELECT * FROM requirements WHERE status IN ('planning', 'planned', 'in_progress') AND godmode = 1`
+      `SELECT * FROM requirements WHERE status IN ('planning', 'planned', 'in_progress') AND godmode = true`
     );
     return activeRequirements.length > 0;
   }

@@ -3,10 +3,12 @@
 import blessed from 'blessed';
 import { appendFileSync, existsSync, renameSync, statSync } from 'fs';
 import { join } from 'path';
+import { loadConfig } from '../../config/loader.js';
 import { getReadOnlyDatabase, type ReadOnlyDatabaseClient } from '../../db/client.js';
+import { createPostgresProvider } from '../../db/postgres-provider.js';
 import type { DatabaseProvider } from '../../db/provider.js';
 import { getAllRequirements } from '../../db/queries/requirements.js';
-import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
+import { findHiveRoot, getHivePaths, getWorkspaceId } from '../../utils/paths.js';
 import { getVersion } from '../../utils/version.js';
 import { createActivityPanel, updateActivityPanel } from './panels/activity.js';
 import { createAgentsPanel, updateAgentsPanel } from './panels/agents.js';
@@ -56,11 +58,39 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
 
   const paths = getHivePaths(root);
   const dbPath = join(paths.hiveDir, 'hive.db');
-  const isDistributed = !existsSync(dbPath);
+  let isDistributed = false;
+  try {
+    const config = loadConfig(paths.hiveDir);
+    isDistributed = config.distributed === true;
+  } catch {
+    // fallback: not distributed
+  }
   debugLog(
     `Dashboard starting - root: ${root}, hiveDir: ${paths.hiveDir}, distributed: ${isDistributed}`
   );
-  let db: ReadOnlyDatabaseClient = await getReadOnlyDatabase(paths.hiveDir);
+
+  async function createDbClient(): Promise<ReadOnlyDatabaseClient> {
+    if (isDistributed) {
+      const workspaceId = getWorkspaceId(paths);
+      if (!workspaceId) {
+        throw new Error(
+          'Distributed mode but workspace.id is missing. Re-run "hive init --distributed".'
+        );
+      }
+      const envPath = join(root!, '.env');
+      const provider = await createPostgresProvider(workspaceId, envPath);
+      return {
+        db: null as never,
+        provider,
+        close: () => {
+          provider.close();
+        },
+      };
+    }
+    return getReadOnlyDatabase(paths.hiveDir);
+  }
+
+  let db: ReadOnlyDatabaseClient = await createDbClient();
   let lastDbMtime = isDistributed ? 0 : statSync(dbPath).mtimeMs;
   const refreshInterval = options.refreshInterval || 5000;
   const version = getVersion();
@@ -99,7 +129,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
 
   // Create panels
   const agentsPanel = createAgentsPanel(screen, db.provider, pauseRefresh, resumeRefresh);
-  const storiesPanel = createStoriesPanel(screen, db.db);
+  const storiesPanel = createStoriesPanel(screen, db.provider);
   const pipelinePanel = createPipelinePanel(screen, db.provider);
   const activityPanel = createActivityPanel(screen, db.provider);
   const mergeQueuePanel = createMergeQueuePanel(screen, db.provider);
@@ -144,9 +174,9 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
 
       if (shouldReload) {
         debugLog(`Database changed - reloading from ${paths.hiveDir}`);
-        const newDb = await getReadOnlyDatabase(paths.hiveDir);
+        const newDb = await createDbClient();
         try {
-          db.db.close();
+          db.close();
         } catch (_error) {
           /* ignore close errors */
         }
@@ -161,7 +191,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
       );
 
       await updateAgentsPanel(agentsPanel, db.provider);
-      await updateStoriesPanel(storiesPanel, db.db);
+      await updateStoriesPanel(storiesPanel, db.provider);
       await updatePipelinePanel(pipelinePanel, db.provider);
       await updateActivityPanel(activityPanel, db.provider);
       await updateMergeQueuePanel(mergeQueuePanel, db.provider);
@@ -191,7 +221,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   screen.key(['q', 'C-c'], () => {
     if (currentTimeout) clearTimeout(currentTimeout);
     try {
-      db.db.close();
+      db.close();
     } catch (_error) {
       /* ignore */
     }

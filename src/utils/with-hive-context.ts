@@ -125,7 +125,9 @@ async function withDistributedHiveContext<T>(
     );
   }
 
-  const provider = await createPostgresProvider(workspaceId);
+  const { join } = await import('path');
+  const envPath = join(root, '.env');
+  const provider = await createPostgresProvider(workspaceId, envPath);
   // Create a DatabaseClient-compatible wrapper around the Postgres provider
   const db: DatabaseClient = {
     db: null as never, // No sql.js database in distributed mode
@@ -178,7 +180,9 @@ async function withDistributedReadOnlyHiveContext<T>(
     );
   }
 
-  const provider = await createPostgresProvider(workspaceId);
+  const { join } = await import('path');
+  const envPath = join(root, '.env');
+  const provider = await createPostgresProvider(workspaceId, envPath);
   const db: ReadOnlyDatabaseClient = {
     db: null as never, // No sql.js database in distributed mode
     provider,

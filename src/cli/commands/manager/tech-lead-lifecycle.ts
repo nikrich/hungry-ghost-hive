@@ -145,6 +145,14 @@ export async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<vo
       const teams = await getAllTeams(db.provider);
 
       if (activeReq) {
+        let isDistributed = false;
+        try {
+          const config = loadConfig(paths.hiveDir);
+          isDistributed = config.distributed === true;
+        } catch {
+          /* ignore */
+        }
+
         return generateTechLeadPrompt(
           activeReq.id,
           activeReq.title,
@@ -152,7 +160,8 @@ export async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<vo
           teams,
           activeReq.godmode === 1,
           activeReq.target_branch || 'main',
-          getTechLeadSessionName(paths.hiveDir)
+          getTechLeadSessionName(paths.hiveDir),
+          isDistributed
         );
       }
 

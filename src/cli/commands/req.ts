@@ -217,6 +217,14 @@ export const reqCommand = new Command('req')
 
           // Spawn Tech Lead tmux session
           const sessionName = getTechLeadSessionName(paths.hiveDir);
+          let isDistributed = false;
+          try {
+            const config = loadConfig(paths.hiveDir);
+            isDistributed = config.distributed === true;
+          } catch {
+            /* ignore */
+          }
+
           const techLeadPrompt = generateTechLeadPrompt(
             req.id,
             title,
@@ -224,7 +232,8 @@ export const reqCommand = new Command('req')
             teams,
             options.godmode,
             targetBranch,
-            sessionName
+            sessionName,
+            isDistributed
           );
 
           try {
@@ -341,7 +350,8 @@ export function generateTechLeadPrompt(
   teams: { id: string; name: string; repo_path: string; repo_url: string }[],
   godmode?: boolean,
   targetBranch?: string,
-  techLeadSession?: string
+  techLeadSession?: string,
+  distributed?: boolean
 ): string {
   const tlSession = techLeadSession || 'hive-tech-lead';
   const teamList = teams.map(t => `- ${t.name}: ${t.repo_path} (${t.repo_url})`).join('\n');
@@ -392,7 +402,7 @@ Use the Hive database to:
 3. Set up story dependencies
 4. Log your progress using agent_logs
 
-The SQLite database is at .hive/hive.db
+${distributed ? `This workspace uses **distributed mode** (Postgres). Do NOT use sqlite3 or .hive/hive.db. Use the \`hive\` CLI commands to interact with data (e.g., \`hive stories list\`, \`hive agents list\`, \`hive status\`).` : `The SQLite database is at .hive/hive.db`}
 
 **IMPORTANT:** Work directly in the team repositories under \`repos/\`. Each team's codebase is a git submodule you can explore, modify, and commit to. Use \`gh\` CLI to interact with GitHub PRs and issues.
 
