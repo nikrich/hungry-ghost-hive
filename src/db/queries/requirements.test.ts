@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { SqliteProvider } from '../provider.js';
 import {
   createRequirement,
   deleteRequirement,
@@ -14,15 +14,16 @@ import {
 import { createTestDatabase } from './test-helpers.js';
 
 describe('requirements queries', () => {
-  let db: Database;
+  let db: SqliteProvider;
 
   beforeEach(async () => {
-    db = await createTestDatabase();
+    const rawDb = await createTestDatabase();
+    db = new SqliteProvider(rawDb);
   });
 
   describe('createRequirement', () => {
-    it('should create a requirement with all fields', () => {
-      const req = createRequirement(db, {
+    it('should create a requirement with all fields', async () => {
+      const req = await createRequirement(db, {
         title: 'New Feature',
         description: 'Add new feature to the app',
         submittedBy: 'user123',
@@ -36,8 +37,8 @@ describe('requirements queries', () => {
       expect(req.created_at).toBeDefined();
     });
 
-    it('should default submittedBy to "human"', () => {
-      const req = createRequirement(db, {
+    it('should default submittedBy to "human"', async () => {
+      const req = await createRequirement(db, {
         title: 'New Feature',
         description: 'Add new feature',
       });
@@ -45,8 +46,8 @@ describe('requirements queries', () => {
       expect(req.submitted_by).toBe('human');
     });
 
-    it('should create a requirement with godmode enabled', () => {
-      const req = createRequirement(db, {
+    it('should create a requirement with godmode enabled', async () => {
+      const req = await createRequirement(db, {
         title: 'Godmode Feature',
         description: 'Add feature with godmode',
         godmode: true,
@@ -56,8 +57,8 @@ describe('requirements queries', () => {
       expect(req.godmode).toBe(1);
     });
 
-    it('should default godmode to 0 when not specified', () => {
-      const req = createRequirement(db, {
+    it('should default godmode to 0 when not specified', async () => {
+      const req = await createRequirement(db, {
         title: 'Normal Feature',
         description: 'Add feature without godmode',
       });
@@ -65,8 +66,8 @@ describe('requirements queries', () => {
       expect(req.godmode).toBe(0);
     });
 
-    it('should create a requirement with custom target branch', () => {
-      const req = createRequirement(db, {
+    it('should create a requirement with custom target branch', async () => {
+      const req = await createRequirement(db, {
         title: 'Feature on Release Branch',
         description: 'Targeting a release branch',
         targetBranch: 'release/v2',
@@ -76,8 +77,8 @@ describe('requirements queries', () => {
       expect(req.target_branch).toBe('release/v2');
     });
 
-    it('should default target_branch to main when not specified', () => {
-      const req = createRequirement(db, {
+    it('should default target_branch to main when not specified', async () => {
+      const req = await createRequirement(db, {
         title: 'Normal Feature',
         description: 'Default target branch',
       });
@@ -85,13 +86,13 @@ describe('requirements queries', () => {
       expect(req.target_branch).toBe('main');
     });
 
-    it('should generate unique IDs', () => {
-      const req1 = createRequirement(db, {
+    it('should generate unique IDs', async () => {
+      const req1 = await createRequirement(db, {
         title: 'Feature 1',
         description: 'Description 1',
       });
 
-      const req2 = createRequirement(db, {
+      const req2 = await createRequirement(db, {
         title: 'Feature 2',
         description: 'Description 2',
       });
@@ -101,43 +102,43 @@ describe('requirements queries', () => {
   });
 
   describe('getRequirementById', () => {
-    it('should retrieve a requirement by ID', () => {
-      const created = createRequirement(db, {
+    it('should retrieve a requirement by ID', async () => {
+      const created = await createRequirement(db, {
         title: 'Test Requirement',
         description: 'Test description',
       });
 
-      const retrieved = getRequirementById(db, created.id);
+      const retrieved = await getRequirementById(db, created.id);
 
       expect(retrieved).toBeDefined();
       expect(retrieved?.id).toBe(created.id);
       expect(retrieved?.title).toBe('Test Requirement');
     });
 
-    it('should return undefined for non-existent requirement', () => {
-      const result = getRequirementById(db, 'non-existent-id');
+    it('should return undefined for non-existent requirement', async () => {
+      const result = await getRequirementById(db, 'non-existent-id');
       expect(result).toBeUndefined();
     });
   });
 
   describe('getAllRequirements', () => {
-    it('should return empty array when no requirements exist', () => {
-      const requirements = getAllRequirements(db);
+    it('should return empty array when no requirements exist', async () => {
+      const requirements = await getAllRequirements(db);
       expect(requirements).toEqual([]);
     });
 
-    it('should return all requirements ordered by created_at DESC', () => {
-      const req1 = createRequirement(db, {
+    it('should return all requirements ordered by created_at DESC', async () => {
+      const req1 = await createRequirement(db, {
         title: 'First',
         description: 'First requirement',
       });
 
-      const req2 = createRequirement(db, {
+      const req2 = await createRequirement(db, {
         title: 'Second',
         description: 'Second requirement',
       });
 
-      const requirements = getAllRequirements(db);
+      const requirements = await getAllRequirements(db);
 
       expect(requirements).toHaveLength(2);
       // Verify both requirements are present
@@ -147,59 +148,59 @@ describe('requirements queries', () => {
   });
 
   describe('getRequirementsByStatus', () => {
-    it('should filter requirements by status', () => {
-      createRequirement(db, {
+    it('should filter requirements by status', async () => {
+      await createRequirement(db, {
         title: 'Pending Req',
         description: 'Description',
       });
 
-      const req2 = createRequirement(db, {
+      const req2 = await createRequirement(db, {
         title: 'In Progress Req',
         description: 'Description',
       });
 
-      updateRequirement(db, req2.id, { status: 'in_progress' });
+      await updateRequirement(db, req2.id, { status: 'in_progress' });
 
-      const pending = getRequirementsByStatus(db, 'pending');
-      const inProgress = getRequirementsByStatus(db, 'in_progress');
+      const pending = await getRequirementsByStatus(db, 'pending');
+      const inProgress = await getRequirementsByStatus(db, 'in_progress');
 
       expect(pending).toHaveLength(1);
       expect(inProgress).toHaveLength(1);
       expect(inProgress[0].id).toBe(req2.id);
     });
 
-    it('should return empty array when no requirements match status', () => {
-      const completed = getRequirementsByStatus(db, 'completed');
+    it('should return empty array when no requirements match status', async () => {
+      const completed = await getRequirementsByStatus(db, 'completed');
       expect(completed).toEqual([]);
     });
   });
 
   describe('getPendingRequirements', () => {
-    it('should return requirements with pending, planning, or in_progress status', () => {
-      const req1 = createRequirement(db, {
+    it('should return requirements with pending, planning, or in_progress status', async () => {
+      const req1 = await createRequirement(db, {
         title: 'Pending',
         description: 'Pending req',
       });
 
-      const req2 = createRequirement(db, {
+      const req2 = await createRequirement(db, {
         title: 'Planning',
         description: 'Planning req',
       });
-      updateRequirement(db, req2.id, { status: 'planning' });
+      await updateRequirement(db, req2.id, { status: 'planning' });
 
-      const req3 = createRequirement(db, {
+      const req3 = await createRequirement(db, {
         title: 'In Progress',
         description: 'In progress req',
       });
-      updateRequirement(db, req3.id, { status: 'in_progress' });
+      await updateRequirement(db, req3.id, { status: 'in_progress' });
 
-      const req4 = createRequirement(db, {
+      const req4 = await createRequirement(db, {
         title: 'Completed',
         description: 'Completed req',
       });
-      updateRequirement(db, req4.id, { status: 'completed' });
+      await updateRequirement(db, req4.id, { status: 'completed' });
 
-      const pending = getPendingRequirements(db);
+      const pending = await getPendingRequirements(db);
 
       expect(pending).toHaveLength(3);
       expect(pending.map(r => r.id)).toContain(req1.id);
@@ -210,13 +211,13 @@ describe('requirements queries', () => {
   });
 
   describe('updateRequirement', () => {
-    it('should update requirement title', () => {
-      const req = createRequirement(db, {
+    it('should update requirement title', async () => {
+      const req = await createRequirement(db, {
         title: 'Original Title',
         description: 'Description',
       });
 
-      const updated = updateRequirement(db, req.id, {
+      const updated = await updateRequirement(db, req.id, {
         title: 'Updated Title',
       });
 
@@ -224,34 +225,34 @@ describe('requirements queries', () => {
       expect(updated?.description).toBe('Description'); // Unchanged
     });
 
-    it('should update requirement description', () => {
-      const req = createRequirement(db, {
+    it('should update requirement description', async () => {
+      const req = await createRequirement(db, {
         title: 'Title',
         description: 'Original Description',
       });
 
-      const updated = updateRequirement(db, req.id, {
+      const updated = await updateRequirement(db, req.id, {
         description: 'Updated Description',
       });
 
       expect(updated?.description).toBe('Updated Description');
     });
 
-    it('should update requirement status', () => {
-      const req = createRequirement(db, {
+    it('should update requirement status', async () => {
+      const req = await createRequirement(db, {
         title: 'Title',
         description: 'Description',
       });
 
-      const updated = updateRequirement(db, req.id, {
+      const updated = await updateRequirement(db, req.id, {
         status: 'completed',
       });
 
       expect(updated?.status).toBe('completed');
     });
 
-    it('should update requirement godmode flag', () => {
-      const req = createRequirement(db, {
+    it('should update requirement godmode flag', async () => {
+      const req = await createRequirement(db, {
         title: 'Title',
         description: 'Description',
         godmode: false,
@@ -259,35 +260,35 @@ describe('requirements queries', () => {
 
       expect(req.godmode).toBe(0);
 
-      const updated = updateRequirement(db, req.id, {
+      const updated = await updateRequirement(db, req.id, {
         godmode: true,
       });
 
       expect(updated?.godmode).toBe(1);
     });
 
-    it('should update requirement target branch', () => {
-      const req = createRequirement(db, {
+    it('should update requirement target branch', async () => {
+      const req = await createRequirement(db, {
         title: 'Title',
         description: 'Description',
       });
 
       expect(req.target_branch).toBe('main');
 
-      const updated = updateRequirement(db, req.id, {
+      const updated = await updateRequirement(db, req.id, {
         targetBranch: 'develop',
       });
 
       expect(updated?.target_branch).toBe('develop');
     });
 
-    it('should update multiple fields at once', () => {
-      const req = createRequirement(db, {
+    it('should update multiple fields at once', async () => {
+      const req = await createRequirement(db, {
         title: 'Original',
         description: 'Original',
       });
 
-      const updated = updateRequirement(db, req.id, {
+      const updated = await updateRequirement(db, req.id, {
         title: 'New Title',
         description: 'New Description',
         status: 'planned',
@@ -298,20 +299,20 @@ describe('requirements queries', () => {
       expect(updated?.status).toBe('planned');
     });
 
-    it('should return original requirement when no updates provided', () => {
-      const req = createRequirement(db, {
+    it('should return original requirement when no updates provided', async () => {
+      const req = await createRequirement(db, {
         title: 'Title',
         description: 'Description',
       });
 
-      const updated = updateRequirement(db, req.id, {});
+      const updated = await updateRequirement(db, req.id, {});
 
       expect(updated?.id).toBe(req.id);
       expect(updated?.title).toBe(req.title);
     });
 
-    it('should return undefined for non-existent requirement', () => {
-      const updated = updateRequirement(db, 'non-existent-id', {
+    it('should return undefined for non-existent requirement', async () => {
+      const updated = await updateRequirement(db, 'non-existent-id', {
         title: 'New Title',
       });
 
@@ -320,26 +321,26 @@ describe('requirements queries', () => {
   });
 
   describe('deleteRequirement', () => {
-    it('should delete a requirement', () => {
-      const req = createRequirement(db, {
+    it('should delete a requirement', async () => {
+      const req = await createRequirement(db, {
         title: 'To Delete',
         description: 'Will be deleted',
       });
 
-      deleteRequirement(db, req.id);
+      await deleteRequirement(db, req.id);
 
-      const retrieved = getRequirementById(db, req.id);
+      const retrieved = await getRequirementById(db, req.id);
       expect(retrieved).toBeUndefined();
     });
 
-    it('should not throw when deleting non-existent requirement', () => {
-      expect(() => deleteRequirement(db, 'non-existent-id')).not.toThrow();
+    it('should not throw when deleting non-existent requirement', async () => {
+      await expect(deleteRequirement(db, 'non-existent-id')).resolves.not.toThrow();
     });
   });
 
   describe('edge cases', () => {
-    it('should handle empty strings in title and description', () => {
-      const req = createRequirement(db, {
+    it('should handle empty strings in title and description', async () => {
+      const req = await createRequirement(db, {
         title: '',
         description: '',
       });
@@ -348,25 +349,25 @@ describe('requirements queries', () => {
       expect(req.description).toBe('');
     });
 
-    it('should handle very long text fields', () => {
+    it('should handle very long text fields', async () => {
       const longText = 'A'.repeat(10000);
-      const req = createRequirement(db, {
+      const req = await createRequirement(db, {
         title: longText,
         description: longText,
       });
 
-      const retrieved = getRequirementById(db, req.id);
+      const retrieved = await getRequirementById(db, req.id);
       expect(retrieved?.title).toBe(longText);
       expect(retrieved?.description).toBe(longText);
     });
 
-    it('should handle special characters', () => {
-      const req = createRequirement(db, {
+    it('should handle special characters', async () => {
+      const req = await createRequirement(db, {
         title: 'Title with \'quotes\' and "double" quotes',
         description: 'Description with\nnewlines\tand\ttabs',
       });
 
-      const retrieved = getRequirementById(db, req.id);
+      const retrieved = await getRequirementById(db, req.id);
       expect(retrieved?.title).toBe('Title with \'quotes\' and "double" quotes');
       expect(retrieved?.description).toBe('Description with\nnewlines\tand\ttabs');
     });

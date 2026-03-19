@@ -25,13 +25,21 @@ export class QAAgent extends BaseAgent {
   constructor(context: QAContext) {
     super(context);
     this.qaConfig = context.qaConfig;
+  }
 
+  private async init(context: QAContext): Promise<void> {
     if (context.agentRow.team_id) {
-      this.team = getTeamById(this.db, context.agentRow.team_id) || null;
-      this.pendingStories = getStoriesByStatus(this.db, 'qa').filter(
+      this.team = (await getTeamById(this.db, context.agentRow.team_id)) || null;
+      this.pendingStories = (await getStoriesByStatus(this.db, 'qa')).filter(
         s => s.team_id === context.agentRow.team_id
       );
     }
+  }
+
+  static async create(context: QAContext): Promise<QAAgent> {
+    const agent = new QAAgent(context);
+    await agent.init(context);
+    return agent;
   }
 
   getSystemPrompt(): string {
@@ -73,7 +81,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
 
   async execute(): Promise<void> {
     if (this.pendingStories.length === 0) {
-      this.log('STORY_QA_STARTED', 'No stories pending QA');
+      await this.log('STORY_QA_STARTED', 'No stories pending QA');
       return;
     }
 
@@ -83,23 +91,23 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
   }
 
   private async processStory(story: StoryRow): Promise<void> {
-    this.setCurrentTask(story.id, 'qa');
-    this.log('STORY_QA_STARTED', `QA for story: ${story.title}`, { storyId: story.id });
+    await this.setCurrentTask(story.id, 'qa');
+    await this.log('STORY_QA_STARTED', `QA for story: ${story.title}`, { storyId: story.id });
 
     // Checkout the branch
     if (story.branch_name) {
       try {
         await execa('git', ['checkout', story.branch_name], { cwd: this.workDir });
       } catch (err) {
-        this.log(
+        await this.log(
           'STORY_QA_FAILED',
           `Failed to checkout branch: ${err instanceof Error ? err.message : 'Unknown error'}`,
           {
             storyId: story.id,
           }
         );
-        updateStory(this.db, story.id, { status: 'qa_failed' }, this.storiesDir);
-        this.checkAndEscalate(story);
+        await updateStory(this.db, story.id, { status: 'qa_failed' }, this.storiesDir);
+        await this.checkAndEscalate(story);
         return;
       }
     }
@@ -107,16 +115,16 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
     // Run quality checks
     const qualityPassed = await this.runQualityChecks(story.id);
     if (!qualityPassed) {
-      updateStory(this.db, story.id, { status: 'qa_failed' });
-      this.checkAndEscalate(story);
+      await updateStory(this.db, story.id, { status: 'qa_failed' });
+      await this.checkAndEscalate(story);
       return;
     }
 
     // Run build
     const buildPassed = await this.runBuild(story.id);
     if (!buildPassed) {
-      updateStory(this.db, story.id, { status: 'qa_failed' });
-      this.checkAndEscalate(story);
+      await updateStory(this.db, story.id, { status: 'qa_failed' });
+      await this.checkAndEscalate(story);
       return;
     }
 
@@ -124,21 +132,21 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
     if (this.qaConfig.testCommand) {
       const testsPassed = await this.runTests(story.id);
       if (!testsPassed) {
-        updateStory(this.db, story.id, { status: 'qa_failed' }, this.storiesDir);
-        this.checkAndEscalate(story);
+        await updateStory(this.db, story.id, { status: 'qa_failed' }, this.storiesDir);
+        await this.checkAndEscalate(story);
         return;
       }
     }
 
     // All checks passed
-    this.log('STORY_QA_PASSED', 'All QA checks passed', { storyId: story.id });
+    await this.log('STORY_QA_PASSED', 'All QA checks passed', { storyId: story.id });
 
     // Create PR
     await this.createPR(story);
   }
 
   private async runQualityChecks(storyId: string): Promise<boolean> {
-    this.log('CODE_QUALITY_CHECK_STARTED', 'Running quality checks', { storyId });
+    await this.log('CODE_QUALITY_CHECK_STARTED', 'Running quality checks', { storyId });
 
     for (const check of this.qaConfig.qualityChecks) {
       try {
@@ -146,7 +154,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
         await execa(cmd, args, { cwd: this.workDir });
       } catch (err) {
         const error = err as { stderr?: string; stdout?: string };
-        this.log('CODE_QUALITY_CHECK_FAILED', `Check failed: ${check}`, {
+        await this.log('CODE_QUALITY_CHECK_FAILED', `Check failed: ${check}`, {
           storyId,
           error: error.stderr || error.stdout,
         });
@@ -154,21 +162,21 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       }
     }
 
-    this.log('CODE_QUALITY_CHECK_PASSED', 'All quality checks passed', { storyId });
+    await this.log('CODE_QUALITY_CHECK_PASSED', 'All quality checks passed', { storyId });
     return true;
   }
 
   private async runBuild(storyId: string): Promise<boolean> {
-    this.log('BUILD_STARTED', 'Running build', { storyId });
+    await this.log('BUILD_STARTED', 'Running build', { storyId });
 
     try {
       const [cmd, ...args] = this.qaConfig.buildCommand.split(' ');
       await execa(cmd, args, { cwd: this.workDir });
-      this.log('BUILD_PASSED', 'Build succeeded', { storyId });
+      await this.log('BUILD_PASSED', 'Build succeeded', { storyId });
       return true;
     } catch (err) {
       const error = err as { stderr?: string; stdout?: string };
-      this.log('BUILD_FAILED', 'Build failed', {
+      await this.log('BUILD_FAILED', 'Build failed', {
         storyId,
         error: error.stderr || error.stdout,
       });
@@ -179,16 +187,16 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
   private async runTests(storyId: string): Promise<boolean> {
     if (!this.qaConfig.testCommand) return true;
 
-    this.log('BUILD_STARTED', 'Running tests', { storyId });
+    await this.log('BUILD_STARTED', 'Running tests', { storyId });
 
     try {
       const [cmd, ...args] = this.qaConfig.testCommand.split(' ');
       await execa(cmd, args, { cwd: this.workDir });
-      this.log('BUILD_PASSED', 'Tests passed', { storyId });
+      await this.log('BUILD_PASSED', 'Tests passed', { storyId });
       return true;
     } catch (err) {
       const error = err as { stderr?: string; stdout?: string };
-      this.log('BUILD_FAILED', 'Tests failed', {
+      await this.log('BUILD_FAILED', 'Tests failed', {
         storyId,
         error: error.stderr || error.stdout,
       });
@@ -198,15 +206,17 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
 
   private async createPR(story: StoryRow): Promise<void> {
     if (!story.branch_name) {
-      this.log('STORY_PR_CREATED', 'No branch name, skipping PR creation', { storyId: story.id });
-      updateStory(this.db, story.id, { status: 'pr_submitted' }, this.storiesDir);
+      await this.log('STORY_PR_CREATED', 'No branch name, skipping PR creation', {
+        storyId: story.id,
+      });
+      await updateStory(this.db, story.id, { status: 'pr_submitted' }, this.storiesDir);
       return;
     }
 
     // Check if PR already exists
-    const existingPR = getPullRequestByStory(this.db, story.id);
+    const existingPR = await getPullRequestByStory(this.db, story.id);
     if (existingPR) {
-      this.log('STORY_PR_CREATED', 'PR already exists', {
+      await this.log('STORY_PR_CREATED', 'PR already exists', {
         storyId: story.id,
         prUrl: existingPR.github_pr_url,
       });
@@ -241,7 +251,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       const prNumber = prNumberMatch ? parseInt(prNumberMatch[1], 10) : undefined;
 
       // Create PR record
-      const pr = createPullRequest(this.db, {
+      const pr = await createPullRequest(this.db, {
         storyId: story.id,
         teamId: story.team_id,
         branchName: story.branch_name || `feature/${story.id}`,
@@ -250,7 +260,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
       });
 
       // Update story
-      updateStory(
+      await updateStory(
         this.db,
         story.id,
         {
@@ -260,40 +270,44 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
         this.storiesDir
       );
 
-      this.log('STORY_PR_CREATED', `PR created: ${prUrl}`, {
+      await this.log('STORY_PR_CREATED', `PR created: ${prUrl}`, {
         storyId: story.id,
         prId: pr.id,
         prNumber,
       });
     } catch (err) {
       const error = err as { stderr?: string };
-      this.log('STORY_PR_CREATED', `Failed to create PR: ${error.stderr || 'Unknown error'}`, {
-        storyId: story.id,
-      });
+      await this.log(
+        'STORY_PR_CREATED',
+        `Failed to create PR: ${error.stderr || 'Unknown error'}`,
+        {
+          storyId: story.id,
+        }
+      );
 
       // Still mark as pr_submitted since QA passed
-      updateStory(this.db, story.id, { status: 'pr_submitted' }, this.storiesDir);
+      await updateStory(this.db, story.id, { status: 'pr_submitted' }, this.storiesDir);
     }
   }
 
-  private checkAndEscalate(story: StoryRow): void {
-    const failureCount = countQaFailuresByStory(this.db, story.id);
+  private async checkAndEscalate(story: StoryRow): Promise<void> {
+    const failureCount = await countQaFailuresByStory(this.db, story.id);
 
     if (failureCount >= 3) {
       // Find the senior agent for the team
-      const seniorAgents = getAgentsByType(this.db, 'senior').filter(
+      const seniorAgents = (await getAgentsByType(this.db, 'senior')).filter(
         a => a.team_id === story.team_id
       );
 
       if (seniorAgents.length > 0) {
-        const escalation = createEscalation(this.db, {
+        const escalation = await createEscalation(this.db, {
           storyId: story.id,
           fromAgentId: this.agentId,
           toAgentId: seniorAgents[0].id,
           reason: `Story failed QA ${failureCount} times. Needs senior review and assistance.`,
         });
 
-        this.log('ESCALATION_CREATED', `Story escalated after ${failureCount} QA failures`, {
+        await this.log('ESCALATION_CREATED', `Story escalated after ${failureCount} QA failures`, {
           storyId: story.id,
           escalationId: escalation.id,
           failureCount,

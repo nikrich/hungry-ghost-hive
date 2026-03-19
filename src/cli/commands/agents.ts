@@ -26,7 +26,9 @@ agentsCommand
   .option('--json', 'Output as JSON')
   .action(async (options: { active?: boolean; json?: boolean }) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const agents = options.active ? getActiveAgents(db.db) : getAllAgents(db.db);
+      const agents = options.active
+        ? await getActiveAgents(db.provider)
+        : await getAllAgents(db.provider);
 
       if (options.json) {
         console.log(JSON.stringify(agents, null, 2));
@@ -67,9 +69,9 @@ agentsCommand
   .option('--json', 'Output as JSON')
   .action(async (agentId: string, options: { limit: string; json?: boolean }) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      requireAgent(db.db, agentId);
+      await requireAgent(db.provider, agentId);
 
-      const logs = getLogsByAgent(db.db, agentId, parseInt(options.limit, 10));
+      const logs = await getLogsByAgent(db.provider, agentId, parseInt(options.limit, 10));
 
       if (options.json) {
         console.log(JSON.stringify(logs, null, 2));
@@ -108,7 +110,7 @@ agentsCommand
   .description('View detailed agent state')
   .action(async (agentId: string) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const agent = requireAgent(db.db, agentId);
+      const agent = await requireAgent(db.provider, agentId);
 
       console.log(chalk.bold(`\nAgent: ${agent.id}\n`));
       console.log(chalk.gray(`Type:          ${agent.type}`));
@@ -131,7 +133,7 @@ agentsCommand
       }
 
       // Show recent logs
-      const logs = getLogsByAgent(db.db, agentId, 5);
+      const logs = await getLogsByAgent(db.provider, agentId, 5);
       if (logs.length > 0) {
         console.log(chalk.bold('\nRecent Activity:'));
         for (const log of logs) {
@@ -150,7 +152,7 @@ agentsCommand
   .option('--dry-run', 'Show what would be deleted without actually deleting')
   .action(async (options: { dryRun?: boolean }) => {
     await withHiveContext(async ({ root, db }) => {
-      const terminatedAgents = getAgentsByStatus(db.db, 'terminated');
+      const terminatedAgents = await getAgentsByStatus(db.provider, 'terminated');
 
       if (terminatedAgents.length === 0) {
         console.log(chalk.green('No terminated agents to clean up.'));
@@ -192,7 +194,7 @@ agentsCommand
             }
           }
 
-          deleteAgent(db.db, agent.id);
+          await deleteAgent(db.provider, agent.id);
           deleted++;
         } catch (err) {
           console.error(
@@ -229,7 +231,7 @@ agentsCommand
 
 export async function selfTerminate(sessionName: string): Promise<void> {
   await withHiveContext(async ({ root, db }) => {
-    const agent = getAgentByTmuxSession(db.db, sessionName);
+    const agent = await getAgentByTmuxSession(db.provider, sessionName);
     if (!agent) {
       console.error(chalk.red(`No agent found for tmux session: ${sessionName}`));
       process.exit(1);
@@ -251,13 +253,13 @@ export async function selfTerminate(sessionName: string): Promise<void> {
     }
 
     // Mark agent as terminated in DB
-    updateAgent(db.db, agent.id, {
+    await updateAgent(db.provider, agent.id, {
       status: 'terminated',
       currentStoryId: null,
     });
 
     // Log the self-termination event
-    createLog(db.db, {
+    await createLog(db.provider, {
       agentId: agent.id,
       eventType: 'AGENT_TERMINATED',
       message: `Agent self-terminated (session: ${sessionName})`,

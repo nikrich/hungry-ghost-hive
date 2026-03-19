@@ -3,10 +3,10 @@
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
+import { SqliteProvider } from '../../db/provider.js';
 import { createStory } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
 import { AnthropicProvider } from '../../llm/anthropic.js';
@@ -260,7 +260,7 @@ describe('Jira Story Creation', () => {
   });
 
   describe('Story Points Fallback', () => {
-    let db: Database;
+    let db: SqliteProvider;
     let envDir: string;
     let tokenStore: TokenStore;
 
@@ -274,7 +274,8 @@ describe('Jira Story Creation', () => {
     };
 
     beforeEach(async () => {
-      db = await createTestDatabase();
+      const rawDb = await createTestDatabase();
+      db = new SqliteProvider(rawDb);
       envDir = mkdtempSync(join(tmpdir(), 'hive-test-'));
       tokenStore = new TokenStore(envDir);
 
@@ -296,7 +297,7 @@ describe('Jira Story Creation', () => {
 
     it('should use complexity_score when story_points is null', async () => {
       const { updateStory } = await import('../../db/queries/stories.js');
-      const story = createStory(db, {
+      const story = await createStory(db, {
         title: 'Test Story',
         description: 'Test description',
         requirementId: null,
@@ -305,15 +306,14 @@ describe('Jira Story Creation', () => {
       });
 
       // Update with complexity_score but leave story_points null
-      updateStory(db, story.id, {
+      await updateStory(db, story.id, {
         complexityScore: 5,
         storyPoints: null,
       });
 
-      const updatedStory = (await import('../../db/queries/stories.js')).getStoryById(
-        db,
-        story.id
-      )!;
+      const updatedStory = (await (
+        await import('../../db/queries/stories.js')
+      ).getStoryById(db, story.id))!;
 
       await syncStoryToJira(db, tokenStore, mockConfig, updatedStory);
 
@@ -329,7 +329,7 @@ describe('Jira Story Creation', () => {
 
     it('should use story_points when both story_points and complexity_score are set', async () => {
       const { updateStory } = await import('../../db/queries/stories.js');
-      const story = createStory(db, {
+      const story = await createStory(db, {
         title: 'Test Story',
         description: 'Test description',
         requirementId: null,
@@ -338,15 +338,14 @@ describe('Jira Story Creation', () => {
       });
 
       // Update with both complexity_score and story_points
-      updateStory(db, story.id, {
+      await updateStory(db, story.id, {
         complexityScore: 5,
         storyPoints: 8,
       });
 
-      const updatedStory = (await import('../../db/queries/stories.js')).getStoryById(
-        db,
-        story.id
-      )!;
+      const updatedStory = (await (
+        await import('../../db/queries/stories.js')
+      ).getStoryById(db, story.id))!;
 
       await syncStoryToJira(db, tokenStore, mockConfig, updatedStory);
 
@@ -361,7 +360,7 @@ describe('Jira Story Creation', () => {
     });
 
     it('should not include story points field when both are null', async () => {
-      const story = createStory(db, {
+      const story = await createStory(db, {
         title: 'Test Story',
         description: 'Test description',
         requirementId: null,

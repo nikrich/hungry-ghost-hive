@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { nanoid } from 'nanoid';
-import type { Database } from 'sql.js';
-import { queryAll, queryOne, run, type AgentRow } from '../client.js';
+import { type AgentRow } from '../client.js';
+import type { DatabaseProvider } from '../provider.js';
 
 export type { AgentRow };
 
@@ -33,12 +33,14 @@ export interface UpdateAgentInput {
   createdAt?: string;
 }
 
-export function createAgent(db: Database, input: CreateAgentInput): AgentRow {
+export async function createAgent(
+  provider: DatabaseProvider,
+  input: CreateAgentInput
+): Promise<AgentRow> {
   const id = input.type === 'tech_lead' ? 'tech-lead' : `${input.type}-${nanoid(8)}`;
   const now = new Date().toISOString();
 
-  run(
-    db,
+  await provider.run(
     `
     INSERT INTO agents (id, type, team_id, tmux_session, model, status, worktree_path, created_at, updated_at, last_seen)
     VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?)
@@ -56,49 +58,58 @@ export function createAgent(db: Database, input: CreateAgentInput): AgentRow {
     ]
   );
 
-  return getAgentById(db, id)!;
+  return (await getAgentById(provider, id))!;
 }
 
-export function getAgentById(db: Database, id: string): AgentRow | undefined {
-  return queryOne<AgentRow>(db, 'SELECT * FROM agents WHERE id = ?', [id]);
+export async function getAgentById(
+  provider: DatabaseProvider,
+  id: string
+): Promise<AgentRow | undefined> {
+  return await provider.queryOne<AgentRow>('SELECT * FROM agents WHERE id = ?', [id]);
 }
 
-export function getAgentsByTeam(db: Database, teamId: string): AgentRow[] {
-  return queryAll<AgentRow>(db, 'SELECT * FROM agents WHERE team_id = ?', [teamId]);
+export async function getAgentsByTeam(
+  provider: DatabaseProvider,
+  teamId: string
+): Promise<AgentRow[]> {
+  return await provider.queryAll<AgentRow>('SELECT * FROM agents WHERE team_id = ?', [teamId]);
 }
 
-export function getAgentsByType(db: Database, type: AgentType): AgentRow[] {
-  return queryAll<AgentRow>(db, 'SELECT * FROM agents WHERE type = ?', [type]);
+export async function getAgentsByType(
+  provider: DatabaseProvider,
+  type: AgentType
+): Promise<AgentRow[]> {
+  return await provider.queryAll<AgentRow>('SELECT * FROM agents WHERE type = ?', [type]);
 }
 
-export function getAgentsByStatus(db: Database, status: AgentStatus): AgentRow[] {
-  return queryAll<AgentRow>(db, 'SELECT * FROM agents WHERE status = ?', [status]);
+export async function getAgentsByStatus(
+  provider: DatabaseProvider,
+  status: AgentStatus
+): Promise<AgentRow[]> {
+  return await provider.queryAll<AgentRow>('SELECT * FROM agents WHERE status = ?', [status]);
 }
 
-export function getAllAgents(db: Database): AgentRow[] {
-  return queryAll<AgentRow>(db, 'SELECT * FROM agents ORDER BY type, team_id');
+export async function getAllAgents(provider: DatabaseProvider): Promise<AgentRow[]> {
+  return await provider.queryAll<AgentRow>('SELECT * FROM agents ORDER BY type, team_id');
 }
 
-export function getActiveAgents(db: Database): AgentRow[] {
-  return queryAll<AgentRow>(
-    db,
-    `
+export async function getActiveAgents(provider: DatabaseProvider): Promise<AgentRow[]> {
+  return await provider.queryAll<AgentRow>(`
     SELECT * FROM agents
     WHERE status IN ('idle', 'working', 'blocked')
     ORDER BY type, team_id
-  `
-  );
+  `);
 }
 
-export function getTechLead(db: Database): AgentRow | undefined {
-  return queryOne<AgentRow>(db, `SELECT * FROM agents WHERE type = 'tech_lead'`);
+export async function getTechLead(provider: DatabaseProvider): Promise<AgentRow | undefined> {
+  return await provider.queryOne<AgentRow>(`SELECT * FROM agents WHERE type = 'tech_lead'`);
 }
 
-export function updateAgent(
-  db: Database,
+export async function updateAgent(
+  provider: DatabaseProvider,
   id: string,
   input: UpdateAgentInput
-): AgentRow | undefined {
+): Promise<AgentRow | undefined> {
   const updates: string[] = ['updated_at = ?'];
   const values: (string | null)[] = [new Date().toISOString()];
 
@@ -129,24 +140,27 @@ export function updateAgent(
 
   if (updates.length === 1) {
     // Only updated_at, nothing to update
-    return getAgentById(db, id);
+    return await getAgentById(provider, id);
   }
 
   values.push(id);
-  run(db, `UPDATE agents SET ${updates.join(', ')} WHERE id = ?`, values);
-  return getAgentById(db, id);
+  await provider.run(`UPDATE agents SET ${updates.join(', ')} WHERE id = ?`, values);
+  return await getAgentById(provider, id);
 }
 
-export function deleteAgent(db: Database, id: string): void {
-  run(db, 'DELETE FROM agents WHERE id = ?', [id]);
+export async function deleteAgent(provider: DatabaseProvider, id: string): Promise<void> {
+  await provider.run('DELETE FROM agents WHERE id = ?', [id]);
 }
 
-export function getAgentByTmuxSession(db: Database, tmuxSession: string): AgentRow | undefined {
-  return queryOne<AgentRow>(db, 'SELECT * FROM agents WHERE tmux_session = ? LIMIT 1', [
+export async function getAgentByTmuxSession(
+  provider: DatabaseProvider,
+  tmuxSession: string
+): Promise<AgentRow | undefined> {
+  return await provider.queryOne<AgentRow>('SELECT * FROM agents WHERE tmux_session = ? LIMIT 1', [
     tmuxSession,
   ]);
 }
 
-export function terminateAgent(db: Database, id: string): void {
-  updateAgent(db, id, { status: 'terminated', tmuxSession: null });
+export async function terminateAgent(provider: DatabaseProvider, id: string): Promise<void> {
+  await updateAgent(provider, id, { status: 'terminated', tmuxSession: null });
 }

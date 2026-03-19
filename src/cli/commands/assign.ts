@@ -48,11 +48,11 @@ export const assignCommand = new Command('assign')
         }
 
         // Check if godmode is active
-        const plannedStories = getPlannedStories(db.db);
+        const plannedStories = await getPlannedStories(db.provider);
         let godmodeActive = false;
         for (const story of plannedStories) {
           if (story.requirement_id) {
-            const requirement = getRequirementById(db.db, story.requirement_id);
+            const requirement = await getRequirementById(db.provider, story.requirement_id);
             if (requirement && requirement.godmode) {
               godmodeActive = true;
               break;
@@ -85,7 +85,7 @@ export const assignCommand = new Command('assign')
 
           // Display planned assignments
           for (const [teamId, stories] of storiesByTeam) {
-            const team = getTeamById(db.db, teamId);
+            const team = await getTeamById(db.provider, teamId);
             if (!team) continue;
 
             console.log(chalk.cyan(`\n📦 Team: ${team.name}\n`));
@@ -114,7 +114,7 @@ export const assignCommand = new Command('assign')
           console.log(chalk.yellow('⚡ GODMODE is active - all agents will use Opus 4.6\n'));
         }
 
-        const scheduler = new Scheduler(db.db, {
+        const scheduler = new Scheduler(db.provider, {
           scaling: config.scaling,
           models: config.models,
           qa: config.qa,

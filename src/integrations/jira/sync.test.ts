@@ -3,11 +3,11 @@
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
 import { run } from '../../db/client.js';
+import { SqliteProvider } from '../../db/provider.js';
 import { createSyncRecord } from '../../db/queries/integration-sync.js';
 import { createStory, getStoryById } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
@@ -89,7 +89,7 @@ describe('isForwardTransition', () => {
 });
 
 describe('syncJiraStatusesToHive', () => {
-  let db: Database;
+  let db: SqliteProvider;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -122,10 +122,10 @@ describe('syncJiraStatusesToHive', () => {
   }
 
   beforeEach(async () => {
-    db = await createTestDatabase();
+    db = new SqliteProvider(await createTestDatabase());
     envDir = mkdtempSync(join(tmpdir(), 'hive-sync-test-'));
     // Create a manager agent for logging purposes
-    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+    db.db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
 
   it('skips sync when no status mapping configured', async () => {
@@ -138,7 +138,7 @@ describe('syncJiraStatusesToHive', () => {
 
   it('skips stories without Jira issue key', async () => {
     // Create story without Jira key
-    createStory(db, {
+    await createStory(db, {
       title: 'Test Story',
       description: 'Test',
     });
@@ -152,14 +152,14 @@ describe('syncJiraStatusesToHive', () => {
 
   it('syncs Jira status to Hive when different', async () => {
     // Create story with Jira key
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Test Story',
       description: 'Test',
     });
 
     // Update story to add Jira key and set initial status
     run(
-      db,
+      db.db,
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'planned', story.id]
     );
@@ -212,18 +212,18 @@ describe('syncJiraStatusesToHive', () => {
     expect(updated).toBe(1);
 
     // Verify story was updated
-    const updatedStory = getStoryById(db, story.id);
+    const updatedStory = await getStoryById(db, story.id);
     expect(updatedStory?.status).toBe('in_progress');
   });
 
   it('skips sync when Jira status matches Hive status', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Test Story',
       description: 'Test',
     });
 
     run(
-      db,
+      db.db,
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'in_progress', story.id]
     );
@@ -273,13 +273,13 @@ describe('syncJiraStatusesToHive', () => {
   });
 
   it('handles API errors gracefully', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Test Story',
       description: 'Test',
     });
 
     run(
-      db,
+      db.db,
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'planned', story.id]
     );
@@ -304,13 +304,13 @@ describe('syncJiraStatusesToHive', () => {
 
   it('skips backward transitions (prevents status regression)', async () => {
     // Story is in_progress in Hive, but Jira says "To Do" (which maps to planned)
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Test Story',
       description: 'Test',
     });
 
     run(
-      db,
+      db.db,
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'in_progress', story.id]
     );
@@ -364,18 +364,18 @@ describe('syncJiraStatusesToHive', () => {
     expect(updated).toBe(0);
 
     // Verify story was NOT regressed
-    const updatedStory = getStoryById(db, story.id);
+    const updatedStory = await getStoryById(db, story.id);
     expect(updatedStory?.status).toBe('in_progress');
   });
 
   it('skips merged stories', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Test Story',
       description: 'Test',
     });
 
     run(
-      db,
+      db.db,
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'merged', story.id]
     );
@@ -389,7 +389,7 @@ describe('syncJiraStatusesToHive', () => {
 });
 
 describe('syncUnsyncedStoriesToJira', () => {
-  let db: Database;
+  let db: SqliteProvider;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -419,18 +419,18 @@ describe('syncUnsyncedStoriesToJira', () => {
   }
 
   beforeEach(async () => {
-    db = await createTestDatabase();
+    db = new SqliteProvider(await createTestDatabase());
     envDir = mkdtempSync(join(tmpdir(), 'hive-sync-unsynced-test-'));
-    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+    db.db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
 
   it('returns 0 when all stories already have jira keys', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Synced Story',
       description: 'Already synced',
     });
     run(
-      db,
+      db.db,
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-1', 'TEST-1', 'planned', story.id]
     );
@@ -447,7 +447,7 @@ describe('syncUnsyncedStoriesToJira', () => {
   });
 
   it('skips draft stories without jira keys', async () => {
-    createStory(db, {
+    await createStory(db, {
       title: 'Draft Story',
       description: 'Still in draft',
     });
@@ -460,7 +460,7 @@ describe('syncUnsyncedStoriesToJira', () => {
 
   it('syncs stories without jira keys that have a requirement', async () => {
     // Create a requirement
-    run(db, `INSERT INTO requirements (id, title, description, status) VALUES (?, ?, ?, ?)`, [
+    run(db.db, `INSERT INTO requirements (id, title, description, status) VALUES (?, ?, ?, ?)`, [
       'REQ-TEST',
       'Test Req',
       'Test requirement',
@@ -468,7 +468,7 @@ describe('syncUnsyncedStoriesToJira', () => {
     ]);
 
     // Create a team
-    run(db, `INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)`, [
+    run(db.db, `INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)`, [
       'team-test',
       'https://github.com/test/test.git',
       'repos/test',
@@ -476,13 +476,13 @@ describe('syncUnsyncedStoriesToJira', () => {
     ]);
 
     // Create story without jira key but with requirement and non-draft status
-    const story = createStory(db, {
+    const story = await createStory(db, {
       requirementId: 'REQ-TEST',
       teamId: 'team-test',
       title: 'Unsynced Story',
       description: 'Needs Jira sync',
     });
-    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story.id]);
+    run(db.db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story.id]);
 
     const tokenStore = createTestTokenStore({
       JIRA_ACCESS_TOKEN: 'fake-token',
@@ -511,11 +511,11 @@ describe('syncUnsyncedStoriesToJira', () => {
   });
 
   it('skips stories without a requirement_id', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Orphan Story',
       description: 'No requirement',
     });
-    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story.id]);
+    run(db.db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story.id]);
 
     const tokenStore = createTestTokenStore();
     const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
@@ -524,7 +524,7 @@ describe('syncUnsyncedStoriesToJira', () => {
 
   it('re-query guard filters stories that gained jira_issue_key after initial query', async () => {
     // Create a requirement
-    run(db, `INSERT INTO requirements (id, title, description, status) VALUES (?, ?, ?, ?)`, [
+    run(db.db, `INSERT INTO requirements (id, title, description, status) VALUES (?, ?, ?, ?)`, [
       'REQ-GUARD',
       'Guard Req',
       'Test re-query guard',
@@ -532,18 +532,18 @@ describe('syncUnsyncedStoriesToJira', () => {
     ]);
 
     // Create TWO stories without jira key
-    const story1 = createStory(db, {
+    const story1 = await createStory(db, {
       requirementId: 'REQ-GUARD',
       title: 'Story 1 - will get key',
       description: 'Gets key before re-query',
     });
-    const story2 = createStory(db, {
+    const story2 = await createStory(db, {
       requirementId: 'REQ-GUARD',
       title: 'Story 2 - stays unsynced',
       description: 'Stays without key',
     });
-    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story1.id]);
-    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story2.id]);
+    run(db.db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story1.id]);
+    run(db.db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story2.id]);
 
     const tokenStore = createTestTokenStore({
       JIRA_ACCESS_TOKEN: 'fake-token',
@@ -558,7 +558,7 @@ describe('syncUnsyncedStoriesToJira', () => {
 
     // Give story1 a jira key BEFORE calling sync — this means the re-query guard
     // will find it already has a key and filter it out, only passing story2 to sync.
-    run(db, 'UPDATE stories SET jira_issue_key = ? WHERE id = ?', ['TEST-999', story1.id]);
+    run(db.db, 'UPDATE stories SET jira_issue_key = ? WHERE id = ?', ['TEST-999', story1.id]);
 
     vi.mocked(syncRequirementToJira).mockResolvedValue({
       epicKey: 'TEST-100',
@@ -583,7 +583,7 @@ describe('syncUnsyncedStoriesToJira', () => {
 });
 
 describe('retrySprintAssignment', () => {
-  let db: Database;
+  let db: SqliteProvider;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -613,9 +613,9 @@ describe('retrySprintAssignment', () => {
   }
 
   beforeEach(async () => {
-    db = await createTestDatabase();
+    db = new SqliteProvider(await createTestDatabase());
     envDir = mkdtempSync(join(tmpdir(), 'hive-sprint-retry-test-'));
-    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+    db.db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
 
   it('returns 0 when no stories need sprint assignment', async () => {
@@ -625,11 +625,11 @@ describe('retrySprintAssignment', () => {
   });
 
   it('returns 0 when all stories with jira keys are already in sprint', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Sprint Story',
       description: 'Already in sprint',
     });
-    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 1, status = ? WHERE id = ?', [
+    run(db.db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 1, status = ? WHERE id = ?', [
       'TEST-1',
       'planned',
       story.id,
@@ -641,11 +641,11 @@ describe('retrySprintAssignment', () => {
   });
 
   it('retries sprint assignment for stories not in sprint', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Not In Sprint',
       description: 'Needs sprint assignment',
     });
-    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
+    run(db.db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
       'TEST-2',
       'planned',
       story.id,
@@ -671,16 +671,16 @@ describe('retrySprintAssignment', () => {
     );
 
     // Verify in_sprint was updated
-    const updated = getStoryById(db, story.id);
+    const updated = await getStoryById(db, story.id);
     expect(updated?.in_sprint).toBe(1);
   });
 
   it('returns 0 when sprint move fails', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Sprint Fail',
       description: 'Sprint move will fail',
     });
-    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
+    run(db.db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
       'TEST-3',
       'planned',
       story.id,
@@ -699,16 +699,16 @@ describe('retrySprintAssignment', () => {
     expect(count).toBe(0);
 
     // Verify in_sprint was NOT updated
-    const updated = getStoryById(db, story.id);
+    const updated = await getStoryById(db, story.id);
     expect(updated?.in_sprint).toBe(0);
   });
 
   it('skips merged stories', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Merged Story',
       description: 'Already merged',
     });
-    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
+    run(db.db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
       'TEST-4',
       'merged',
       story.id,
@@ -721,15 +721,15 @@ describe('retrySprintAssignment', () => {
 });
 
 describe('idempotency guards', () => {
-  let db: Database;
+  let db: SqliteProvider;
 
   beforeEach(async () => {
-    db = await createTestDatabase();
+    db = new SqliteProvider(await createTestDatabase());
   });
 
-  it('unique index prevents duplicate integration_sync records', () => {
+  it('unique index prevents duplicate integration_sync records', async () => {
     // Create first sync record
-    createSyncRecord(db, {
+    await createSyncRecord(db, {
       entityType: 'story',
       entityId: 'STORY-001',
       provider: 'jira',
@@ -737,18 +737,18 @@ describe('idempotency guards', () => {
     });
 
     // Attempt to create a duplicate should fail due to unique index
-    expect(() =>
+    await expect(
       createSyncRecord(db, {
         entityType: 'story',
         entityId: 'STORY-001',
         provider: 'jira',
         externalId: '10002',
       })
-    ).toThrow();
+    ).rejects.toThrow();
   });
 
-  it('allows sync records for different providers on same entity', () => {
-    createSyncRecord(db, {
+  it('allows sync records for different providers on same entity', async () => {
+    await createSyncRecord(db, {
       entityType: 'story',
       entityId: 'STORY-001',
       provider: 'jira',
@@ -756,19 +756,19 @@ describe('idempotency guards', () => {
     });
 
     // Different provider should succeed
-    expect(() =>
+    await expect(
       createSyncRecord(db, {
         entityType: 'story',
         entityId: 'STORY-001',
         provider: 'github',
         externalId: 'gh-001',
       })
-    ).not.toThrow();
+    ).resolves.not.toThrow();
   });
 });
 
 describe('syncHiveStatusesToJira', () => {
-  let db: Database;
+  let db: SqliteProvider;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -799,9 +799,9 @@ describe('syncHiveStatusesToJira', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    db = await createTestDatabase();
+    db = new SqliteProvider(await createTestDatabase());
     envDir = mkdtempSync(join(tmpdir(), 'hive-sync-push-test-'));
-    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+    db.db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
   });
 
   it('skips push when no status mapping configured', async () => {
@@ -813,7 +813,7 @@ describe('syncHiveStatusesToJira', () => {
   });
 
   it('skips stories without Jira issue key', async () => {
-    createStory(db, {
+    await createStory(db, {
       title: 'Test Story',
       description: 'Test',
     });
@@ -826,14 +826,14 @@ describe('syncHiveStatusesToJira', () => {
   });
 
   it('pushes Hive status to Jira when Hive is ahead', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Test Story',
       description: 'Test',
     });
 
     // Story is in_progress in Hive, but Jira still shows planned
     run(
-      db,
+      db.db,
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'in_progress', story.id]
     );
@@ -904,13 +904,13 @@ describe('syncHiveStatusesToJira', () => {
   });
 
   it('skips push when Hive status matches Jira status', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Test Story',
       description: 'Test',
     });
 
     run(
-      db,
+      db.db,
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'in_progress', story.id]
     );
@@ -961,14 +961,14 @@ describe('syncHiveStatusesToJira', () => {
   });
 
   it('prevents backward transitions when pushing to Jira', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Test Story',
       description: 'Test',
     });
 
     // Hive status is planned, but Jira is already in_progress (ahead)
     run(
-      db,
+      db.db,
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'planned', story.id]
     );

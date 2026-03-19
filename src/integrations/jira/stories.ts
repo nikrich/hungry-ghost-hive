@@ -1,10 +1,10 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import type { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
 import type { StoryRow } from '../../db/client.js';
+import type { DatabaseProvider } from '../../db/provider.js';
 import { createSyncRecord, getSyncRecordByEntity } from '../../db/queries/integration-sync.js';
 import { updateRequirement, type RequirementRow } from '../../db/queries/requirements.js';
 import { getStoryById, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
@@ -204,7 +204,7 @@ export async function tryMoveToActiveSprint(
  * and moves stories to the active sprint.
  */
 export async function syncRequirementToJira(
-  db: Database,
+  db: DatabaseProvider,
   tokenStore: TokenStore,
   config: JiraConfig,
   requirement: RequirementRow,
@@ -260,14 +260,14 @@ export async function syncRequirementToJira(
       result.epicId = epic.id;
 
       // Update requirement with epic info (provider-agnostic)
-      updateRequirement(db, requirement.id, {
+      await updateRequirement(db, requirement.id, {
         externalEpicKey: epic.key,
         externalEpicId: epic.id,
         externalProvider: 'jira',
       });
 
       // Record sync state
-      createSyncRecord(db, {
+      await createSyncRecord(db, {
         entityType: 'requirement',
         entityId: requirement.id,
         provider: 'jira',
@@ -284,7 +284,7 @@ export async function syncRequirementToJira(
   const createdStoryKeys: string[] = [];
 
   for (const storyId of storyIds) {
-    const story = getStoryById(db, storyId);
+    const story = await getStoryById(db, storyId);
     if (!story) {
       result.errors.push(`Story ${storyId} not found in local DB`);
       continue;
@@ -296,7 +296,7 @@ export async function syncRequirementToJira(
       storyKeyMap[storyId] = story.jira_issue_key;
       continue;
     }
-    const existingSync = getSyncRecordByEntity(db, 'story', storyId, 'jira');
+    const existingSync = await getSyncRecordByEntity(db, 'story', storyId, 'jira');
     if (existingSync && existingSync.sync_status === 'synced') {
       logger.debug(`Story ${storyId} already has sync record, skipping Jira creation`);
       continue;
@@ -330,7 +330,7 @@ export async function syncRequirementToJira(
       const jiraStory = await createIssue(client, { fields } as any);
 
       // Update local story with external integration info
-      updateStory(db, storyId, {
+      await updateStory(db, storyId, {
         externalIssueKey: jiraStory.key,
         externalIssueId: jiraStory.id,
         externalProjectKey: config.project_key,
@@ -338,7 +338,7 @@ export async function syncRequirementToJira(
       });
 
       // Record sync state
-      createSyncRecord(db, {
+      await createSyncRecord(db, {
         entityType: 'story',
         entityId: storyId,
         provider: 'jira',
@@ -363,7 +363,7 @@ export async function syncRequirementToJira(
     const jiraKey = storyKeyMap[storyId];
     if (!jiraKey) continue;
 
-    const dependencies = getStoryDependencies(db, storyId);
+    const dependencies = await getStoryDependencies(db, storyId);
     for (const dep of dependencies) {
       const depJiraKey = storyKeyMap[dep.id];
       if (!depJiraKey) continue;
@@ -385,7 +385,7 @@ export async function syncRequirementToJira(
   const movedToSprint = await tryMoveToActiveSprint(client, config, createdStoryKeys);
   if (movedToSprint) {
     for (const { storyId } of result.stories) {
-      updateStory(db, storyId, { inSprint: true });
+      await updateStory(db, storyId, { inSprint: true });
     }
   }
 
@@ -398,7 +398,7 @@ export async function syncRequirementToJira(
  * Moves the story to the active sprint after creation.
  */
 export async function syncStoryToJira(
-  db: Database,
+  db: DatabaseProvider,
   tokenStore: TokenStore,
   config: JiraConfig,
   story: StoryRow,
@@ -416,7 +416,7 @@ export async function syncStoryToJira(
   let epicKey: string | undefined;
   if (story.requirement_id) {
     const { getRequirementById } = await import('../../db/queries/requirements.js');
-    const req = getRequirementById(db, story.requirement_id);
+    const req = await getRequirementById(db, story.requirement_id);
     if (req?.external_epic_key) {
       epicKey = req.external_epic_key;
     }
@@ -449,7 +449,7 @@ export async function syncStoryToJira(
   const jiraStory = await createIssue(client, { fields } as any);
 
   // Update local story with external integration info
-  updateStory(db, story.id, {
+  await updateStory(db, story.id, {
     externalIssueKey: jiraStory.key,
     externalIssueId: jiraStory.id,
     externalProjectKey: config.project_key,
@@ -457,7 +457,7 @@ export async function syncStoryToJira(
   });
 
   // Record sync
-  createSyncRecord(db, {
+  await createSyncRecord(db, {
     entityType: 'story',
     entityId: story.id,
     provider: 'jira',
@@ -467,7 +467,7 @@ export async function syncStoryToJira(
   // Move to active sprint
   const movedToSprint = await tryMoveToActiveSprint(client, config, [jiraStory.key]);
   if (movedToSprint) {
-    updateStory(db, story.id, { inSprint: true });
+    await updateStory(db, story.id, { inSprint: true });
   }
 
   return { jiraKey: jiraStory.key, jiraId: jiraStory.id };

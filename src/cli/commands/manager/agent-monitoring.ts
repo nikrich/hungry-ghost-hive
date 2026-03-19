@@ -3,7 +3,7 @@
 import chalk from 'chalk';
 import { randomUUID } from 'crypto';
 import type { HiveConfig } from '../../../config/schema.js';
-import type { getAllAgents } from '../../../db/queries/agents.js';
+import type { AgentRow } from '../../../db/queries/agents.js';
 import { createLog } from '../../../db/queries/logs.js';
 import { getStateDetector, type StateDetectionResult } from '../../../state-detectors/index.js';
 import { AgentState } from '../../../state-detectors/types.js';
@@ -189,7 +189,7 @@ export function describeAgentState(state: AgentState, cliTool: CLITool): string 
 
 export function getAgentSafetyMode(
   config: HiveConfig,
-  agent: ReturnType<typeof getAllAgents>[number] | undefined
+  agent: AgentRow | undefined
 ): 'safe' | 'unsafe' {
   if (!agent) return 'unsafe';
   return config.models[agent.type].safety_mode;
@@ -252,7 +252,7 @@ export async function handlePermissionPrompt(
     const approved = await autoApprovePermission(sessionName);
     if (approved) {
       await ctx.withDb(async db => {
-        createLog(db.db, {
+        createLog(db.provider, {
           agentId: 'manager',
           eventType: 'STORY_PROGRESS_UPDATE',
           message: `Auto-approved permission prompt for ${sessionName}`,

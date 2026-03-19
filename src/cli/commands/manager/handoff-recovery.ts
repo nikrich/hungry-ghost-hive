@@ -2,8 +2,7 @@
 
 import chalk from 'chalk';
 import { syncStatusForStory } from '../../../connectors/project-management/operations.js';
-import type { DatabaseClient, StoryRow } from '../../../db/client.js';
-import { queryAll, withTransaction } from '../../../db/client.js';
+import type { StoryRow } from '../../../db/client.js';
 import { getTechLead } from '../../../db/queries/agents.js';
 import { createEscalation } from '../../../db/queries/escalations.js';
 import { createLog } from '../../../db/queries/logs.js';
@@ -49,15 +48,14 @@ function getLatestStoryUpdateMs(stories: StoryRow[]): number {
   return latestMs;
 }
 
-function getActivePipelineCountForRequirement(
-  db: DatabaseClient['db'],
+async function getActivePipelineCountForRequirement(
+  db: import('../../../db/provider.js').DatabaseProvider,
   requirementId: string | null
-): number {
+): Promise<number> {
   const statuses = `'planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted'`;
 
   if (requirementId) {
-    const result = queryAll<{ count: number }>(
-      db,
+    const result = await db.queryAll<{ count: number }>(
       `
       SELECT COUNT(*) as count
       FROM stories
@@ -69,8 +67,7 @@ function getActivePipelineCountForRequirement(
     return result[0]?.count || 0;
   }
 
-  const result = queryAll<{ count: number }>(
-    db,
+  const result = await db.queryAll<{ count: number }>(
     `
     SELECT COUNT(*) as count
     FROM stories
@@ -89,7 +86,7 @@ async function nudgeTechLeadForStalledHandoff(
   // Brief lock for DB read
   const fallbackSession = getTechLeadSessionName(ctx.paths.hiveDir);
   const techLeadInfo = await ctx.withDb(async db => {
-    const techLead = getTechLead(db.db);
+    const techLead = await getTechLead(db.provider);
     return techLead
       ? {
           sessionName: techLead.tmux_session || fallbackSession,
@@ -144,7 +141,7 @@ async function nudgeTechLeadForStalledHandoff(
 
   // Brief lock for log write
   await ctx.withDb(async db => {
-    createLog(db.db, {
+    await createLog(db.provider, {
       agentId: 'manager',
       eventType: 'STORY_PROGRESS_UPDATE',
       message: `Nudged Tech Lead to unblock stalled planning handoff for ${requirementLabel}`,
@@ -164,17 +161,17 @@ async function promoteEstimatedStoriesToPlanned(
   const promoted = await ctx.withDb(async db => {
     let count = 0;
 
-    await withTransaction(db.db, () => {
+    await db.provider.withTransaction(async () => {
       for (const story of stories) {
-        updateStory(db.db, story.id, { status: 'planned' });
+        await updateStory(db.provider, story.id, { status: 'planned' });
         count++;
       }
 
       if (requirementId) {
-        updateRequirement(db.db, requirementId, { status: 'planned' });
+        await updateRequirement(db.provider, requirementId, { status: 'planned' });
       }
 
-      createLog(db.db, {
+      await createLog(db.provider, {
         agentId: 'manager',
         eventType: 'PLANNING_COMPLETED',
         message: `Auto-promoted ${count} estimated story/ies to planned (${reason})`,
@@ -186,7 +183,7 @@ async function promoteEstimatedStoriesToPlanned(
 
     // Sync status changes to Jira
     for (const story of stories) {
-      await syncStatusForStory(ctx.root, db.db, story.id, 'planned');
+      await syncStatusForStory(ctx.root, db.provider, story.id, 'planned');
     }
 
     return count;
@@ -216,8 +213,8 @@ async function runAutoAssignmentAfterHandoff(ctx: ManagerCheckContext): Promise<
 
     if (result.errors.length > 0) {
       const reason = `Manager auto-handoff recovered planning but assignment still has errors: ${result.errors.join('; ')}`;
-      createEscalation(db.db, { reason });
-      createLog(db.db, {
+      await createEscalation(db.provider, { reason });
+      await createLog(db.provider, {
         agentId: 'manager',
         eventType: 'ESCALATION_CREATED',
         status: 'error',
@@ -234,7 +231,7 @@ async function runAutoAssignmentAfterHandoff(ctx: ManagerCheckContext): Promise<
 export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read estimated stories and evaluate handoff state (brief lock)
   const { groupedStories, estimatedCount } = await ctx.withDb(async db => {
-    const estimatedStories = getStoriesByStatus(db.db, 'estimated');
+    const estimatedStories = await getStoriesByStatus(db.provider, 'estimated');
     verboseLog(ctx, `handoff: estimatedStories=${estimatedStories.length}`);
 
     const grouped = new Map<string, { requirementId: string | null; stories: StoryRow[] }>();
@@ -258,7 +255,10 @@ export async function handleStalledPlanningHandoff(ctx: ManagerCheckContext): Pr
     }> = [];
 
     for (const [key, group] of grouped) {
-      const activePipelineCount = getActivePipelineCountForRequirement(db.db, group.requirementId);
+      const activePipelineCount = await getActivePipelineCountForRequirement(
+        db.provider,
+        group.requirementId
+      );
       const latestUpdateMs = getLatestStoryUpdateMs(group.stories);
       groupsWithPipeline.push({
         key,

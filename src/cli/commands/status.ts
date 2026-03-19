@@ -2,6 +2,7 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
+import type { DatabaseProvider } from '../../db/provider.js';
 import { getActiveAgents, getAllAgents } from '../../db/queries/agents.js';
 import { getPendingEscalations, getPendingHumanEscalations } from '../../db/queries/escalations.js';
 import { getLogsByStory, getRecentLogs } from '../../db/queries/logs.js';
@@ -23,26 +24,26 @@ export const statusCommand = new Command('status')
   .option('--story <id>', 'Show status for a specific story')
   .option('--json', 'Output as JSON')
   .action(async (options: { team?: string; story?: string; json?: boolean }) => {
-    await withReadOnlyHiveContext(({ db }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
       if (options.story) {
-        showStoryStatus(db.db, options.story, options.json);
+        await showStoryStatus(db.provider, options.story, options.json);
       } else if (options.team) {
-        showTeamStatus(db.db, options.team, options.json);
+        await showTeamStatus(db.provider, options.team, options.json);
       } else {
-        showOverallStatus(db.db, options.json);
+        await showOverallStatus(db.provider, options.json);
       }
     });
   });
 
-function showOverallStatus(db: import('sql.js').Database, json?: boolean): void {
-  const teams = getAllTeams(db);
-  const allAgents = getAllAgents(db);
-  const activeAgents = getActiveAgents(db);
-  const storyCounts = getStoryCounts(db);
-  const requirements = getPendingRequirements(db);
-  const escalations = getPendingEscalations(db);
-  const approvals = getPendingHumanEscalations(db);
-  const recentLogs = getRecentLogs(db, 5);
+async function showOverallStatus(db: DatabaseProvider, json?: boolean): Promise<void> {
+  const teams = await getAllTeams(db);
+  const allAgents = await getAllAgents(db);
+  const activeAgents = await getActiveAgents(db);
+  const storyCounts = await getStoryCounts(db);
+  const requirements = await getPendingRequirements(db);
+  const escalations = await getPendingEscalations(db);
+  const approvals = await getPendingHumanEscalations(db);
+  const recentLogs = await getRecentLogs(db, 5);
 
   const terminatedAgents = allAgents.filter(a => a.status === 'terminated').length;
 
@@ -153,19 +154,42 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
   }
 }
 
-function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: boolean): void {
-  const team = getTeamByName(db, teamName);
+async function showTeamStatus(
+  db: DatabaseProvider,
+  teamName: string,
+  json?: boolean
+): Promise<void> {
+  const team = await getTeamByName(db, teamName);
   if (!team) {
     console.error(chalk.red(`Team not found: ${teamName}`));
     process.exit(1);
   }
 
-  const stories = getStoriesByTeam(db, team.id);
-  const activeAgents = getActiveAgents(db).filter(a => a.team_id === team.id);
+  const stories = await getStoriesByTeam(db, team.id);
+  const activeAgents = (await getActiveAgents(db)).filter(a => a.team_id === team.id);
 
   const storyCounts: Record<string, number> = {};
   for (const story of stories) {
     storyCounts[story.status] = (storyCounts[story.status] || 0) + 1;
+  }
+
+  const agentDetails = [];
+  for (const a of activeAgents) {
+    let godmode = false;
+    if (a.current_story_id) {
+      const story = await getStoryById(db, a.current_story_id);
+      if (story && story.requirement_id) {
+        const requirement = await getRequirementById(db, story.requirement_id);
+        godmode = requirement?.godmode ? true : false;
+      }
+    }
+    agentDetails.push({
+      id: a.id,
+      type: a.type,
+      status: a.status,
+      currentStory: a.current_story_id,
+      godmode,
+    });
   }
 
   const status = {
@@ -175,23 +199,7 @@ function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: 
       repo_url: team.repo_url,
       repo_path: team.repo_path,
     },
-    agents: activeAgents.map(a => {
-      let godmode = false;
-      if (a.current_story_id) {
-        const story = getStoryById(db, a.current_story_id);
-        if (story && story.requirement_id) {
-          const requirement = getRequirementById(db, story.requirement_id);
-          godmode = requirement?.godmode ? true : false;
-        }
-      }
-      return {
-        id: a.id,
-        type: a.type,
-        status: a.status,
-        currentStory: a.current_story_id,
-        godmode,
-      };
-    }),
+    agents: agentDetails,
     stories: {
       total: stories.length,
       counts: storyCounts,
@@ -215,9 +223,9 @@ function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: 
     for (const agent of activeAgents) {
       let opusIndicator = '';
       if (agent.current_story_id) {
-        const story = getStoryById(db, agent.current_story_id);
+        const story = await getStoryById(db, agent.current_story_id);
         if (story && story.requirement_id) {
-          const requirement = getRequirementById(db, story.requirement_id);
+          const requirement = await getRequirementById(db, story.requirement_id);
           if (requirement?.godmode) {
             opusIndicator = chalk.yellow(' [Opus]');
           }
@@ -237,11 +245,15 @@ function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: 
   }
 }
 
-function showStoryStatus(db: import('sql.js').Database, storyId: string, json?: boolean): void {
-  const story = requireStory(db, storyId);
+async function showStoryStatus(
+  db: DatabaseProvider,
+  storyId: string,
+  json?: boolean
+): Promise<void> {
+  const story = await requireStory(db, storyId);
 
-  const dependencies = getStoryDependencies(db, story.id);
-  const logs = getLogsByStory(db, story.id).slice(0, 10);
+  const dependencies = await getStoryDependencies(db, story.id);
+  const logs = (await getLogsByStory(db, story.id)).slice(0, 10);
 
   const status = {
     story: {

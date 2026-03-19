@@ -61,7 +61,7 @@ describe('approvals command', () => {
       await fn({
         root: '/tmp',
         paths: {} as any,
-        db: { db: {} as any } as any,
+        db: { db: {} as any, provider: {} as any } as any,
       });
     });
   });
@@ -69,7 +69,7 @@ describe('approvals command', () => {
   it('list --json should return pending human approvals', async () => {
     const run = getCommandAction('list');
     const approvals = [sampleEscalation({ id: 'ESC-1' })];
-    vi.mocked(getPendingHumanEscalations).mockReturnValue(approvals);
+    vi.mocked(getPendingHumanEscalations).mockResolvedValue(approvals);
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -83,7 +83,7 @@ describe('approvals command', () => {
     const run = getCommandAction('list');
     const humanEsc = sampleEscalation({ id: 'ESC-HUMAN', to_agent_id: null });
     const agentEsc = sampleEscalation({ id: 'ESC-AGENT', to_agent_id: 'hive-senior-alpha' });
-    vi.mocked(getAllEscalations).mockReturnValue([humanEsc, agentEsc]);
+    vi.mocked(getAllEscalations).mockResolvedValue([humanEsc, agentEsc]);
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -95,7 +95,7 @@ describe('approvals command', () => {
 
   it('list should print a friendly message when no pending approvals exist', async () => {
     const run = getCommandAction('list');
-    vi.mocked(getPendingHumanEscalations).mockReturnValue([]);
+    vi.mocked(getPendingHumanEscalations).mockResolvedValue([]);
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -106,7 +106,7 @@ describe('approvals command', () => {
 
   it('show should exit when escalation is not human-targeted', async () => {
     const run = getCommandAction('show');
-    vi.mocked(getEscalationById).mockReturnValue(
+    vi.mocked(getEscalationById).mockResolvedValue(
       sampleEscalation({ to_agent_id: 'hive-senior-alpha' })
     );
 
@@ -127,7 +127,7 @@ describe('approvals command', () => {
 
   it('approve should resolve escalation with APPROVED prefix', async () => {
     const run = getCommandAction('approve');
-    vi.mocked(getEscalationById).mockReturnValue(sampleEscalation({ id: 'ESC-APPROVE' }));
+    vi.mocked(getEscalationById).mockResolvedValue(sampleEscalation({ id: 'ESC-APPROVE' }));
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -143,7 +143,7 @@ describe('approvals command', () => {
 
   it('approve should use default approval message when none is provided', async () => {
     const run = getCommandAction('approve');
-    vi.mocked(getEscalationById).mockReturnValue(sampleEscalation({ id: 'ESC-DEFAULT' }));
+    vi.mocked(getEscalationById).mockResolvedValue(sampleEscalation({ id: 'ESC-DEFAULT' }));
 
     await run('approve', 'ESC-DEFAULT');
 
@@ -156,7 +156,7 @@ describe('approvals command', () => {
 
   it('deny should resolve escalation with DENIED prefix', async () => {
     const run = getCommandAction('deny');
-    vi.mocked(getEscalationById).mockReturnValue(sampleEscalation({ id: 'ESC-DENY' }));
+    vi.mocked(getEscalationById).mockResolvedValue(sampleEscalation({ id: 'ESC-DENY' }));
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 

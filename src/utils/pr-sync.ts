@@ -1,9 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { execa } from 'execa';
-import type { Database } from 'sql.js';
 import { syncStatusForStory } from '../connectors/project-management/operations.js';
-import { queryAll, withTransaction } from '../db/client.js';
+import type { DatabaseProvider } from '../db/provider.js';
 import { createLog } from '../db/queries/logs.js';
 import { createPullRequest } from '../db/queries/pull-requests.js';
 import { updateStory } from '../db/queries/stories.js';
@@ -53,23 +52,22 @@ interface ExistingPRNumberRow {
 /**
  * Build sets of existing branch names and PR numbers from the database.
  *
- * @param db - sql.js Database instance
+ * @param db - DatabaseProvider instance
  * @param includeTerminalBranches - If true, include merged/closed PR branches
  *   in the returned set (prevents re-importing previously synced PRs).
  *   Defaults to true.
  */
-export function getExistingPRIdentifiers(
-  db: Database,
+export async function getExistingPRIdentifiers(
+  db: DatabaseProvider,
   includeTerminalBranches = true
-): { existingBranches: Set<string>; existingPrNumbers: Set<number> } {
+): Promise<{ existingBranches: Set<string>; existingPrNumbers: Set<number> }> {
   const branchQuery = includeTerminalBranches
     ? 'SELECT branch_name FROM pull_requests'
     : "SELECT branch_name FROM pull_requests WHERE status NOT IN ('merged', 'closed')";
-  const branchRows = queryAll<ExistingPRBranchRow>(db, branchQuery);
+  const branchRows = await db.queryAll<ExistingPRBranchRow>(branchQuery);
   const existingBranches = new Set(branchRows.map(row => row.branch_name));
 
-  const numberRows = queryAll<ExistingPRNumberRow>(
-    db,
+  const numberRows = await db.queryAll<ExistingPRNumberRow>(
     `
     SELECT DISTINCT github_pr_number
     FROM pull_requests
@@ -111,7 +109,7 @@ export async function fetchOpenGitHubPRs(
  * - PRs with story IDs are only imported if the story exists and is not merged
  * - PRs older than maxAgeHours are skipped (age-based filtering)
  *
- * @param db        - sql.js Database instance
+ * @param db        - DatabaseProvider instance
  * @param repoDir   - Absolute path to the git repository
  * @param teamId    - Team ID to associate with created PRs (null for CLI usage)
  * @param existingBranches  - Set of branch names already in the queue
@@ -120,7 +118,7 @@ export async function fetchOpenGitHubPRs(
  * @param maxAgeHours - Optional max age in hours for PRs (default: no limit)
  */
 export async function syncOpenGitHubPRs(
-  db: Database,
+  db: DatabaseProvider,
   repoDir: string,
   teamId: string | null,
   existingBranches: Set<string>,
@@ -142,7 +140,7 @@ export async function syncOpenGitHubPRs(
       const ageHours = (Date.now() - prCreatedAt.getTime()) / (1000 * 60 * 60);
 
       if (ageHours > maxAgeHours) {
-        createLog(db, {
+        await createLog(db, {
           agentId: 'manager',
           eventType: 'PR_SYNC_SKIPPED',
           status: 'info',
@@ -164,15 +162,14 @@ export async function syncOpenGitHubPRs(
     // If the PR has a story ID, check if the story is active
     if (storyId) {
       // Check if the story exists and is active (not merged)
-      const storyRows = queryAll<{ id: string; status: string }>(
-        db,
+      const storyRows = await db.queryAll<{ id: string; status: string }>(
         `SELECT id, status FROM stories WHERE id = ? COLLATE NOCASE AND status != 'merged'`,
         [storyId]
       );
 
       // Skip PRs where story doesn't exist or is merged
       if (storyRows.length === 0) {
-        createLog(db, {
+        await createLog(db, {
           agentId: 'manager',
           eventType: 'PR_SYNC_SKIPPED',
           status: 'info',
@@ -188,7 +185,7 @@ export async function syncOpenGitHubPRs(
       }
     }
 
-    const pr = createPullRequest(db, {
+    const pr = await createPullRequest(db, {
       storyId,
       teamId,
       branchName: ghPR.headRefName,
@@ -222,14 +219,14 @@ export async function syncOpenGitHubPRs(
  */
 export async function syncAllTeamOpenPRs(
   root: string,
-  db: Database,
+  db: DatabaseProvider,
   saveFn: () => void,
   maxAgeHours?: number
 ): Promise<number> {
-  const teams = getAllTeams(db);
+  const teams = await getAllTeams(db);
   if (teams.length === 0) return 0;
 
-  const { existingBranches, existingPrNumbers } = getExistingPRIdentifiers(db, true);
+  const { existingBranches, existingPrNumbers } = await getExistingPRIdentifiers(db, true);
   let totalSynced = 0;
 
   for (const team of teams) {
@@ -265,10 +262,10 @@ export async function syncAllTeamOpenPRs(
  */
 export async function syncMergedPRsFromGitHub(
   root: string,
-  db: Database,
+  db: DatabaseProvider,
   saveFn: () => void
 ): Promise<number> {
-  const teams = getAllTeams(db);
+  const teams = await getAllTeams(db);
   if (teams.length === 0) return 0;
 
   let storiesUpdated = 0;
@@ -308,8 +305,7 @@ export async function syncMergedPRsFromGitHub(
       }
 
       const placeholders = candidateStoryIds.map(() => '?').join(',');
-      const updatableStories = queryAll<{ id: string }>(
-        db,
+      const updatableStories = await db.queryAll<{ id: string }>(
         `
         SELECT id
         FROM stories
@@ -333,10 +329,10 @@ export async function syncMergedPRsFromGitHub(
         continue;
       }
 
-      await withTransaction(db, () => {
+      await db.withTransaction(async () => {
         for (const update of toUpdate) {
-          updateStory(db, update.storyId, { status: 'merged', assignedAgentId: null });
-          createLog(db, {
+          await updateStory(db, update.storyId, { status: 'merged', assignedAgentId: null });
+          await createLog(db, {
             agentId: 'manager',
             storyId: update.storyId,
             eventType: 'STORY_MERGED',
@@ -378,15 +374,15 @@ export interface ClosedPRInfo {
  * in the hive merge queue (i.e., the GitHub PR is stale/orphaned).
  *
  * @param root  - Root directory
- * @param db    - sql.js Database instance
+ * @param db    - DatabaseProvider instance
  * @returns Array of ClosedPRInfo for each PR that was closed.
  */
 export async function closeStaleGitHubPRs(
   root: string,
-  db: Database,
+  db: DatabaseProvider,
   baseBranch = 'main'
 ): Promise<ClosedPRInfo[]> {
-  const teams = getAllTeams(db);
+  const teams = await getAllTeams(db);
   if (teams.length === 0) return [];
 
   const closed: ClosedPRInfo[] = [];
@@ -408,8 +404,7 @@ export async function closeStaleGitHubPRs(
         if (!storyId) continue;
 
         // Check if there are other PRs for this story in the queue
-        const prsForStory = queryAll<{ id: string; github_pr_number: number | null }>(
-          db,
+        const prsForStory = await db.queryAll<{ id: string; github_pr_number: number | null }>(
           `
           SELECT id, github_pr_number
           FROM pull_requests
@@ -444,7 +439,7 @@ export async function closeStaleGitHubPRs(
                 cwd: repoDir,
                 timeout: GH_CLI_TIMEOUT_MS,
               });
-              createLog(db, {
+              await createLog(db, {
                 agentId: 'manager',
                 storyId,
                 eventType: 'PR_CLOSED',

@@ -3,9 +3,9 @@
 import blessed, { type Widgets } from 'blessed';
 import { spawnSync } from 'child_process';
 import { appendFileSync } from 'fs';
-import type { Database } from 'sql.js';
 import { loadConfig } from '../../../config/loader.js';
 import type { ModelsConfig } from '../../../config/schema.js';
+import type { DatabaseProvider } from '../../../db/provider.js';
 import { getActiveAgents, type AgentRow } from '../../../db/queries/agents.js';
 import { getTeamById } from '../../../db/queries/teams.js';
 import { getHiveSessions } from '../../../tmux/manager.js';
@@ -21,7 +21,7 @@ let currentAgents: AgentRow[] = [];
 
 export function createAgentsPanel(
   screen: Widgets.Screen,
-  db: Database,
+  db: DatabaseProvider,
   pauseRefresh: () => void,
   resumeRefresh: () => void
 ): Widgets.ListElement {
@@ -116,11 +116,14 @@ interface DisplayAgent extends AgentRow {
   repo?: string;
 }
 
-export async function updateAgentsPanel(list: Widgets.ListElement, db: Database): Promise<void> {
+export async function updateAgentsPanel(
+  list: Widgets.ListElement,
+  db: DatabaseProvider
+): Promise<void> {
   // Preserve current selection before updating
   const currentSelection = (list as unknown as { selected: number }).selected;
 
-  const agents = getActiveAgents(db);
+  const agents = await getActiveAgents(db);
   debugLog(
     `updateAgentsPanel called, found ${agents.length} agents, currentSelection=${currentSelection}`
   );
@@ -172,7 +175,7 @@ export async function updateAgentsPanel(list: Widgets.ListElement, db: Database)
   for (const agent of agents) {
     const displayAgent: DisplayAgent = { ...agent };
     if (agent.team_id) {
-      const team = getTeamById(db, agent.team_id);
+      const team = await getTeamById(db, agent.team_id);
       if (team?.repo_path) {
         // Extract repo name from path (e.g., "repos/my-service" -> "my-service")
         displayAgent.repo = team.repo_path.replace(/^repos\//, '');

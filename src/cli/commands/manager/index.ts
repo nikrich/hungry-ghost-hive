@@ -8,9 +8,8 @@ import { loadConfig } from '../../../config/loader.js';
 import type { HiveConfig } from '../../../config/schema.js';
 import { syncFromProvider } from '../../../connectors/project-management/operations.js';
 import type { StoryRow } from '../../../db/client.js';
-import { queryAll, queryOne, withTransaction } from '../../../db/client.js';
 import { acquireLock } from '../../../db/lock.js';
-import { getAgentById, getAllAgents } from '../../../db/queries/agents.js';
+import { getAgentById, getAllAgents, type AgentRow } from '../../../db/queries/agents.js';
 import { getPendingEscalations, updateEscalation } from '../../../db/queries/escalations.js';
 import { createLog } from '../../../db/queries/logs.js';
 import {
@@ -442,7 +441,7 @@ managerCommand
           return;
         }
       }
-      const scheduler = new Scheduler(db.db, {
+      const scheduler = new Scheduler(db.provider, {
         scaling: config.scaling,
         models: config.models,
         qa: config.qa,
@@ -511,7 +510,7 @@ managerCommand
   .option('-m, --message <msg>', 'Custom message to send')
   .action(async (session: string, options: { message?: string }) => {
     await withHiveContext(async ({ root, db }) => {
-      const agent = getAgentById(db.db, session.replace('hive-', ''));
+      const agent = await getAgentById(db.provider, session.replace('hive-', ''));
       const cliTool = (agent?.cli_tool || 'claude') as CLITool;
       await nudgeAgent(root, session, options.message, undefined, undefined, cliTool);
       console.log(chalk.green(`Nudged ${session}`));
@@ -584,7 +583,7 @@ async function managerCheck(
     fn: (db: import('../../../db/client.js').DatabaseClient, scheduler: Scheduler) => Promise<T> | T
   ): Promise<T> => {
     return withHiveContext(async ({ db }) => {
-      const scheduler = new Scheduler(db.db, {
+      const scheduler = new Scheduler(db.provider, {
         scaling: resolvedConfig.scaling,
         models: resolvedConfig.models,
         qa: resolvedConfig.qa,
@@ -706,7 +705,7 @@ async function managerCheck(
 
 async function backfillPRNumbers(ctx: ManagerCheckContext): Promise<void> {
   await ctx.withDb(async db => {
-    const backfilled = backfillGithubPrNumbers(db.db);
+    const backfilled = await backfillGithubPrNumbers(db.provider);
     verboseLogCtx(ctx, `backfillPRNumbers: backfilled=${backfilled}`);
     if (backfilled > 0) {
       console.log(chalk.yellow(`  Backfilled ${backfilled} PR(s) with github_pr_number from URL`));
@@ -798,7 +797,7 @@ async function runAutoMerge(ctx: ManagerCheckContext): Promise<void> {
 
 async function syncJiraStatuses(ctx: ManagerCheckContext): Promise<void> {
   await ctx.withDb(async db => {
-    const syncedStories = await syncFromProvider(ctx.root, db.db);
+    const syncedStories = await syncFromProvider(ctx.root, db.provider);
     verboseLogCtx(ctx, `syncJiraStatuses: synced=${syncedStories}`);
     if (syncedStories > 0) {
       ctx.counters.jiraSynced = syncedStories;
@@ -812,13 +811,13 @@ async function syncJiraStatuses(ctx: ManagerCheckContext): Promise<void> {
 async function prepareSessionData(ctx: ManagerCheckContext): Promise<void> {
   await ctx.withDb(async db => {
     // Pre-populate escalation dedup set
-    const existingEscalations = getPendingEscalations(db.db);
+    const existingEscalations = await getPendingEscalations(db.provider);
     ctx.escalatedSessions = new Set(
       existingEscalations.filter(e => e.from_agent_id).map(e => e.from_agent_id)
     );
 
     // Batch fetch all agents and index by session name
-    const allAgents = getAllAgents(db.db);
+    const allAgents = await getAllAgents(db.provider);
     const bySessionName = new Map<string, (typeof allAgents)[number]>();
     for (const agent of allAgents) {
       bySessionName.set(`hive-${agent.id}`, agent);
@@ -841,14 +840,14 @@ async function resolveStaleEscalations(ctx: ManagerCheckContext): Promise<void> 
       ctx.config.manager.nudge_cooldown_ms,
       ctx.config.manager.stuck_threshold_ms
     );
-    const pendingEscalations = getPendingEscalations(db.db);
+    const pendingEscalations = await getPendingEscalations(db.provider);
     verboseLogCtx(
       ctx,
       `resolveStaleEscalations: pending=${pendingEscalations.length}, staleAfterMs=${staleAfterMs}`
     );
     if (pendingEscalations.length === 0) return;
 
-    const uniqueAgents = new Map<string, ReturnType<typeof getAllAgents>[number]>();
+    const uniqueAgents = new Map<string, AgentRow>();
     for (const agent of ctx.agentsBySessionName.values()) {
       uniqueAgents.set(agent.id, agent);
     }
@@ -864,40 +863,37 @@ async function resolveStaleEscalations(ctx: ManagerCheckContext): Promise<void> 
     if (staleEscalations.length === 0) return;
     verboseLogCtx(ctx, `resolveStaleEscalations: stale=${staleEscalations.length}`);
 
-    withTransaction(
-      db.db,
-      () => {
-        for (const stale of staleEscalations) {
-          updateEscalation(db.db, stale.escalation.id, {
-            status: 'resolved',
-            resolution: `Manager auto-resolved stale escalation: ${stale.reason}`,
-          });
-          if (stale.escalation.from_agent_id) {
-            ctx.escalatedSessions.delete(stale.escalation.from_agent_id);
-          }
-          ctx.counters.escalationsResolved++;
-          createLog(db.db, {
-            agentId: 'manager',
-            storyId: stale.escalation.story_id || undefined,
-            eventType: 'ESCALATION_RESOLVED',
-            message: `Auto-resolved stale escalation ${stale.escalation.id}`,
-            metadata: {
-              escalation_id: stale.escalation.id,
-              from_agent_id: stale.escalation.from_agent_id,
-              reason: stale.reason,
-            },
-          });
+    await db.provider.withTransaction(async () => {
+      for (const stale of staleEscalations) {
+        await updateEscalation(db.provider, stale.escalation.id, {
+          status: 'resolved',
+          resolution: `Manager auto-resolved stale escalation: ${stale.reason}`,
+        });
+        if (stale.escalation.from_agent_id) {
+          ctx.escalatedSessions.delete(stale.escalation.from_agent_id);
         }
-      },
-      () => db.save()
-    );
+        ctx.counters.escalationsResolved++;
+        await createLog(db.provider, {
+          agentId: 'manager',
+          storyId: stale.escalation.story_id || undefined,
+          eventType: 'ESCALATION_RESOLVED',
+          message: `Auto-resolved stale escalation ${stale.escalation.id}`,
+          metadata: {
+            escalation_id: stale.escalation.id,
+            from_agent_id: stale.escalation.from_agent_id,
+            reason: stale.reason,
+          },
+        });
+      }
+    });
+    db.save();
     console.log(chalk.yellow(`  Auto-cleared ${staleEscalations.length} stale escalation(s)`));
   });
 }
 
 async function resolveOrphanedSessionEscalations(ctx: ManagerCheckContext): Promise<void> {
   const resolvedCount = await ctx.withDb(async db => {
-    const pendingEscalations = getPendingEscalations(db.db);
+    const pendingEscalations = await getPendingEscalations(db.provider);
     verboseLogCtx(ctx, `resolveOrphanedSessionEscalations: pending=${pendingEscalations.length}`);
     if (pendingEscalations.length === 0) {
       return 0;
@@ -905,7 +901,7 @@ async function resolveOrphanedSessionEscalations(ctx: ManagerCheckContext): Prom
 
     const activeSessionNames = new Set(ctx.hiveSessions.map(session => session.name));
     const agentStatusBySessionName = new Map<string, string>();
-    for (const agent of getAllAgents(db.db)) {
+    for (const agent of await getAllAgents(db.provider)) {
       if (agent.tmux_session) {
         agentStatusBySessionName.set(agent.tmux_session, agent.status);
       }
@@ -924,11 +920,11 @@ async function resolveOrphanedSessionEscalations(ctx: ManagerCheckContext): Prom
         continue;
       }
 
-      updateEscalation(db.db, escalation.id, {
+      await updateEscalation(db.provider, escalation.id, {
         status: 'resolved',
         resolution: `Manager auto-resolved stale escalation from inactive session ${fromSession}`,
       });
-      createLog(db.db, {
+      await createLog(db.provider, {
         agentId: 'manager',
         storyId: escalation.story_id || undefined,
         eventType: 'ESCALATION_RESOLVED',
@@ -959,7 +955,7 @@ async function resolveOrphanedSessionEscalations(ctx: ManagerCheckContext): Prom
 
 async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Batch fetch pending messages (brief lock)
-  const allPendingMessages = await ctx.withDb(async db => getAllPendingMessages(db.db));
+  const allPendingMessages = await ctx.withDb(async db => getAllPendingMessages(db.provider));
   const messagesBySessionName = new Map<string, MessageRow[]>();
   const activeSessionNames = new Set<string>();
   const maxStuckNudgesPerStory = getMaxStuckNudgesPerStory(ctx.config);
@@ -1080,7 +1076,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
         verboseLogCtx(ctx, `Agent ${session.name}: full-ai skipped (no current story)`);
       } else {
         // Brief lock for story lookup
-        const story = await ctx.withDb(async db => getStoryById(db.db, storyId));
+        const story = await ctx.withDb(async db => getStoryById(db.provider, storyId));
         if (!story || ['merged', 'completed'].includes(story.status)) {
           verboseLogCtx(
             ctx,
@@ -1181,7 +1177,7 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
             }
             // Brief lock for log write
             await ctx.withDb(async db => {
-              createLog(db.db, {
+              createLog(db.provider, {
                 agentId: 'manager',
                 storyId,
                 eventType: 'STORY_PROGRESS_UPDATE',
@@ -1222,7 +1218,7 @@ async function batchMarkMessagesRead(ctx: ManagerCheckContext): Promise<void> {
   verboseLogCtx(ctx, `batchMarkMessagesRead: count=${ctx.messagesToMarkRead.length}`);
   if (ctx.messagesToMarkRead.length > 0) {
     await ctx.withDb(async db => {
-      markMessagesRead(db.db, ctx.messagesToMarkRead);
+      markMessagesRead(db.provider, ctx.messagesToMarkRead);
       db.save();
     });
   }
@@ -1237,8 +1233,7 @@ async function batchMarkMessagesRead(ctx: ManagerCheckContext): Promise<void> {
 async function notifyUnassignedStories(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read planned unassigned stories (brief lock)
   const plannedCount = await ctx.withDb(async db => {
-    const plannedStories = queryAll<StoryRow>(
-      db.db,
+    const plannedStories = await db.provider.queryAll<StoryRow>(
       "SELECT * FROM stories WHERE status = 'planned' AND assigned_agent_id IS NULL"
     );
     return plannedStories.length;
@@ -1334,24 +1329,28 @@ async function printSummary(ctx: ManagerCheckContext): Promise<void> {
 
   const noActionSnapshot = await ctx.withDb(async db => {
     const pendingEscalations =
-      queryOne<{ count: number }>(
-        db.db,
-        "SELECT COUNT(*) AS count FROM escalations WHERE status = 'pending'"
+      (
+        await db.provider.queryOne<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM escalations WHERE status = 'pending'"
+        )
       )?.count ?? 0;
     const pendingActionableStories =
-      queryOne<{ count: number }>(
-        db.db,
-        "SELECT COUNT(*) AS count FROM stories WHERE status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')"
+      (
+        await db.provider.queryOne<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM stories WHERE status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')"
+        )
       )?.count ?? 0;
     const activeWorkerAgents =
-      queryOne<{ count: number }>(
-        db.db,
-        "SELECT COUNT(*) AS count FROM agents WHERE type != 'tech_lead' AND status != 'terminated'"
+      (
+        await db.provider.queryOne<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM agents WHERE type != 'tech_lead' AND status != 'terminated'"
+        )
       )?.count ?? 0;
     const workingWorkerAgents =
-      queryOne<{ count: number }>(
-        db.db,
-        "SELECT COUNT(*) AS count FROM agents WHERE type != 'tech_lead' AND status = 'working'"
+      (
+        await db.provider.queryOne<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM agents WHERE type != 'tech_lead' AND status = 'working'"
+        )
       )?.count ?? 0;
 
     return {

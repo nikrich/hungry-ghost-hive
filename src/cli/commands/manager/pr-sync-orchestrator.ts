@@ -3,7 +3,6 @@
 import chalk from 'chalk';
 import { execa } from 'execa';
 import { syncStatusForStory } from '../../../connectors/project-management/operations.js';
-import { queryAll, queryOne, withTransaction } from '../../../db/client.js';
 import { createLog } from '../../../db/queries/logs.js';
 import {
   createPullRequest,
@@ -46,7 +45,7 @@ export async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read teams (brief lock)
   const teamInfos = await ctx.withDb(async db => {
     const { getAllTeams } = await import('../../../db/queries/teams.js');
-    return getAllTeams(db.db)
+    return (await getAllTeams(db.provider))
       .filter(t => t.repo_path)
       .map(t => ({
         repoDir: `${ctx.root}/${t.repo_path}`,
@@ -94,8 +93,7 @@ export async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
       if (candidateStoryIds.length === 0) continue;
 
       const placeholders = candidateStoryIds.map(() => '?').join(',');
-      const updatableStories = queryAll<{ id: string }>(
-        db.db,
+      const updatableStories = await db.provider.queryAll<{ id: string }>(
         `SELECT id FROM stories WHERE status != 'merged' AND id IN (${placeholders})`,
         candidateStoryIds
       );
@@ -110,11 +108,14 @@ export async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
       }
 
       if (toUpdate.length > 0) {
-        await withTransaction(db.db, () => {
+        await db.provider.withTransaction(async () => {
           for (const update of toUpdate) {
-            updateStory(db.db, update.storyId, { status: 'merged', assignedAgentId: null });
-            const cleanup = cleanupAgentsReferencingMergedStory(db.db, update.storyId);
-            createLog(db.db, {
+            await updateStory(db.provider, update.storyId, {
+              status: 'merged',
+              assignedAgentId: null,
+            });
+            const cleanup = await cleanupAgentsReferencingMergedStory(db.provider, update.storyId);
+            await createLog(db.provider, {
               agentId: 'manager',
               storyId: update.storyId,
               eventType: 'STORY_MERGED',
@@ -126,8 +127,9 @@ export async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
             });
           }
         });
+        db.save();
         for (const update of toUpdate) {
-          syncStatusForStory(ctx.root, db.db, update.storyId, 'merged');
+          await syncStatusForStory(ctx.root, db.provider, update.storyId, 'merged');
         }
         storiesUpdated += toUpdate.length;
       }
@@ -144,15 +146,16 @@ export async function syncMergedPRs(ctx: ManagerCheckContext): Promise<void> {
 
 export async function reconcileAgentsOnMergedStories(ctx: ManagerCheckContext): Promise<void> {
   const result = await ctx.withDb(async db => {
-    const mergedStoryIds = queryAll<{ id: string }>(
-      db.db,
-      `
+    const mergedStoryIds = (
+      await db.provider.queryAll<{ id: string }>(
+        `
       SELECT DISTINCT s.id
       FROM stories s
       JOIN agents a ON a.current_story_id = s.id
       WHERE s.status = 'merged'
         AND a.status != 'terminated'
       `
+      )
     ).map(row => row.id);
 
     if (mergedStoryIds.length === 0) {
@@ -162,9 +165,9 @@ export async function reconcileAgentsOnMergedStories(ctx: ManagerCheckContext): 
     let cleared = 0;
     let reassigned = 0;
     for (const storyId of mergedStoryIds) {
-      const cleanup = cleanupAgentsReferencingMergedStory(db.db, storyId);
+      const cleanup = await cleanupAgentsReferencingMergedStory(db.provider, storyId);
       if (cleanup.cleared > 0) {
-        createLog(db.db, {
+        await createLog(db.provider, {
           agentId: 'manager',
           storyId,
           eventType: 'STORY_PROGRESS_UPDATE',
@@ -207,8 +210,11 @@ export async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read teams + existing identifiers (brief lock)
   const setupData = await ctx.withDb(async db => {
     const { getAllTeams } = await import('../../../db/queries/teams.js');
-    const teams = getAllTeams(db.db);
-    const { existingBranches, existingPrNumbers } = getExistingPRIdentifiers(db.db, true);
+    const teams = await getAllTeams(db.provider);
+    const { existingBranches, existingPrNumbers } = await getExistingPRIdentifiers(
+      db.provider,
+      true
+    );
     return {
       teams: teams
         .filter(t => t.repo_path)
@@ -237,7 +243,10 @@ export async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
   // Phase 3: Import into DB (brief lock)
   const syncedPRs = await ctx.withDb(async (db, scheduler) => {
     // Re-read identifiers in case another process synced in the meantime
-    const { existingBranches, existingPrNumbers } = getExistingPRIdentifiers(db.db, true);
+    const { existingBranches, existingPrNumbers } = await getExistingPRIdentifiers(
+      db.provider,
+      true
+    );
     let totalSynced = 0;
 
     for (const team of setupData.teams) {
@@ -251,7 +260,7 @@ export async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
         if (maxAgeHours !== undefined) {
           const ageHours = (Date.now() - new Date(ghPR.createdAt).getTime()) / (1000 * 60 * 60);
           if (ageHours > maxAgeHours) {
-            createLog(db.db, {
+            await createLog(db.provider, {
               agentId: 'manager',
               eventType: 'PR_SYNC_SKIPPED',
               status: 'info',
@@ -270,13 +279,12 @@ export async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
 
         const storyId = extractStoryIdFromBranch(ghPR.headRefName);
         if (storyId) {
-          const storyRows = queryAll<{ id: string; status: string }>(
-            db.db,
+          const storyRows = await db.provider.queryAll<{ id: string; status: string }>(
             `SELECT id, status FROM stories WHERE id = ? AND status != 'merged'`,
             [storyId]
           );
           if (storyRows.length === 0) {
-            createLog(db.db, {
+            await createLog(db.provider, {
               agentId: 'manager',
               eventType: 'PR_SYNC_SKIPPED',
               status: 'info',
@@ -292,7 +300,7 @@ export async function syncOpenPRs(ctx: ManagerCheckContext): Promise<void> {
           }
         }
 
-        createPullRequest(db.db, {
+        await createPullRequest(db.provider, {
           storyId,
           teamId: team.id,
           branchName: ghPR.headRefName,
@@ -324,14 +332,13 @@ export async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read teams + PR data (brief lock)
   const { teamInfos, prsByStory } = await ctx.withDb(async db => {
     const { getAllTeams } = await import('../../../db/queries/teams.js');
-    const teams = getAllTeams(db.db).filter(t => t.repo_path);
+    const teams = (await getAllTeams(db.provider)).filter(t => t.repo_path);
     // Pre-fetch all non-closed PR data grouped by story
-    const allPRs = queryAll<{
+    const allPRs = await db.provider.queryAll<{
       story_id: string | null;
       id: string;
       github_pr_number: number | null;
     }>(
-      db.db,
       `SELECT story_id, id, github_pr_number FROM pull_requests WHERE status NOT IN ('closed') ORDER BY created_at DESC`
     );
     const prsByStory = new Map<string, Array<{ id: string; github_pr_number: number | null }>>();
@@ -400,7 +407,7 @@ export async function closeStalePRs(ctx: ManagerCheckContext): Promise<void> {
       for (const info of closed) {
         const supersededDesc =
           info.supersededByPrNumber !== null ? ` by PR #${info.supersededByPrNumber}` : '';
-        createLog(db.db, {
+        await createLog(db.provider, {
           agentId: 'manager',
           storyId: info.storyId,
           eventType: 'PR_CLOSED',
@@ -436,7 +443,7 @@ export async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promis
 
   // Phase 1: Read stale reviewing PRs and resolve repo metadata (brief lock)
   const candidates = await ctx.withDb(async db => {
-    const reviewingPRs = getPullRequestsByStatus(db.db, 'reviewing').filter(pr => {
+    const reviewingPRs = (await getPullRequestsByStatus(db.provider, 'reviewing')).filter(pr => {
       if (!pr.github_pr_number || !pr.team_id) return false;
       const updatedAtMs = Date.parse(pr.updated_at);
       if (Number.isNaN(updatedAtMs)) return true;
@@ -449,7 +456,7 @@ export async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promis
     }
 
     const { getAllTeams } = await import('../../../db/queries/teams.js');
-    const teams = getAllTeams(db.db);
+    const teams = await getAllTeams(db.provider);
     const teamsById = new Map(teams.map(team => [team.id, team]));
 
     const result: ReviewingPRValidationCandidate[] = [];
@@ -548,90 +555,88 @@ export async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promis
   // Phase 3: Apply DB updates (brief lock)
   await ctx.withDb(async db => {
     for (const result of mergedResults) {
-      await withTransaction(
-        db.db,
-        () => {
-          const currentPR = queryOne<{ status: string }>(
-            db.db,
-            `SELECT status FROM pull_requests WHERE id = ?`,
-            [result.candidate.id]
-          );
-          if (!currentPR || currentPR.status !== 'reviewing') return;
+      await db.provider.withTransaction(async () => {
+        const currentPR = await db.provider.queryOne<{ status: string }>(
+          `SELECT status FROM pull_requests WHERE id = ?`,
+          [result.candidate.id]
+        );
+        if (!currentPR || currentPR.status !== 'reviewing') return;
 
-          updatePullRequest(db.db, result.candidate.id, {
-            status: 'merged',
-            reviewedBy: result.candidate.reviewedBy || 'manager',
-          });
-          createLog(db.db, {
-            agentId: 'manager',
-            storyId: result.candidate.storyId || undefined,
-            eventType: 'PR_MERGED',
-            message: `Auto-closed reviewing PR ${result.candidate.id}: GitHub PR #${result.candidate.githubPrNumber} is already merged`,
-            metadata: {
-              pr_id: result.candidate.id,
-              github_pr_number: result.candidate.githubPrNumber,
-              github_state: result.githubState,
-              github_url: result.githubUrl,
-            },
-          });
+        await updatePullRequest(db.provider, result.candidate.id, {
+          status: 'merged',
+          reviewedBy: result.candidate.reviewedBy || 'manager',
+        });
+        await createLog(db.provider, {
+          agentId: 'manager',
+          storyId: result.candidate.storyId || undefined,
+          eventType: 'PR_MERGED',
+          message: `Auto-closed reviewing PR ${result.candidate.id}: GitHub PR #${result.candidate.githubPrNumber} is already merged`,
+          metadata: {
+            pr_id: result.candidate.id,
+            github_pr_number: result.candidate.githubPrNumber,
+            github_state: result.githubState,
+            github_url: result.githubUrl,
+          },
+        });
 
-          if (!result.candidate.storyId) return;
-          updateStory(db.db, result.candidate.storyId, { status: 'merged', assignedAgentId: null });
-          const cleanup = cleanupAgentsReferencingMergedStory(db.db, result.candidate.storyId);
-          createLog(db.db, {
-            agentId: 'manager',
-            storyId: result.candidate.storyId,
-            eventType: 'STORY_MERGED',
-            message: `Story auto-synced to merged (GitHub PR #${result.candidate.githubPrNumber} already merged)`,
-            metadata: {
-              pr_id: result.candidate.id,
-              github_pr_number: result.candidate.githubPrNumber,
-              github_url: result.githubUrl,
-              merged_agent_cleanup_cleared: cleanup.cleared,
-              merged_agent_cleanup_reassigned: cleanup.reassigned,
-            },
-          });
-          mergedStoryIds.push(result.candidate.storyId);
-        },
-        () => db.save()
-      );
+        if (!result.candidate.storyId) return;
+        await updateStory(db.provider, result.candidate.storyId, {
+          status: 'merged',
+          assignedAgentId: null,
+        });
+        const cleanup = await cleanupAgentsReferencingMergedStory(
+          db.provider,
+          result.candidate.storyId
+        );
+        await createLog(db.provider, {
+          agentId: 'manager',
+          storyId: result.candidate.storyId,
+          eventType: 'STORY_MERGED',
+          message: `Story auto-synced to merged (GitHub PR #${result.candidate.githubPrNumber} already merged)`,
+          metadata: {
+            pr_id: result.candidate.id,
+            github_pr_number: result.candidate.githubPrNumber,
+            github_url: result.githubUrl,
+            merged_agent_cleanup_cleared: cleanup.cleared,
+            merged_agent_cleanup_reassigned: cleanup.reassigned,
+          },
+        });
+        mergedStoryIds.push(result.candidate.storyId);
+      });
+      db.save();
     }
 
     for (const result of rejectedResults) {
-      await withTransaction(
-        db.db,
-        () => {
-          const currentPR = queryOne<{ status: string }>(
-            db.db,
-            `SELECT status FROM pull_requests WHERE id = ?`,
-            [result.candidate.id]
-          );
-          if (!currentPR || currentPR.status !== 'reviewing') return;
+      await db.provider.withTransaction(async () => {
+        const currentPR = await db.provider.queryOne<{ status: string }>(
+          `SELECT status FROM pull_requests WHERE id = ?`,
+          [result.candidate.id]
+        );
+        if (!currentPR || currentPR.status !== 'reviewing') return;
 
-          const reason = `GitHub PR #${result.candidate.githubPrNumber} is ${result.githubState.toLowerCase()} on GitHub${result.githubUrl ? ` (${result.githubUrl})` : ''}. Reopen/create a new PR and resubmit.`;
-          updatePullRequest(db.db, result.candidate.id, {
-            status: 'rejected',
-            reviewedBy: result.candidate.reviewedBy || 'manager',
-            reviewNotes: reason,
-          });
-          createLog(db.db, {
-            agentId: 'manager',
-            storyId: result.candidate.storyId || undefined,
-            eventType: 'PR_REJECTED',
-            status: 'warn',
-            message: `Auto-rejected stale review ${result.candidate.id}: ${reason}`,
-            metadata: {
-              pr_id: result.candidate.id,
-              github_pr_number: result.candidate.githubPrNumber,
-              github_state: result.githubState,
-              github_url: result.githubUrl,
-              branch: result.candidate.branchName,
-              team_id: result.candidate.teamId,
-            },
-          });
-        },
-        () => db.save()
-      );
+        const reason = `GitHub PR #${result.candidate.githubPrNumber} is ${result.githubState.toLowerCase()} on GitHub${result.githubUrl ? ` (${result.githubUrl})` : ''}. Reopen/create a new PR and resubmit.`;
+        await updatePullRequest(db.provider, result.candidate.id, {
+          status: 'rejected',
+          reviewedBy: result.candidate.reviewedBy || 'manager',
+          reviewNotes: reason,
+        });
+        await createLog(db.provider, {
+          agentId: 'manager',
+          storyId: result.candidate.storyId || undefined,
+          eventType: 'PR_REJECTED',
+          status: 'warn',
+          message: `Auto-rejected stale review ${result.candidate.id}: ${reason}`,
+          metadata: {
+            pr_id: result.candidate.id,
+            github_pr_number: result.candidate.githubPrNumber,
+            github_state: result.githubState,
+            github_url: result.githubUrl,
+            branch: result.candidate.branchName,
+            team_id: result.candidate.teamId,
+          },
+        });
+      });
+      db.save();
     }
   });
 
@@ -639,7 +644,7 @@ export async function recoverStaleReviewingPRs(ctx: ManagerCheckContext): Promis
   const uniqueMergedStoryIds = Array.from(new Set(mergedStoryIds));
   for (const storyId of uniqueMergedStoryIds) {
     await ctx.withDb(async db => {
-      await syncStatusForStory(ctx.root, db.db, storyId, 'merged');
+      await syncStatusForStory(ctx.root, db.provider, storyId, 'merged');
     });
   }
 

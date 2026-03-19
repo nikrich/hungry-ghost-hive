@@ -1,10 +1,13 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import blessed, { type Widgets } from 'blessed';
-import type { Database } from 'sql.js';
+import type { DatabaseProvider } from '../../../db/provider.js';
 import { getStoryCounts } from '../../../db/queries/stories.js';
 
-export function createPipelinePanel(screen: Widgets.Screen, db: Database): Widgets.BoxElement {
+export function createPipelinePanel(
+  screen: Widgets.Screen,
+  db: DatabaseProvider
+): Widgets.BoxElement {
   const box = blessed.box({
     parent: screen,
     top: '55%',
@@ -24,8 +27,11 @@ export function createPipelinePanel(screen: Widgets.Screen, db: Database): Widge
   return box;
 }
 
-export async function updatePipelinePanel(box: Widgets.BoxElement, db: Database): Promise<void> {
-  const counts = getStoryCounts(db);
+export async function updatePipelinePanel(
+  box: Widgets.BoxElement,
+  db: DatabaseProvider
+): Promise<void> {
+  const counts = await getStoryCounts(db);
 
   const stages = [
     { name: 'Planned', count: counts.planned, color: 'white' },

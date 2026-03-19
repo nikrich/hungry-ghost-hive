@@ -3,9 +3,9 @@
 import { existsSync, mkdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SqliteProvider } from '../db/provider.js';
 
 import { getLogsByEventType } from '../db/queries/logs.js';
 import { createPullRequest } from '../db/queries/pull-requests.js';
@@ -39,7 +39,7 @@ vi.mock('../git/worktree.js', () => ({
   removeWorktree: vi.fn().mockResolvedValue(true),
 }));
 
-let db: Database;
+let db: SqliteProvider;
 let scheduler: Scheduler;
 
 const mockConfig = {
@@ -184,46 +184,67 @@ CREATE TABLE IF NOT EXISTS requirements (
 
 beforeEach(async () => {
   const SQL = await initSqlJs();
-  db = new SQL.Database();
-  db.run('PRAGMA foreign_keys = ON');
-  db.run(INITIAL_MIGRATION);
-  db.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
+  const rawDb = new SQL.Database();
+  rawDb.run('PRAGMA foreign_keys = ON');
+  rawDb.run(INITIAL_MIGRATION);
+  rawDb.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
+  db = new SqliteProvider(rawDb);
 
   scheduler = new Scheduler(db, mockConfig as any);
 });
 
 describe('Scheduler Topological Sort', () => {
-  it('should handle stories with no dependencies', () => {
-    const team = createTeam(db, {
+  it('should handle stories with no dependencies', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const story1 = createStory(db, { teamId: team.id, title: 'Story 1', description: 'Test' });
-    const story2 = createStory(db, { teamId: team.id, title: 'Story 2', description: 'Test' });
+    const story1 = await createStory(db, {
+      teamId: team.id,
+      title: 'Story 1',
+      description: 'Test',
+    });
+    const story2 = await createStory(db, {
+      teamId: team.id,
+      title: 'Story 2',
+      description: 'Test',
+    });
 
     // Mock the private method by accessing it through reflection
-    const sorted = topologicalSort(db, [story1, story2]);
+    const sorted = await topologicalSort(db, [story1, story2]);
 
     expect(sorted).not.toBeNull();
     expect(sorted).toHaveLength(2);
   });
 
-  it('should respect linear dependencies (A -> B -> C)', () => {
-    const team = createTeam(db, {
+  it('should respect linear dependencies (A -> B -> C)', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
-    const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
-    const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
+    const storyA = await createStory(db, {
+      teamId: team.id,
+      title: 'Story A',
+      description: 'Test',
+    });
+    const storyB = await createStory(db, {
+      teamId: team.id,
+      title: 'Story B',
+      description: 'Test',
+    });
+    const storyC = await createStory(db, {
+      teamId: team.id,
+      title: 'Story C',
+      description: 'Test',
+    });
 
     // B depends on A, C depends on B
-    addStoryDependency(db, storyB.id, storyA.id);
-    addStoryDependency(db, storyC.id, storyB.id);
+    await addStoryDependency(db, storyB.id, storyA.id);
+    await addStoryDependency(db, storyC.id, storyB.id);
 
-    const sorted = topologicalSort(db, [storyC, storyA, storyB]);
+    const sorted = await topologicalSort(db, [storyC, storyA, storyB]);
 
     expect(sorted).not.toBeNull();
     expect(sorted).toHaveLength(3);
@@ -233,24 +254,40 @@ describe('Scheduler Topological Sort', () => {
     expect(ids.indexOf(storyB.id)).toBeLessThan(ids.indexOf(storyC.id));
   });
 
-  it('should respect diamond dependencies (A -> B, A -> C, B -> D, C -> D)', () => {
-    const team = createTeam(db, {
+  it('should respect diamond dependencies (A -> B, A -> C, B -> D, C -> D)', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
-    const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
-    const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
-    const storyD = createStory(db, { teamId: team.id, title: 'Story D', description: 'Test' });
+    const storyA = await createStory(db, {
+      teamId: team.id,
+      title: 'Story A',
+      description: 'Test',
+    });
+    const storyB = await createStory(db, {
+      teamId: team.id,
+      title: 'Story B',
+      description: 'Test',
+    });
+    const storyC = await createStory(db, {
+      teamId: team.id,
+      title: 'Story C',
+      description: 'Test',
+    });
+    const storyD = await createStory(db, {
+      teamId: team.id,
+      title: 'Story D',
+      description: 'Test',
+    });
 
     // B and C depend on A, D depends on both B and C
-    addStoryDependency(db, storyB.id, storyA.id);
-    addStoryDependency(db, storyC.id, storyA.id);
-    addStoryDependency(db, storyD.id, storyB.id);
-    addStoryDependency(db, storyD.id, storyC.id);
+    await addStoryDependency(db, storyB.id, storyA.id);
+    await addStoryDependency(db, storyC.id, storyA.id);
+    await addStoryDependency(db, storyD.id, storyB.id);
+    await addStoryDependency(db, storyD.id, storyC.id);
 
-    const sorted = topologicalSort(db, [storyD, storyB, storyA, storyC]);
+    const sorted = await topologicalSort(db, [storyD, storyB, storyA, storyC]);
 
     expect(sorted).not.toBeNull();
     expect(sorted).toHaveLength(4);
@@ -267,138 +304,170 @@ describe('Scheduler Topological Sort', () => {
     expect(ids.indexOf(storyC.id)).toBeLessThan(ids.indexOf(storyD.id));
   });
 
-  it('should detect circular dependencies', () => {
-    const team = createTeam(db, {
+  it('should detect circular dependencies', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
-    const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
+    const storyA = await createStory(db, {
+      teamId: team.id,
+      title: 'Story A',
+      description: 'Test',
+    });
+    const storyB = await createStory(db, {
+      teamId: team.id,
+      title: 'Story B',
+      description: 'Test',
+    });
 
     // Create circular dependency: A -> B -> A
-    addStoryDependency(db, storyB.id, storyA.id);
-    addStoryDependency(db, storyA.id, storyB.id);
+    await addStoryDependency(db, storyB.id, storyA.id);
+    await addStoryDependency(db, storyA.id, storyB.id);
 
-    const sorted = topologicalSort(db, [storyA, storyB]);
+    const sorted = await topologicalSort(db, [storyA, storyB]);
 
     expect(sorted).toBeNull();
   });
 });
 
 describe('Scheduler Dependency Satisfaction', () => {
-  it('should consider merged stories as satisfying dependencies', () => {
-    const team = createTeam(db, {
+  it('should consider merged stories as satisfying dependencies', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const depStory = createStory(db, { teamId: team.id, title: 'Dependency', description: 'Test' });
-    const mainStory = createStory(db, {
+    const depStory = await createStory(db, {
+      teamId: team.id,
+      title: 'Dependency',
+      description: 'Test',
+    });
+    const mainStory = await createStory(db, {
       teamId: team.id,
       title: 'Main Story',
       description: 'Test',
     });
 
-    addStoryDependency(db, mainStory.id, depStory.id);
+    await addStoryDependency(db, mainStory.id, depStory.id);
 
     // Initially, dependencies are not satisfied
-    let isSatisfied = areDependenciesSatisfied(db, mainStory.id);
+    let isSatisfied = await areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(false);
 
     // Mark dependency as merged
-    updateStory(db, depStory.id, { status: 'merged' });
-    isSatisfied = areDependenciesSatisfied(db, mainStory.id);
+    await updateStory(db, depStory.id, { status: 'merged' });
+    isSatisfied = await areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(true);
   });
 
-  it('should not consider in-progress stories as satisfying dependencies', () => {
-    const team = createTeam(db, {
+  it('should not consider in-progress stories as satisfying dependencies', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const depStory = createStory(db, { teamId: team.id, title: 'Dependency', description: 'Test' });
-    const mainStory = createStory(db, {
+    const depStory = await createStory(db, {
+      teamId: team.id,
+      title: 'Dependency',
+      description: 'Test',
+    });
+    const mainStory = await createStory(db, {
       teamId: team.id,
       title: 'Main Story',
       description: 'Test',
     });
 
-    addStoryDependency(db, mainStory.id, depStory.id);
+    await addStoryDependency(db, mainStory.id, depStory.id);
 
     // Mark dependency as in_progress - this should NOT satisfy the dependency
-    updateStory(db, depStory.id, { status: 'in_progress' });
-    const isSatisfied = areDependenciesSatisfied(db, mainStory.id);
+    await updateStory(db, depStory.id, { status: 'in_progress' });
+    const isSatisfied = await areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(false);
   });
 
-  it('should not consider planned stories as satisfying dependencies', () => {
-    const team = createTeam(db, {
+  it('should not consider planned stories as satisfying dependencies', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const depStory = createStory(db, { teamId: team.id, title: 'Dependency', description: 'Test' });
-    const mainStory = createStory(db, {
+    const depStory = await createStory(db, {
+      teamId: team.id,
+      title: 'Dependency',
+      description: 'Test',
+    });
+    const mainStory = await createStory(db, {
       teamId: team.id,
       title: 'Main Story',
       description: 'Test',
     });
 
-    addStoryDependency(db, mainStory.id, depStory.id);
+    await addStoryDependency(db, mainStory.id, depStory.id);
 
     // Update main story status to planned (default)
-    updateStory(db, mainStory.id, { status: 'planned' });
+    await updateStory(db, mainStory.id, { status: 'planned' });
 
-    const isSatisfied = areDependenciesSatisfied(db, mainStory.id);
+    const isSatisfied = await areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(false);
   });
 
-  it('should handle multiple dependencies', () => {
-    const team = createTeam(db, {
+  it('should handle multiple dependencies', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const dep1 = createStory(db, { teamId: team.id, title: 'Dep 1', description: 'Test' });
-    const dep2 = createStory(db, { teamId: team.id, title: 'Dep 2', description: 'Test' });
-    const mainStory = createStory(db, {
+    const dep1 = await createStory(db, { teamId: team.id, title: 'Dep 1', description: 'Test' });
+    const dep2 = await createStory(db, { teamId: team.id, title: 'Dep 2', description: 'Test' });
+    const mainStory = await createStory(db, {
       teamId: team.id,
       title: 'Main Story',
       description: 'Test',
     });
 
-    addStoryDependency(db, mainStory.id, dep1.id);
-    addStoryDependency(db, mainStory.id, dep2.id);
+    await addStoryDependency(db, mainStory.id, dep1.id);
+    await addStoryDependency(db, mainStory.id, dep2.id);
 
     // Mark only first dependency as merged
-    updateStory(db, dep1.id, { status: 'merged' });
-    let isSatisfied = areDependenciesSatisfied(db, mainStory.id);
+    await updateStory(db, dep1.id, { status: 'merged' });
+    let isSatisfied = await areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(false);
 
     // Mark second dependency as merged too
-    updateStory(db, dep2.id, { status: 'merged' });
-    isSatisfied = areDependenciesSatisfied(db, mainStory.id);
+    await updateStory(db, dep2.id, { status: 'merged' });
+    isSatisfied = await areDependenciesSatisfied(db, mainStory.id);
     expect(isSatisfied).toBe(true);
   });
 });
 
 describe('Scheduler Build Dependency Graph', () => {
-  it('should correctly build a dependency graph', () => {
-    const team = createTeam(db, {
+  it('should correctly build a dependency graph', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
-    const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
-    const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
+    const storyA = await createStory(db, {
+      teamId: team.id,
+      title: 'Story A',
+      description: 'Test',
+    });
+    const storyB = await createStory(db, {
+      teamId: team.id,
+      title: 'Story B',
+      description: 'Test',
+    });
+    const storyC = await createStory(db, {
+      teamId: team.id,
+      title: 'Story C',
+      description: 'Test',
+    });
 
-    addStoryDependency(db, storyB.id, storyA.id);
-    addStoryDependency(db, storyC.id, storyA.id);
+    await addStoryDependency(db, storyB.id, storyA.id);
+    await addStoryDependency(db, storyC.id, storyA.id);
 
-    const graph = buildDependencyGraph(db, [storyA, storyB, storyC]);
+    const graph = await buildDependencyGraph(db, [storyA, storyB, storyC]);
 
     expect(graph.has(storyA.id)).toBe(true);
     expect(graph.has(storyB.id)).toBe(true);
@@ -409,21 +478,33 @@ describe('Scheduler Build Dependency Graph', () => {
     expect(graph.get(storyC.id)).toEqual(new Set([storyA.id]));
   });
 
-  it('should include only stories in the input list', () => {
-    const team = createTeam(db, {
+  it('should include only stories in the input list', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
-    const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
-    const storyC = createStory(db, { teamId: team.id, title: 'Story C', description: 'Test' });
+    const storyA = await createStory(db, {
+      teamId: team.id,
+      title: 'Story A',
+      description: 'Test',
+    });
+    const storyB = await createStory(db, {
+      teamId: team.id,
+      title: 'Story B',
+      description: 'Test',
+    });
+    const storyC = await createStory(db, {
+      teamId: team.id,
+      title: 'Story C',
+      description: 'Test',
+    });
 
     // B depends on A (A is not in the filter list)
-    addStoryDependency(db, storyB.id, storyA.id);
+    await addStoryDependency(db, storyB.id, storyA.id);
 
     // Only include B and C in the graph
-    const graph = buildDependencyGraph(db, [storyB, storyC]);
+    const graph = await buildDependencyGraph(db, [storyB, storyC]);
 
     expect(graph.has(storyB.id)).toBe(true);
     expect(graph.has(storyC.id)).toBe(true);
@@ -432,7 +513,7 @@ describe('Scheduler Build Dependency Graph', () => {
 });
 
 describe('Scheduler Worktree Removal', () => {
-  it('should remove worktrees with a short cleanup timeout', () => {
+  it('should remove worktrees with a short cleanup timeout', async () => {
     const removeSpy = vi.spyOn(worktreeModule, 'removeWorktree').mockReturnValue({
       success: true,
       fullWorktreePath: '/tmp/repos/test-agent-1',
@@ -446,7 +527,7 @@ describe('Scheduler Worktree Removal', () => {
     vi.restoreAllMocks();
   });
 
-  it('should log worktree removal failures to the database', () => {
+  it('should log worktree removal failures to the database', async () => {
     // Mock the shared removeWorktree to simulate failure
     vi.spyOn(worktreeModule, 'removeWorktree').mockReturnValue({
       success: false,
@@ -455,10 +536,10 @@ describe('Scheduler Worktree Removal', () => {
     });
 
     const removeMethod = (scheduler as any).removeAgentWorktree;
-    removeMethod.call(scheduler, 'repos/test-agent-1', 'agent-test-1');
+    await removeMethod.call(scheduler, 'repos/test-agent-1', 'agent-test-1');
 
     // Check that the failure was logged
-    const logs = getLogsByEventType(db, 'WORKTREE_REMOVAL_FAILED');
+    const logs = await getLogsByEventType(db, 'WORKTREE_REMOVAL_FAILED');
     expect(logs).toHaveLength(1);
     expect(logs[0].agent_id).toBe('agent-test-1');
     expect(logs[0].event_type).toBe('WORKTREE_REMOVAL_FAILED');
@@ -468,14 +549,14 @@ describe('Scheduler Worktree Removal', () => {
     vi.restoreAllMocks();
   });
 
-  it('should handle empty worktree paths gracefully', () => {
+  it('should handle empty worktree paths gracefully', async () => {
     const removeMethod = (scheduler as any).removeAgentWorktree;
 
     // Should return without error for empty path
     removeMethod.call(scheduler, '', 'agent-test-1');
 
     // Should not log anything
-    const logs = getLogsByEventType(db, 'WORKTREE_REMOVAL_FAILED');
+    const logs = await getLogsByEventType(db, 'WORKTREE_REMOVAL_FAILED');
     expect(logs).toHaveLength(0);
   });
 });
@@ -483,7 +564,7 @@ describe('Scheduler Worktree Removal', () => {
 describe('Scheduler Orphaned Story Recovery', () => {
   it('should recover orphaned stories assigned to terminated agents', async () => {
     // Setup: Create team, agents, and a story
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
@@ -491,32 +572,32 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     // Create a terminated agent in the database
     const terminatedAgentId = 'agent-terminated-1';
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
       [terminatedAgentId, 'intermediate', team.id, 'terminated']
     );
 
     // Create a story assigned to the terminated agent
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Orphaned Story',
       description: 'Test',
     });
-    updateStory(db, story.id, {
+    await updateStory(db, story.id, {
       assignedAgentId: terminatedAgentId,
       status: 'in_progress',
     });
 
     // Get the recovery method
-    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+    const recovered = await detectAndRecoverOrphanedStories(db, '/tmp');
 
     // Verify the story was recovered
     expect(recovered).toContain(story.id);
     expect(recovered.length).toBe(1);
 
     // Verify the story's assignment was cleared and status changed
-    const recoveredStory = db.exec(
+    const recoveredStory = db.db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
@@ -525,7 +606,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
   });
 
   it('should not affect stories assigned to active agents', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
@@ -533,28 +614,32 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     // Create an active (non-terminated) agent
     const activeAgentId = 'agent-active-1';
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
       [activeAgentId, 'intermediate', team.id, 'working']
     );
 
     // Create a story assigned to the active agent
-    const story = createStory(db, { teamId: team.id, title: 'Active Story', description: 'Test' });
-    updateStory(db, story.id, {
+    const story = await createStory(db, {
+      teamId: team.id,
+      title: 'Active Story',
+      description: 'Test',
+    });
+    await updateStory(db, story.id, {
       assignedAgentId: activeAgentId,
       status: 'in_progress',
     });
-    db.run(`UPDATE agents SET current_story_id = ? WHERE id = ?`, [story.id, activeAgentId]);
+    db.db.run(`UPDATE agents SET current_story_id = ? WHERE id = ?`, [story.id, activeAgentId]);
 
     // Get the recovery method
-    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+    const recovered = await detectAndRecoverOrphanedStories(db, '/tmp');
 
     // Verify no stories were recovered
     expect(recovered.length).toBe(0);
 
     // Verify the story's assignment was NOT changed
-    const unchangedStory = db.exec(
+    const unchangedStory = db.db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
@@ -563,34 +648,34 @@ describe('Scheduler Orphaned Story Recovery', () => {
   });
 
   it('should recover in_progress stories assigned to idle agents with no current story', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Inconsistent Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     const idleAgentId = 'agent-idle-1';
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
       [idleAgentId, 'intermediate', team.id, 'idle']
     );
 
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Inconsistent Assignment Story',
       description: 'Assigned to idle agent',
     });
-    updateStory(db, story.id, {
+    await updateStory(db, story.id, {
       assignedAgentId: idleAgentId,
       status: 'in_progress',
     });
 
-    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+    const recovered = await detectAndRecoverOrphanedStories(db, '/tmp');
 
     expect(recovered).toContain(story.id);
 
-    const recoveredStory = db.exec(
+    const recoveredStory = db.db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
@@ -599,34 +684,34 @@ describe('Scheduler Orphaned Story Recovery', () => {
   });
 
   it('should recover in_progress stories when agent current_story_id points to a different story', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Mismatched Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     const workingAgentId = 'agent-working-mismatch-1';
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
       [workingAgentId, 'intermediate', team.id, 'working', 'STORY-OTHER']
     );
 
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Mismatched Assignment Story',
       description: 'Assigned story does not match agent current story',
     });
-    updateStory(db, story.id, {
+    await updateStory(db, story.id, {
       assignedAgentId: workingAgentId,
       status: 'in_progress',
     });
 
-    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+    const recovered = await detectAndRecoverOrphanedStories(db, '/tmp');
 
     expect(recovered).toContain(story.id);
 
-    const recoveredStory = db.exec(
+    const recoveredStory = db.db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
@@ -635,33 +720,33 @@ describe('Scheduler Orphaned Story Recovery', () => {
   });
 
   it('should recover in_progress stories assigned to blocked agents even with matching current story', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Blocked Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     const blockedAgentId = 'agent-blocked-1';
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Blocked Assignment Story',
       description: 'Assigned to blocked agent',
     });
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
       [blockedAgentId, 'intermediate', team.id, 'blocked', story.id]
     );
-    updateStory(db, story.id, {
+    await updateStory(db, story.id, {
       assignedAgentId: blockedAgentId,
       status: 'in_progress',
     });
 
-    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+    const recovered = await detectAndRecoverOrphanedStories(db, '/tmp');
 
     expect(recovered).toContain(story.id);
 
-    const recoveredStory = db.exec(
+    const recoveredStory = db.db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
@@ -670,34 +755,34 @@ describe('Scheduler Orphaned Story Recovery', () => {
   });
 
   it('should not recover non-in_progress stories with inconsistent assignment', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Review Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     const idleAgentId = 'agent-idle-review-1';
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
       [idleAgentId, 'intermediate', team.id, 'idle']
     );
 
-    const reviewStory = createStory(db, {
+    const reviewStory = await createStory(db, {
       teamId: team.id,
       title: 'Review Story',
       description: 'Should not be recovered by in_progress consistency check',
     });
-    updateStory(db, reviewStory.id, {
+    await updateStory(db, reviewStory.id, {
       assignedAgentId: idleAgentId,
       status: 'review',
     });
 
-    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+    const recovered = await detectAndRecoverOrphanedStories(db, '/tmp');
 
     expect(recovered).not.toContain(reviewStory.id);
 
-    const unchangedStory = db.exec(
+    const unchangedStory = db.db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${reviewStory.id}'`
     )[0]?.values[0];
 
@@ -706,27 +791,27 @@ describe('Scheduler Orphaned Story Recovery', () => {
   });
 
   it('should recover stale in_progress stories without assigned agents', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Stale Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    const staleStory = createStory(db, {
+    const staleStory = await createStory(db, {
       teamId: team.id,
       title: 'Stale In Progress Story',
       description: 'Lost assignment',
     });
-    updateStory(db, staleStory.id, {
+    await updateStory(db, staleStory.id, {
       status: 'in_progress',
       assignedAgentId: null,
     });
 
-    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+    const recovered = await detectAndRecoverOrphanedStories(db, '/tmp');
 
     expect(recovered).toContain(staleStory.id);
 
-    const recoveredStory = db.exec(
+    const recoveredStory = db.db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${staleStory.id}'`
     )[0]?.values[0];
 
@@ -735,29 +820,29 @@ describe('Scheduler Orphaned Story Recovery', () => {
   });
 
   it('should not recover planned stories that are unassigned', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Planned Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    const plannedStory = createStory(db, {
+    const plannedStory = await createStory(db, {
       teamId: team.id,
       title: 'Already Planned',
       description: 'Should stay planned',
     });
-    updateStory(db, plannedStory.id, {
+    await updateStory(db, plannedStory.id, {
       status: 'planned',
       assignedAgentId: null,
     });
 
-    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+    const recovered = await detectAndRecoverOrphanedStories(db, '/tmp');
 
     expect(recovered).not.toContain(plannedStory.id);
   });
 
   it('should recover multiple orphaned stories', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
@@ -765,35 +850,35 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     // Create a terminated agent
     const terminatedAgentId = 'agent-terminated-2';
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
       [terminatedAgentId, 'intermediate', team.id, 'terminated']
     );
 
     // Create multiple stories assigned to the terminated agent
-    const story1 = createStory(db, {
+    const story1 = await createStory(db, {
       teamId: team.id,
       title: 'Orphaned Story 1',
       description: 'Test',
     });
-    const story2 = createStory(db, {
+    const story2 = await createStory(db, {
       teamId: team.id,
       title: 'Orphaned Story 2',
       description: 'Test',
     });
 
-    updateStory(db, story1.id, {
+    await updateStory(db, story1.id, {
       assignedAgentId: terminatedAgentId,
       status: 'in_progress',
     });
-    updateStory(db, story2.id, {
+    await updateStory(db, story2.id, {
       assignedAgentId: terminatedAgentId,
       status: 'review',
     });
 
     // Get the recovery method
-    const recovered = detectAndRecoverOrphanedStories(db, '/tmp');
+    const recovered = await detectAndRecoverOrphanedStories(db, '/tmp');
 
     // Verify both stories were recovered
     expect(recovered.length).toBe(2);
@@ -801,12 +886,12 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(recovered).toContain(story2.id);
   });
 
-  it('should write markdown files when storiesDir is provided during orphan recovery', () => {
+  it('should write markdown files when storiesDir is provided during orphan recovery', async () => {
     const storiesDir = join(tmpdir(), `hive-test-stories-${Date.now()}`);
     mkdirSync(storiesDir, { recursive: true });
 
     try {
-      const team = createTeam(db, {
+      const team = await createTeam(db, {
         name: 'MD Test Team',
         repoUrl: 'https://github.com/test/repo',
         repoPath: 'test',
@@ -819,17 +904,17 @@ describe('Scheduler Orphaned Story Recovery', () => {
         [terminatedAgentId, 'intermediate', team.id, 'terminated']
       );
 
-      const story = createStory(db, {
+      const story = await createStory(db, {
         teamId: team.id,
         title: 'Story with Markdown',
         description: 'Should get a markdown file on recovery',
       });
-      updateStory(db, story.id, {
+      await updateStory(db, story.id, {
         assignedAgentId: terminatedAgentId,
         status: 'in_progress',
       });
 
-      const recovered = detectAndRecoverOrphanedStories(db, '/tmp', storiesDir);
+      const recovered = await detectAndRecoverOrphanedStories(db, '/tmp', storiesDir);
 
       expect(recovered).toContain(story.id);
 
@@ -838,7 +923,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
       expect(existsSync(mdPath)).toBe(true);
 
       // Verify markdown_path was set in DB
-      const updatedStory = getStoryById(db, story.id);
+      const updatedStory = await getStoryById(db, story.id);
       expect(updatedStory?.markdown_path).toBe(mdPath);
     } finally {
       rmSync(storiesDir, { recursive: true, force: true });
@@ -858,33 +943,33 @@ describe('Scheduler Refactor Capacity Policy', () => {
     } as any;
   }
 
-  it('should enforce refactor budget based on feature workload', () => {
-    const team = createTeam(db, {
+  it('should enforce refactor budget based on feature workload', async () => {
+    const team = await createTeam(db, {
       name: 'Refactor Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    const feature = createStory(db, {
+    const feature = await createStory(db, {
       teamId: team.id,
       title: 'Add endpoint',
       description: 'Feature story',
     });
-    updateStory(db, feature.id, { status: 'planned', storyPoints: 10, complexityScore: 10 });
+    await updateStory(db, feature.id, { status: 'planned', storyPoints: 10, complexityScore: 10 });
 
-    const refactorA = createStory(db, {
+    const refactorA = await createStory(db, {
       teamId: team.id,
       title: 'Refactor: clean parser',
       description: 'Refactor A',
     });
-    updateStory(db, refactorA.id, { status: 'planned', storyPoints: 1, complexityScore: 1 });
+    await updateStory(db, refactorA.id, { status: 'planned', storyPoints: 1, complexityScore: 1 });
 
-    const refactorB = createStory(db, {
+    const refactorB = await createStory(db, {
       teamId: team.id,
       title: 'Refactor: simplify auth flow',
       description: 'Refactor B',
     });
-    updateStory(db, refactorB.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
+    await updateStory(db, refactorB.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
 
     const scalingConfig = createRefactorScalingConfig({
       enabled: true,
@@ -892,32 +977,32 @@ describe('Scheduler Refactor Capacity Policy', () => {
       allow_without_feature_work: true,
     });
 
-    const selected = selectStoriesForCapacity(
+    const selected = (await selectStoriesForCapacity(
       [
-        getStoryById(db, feature.id)!,
-        getStoryById(db, refactorA.id)!,
-        getStoryById(db, refactorB.id)!,
+        (await getStoryById(db, feature.id))!,
+        (await getStoryById(db, refactorA.id))!,
+        (await getStoryById(db, refactorB.id))!,
       ],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toContain(feature.id);
     expect(selected.map(s => s.id)).toContain(refactorA.id);
     expect(selected.map(s => s.id)).not.toContain(refactorB.id);
   });
 
-  it('should allow refactor-only queues when policy permits', () => {
-    const team = createTeam(db, {
+  it('should allow refactor-only queues when policy permits', async () => {
+    const team = await createTeam(db, {
       name: 'Maintenance Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const refactor = createStory(db, {
+    const refactor = await createStory(db, {
       teamId: team.id,
       title: 'Refactor: remove dead code',
       description: 'Maintenance',
     });
-    updateStory(db, refactor.id, { status: 'planned', storyPoints: 3, complexityScore: 3 });
+    await updateStory(db, refactor.id, { status: 'planned', storyPoints: 3, complexityScore: 3 });
 
     const scalingConfig = createRefactorScalingConfig({
       enabled: true,
@@ -925,27 +1010,27 @@ describe('Scheduler Refactor Capacity Policy', () => {
       allow_without_feature_work: true,
     });
 
-    const selected = selectStoriesForCapacity(
-      [getStoryById(db, refactor.id)!],
+    const selected = (await selectStoriesForCapacity(
+      [(await getStoryById(db, refactor.id))!],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected).toHaveLength(1);
     expect(selected[0].id).toBe(refactor.id);
   });
 
-  it('should block refactor-only queues when policy disallows it', () => {
-    const team = createTeam(db, {
+  it('should block refactor-only queues when policy disallows it', async () => {
+    const team = await createTeam(db, {
       name: 'Strict Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const refactor = createStory(db, {
+    const refactor = await createStory(db, {
       teamId: team.id,
       title: 'Refactor: rename internals',
       description: 'Maintenance',
     });
-    updateStory(db, refactor.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
+    await updateStory(db, refactor.id, { status: 'planned', storyPoints: 2, complexityScore: 2 });
 
     const scalingConfig = createRefactorScalingConfig({
       enabled: true,
@@ -953,10 +1038,10 @@ describe('Scheduler Refactor Capacity Policy', () => {
       allow_without_feature_work: false,
     });
 
-    const selected = selectStoriesForCapacity(
-      [getStoryById(db, refactor.id)!],
+    const selected = (await selectStoriesForCapacity(
+      [(await getStoryById(db, refactor.id))!],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected).toHaveLength(0);
   });
@@ -1044,36 +1129,36 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
   });
 
   // 5 tests: capacity point calculation
-  it('should use story_points when both story_points and complexity_score exist', () => {
+  it('should use story_points when both story_points and complexity_score exist', async () => {
     expect(getCapacityPoints(mkStory('Feature', 8, 3))).toBe(8);
   });
 
-  it('should use complexity_score when story_points is null', () => {
+  it('should use complexity_score when story_points is null', async () => {
     expect(getCapacityPoints(mkStory('Feature', null, 5))).toBe(5);
   });
 
-  it('should default to 1 when both story_points and complexity_score are null', () => {
+  it('should default to 1 when both story_points and complexity_score are null', async () => {
     expect(getCapacityPoints(mkStory('Feature', null, null))).toBe(1);
   });
 
-  it('should treat story_points 0 as missing and fall back to complexity_score', () => {
+  it('should treat story_points 0 as missing and fall back to complexity_score', async () => {
     expect(getCapacityPoints(mkStory('Feature', 0, 4))).toBe(4);
   });
 
-  it('should treat 0/0 points as minimum 1 capacity unit', () => {
+  it('should treat 0/0 points as minimum 1 capacity unit', async () => {
     expect(getCapacityPoints(mkStory('Feature', 0, 0))).toBe(1);
   });
 
-  it('should use story_points when complexity_score is null', () => {
+  it('should use story_points when complexity_score is null', async () => {
     expect(getCapacityPoints(mkStory('Feature', 6, null))).toBe(6);
   });
 
-  it('should pass through non-integer capacity points as provided', () => {
+  it('should pass through non-integer capacity points as provided', async () => {
     expect(getCapacityPoints(mkStory('Feature', 2.5, null))).toBe(2.5);
   });
 
   // 12 tests: capacity selection behavior
-  it('should filter out refactor stories when refactor policy is disabled', () => {
+  it('should filter out refactor stories when refactor policy is disabled', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: false,
       capacity_percent: 100,
@@ -1082,12 +1167,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
 
     const feature = mkStory('Feature: add endpoint', 8, 8);
     const refactor = mkStory('Refactor: split parser', 2, 2);
-    const selected = selectStoriesForCapacity([feature, refactor], scalingConfig) as StoryRow[];
+    const selected = (await selectStoriesForCapacity(
+      [feature, refactor],
+      scalingConfig
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id]);
   });
 
-  it('should include all refactor stories when capacity percent is 100', () => {
+  it('should include all refactor stories when capacity percent is 100', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 100,
@@ -1097,15 +1185,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     const feature = mkStory('Feature: add endpoint', 10, 10);
     const refactorA = mkStory('Refactor: split parser', 3, 3);
     const refactorB = mkStory('Refactor: normalize naming', 4, 4);
-    const selected = selectStoriesForCapacity(
+    const selected = (await selectStoriesForCapacity(
       [feature, refactorA, refactorB],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id, refactorB.id]);
   });
 
-  it('should include no refactor stories when capacity percent is 0 and feature work exists', () => {
+  it('should include no refactor stories when capacity percent is 0 and feature work exists', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 0,
@@ -1114,12 +1202,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
 
     const feature = mkStory('Feature: add endpoint', 10, 10);
     const refactor = mkStory('Refactor: split parser', 1, 1);
-    const selected = selectStoriesForCapacity([feature, refactor], scalingConfig) as StoryRow[];
+    const selected = (await selectStoriesForCapacity(
+      [feature, refactor],
+      scalingConfig
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id]);
   });
 
-  it('should allow at least one refactor point when percent is positive but rounded budget is zero', () => {
+  it('should allow at least one refactor point when percent is positive but rounded budget is zero', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 10,
@@ -1128,12 +1219,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
 
     const feature = mkStory('Feature: tiny patch', 5, 5); // floor(5 * 0.1) = 0 -> min 1
     const refactor = mkStory('Refactor: tighten types', 1, 1);
-    const selected = selectStoriesForCapacity([feature, refactor], scalingConfig) as StoryRow[];
+    const selected = (await selectStoriesForCapacity(
+      [feature, refactor],
+      scalingConfig
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactor.id]);
   });
 
-  it('should compute budget from total feature story points across multiple stories', () => {
+  it('should compute budget from total feature story points across multiple stories', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 20,
@@ -1145,15 +1239,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     const refactorA = mkStory('Refactor: A', 1, 1);
     const refactorB = mkStory('Refactor: B', 1, 1);
     const refactorC = mkStory('Refactor: C', 1, 1);
-    const selected = selectStoriesForCapacity(
+    const selected = (await selectStoriesForCapacity(
       [featureA, featureB, refactorA, refactorB, refactorC],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([featureA.id, featureB.id, refactorA.id, refactorB.id]);
   });
 
-  it('should skip a refactor story that exceeds remaining budget', () => {
+  it('should skip a refactor story that exceeds remaining budget', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 20,
@@ -1162,15 +1256,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
 
     const feature = mkStory('Feature: A', 10, 10); // budget = 2
     const refactorLarge = mkStory('Refactor: big cleanup', 3, 3);
-    const selected = selectStoriesForCapacity(
+    const selected = (await selectStoriesForCapacity(
       [feature, refactorLarge],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id]);
   });
 
-  it('should select a later smaller refactor story if an earlier one exceeds budget', () => {
+  it('should select a later smaller refactor story if an earlier one exceeds budget', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 20,
@@ -1180,15 +1274,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     const feature = mkStory('Feature: A', 10, 10); // budget = 2
     const refactorLarge = mkStory('Refactor: big cleanup', 3, 3); // skipped
     const refactorSmall = mkStory('Refactor: tiny cleanup', 2, 2); // fits
-    const selected = selectStoriesForCapacity(
+    const selected = (await selectStoriesForCapacity(
       [feature, refactorLarge, refactorSmall],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactorSmall.id]);
   });
 
-  it('should allow refactor-only queues when configured to allow without feature work', () => {
+  it('should allow refactor-only queues when configured to allow without feature work', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 10,
@@ -1197,12 +1291,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
 
     const refactorA = mkStory('Refactor: A', 3, 3);
     const refactorB = mkStory('Refactor: B', 5, 5);
-    const selected = selectStoriesForCapacity([refactorA, refactorB], scalingConfig) as StoryRow[];
+    const selected = (await selectStoriesForCapacity(
+      [refactorA, refactorB],
+      scalingConfig
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([refactorA.id, refactorB.id]);
   });
 
-  it('should block refactor-only queues when allow_without_feature_work is false', () => {
+  it('should block refactor-only queues when allow_without_feature_work is false', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 10,
@@ -1211,12 +1308,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
 
     const refactorA = mkStory('Refactor: A', 3, 3);
     const refactorB = mkStory('Refactor: B', 5, 5);
-    const selected = selectStoriesForCapacity([refactorA, refactorB], scalingConfig) as StoryRow[];
+    const selected = (await selectStoriesForCapacity(
+      [refactorA, refactorB],
+      scalingConfig
+    )) as StoryRow[];
 
     expect(selected).toHaveLength(0);
   });
 
-  it('should preserve order of selected stories', () => {
+  it('should preserve order of selected stories', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 20,
@@ -1227,36 +1327,39 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     const refactorA = mkStory('Refactor: A', 1, 1);
     const featureB = mkStory('Feature: B', 5, 5);
     const refactorB = mkStory('Refactor: B', 1, 1);
-    const selected = selectStoriesForCapacity(
+    const selected = (await selectStoriesForCapacity(
       [featureA, refactorA, featureB, refactorB],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([featureA.id, refactorA.id, featureB.id, refactorB.id]);
   });
 
-  it('should default to disabled behavior when refactor config is missing', () => {
+  it('should default to disabled behavior when refactor config is missing', async () => {
     const scalingConfig = mkScalingConfig();
 
     const feature = mkStory('Feature: A', 5, 5);
     const refactor = mkStory('Refactor: A', 1, 1);
-    const selected = selectStoriesForCapacity([feature, refactor], scalingConfig) as StoryRow[];
+    const selected = (await selectStoriesForCapacity(
+      [feature, refactor],
+      scalingConfig
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id]);
   });
 
-  it('should return an empty array when no stories are provided', () => {
+  it('should return an empty array when no stories are provided', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 50,
       allow_without_feature_work: true,
     });
 
-    const selected = selectStoriesForCapacity([], scalingConfig) as StoryRow[];
+    const selected = (await selectStoriesForCapacity([], scalingConfig)) as StoryRow[];
     expect(selected).toEqual([]);
   });
 
-  it('should include refactor stories when cumulative points exactly match budget', () => {
+  it('should include refactor stories when cumulative points exactly match budget', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 30,
@@ -1266,15 +1369,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     const feature = mkStory('Feature: A', 10, 10); // budget = 3
     const refactorA = mkStory('Refactor: A', 1, 1);
     const refactorB = mkStory('Refactor: B', 2, 2);
-    const selected = selectStoriesForCapacity(
+    const selected = (await selectStoriesForCapacity(
       [feature, refactorA, refactorB],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id, refactorB.id]);
   });
 
-  it('should continue selecting later refactors after partially consuming budget and skipping a too-large one', () => {
+  it('should continue selecting later refactors after partially consuming budget and skipping a too-large one', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 50,
@@ -1285,15 +1388,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     const refactorA = mkStory('Refactor: A', 2, 2); // used = 2
     const refactorLarge = mkStory('Refactor: Large', 4, 4); // skipped (2 + 4 > 5)
     const refactorB = mkStory('Refactor: B', 3, 3); // used = 5
-    const selected = selectStoriesForCapacity(
+    const selected = (await selectStoriesForCapacity(
       [feature, refactorA, refactorLarge, refactorB],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id, refactorB.id]);
   });
 
-  it('should derive feature budget from complexity when story_points are not set', () => {
+  it('should derive feature budget from complexity when story_points are not set', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 20,
@@ -1304,15 +1407,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     const featureB = mkStory('Feature: B', null, 4); // feature total = 10, budget = 2
     const refactorA = mkStory('Refactor: A', 1, 1);
     const refactorB = mkStory('Refactor: B', 2, 2);
-    const selected = selectStoriesForCapacity(
+    const selected = (await selectStoriesForCapacity(
       [featureA, featureB, refactorA, refactorB],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([featureA.id, featureB.id, refactorA.id]);
   });
 
-  it('should allow one point of refactor work when feature stories have no explicit points', () => {
+  it('should allow one point of refactor work when feature stories have no explicit points', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 10,
@@ -1322,15 +1425,15 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
     const feature = mkStory('Feature: A', null, null); // defaults to 1, floor(1 * 0.1)=0 -> min 1
     const refactorA = mkStory('Refactor: A', 1, 1);
     const refactorB = mkStory('Refactor: B', 1, 1);
-    const selected = selectStoriesForCapacity(
+    const selected = (await selectStoriesForCapacity(
       [feature, refactorA, refactorB],
       scalingConfig
-    ) as StoryRow[];
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([feature.id, refactorA.id]);
   });
 
-  it('should ignore capacity_percent for refactor-only queues when allow_without_feature_work is true', () => {
+  it('should ignore capacity_percent for refactor-only queues when allow_without_feature_work is true', async () => {
     const scalingConfig = mkScalingConfig({
       enabled: true,
       capacity_percent: 0,
@@ -1339,38 +1442,53 @@ describe('Scheduler Refactor Policy Test Matrix', () => {
 
     const refactorA = mkStory('Refactor: A', 2, 2);
     const refactorB = mkStory('Refactor: B', 4, 4);
-    const selected = selectStoriesForCapacity([refactorA, refactorB], scalingConfig) as StoryRow[];
+    const selected = (await selectStoriesForCapacity(
+      [refactorA, refactorB],
+      scalingConfig
+    )) as StoryRow[];
 
     expect(selected.map(s => s.id)).toEqual([refactorA.id, refactorB.id]);
   });
 });
 
 describe('Scheduler Agent Selection', () => {
-  it('should select agent with least workload from multiple agents', () => {
-    const team = createTeam(db, {
+  it('should select agent with least workload from multiple agents', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     // Create three junior agents with different workloads
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('junior-1', 'junior', '${team.id}', 'idle')`
     );
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('junior-2', 'junior', '${team.id}', 'idle')`
     );
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('junior-3', 'junior', '${team.id}', 'idle')`
     );
 
     // Give junior-1 two stories, junior-2 one story, junior-3 zero stories
-    const story1 = createStory(db, { teamId: team.id, title: 'Story 1', description: 'Test' });
-    const story2 = createStory(db, { teamId: team.id, title: 'Story 2', description: 'Test' });
-    const story3 = createStory(db, { teamId: team.id, title: 'Story 3', description: 'Test' });
-    updateStory(db, story1.id, { assignedAgentId: 'junior-1', status: 'in_progress' });
-    updateStory(db, story2.id, { assignedAgentId: 'junior-1', status: 'in_progress' });
-    updateStory(db, story3.id, { assignedAgentId: 'junior-2', status: 'in_progress' });
+    const story1 = await createStory(db, {
+      teamId: team.id,
+      title: 'Story 1',
+      description: 'Test',
+    });
+    const story2 = await createStory(db, {
+      teamId: team.id,
+      title: 'Story 2',
+      description: 'Test',
+    });
+    const story3 = await createStory(db, {
+      teamId: team.id,
+      title: 'Story 3',
+      description: 'Test',
+    });
+    await updateStory(db, story1.id, { assignedAgentId: 'junior-1', status: 'in_progress' });
+    await updateStory(db, story2.id, { assignedAgentId: 'junior-1', status: 'in_progress' });
+    await updateStory(db, story3.id, { assignedAgentId: 'junior-2', status: 'in_progress' });
 
     const agents = [
       {
@@ -1420,14 +1538,14 @@ describe('Scheduler Agent Selection', () => {
       },
     ];
 
-    const selected = selectAgentWithLeastWorkload(db, agents);
+    const selected = await selectAgentWithLeastWorkload(db, agents);
 
     // Should select junior-3 who has zero stories
     expect(selected.id).toBe('junior-3');
   });
 
-  it('should select first agent when all have equal workload', () => {
-    const team = createTeam(db, {
+  it('should select first agent when all have equal workload', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
@@ -1466,86 +1584,94 @@ describe('Scheduler Agent Selection', () => {
       },
     ];
 
-    const selected = selectAgentWithLeastWorkload(db, agents);
+    const selected = await selectAgentWithLeastWorkload(db, agents);
 
     expect(selected.id).toBe('agent-1');
   });
 
-  it('should calculate agent workload correctly', () => {
-    const team = createTeam(db, {
+  it('should calculate agent workload correctly', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`
     );
 
-    const story1 = createStory(db, { teamId: team.id, title: 'Story 1', description: 'Test' });
-    const story2 = createStory(db, { teamId: team.id, title: 'Story 2', description: 'Test' });
-    updateStory(db, story1.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
-    updateStory(db, story2.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
+    const story1 = await createStory(db, {
+      teamId: team.id,
+      title: 'Story 1',
+      description: 'Test',
+    });
+    const story2 = await createStory(db, {
+      teamId: team.id,
+      title: 'Story 2',
+      description: 'Test',
+    });
+    await updateStory(db, story1.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
+    await updateStory(db, story2.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
 
-    const workload = getAgentWorkload(db, 'agent-1');
+    const workload = await getAgentWorkload(db, 'agent-1');
 
     expect(workload).toBe(2);
   });
 
-  it('should return zero workload for agent with no stories', () => {
-    const team = createTeam(db, {
+  it('should return zero workload for agent with no stories', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`
     );
 
-    const workload = getAgentWorkload(db, 'agent-1');
+    const workload = await getAgentWorkload(db, 'agent-1');
 
     expect(workload).toBe(0);
   });
 });
 
 describe('Scheduler Complexity Routing', () => {
-  it('should route low complexity stories to junior agents', () => {
+  it('should route low complexity stories to junior agents', async () => {
     // Test the routing logic: complexity <= junior_max_complexity goes to junior
     const complexity = 2;
     expect(complexity).toBeLessThanOrEqual(mockConfig.scaling.junior_max_complexity);
   });
 
-  it('should route medium complexity stories to intermediate agents', () => {
+  it('should route medium complexity stories to intermediate agents', async () => {
     // Test the routing logic: complexity between junior and intermediate thresholds
     const complexity = 4;
     expect(complexity).toBeGreaterThan(mockConfig.scaling.junior_max_complexity);
     expect(complexity).toBeLessThanOrEqual(mockConfig.scaling.intermediate_max_complexity);
   });
 
-  it('should route high complexity stories to senior agents', () => {
+  it('should route high complexity stories to senior agents', async () => {
     // Test the routing logic: complexity > intermediate_max_complexity goes to senior
     const complexity = 8;
     expect(complexity).toBeGreaterThan(mockConfig.scaling.intermediate_max_complexity);
   });
 
-  it('should handle edge case at junior boundary', () => {
+  it('should handle edge case at junior boundary', async () => {
     // Complexity exactly at junior_max_complexity should still go to junior
     const complexity = 3;
     expect(complexity).toBeLessThanOrEqual(mockConfig.scaling.junior_max_complexity);
   });
 
-  it('should handle edge case at intermediate boundary', () => {
+  it('should handle edge case at intermediate boundary', async () => {
     // Complexity exactly at intermediate_max_complexity should still go to intermediate
     const complexity = 5;
     expect(complexity).toBeLessThanOrEqual(mockConfig.scaling.intermediate_max_complexity);
   });
 
-  it('should use config values for routing thresholds', () => {
+  it('should use config values for routing thresholds', async () => {
     // Verify config values are set correctly for routing logic
     expect(mockConfig.scaling.junior_max_complexity).toBe(3);
     expect(mockConfig.scaling.intermediate_max_complexity).toBe(5);
   });
 
-  it('should default to complexity 5 when not specified', () => {
+  it('should default to complexity 5 when not specified', async () => {
     // Test default complexity value used in assignStories
     const complexity = null;
     const defaultComplexity = complexity || 5;
@@ -1554,115 +1680,131 @@ describe('Scheduler Complexity Routing', () => {
 });
 
 describe('Scheduler Story Assignment Prevention', () => {
-  it('should prevent duplicate story assignments', () => {
-    const team = createTeam(db, {
+  it('should prevent duplicate story assignments', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status) VALUES ('agent-1', 'junior', '${team.id}', 'idle')`
     );
 
     // Create a story and assign it
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Story',
       description: 'Test',
     });
-    updateStory(db, story.id, { complexityScore: 2, status: 'planned' });
+    await updateStory(db, story.id, { complexityScore: 2, status: 'planned' });
 
     // First assignment
-    updateStory(db, story.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
+    await updateStory(db, story.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
 
     // Verify the story is now assigned
-    const result = db.exec(`SELECT assigned_agent_id FROM stories WHERE id = '${story.id}'`);
+    const result = db.db.exec(`SELECT assigned_agent_id FROM stories WHERE id = '${story.id}'`);
     expect(result[0].values[0][0]).toBe('agent-1');
   });
 
-  it('should verify story assignment changes status', () => {
-    const team = createTeam(db, {
+  it('should verify story assignment changes status', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Story',
       description: 'Test',
     });
-    updateStory(db, story.id, { status: 'planned' });
+    await updateStory(db, story.id, { status: 'planned' });
 
     // Change status to in_progress
-    updateStory(db, story.id, { status: 'in_progress' });
+    await updateStory(db, story.id, { status: 'in_progress' });
 
     // Verify status changed
-    const result = db.exec(`SELECT status FROM stories WHERE id = '${story.id}'`);
+    const result = db.db.exec(`SELECT status FROM stories WHERE id = '${story.id}'`);
     expect(result[0].values[0][0]).toBe('in_progress');
   });
 
-  it('should skip stories with unsatisfied dependencies', () => {
-    const team = createTeam(db, {
+  it('should skip stories with unsatisfied dependencies', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
-    updateStory(db, storyA.id, { status: 'planned' });
-    const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
-    updateStory(db, storyB.id, { status: 'planned' });
+    const storyA = await createStory(db, {
+      teamId: team.id,
+      title: 'Story A',
+      description: 'Test',
+    });
+    await updateStory(db, storyA.id, { status: 'planned' });
+    const storyB = await createStory(db, {
+      teamId: team.id,
+      title: 'Story B',
+      description: 'Test',
+    });
+    await updateStory(db, storyB.id, { status: 'planned' });
 
     // B depends on A, but A is still planned
-    addStoryDependency(db, storyB.id, storyA.id);
+    await addStoryDependency(db, storyB.id, storyA.id);
 
     // B should not be ready for assignment because A is not merged yet
-    const satisfied = areDependenciesSatisfied(db, storyB.id);
+    const satisfied = await areDependenciesSatisfied(db, storyB.id);
     expect(satisfied).toBe(false);
   });
 
-  it('should allow stories when dependencies are in terminal states', () => {
-    const team = createTeam(db, {
+  it('should allow stories when dependencies are in terminal states', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     // Test with merged status (terminal state)
-    const storyA = createStory(db, { teamId: team.id, title: 'Story A', description: 'Test' });
-    const storyB = createStory(db, { teamId: team.id, title: 'Story B', description: 'Test' });
+    const storyA = await createStory(db, {
+      teamId: team.id,
+      title: 'Story A',
+      description: 'Test',
+    });
+    const storyB = await createStory(db, {
+      teamId: team.id,
+      title: 'Story B',
+      description: 'Test',
+    });
 
     // Update A to merged status
-    updateStory(db, storyA.id, { status: 'merged' });
+    await updateStory(db, storyA.id, { status: 'merged' });
 
     // B depends on A, and A is merged
-    addStoryDependency(db, storyB.id, storyA.id);
+    await addStoryDependency(db, storyB.id, storyA.id);
 
     // B should be ready for assignment
-    const satisfied = areDependenciesSatisfied(db, storyB.id);
+    const satisfied = await areDependenciesSatisfied(db, storyB.id);
     expect(satisfied).toBe(true);
   });
 
-  it('should map claude model IDs to claude runtime shorthands', () => {
+  it('should map claude model IDs to claude runtime shorthands', async () => {
     const runtimeModel = (scheduler as any).getRuntimeModel('claude-sonnet-4-5-20250929', 'claude');
     expect(runtimeModel).toBe('sonnet');
   });
 
-  it('should remap unsupported codex mini model and preserve gemini runtime model', () => {
+  it('should remap unsupported codex mini model and preserve gemini runtime model', async () => {
     const codexModel = (scheduler as any).getRuntimeModel('gpt-4o-mini', 'codex');
     const geminiModel = (scheduler as any).getRuntimeModel('gemini-2.5-pro', 'gemini');
     expect(codexModel).toBe('gpt-5.2-codex');
     expect(geminiModel).toBe('gemini-2.5-pro');
   });
 
-  it('should not fallback unknown claude models to haiku', () => {
+  it('should not fallback unknown claude models to haiku', async () => {
     const runtimeModel = (scheduler as any).getRuntimeModel('claude-custom-model', 'claude');
     expect(runtimeModel).toBe('claude-custom-model');
   });
 
-  it('should detect godmode is active when an active requirement has godmode enabled', () => {
+  it('should detect godmode is active when an active requirement has godmode enabled', async () => {
     // Create a requirement with godmode and set it to planning status
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Godmode Requirement',
       description: 'Test requirement with godmode',
       godmode: true,
@@ -1670,19 +1812,19 @@ describe('Scheduler Story Assignment Prevention', () => {
     db.run(`UPDATE requirements SET status = 'planning' WHERE id = ?`, [req.id]);
 
     // Godmode should be detected as active
-    const isGodmodeActive = (scheduler as any).isGodmodeActive();
+    const isGodmodeActive = await (scheduler as any).isGodmodeActive();
     expect(isGodmodeActive).toBe(true);
   });
 
-  it('should detect godmode even when all stories have moved to in_progress', () => {
-    const team = createTeam(db, {
+  it('should detect godmode even when all stories have moved to in_progress', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     // Create a godmode requirement in in_progress status
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Godmode Requirement',
       description: 'Test requirement with godmode',
       godmode: true,
@@ -1690,22 +1832,22 @@ describe('Scheduler Story Assignment Prevention', () => {
     db.run(`UPDATE requirements SET status = 'in_progress' WHERE id = ?`, [req.id]);
 
     // Create a story that has moved to in_progress (no longer planned)
-    const story = createStory(db, {
+    const story = await createStory(db, {
       requirementId: req.id,
       teamId: team.id,
       title: 'Godmode Story',
       description: 'Test',
     });
-    updateStory(db, story.id, { status: 'in_progress' });
+    await updateStory(db, story.id, { status: 'in_progress' });
 
     // Godmode should still be active even though no stories are planned
-    const isGodmodeActive = (scheduler as any).isGodmodeActive();
+    const isGodmodeActive = await (scheduler as any).isGodmodeActive();
     expect(isGodmodeActive).toBe(true);
   });
 
-  it('should not detect godmode when no requirements have godmode enabled', () => {
+  it('should not detect godmode when no requirements have godmode enabled', async () => {
     // Create a normal requirement (without godmode) in planning status
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Normal Requirement',
       description: 'Test requirement without godmode',
       godmode: false,
@@ -1713,13 +1855,13 @@ describe('Scheduler Story Assignment Prevention', () => {
     db.run(`UPDATE requirements SET status = 'planning' WHERE id = ?`, [req.id]);
 
     // Godmode should not be detected as active
-    const isGodmodeActive = (scheduler as any).isGodmodeActive();
+    const isGodmodeActive = await (scheduler as any).isGodmodeActive();
     expect(isGodmodeActive).toBe(false);
   });
 
-  it('should not detect godmode when godmode requirement is completed', () => {
+  it('should not detect godmode when godmode requirement is completed', async () => {
     // Create a godmode requirement that is already completed
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Godmode Requirement',
       description: 'Test requirement with godmode',
       godmode: true,
@@ -1727,34 +1869,34 @@ describe('Scheduler Story Assignment Prevention', () => {
     db.run(`UPDATE requirements SET status = 'completed' WHERE id = ?`, [req.id]);
 
     // Godmode should not be active for completed requirements
-    const isGodmodeActive = (scheduler as any).isGodmodeActive();
+    const isGodmodeActive = await (scheduler as any).isGodmodeActive();
     expect(isGodmodeActive).toBe(false);
   });
 
-  it('should not detect godmode when no requirements exist', () => {
+  it('should not detect godmode when no requirements exist', async () => {
     // No requirements created, so godmode cannot be active
-    const isGodmodeActive = (scheduler as any).isGodmodeActive();
+    const isGodmodeActive = await (scheduler as any).isGodmodeActive();
     expect(isGodmodeActive).toBe(false);
   });
 });
 
 describe('Scheduler Agent Reassignment for Working Agents with NULL currentStoryId', () => {
-  it('should consider working agents with null current_story_id as available for assignment', () => {
-    const team = createTeam(db, {
+  it('should consider working agents with null current_story_id as available for assignment', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     // Create a working agent with no current story (effectively idle)
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
       ['senior-orphan-1', 'senior', team.id, 'working']
     );
 
     // Query agents using the same filter logic from assignStories
-    const result = db.exec(
+    const result = db.db.exec(
       `SELECT id, type, status, current_story_id FROM agents
        WHERE team_id = '${team.id}' AND type != 'qa'
        AND (status = 'idle' OR (status = 'working' AND current_story_id IS NULL))`
@@ -1764,24 +1906,24 @@ describe('Scheduler Agent Reassignment for Working Agents with NULL currentStory
     expect(result[0].values[0][0]).toBe('senior-orphan-1');
   });
 
-  it('should not consider working agents with a current story as available', () => {
-    const team = createTeam(db, {
+  it('should not consider working agents with a current story as available', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    const story = createStory(db, { teamId: team.id, title: 'Active', description: 'Test' });
+    const story = await createStory(db, { teamId: team.id, title: 'Active', description: 'Test' });
 
     // Create a working agent with a current story
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
       ['senior-busy-1', 'senior', team.id, 'working', story.id]
     );
 
     // Query agents using the same filter logic from assignStories
-    const result = db.exec(
+    const result = db.db.exec(
       `SELECT id, type, status, current_story_id FROM agents
        WHERE team_id = '${team.id}' AND type != 'qa'
        AND (status = 'idle' OR (status = 'working' AND current_story_id IS NULL))`
@@ -1818,19 +1960,19 @@ describe('Scheduler checkMergeQueue', () => {
   it('should spawn QA when a queued PR exists for an in_progress story', async () => {
     ensurePullRequestsTable();
 
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Queued PR Story',
       description: 'Story has queued PR but stale in_progress status',
     });
-    updateStory(db, story.id, { status: 'in_progress' });
+    await updateStory(db, story.id, { status: 'in_progress' });
 
-    createPullRequest(db, {
+    await createPullRequest(db, {
       storyId: story.id,
       teamId: team.id,
       branchName: 'feature/queued-pr-story',
@@ -1856,19 +1998,19 @@ describe('Scheduler checkMergeQueue', () => {
   it('should not spawn QA for merged stories even if PR row is still queued', async () => {
     ensurePullRequestsTable();
 
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Merged Story',
       description: 'Merged stories should not drive QA scaling',
     });
-    updateStory(db, story.id, { status: 'merged' });
+    await updateStory(db, story.id, { status: 'merged' });
 
-    createPullRequest(db, {
+    await createPullRequest(db, {
       storyId: story.id,
       teamId: team.id,
       branchName: 'feature/merged-story',
@@ -1893,24 +2035,24 @@ describe('Scheduler checkMergeQueue', () => {
 
 describe('Scheduler checkScaling', () => {
   it('should spawn a new indexed senior when the base senior is busy', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Busy Senior Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
       ['senior-busy-1', 'senior', team.id, 'working', 'STORY-OLD']
     );
 
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Needs Senior',
       description: 'High complexity story',
     });
-    updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+    await updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
 
     const spawnSeniorSpy = vi
       .spyOn(scheduler as any, 'spawnSenior')
@@ -1936,11 +2078,11 @@ describe('Scheduler checkScaling', () => {
     expect(result.assigned).toBe(1);
     expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
 
-    const updatedStory = getStoryById(db, story.id)!;
+    const updatedStory = (await getStoryById(db, story.id))!;
     expect(updatedStory.status).toBe('in_progress');
     expect(updatedStory.assigned_agent_id).toBe('senior-spawned-2');
 
-    const busySeniorRow = db.exec(
+    const busySeniorRow = db.db.exec(
       `SELECT status, current_story_id FROM agents WHERE id = 'senior-busy-1'`
     )[0]?.values[0];
     expect(busySeniorRow?.[0]).toBe('working');
@@ -1950,7 +2092,7 @@ describe('Scheduler checkScaling', () => {
   });
 
   it('should choose next senior index from max active index when index 1 is absent', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Gap Index Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
@@ -1974,12 +2116,12 @@ describe('Scheduler checkScaling', () => {
       );
     }
 
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Gap Index Story',
       description: 'Requires spawning the next indexed senior',
     });
-    updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+    await updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
 
     const spawnSeniorSpy = vi
       .spyOn(scheduler as any, 'spawnSenior')
@@ -2005,37 +2147,37 @@ describe('Scheduler checkScaling', () => {
 
     expect(result.assigned).toBe(1);
     expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
-    expect(getStoryById(db, story.id)?.assigned_agent_id).toBe('senior-gap-6');
+    expect((await getStoryById(db, story.id))?.assigned_agent_id).toBe('senior-gap-6');
 
     spawnSeniorSpy.mockRestore();
   });
 
   it('should not assign multiple stories to the same senior in one cycle', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Single Senior Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
       ['senior-single-1', 'senior', team.id, 'idle']
     );
 
-    const story1 = createStory(db, {
+    const story1 = await createStory(db, {
       teamId: team.id,
       title: 'High Complexity 1',
       description: 'Needs senior',
     });
-    updateStory(db, story1.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+    await updateStory(db, story1.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
 
-    const story2 = createStory(db, {
+    const story2 = await createStory(db, {
       teamId: team.id,
       title: 'High Complexity 2',
       description: 'Needs senior too',
     });
-    updateStory(db, story2.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+    await updateStory(db, story2.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
 
     const spawnSeniorSpy = vi
       .spyOn(scheduler as any, 'spawnSenior')
@@ -2047,45 +2189,45 @@ describe('Scheduler checkScaling', () => {
     expect(result.errors.some(e => e.includes('Failed to spawn Senior'))).toBe(true);
     expect(spawnSeniorSpy).toHaveBeenCalledTimes(1);
 
-    const updatedStory1 = getStoryById(db, story1.id)!;
-    const updatedStory2 = getStoryById(db, story2.id)!;
-    const inProgress = [updatedStory1, updatedStory2].filter(s => s.status === 'in_progress');
-    const planned = [updatedStory1, updatedStory2].filter(s => s.status === 'planned');
+    const updatedStory1 = (await getStoryById(db, story1.id))!;
+    const updatedStory2 = (await getStoryById(db, story2.id))!;
+    const inProgress = [updatedStory1, updatedStory2].filter(s => s!.status === 'in_progress');
+    const planned = [updatedStory1, updatedStory2].filter(s => s!.status === 'planned');
 
     expect(inProgress).toHaveLength(1);
     expect(planned).toHaveLength(1);
-    expect(inProgress[0].assigned_agent_id).toBe('senior-single-1');
-    expect(planned[0].assigned_agent_id).toBeNull();
+    expect(inProgress[0]!.assigned_agent_id).toBe('senior-single-1');
+    expect(planned[0]!.assigned_agent_id).toBeNull();
 
-    const seniorRow = db.exec(
+    const seniorRow = db.db.exec(
       `SELECT status, current_story_id FROM agents WHERE id = 'senior-single-1'`
     )[0]?.values[0];
     expect(seniorRow?.[0]).toBe('working');
-    expect(seniorRow?.[1]).toBe(inProgress[0].id);
+    expect(seniorRow?.[1]).toBe(inProgress[0]!.id);
 
     spawnSeniorSpy.mockRestore();
   });
 
   it('should send an explicit assignment handoff to the assigned tmux session', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Handoff Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     const sessionName = 'hive-senior-handoff-team';
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
       ['senior-handoff-1', 'senior', team.id, sessionName, 'idle']
     );
 
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Needs Context Reset',
       description: 'Verify assignment handoff message is sent',
     });
-    updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+    await updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
 
     const isRunningSpy = vi.spyOn(tmuxModule, 'isTmuxSessionRunning').mockResolvedValue(true);
     const sendSpy = vi.spyOn(tmuxModule, 'sendToTmuxSession').mockResolvedValue();
@@ -2104,7 +2246,7 @@ describe('Scheduler checkScaling', () => {
   });
 
   it('should reject spawning a senior on a busy existing session', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Spawn Guard Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
@@ -2113,7 +2255,7 @@ describe('Scheduler checkScaling', () => {
     const hiveDir = join(mockConfig.rootDir, '.hive');
     const expectedSession = generateSessionName('senior', team.name, undefined, hiveDir);
 
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
       ['senior-guard-1', 'senior', team.id, expectedSession, 'working', 'STORY-ACTIVE']
@@ -2129,38 +2271,38 @@ describe('Scheduler checkScaling', () => {
   });
 
   it('should only spawn agents for assignable stories (unblocked dependencies)', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     // Create a blocker story that is not yet merged
-    const blockerStory = createStory(db, {
+    const blockerStory = await createStory(db, {
       teamId: team.id,
       title: 'Blocker Story',
       description: 'Must be completed first',
     });
-    updateStory(db, blockerStory.id, { status: 'planned', storyPoints: 10 });
+    await updateStory(db, blockerStory.id, { status: 'planned', storyPoints: 10 });
 
     // Create 4 stories that depend on the blocker (cannot be assigned yet)
     for (let i = 1; i <= 4; i++) {
-      const story = createStory(db, {
+      const story = await createStory(db, {
         teamId: team.id,
         title: `Blocked Story ${i}`,
         description: 'Depends on blocker',
       });
-      updateStory(db, story.id, { status: 'planned', storyPoints: 10 });
-      addStoryDependency(db, story.id, blockerStory.id);
+      await updateStory(db, story.id, { status: 'planned', storyPoints: 10 });
+      await addStoryDependency(db, story.id, blockerStory.id);
     }
 
     // Create 1 story with no dependencies (can be assigned)
-    const unblockedStory = createStory(db, {
+    const unblockedStory = await createStory(db, {
       teamId: team.id,
       title: 'Unblocked Story',
       description: 'No dependencies',
     });
-    updateStory(db, unblockedStory.id, { status: 'planned', storyPoints: 10 });
+    await updateStory(db, unblockedStory.id, { status: 'planned', storyPoints: 10 });
 
     // Total: 50 story points, but only 10 are assignable
     // With senior_capacity: 50, this should spawn 1 senior (10/50 = 0.2, ceil = 1)
@@ -2184,29 +2326,29 @@ describe('Scheduler checkScaling', () => {
   });
 
   it('should not spawn agents when all stories are blocked', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     // Create a blocker story that is not yet merged
-    const blockerStory = createStory(db, {
+    const blockerStory = await createStory(db, {
       teamId: team.id,
       title: 'Blocker Story',
       description: 'Must be completed first',
     });
-    updateStory(db, blockerStory.id, { status: 'planned', storyPoints: 10 });
+    await updateStory(db, blockerStory.id, { status: 'planned', storyPoints: 10 });
 
     // Create stories that all depend on the blocker
     for (let i = 1; i <= 5; i++) {
-      const story = createStory(db, {
+      const story = await createStory(db, {
         teamId: team.id,
         title: `Blocked Story ${i}`,
         description: 'Depends on blocker',
       });
-      updateStory(db, story.id, { status: 'planned', storyPoints: 10 });
-      addStoryDependency(db, story.id, blockerStory.id);
+      await updateStory(db, story.id, { status: 'planned', storyPoints: 10 });
+      await addStoryDependency(db, story.id, blockerStory.id);
     }
 
     // Mock spawnSenior to track calls
@@ -2244,25 +2386,25 @@ describe('Scheduler Markdown File Writing', () => {
   });
 
   it('should write markdown files when assigning stories via scheduler', async () => {
-    const team = createTeam(db, {
+    const team = await createTeam(db, {
       name: 'MD Write Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     // Create an idle senior agent
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
       ['senior-md-1', 'senior', team.id, 'idle']
     );
 
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Markdown Test Story',
       description: 'Should get a markdown file on assignment',
     });
-    updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
+    await updateStory(db, story.id, { status: 'planned', complexityScore: 10, storyPoints: 8 });
 
     // Create scheduler with rootDir pointing to a temp dir that has .hive/stories/
     const hiveRoot = join(tmpdir(), `hive-md-root-${Date.now()}`);
@@ -2286,7 +2428,7 @@ describe('Scheduler Markdown File Writing', () => {
     expect(existsSync(mdPath)).toBe(true);
 
     // Verify markdown_path was set in DB
-    const updatedStory = getStoryById(db, story.id);
+    const updatedStory = await getStoryById(db, story.id);
     expect(updatedStory?.markdown_path).toBe(mdPath);
     expect(updatedStory?.status).toBe('in_progress');
 
@@ -2295,22 +2437,22 @@ describe('Scheduler Markdown File Writing', () => {
 });
 
 describe('Scheduler Target Branch Propagation', () => {
-  it('should retrieve target_branch from requirement when creating story', () => {
-    const team = createTeam(db, {
+  it('should retrieve target_branch from requirement when creating story', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     // Create a requirement with custom target_branch
-    const requirement = createRequirement(db, {
+    const requirement = await createRequirement(db, {
       title: 'Feature for Release Branch',
       description: 'Test feature',
       targetBranch: 'release/v2.0',
     });
 
     // Create a story linked to this requirement
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       requirementId: requirement.id,
       title: 'Story for Release',
@@ -2322,55 +2464,55 @@ describe('Scheduler Target Branch Propagation', () => {
     expect(story.team_id).toBe(team.id);
 
     // Verify we can retrieve the requirement and its target_branch
-    const retrievedReq = db.exec(
+    const retrievedReq = db.db.exec(
       `SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`
     )[0]?.values[0];
     expect(retrievedReq?.[0]).toBe('release/v2.0');
   });
 
-  it('should use default target_branch (main) when requirement has no custom branch', () => {
+  it('should use default target_branch (main) when requirement has no custom branch', async () => {
     // Create a requirement without specifying target_branch
-    const requirement = createRequirement(db, {
+    const requirement = await createRequirement(db, {
       title: 'Feature for Main Branch',
       description: 'Test feature',
     });
 
     // Verify the requirement defaults to main branch
-    const retrievedReq = db.exec(
+    const retrievedReq = db.db.exec(
       `SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`
     )[0]?.values[0];
     expect(retrievedReq?.[0]).toBe('main');
   });
 
-  it('should handle stories with different target branches from different requirements', () => {
-    const team = createTeam(db, {
+  it('should handle stories with different target branches from different requirements', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     // Create two requirements with different target branches
-    const req1 = createRequirement(db, {
+    const req1 = await createRequirement(db, {
       title: 'Main Feature',
       description: 'Goes to main',
       targetBranch: 'main',
     });
 
-    const req2 = createRequirement(db, {
+    const req2 = await createRequirement(db, {
       title: 'Staging Feature',
       description: 'Goes to staging',
       targetBranch: 'staging',
     });
 
     // Create stories for each requirement
-    const story1 = createStory(db, {
+    const story1 = await createStory(db, {
       teamId: team.id,
       requirementId: req1.id,
       title: 'Story 1',
       description: 'Test',
     });
 
-    const story2 = createStory(db, {
+    const story2 = await createStory(db, {
       teamId: team.id,
       requirementId: req2.id,
       title: 'Story 2',
@@ -2378,7 +2520,7 @@ describe('Scheduler Target Branch Propagation', () => {
     });
 
     // Verify each story can access its requirement's target_branch via JOIN
-    const result = db.exec(
+    const result = db.db.exec(
       `SELECT s.id, r.target_branch
        FROM stories s
        LEFT JOIN requirements r ON s.requirement_id = r.id
@@ -2392,15 +2534,15 @@ describe('Scheduler Target Branch Propagation', () => {
     expect(branches).toContain('staging');
   });
 
-  it('should handle stories without a linked requirement (null requirement_id)', () => {
-    const team = createTeam(db, {
+  it('should handle stories without a linked requirement (null requirement_id)', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
     // Create a story without a requirement
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Standalone Story',
       description: 'No requirement',
@@ -2409,7 +2551,7 @@ describe('Scheduler Target Branch Propagation', () => {
     expect(story.requirement_id).toBeNull();
 
     // When joining with requirements, should get null for target_branch
-    const result = db.exec(
+    const result = db.db.exec(
       `SELECT s.id, r.target_branch
        FROM stories s
        LEFT JOIN requirements r ON s.requirement_id = r.id

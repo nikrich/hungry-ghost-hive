@@ -1,9 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { EscalationRow } from '../../../db/client.js';
-import type { getAllAgents } from '../../../db/queries/agents.js';
+import type { AgentRow, EscalationRow } from '../../../db/client.js';
 
-type AgentRecord = ReturnType<typeof getAllAgents>[number];
+type AgentRecord = AgentRow;
 
 export interface FindStaleSessionEscalationsInput {
   pendingEscalations: EscalationRow[];

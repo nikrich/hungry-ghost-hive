@@ -9,7 +9,6 @@ import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../../cli-runti
 import { fetchLocalClusterStatus } from '../../cluster/runtime.js';
 import { loadConfig } from '../../config/loader.js';
 import { registry } from '../../connectors/registry.js';
-import { withTransaction } from '../../db/client.js';
 import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { createRequirement, updateRequirement } from '../../db/queries/requirements.js';
@@ -143,7 +142,7 @@ export const reqCommand = new Command('req')
 
         try {
           // Check if there are any teams
-          const teams = getAllTeams(db.db);
+          const teams = await getAllTeams(db.provider);
           if (teams.length === 0) {
             spinner.fail(chalk.red('No teams found. Add a repository first:'));
             console.log(chalk.gray('  hive add-repo --url <repo-url> --team <team-name>'));
@@ -152,7 +151,7 @@ export const reqCommand = new Command('req')
 
           // Create requirement
           spinner.text = 'Creating requirement...';
-          const req = createRequirement(db.db, {
+          const req = await createRequirement(db.provider, {
             title,
             description,
             godmode: options.godmode,
@@ -161,7 +160,7 @@ export const reqCommand = new Command('req')
 
           // If this came from a PM provider epic URL, store the epic key/id
           if (epicKey && epicId) {
-            updateRequirement(db.db, req.id, {
+            await updateRequirement(db.provider, req.id, {
               jiraEpicKey: epicKey,
               jiraEpicId: epicId,
             });
@@ -190,7 +189,7 @@ export const reqCommand = new Command('req')
 
           // Get or create Tech Lead agent
           spinner.text = 'Spawning Tech Lead...';
-          let techLead = getTechLead(db.db);
+          let techLead = await getTechLead(db.provider);
           const techLeadCliTool = config.models.tech_lead.cli_tool;
           const techLeadSafetyMode = config.models.tech_lead.safety_mode;
           const techLeadModel = resolveRuntimeModelForCli(
@@ -199,21 +198,21 @@ export const reqCommand = new Command('req')
           );
 
           if (!techLead) {
-            techLead = createAgent(db.db, { type: 'tech_lead', model: techLeadModel });
+            techLead = await createAgent(db.provider, { type: 'tech_lead', model: techLeadModel });
           }
 
           // Update Tech Lead status and log event (atomic transaction)
-          await withTransaction(db.db, () => {
-            updateAgent(db.db, techLead.id, { status: 'working' });
+          await db.provider.withTransaction(async () => {
+            await updateAgent(db.provider, techLead.id, { status: 'working' });
 
-            createLog(db.db, {
+            await createLog(db.provider, {
               agentId: techLead.id,
               eventType: 'REQUIREMENT_RECEIVED',
               message: title,
               metadata: { requirement_id: req.id, godmode: req.godmode ? true : false },
             });
 
-            updateRequirement(db.db, req.id, { status: 'planning' });
+            await updateRequirement(db.provider, req.id, { status: 'planning' });
           });
 
           // Spawn Tech Lead tmux session
@@ -257,17 +256,17 @@ export const reqCommand = new Command('req')
             }
 
             // Update agent and log spawning/planning events (atomic transaction)
-            await withTransaction(db.db, () => {
-              updateAgent(db.db, techLead.id, { tmuxSession: sessionName });
+            await db.provider.withTransaction(async () => {
+              await updateAgent(db.provider, techLead.id, { tmuxSession: sessionName });
 
-              createLog(db.db, {
+              await createLog(db.provider, {
                 agentId: techLead.id,
                 eventType: 'AGENT_SPAWNED',
                 message: `Tech Lead spawned for requirement ${req.id}`,
                 metadata: { tmux_session: sessionName },
               });
 
-              createLog(db.db, {
+              await createLog(db.provider, {
                 agentId: techLead.id,
                 eventType: 'PLANNING_STARTED',
                 message: `Planning started for requirement ${req.id}`,
@@ -393,7 +392,7 @@ Use the Hive database to:
 3. Set up story dependencies
 4. Log your progress using agent_logs
 
-The SQLite database is at .hive/hive.db
+The SQLite database is at .hive/hive.provider
 
 **IMPORTANT:** Work directly in the team repositories under \`repos/\`. Each team's codebase is a git submodule you can explore, modify, and commit to. Use \`gh\` CLI to interact with GitHub PRs and issues.
 

@@ -30,9 +30,9 @@ vi.mock('../../git/worktree.js', () => ({
 const mockSave = vi.fn();
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(callback =>
-    callback({ db: { db: {}, save: mockSave }, root: '/tmp/hive' })
+    callback({ db: { db: {}, provider: {}, save: mockSave }, root: '/tmp/hive' })
   ),
-  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {} } })),
+  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {}, provider: {} } })),
 }));
 
 import { getAgentByTmuxSession, updateAgent } from '../../db/queries/agents.js';
@@ -134,7 +134,7 @@ describe('agents command', () => {
     };
 
     it('should terminate agent and clean up worktree', async () => {
-      vi.mocked(getAgentByTmuxSession).mockReturnValue(mockAgent);
+      vi.mocked(getAgentByTmuxSession).mockResolvedValue(mockAgent);
 
       await selfTerminate('hive-auditor-123');
 
@@ -156,7 +156,7 @@ describe('agents command', () => {
     });
 
     it('should skip worktree cleanup when no worktree exists', async () => {
-      vi.mocked(getAgentByTmuxSession).mockReturnValue({
+      vi.mocked(getAgentByTmuxSession).mockResolvedValue({
         ...mockAgent,
         worktree_path: null,
       });
@@ -172,7 +172,7 @@ describe('agents command', () => {
     });
 
     it('should handle already terminated agent gracefully', async () => {
-      vi.mocked(getAgentByTmuxSession).mockReturnValue({
+      vi.mocked(getAgentByTmuxSession).mockResolvedValue({
         ...mockAgent,
         status: 'terminated' as const,
       });
@@ -185,7 +185,7 @@ describe('agents command', () => {
     });
 
     it('should exit with error when agent not found', async () => {
-      vi.mocked(getAgentByTmuxSession).mockReturnValue(undefined);
+      vi.mocked(getAgentByTmuxSession).mockResolvedValue(undefined);
       const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit');
       });
@@ -198,7 +198,7 @@ describe('agents command', () => {
     });
 
     it('should continue when worktree removal fails', async () => {
-      vi.mocked(getAgentByTmuxSession).mockReturnValue(mockAgent);
+      vi.mocked(getAgentByTmuxSession).mockResolvedValue(mockAgent);
       vi.mocked(removeWorktree).mockReturnValue({
         success: false,
         error: 'worktree not found',

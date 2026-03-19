@@ -2,12 +2,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { run } from '../../../db/client.js';
+import { SqliteProvider } from '../../../db/provider.js';
 import { createAgent, getAgentById, updateAgent } from '../../../db/queries/agents.js';
 import { createTestDatabase } from '../../../db/queries/test-helpers.js';
 import { cleanupAgentsReferencingMergedStory } from './merged-story-cleanup.js';
 
 function insertStoryRow(
-  db: Awaited<ReturnType<typeof createTestDatabase>>,
+  db: SqliteProvider,
   input: {
     id: string;
     status: string;
@@ -16,7 +17,7 @@ function insertStoryRow(
 ): void {
   const now = new Date().toISOString();
   run(
-    db,
+    db.db,
     `
       INSERT INTO stories (id, title, description, status, assigned_agent_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -35,15 +36,22 @@ function insertStoryRow(
 
 describe('cleanupAgentsReferencingMergedStory', () => {
   it('clears stale merged-story pointers and reassigns to another active assigned story', async () => {
-    const db = await createTestDatabase();
+    const rawDb = await createTestDatabase();
+    const db = new SqliteProvider(rawDb);
 
-    const seniorA = createAgent(db, { type: 'senior', tmuxSession: 'hive-senior-a' });
-    const seniorB = createAgent(db, { type: 'senior', tmuxSession: 'hive-senior-b' });
-    const seniorTerminated = createAgent(db, { type: 'senior', tmuxSession: 'hive-senior-c' });
+    const seniorA = await createAgent(db, { type: 'senior', tmuxSession: 'hive-senior-a' });
+    const seniorB = await createAgent(db, { type: 'senior', tmuxSession: 'hive-senior-b' });
+    const seniorTerminated = await createAgent(db, {
+      type: 'senior',
+      tmuxSession: 'hive-senior-c',
+    });
 
-    updateAgent(db, seniorA.id, { status: 'working', currentStoryId: 'STORY-MERGED' });
-    updateAgent(db, seniorB.id, { status: 'working', currentStoryId: 'STORY-MERGED' });
-    updateAgent(db, seniorTerminated.id, { status: 'terminated', currentStoryId: 'STORY-MERGED' });
+    await updateAgent(db, seniorA.id, { status: 'working', currentStoryId: 'STORY-MERGED' });
+    await updateAgent(db, seniorB.id, { status: 'working', currentStoryId: 'STORY-MERGED' });
+    await updateAgent(db, seniorTerminated.id, {
+      status: 'terminated',
+      currentStoryId: 'STORY-MERGED',
+    });
 
     insertStoryRow(db, { id: 'STORY-MERGED', status: 'merged' });
     insertStoryRow(db, {
@@ -57,25 +65,26 @@ describe('cleanupAgentsReferencingMergedStory', () => {
       assignedAgentId: seniorA.id,
     });
 
-    const result = cleanupAgentsReferencingMergedStory(db, 'STORY-MERGED');
+    const result = await cleanupAgentsReferencingMergedStory(db, 'STORY-MERGED');
 
     expect(result).toEqual({ cleared: 2, reassigned: 1 });
-    expect(getAgentById(db, seniorA.id)?.current_story_id).toBe('STORY-REVIEW');
-    expect(getAgentById(db, seniorA.id)?.status).toBe('working');
-    expect(getAgentById(db, seniorB.id)?.current_story_id).toBeNull();
-    expect(getAgentById(db, seniorB.id)?.status).toBe('idle');
-    expect(getAgentById(db, seniorTerminated.id)?.current_story_id).toBe('STORY-MERGED');
+    expect((await getAgentById(db, seniorA.id))?.current_story_id).toBe('STORY-REVIEW');
+    expect((await getAgentById(db, seniorA.id))?.status).toBe('working');
+    expect((await getAgentById(db, seniorB.id))?.current_story_id).toBeNull();
+    expect((await getAgentById(db, seniorB.id))?.status).toBe('idle');
+    expect((await getAgentById(db, seniorTerminated.id))?.current_story_id).toBe('STORY-MERGED');
 
-    db.close();
+    await db.close();
   });
 
   it('is a no-op when no non-terminated agent references the merged story', async () => {
-    const db = await createTestDatabase();
+    const rawDb = await createTestDatabase();
+    const db = new SqliteProvider(rawDb);
     insertStoryRow(db, { id: 'STORY-MERGED', status: 'merged' });
 
-    const result = cleanupAgentsReferencingMergedStory(db, 'STORY-MERGED');
+    const result = await cleanupAgentsReferencingMergedStory(db, 'STORY-MERGED');
 
     expect(result).toEqual({ cleared: 0, reassigned: 0 });
-    db.close();
+    await db.close();
   });
 });

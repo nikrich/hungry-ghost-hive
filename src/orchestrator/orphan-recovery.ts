@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { syncStatusForStory } from '../connectors/project-management/operations.js';
+import type { DatabaseProvider } from '../db/provider.js';
 import { createLog } from '../db/queries/logs.js';
 import {
   getInProgressStoriesWithInconsistentAssignments,
@@ -14,14 +14,15 @@ import {
  * Detect and recover orphaned stories (assigned to terminated agents).
  * Returns the story IDs that were recovered.
  */
-export function detectAndRecoverOrphanedStories(
-  db: Database,
+export async function detectAndRecoverOrphanedStories(
+  db: DatabaseProvider,
   rootDir: string,
   storiesDir?: string
-): string[] {
-  const orphanedAssignments = getStoriesWithOrphanedAssignments(db);
-  const staleInProgressStories = getStaleInProgressStoriesWithoutAssignment(db);
-  const inconsistentInProgressAssignments = getInProgressStoriesWithInconsistentAssignments(db);
+): Promise<string[]> {
+  const orphanedAssignments = await getStoriesWithOrphanedAssignments(db);
+  const staleInProgressStories = await getStaleInProgressStoriesWithoutAssignment(db);
+  const inconsistentInProgressAssignments =
+    await getInProgressStoriesWithInconsistentAssignments(db);
   const recovered: string[] = [];
   const recoveredSet = new Set<string>();
 
@@ -30,7 +31,7 @@ export function detectAndRecoverOrphanedStories(
       if (recoveredSet.has(assignment.id)) continue;
 
       // Update story in single atomic operation
-      updateStory(
+      await updateStory(
         db,
         assignment.id,
         {
@@ -39,7 +40,7 @@ export function detectAndRecoverOrphanedStories(
         },
         storiesDir
       );
-      createLog(db, {
+      await createLog(db, {
         agentId: 'scheduler',
         storyId: assignment.id,
         eventType: 'ORPHANED_STORY_RECOVERED',
@@ -61,7 +62,7 @@ export function detectAndRecoverOrphanedStories(
     try {
       if (recoveredSet.has(story.id)) continue;
 
-      updateStory(
+      await updateStory(
         db,
         story.id,
         {
@@ -70,7 +71,7 @@ export function detectAndRecoverOrphanedStories(
         },
         storiesDir
       );
-      createLog(db, {
+      await createLog(db, {
         agentId: 'scheduler',
         storyId: story.id,
         eventType: 'ORPHANED_STORY_RECOVERED',
@@ -92,7 +93,7 @@ export function detectAndRecoverOrphanedStories(
     try {
       if (recoveredSet.has(assignment.id)) continue;
 
-      updateStory(
+      await updateStory(
         db,
         assignment.id,
         {
@@ -101,7 +102,7 @@ export function detectAndRecoverOrphanedStories(
         },
         storiesDir
       );
-      createLog(db, {
+      await createLog(db, {
         agentId: 'scheduler',
         storyId: assignment.id,
         eventType: 'ORPHANED_STORY_RECOVERED',

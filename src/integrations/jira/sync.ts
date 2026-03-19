@@ -1,18 +1,12 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
 import { loadConfig } from '../../config/loader.js';
 import type { JiraConfig } from '../../config/schema.js';
-import {
-  queryAll,
-  queryOne,
-  withTransaction,
-  type RequirementRow,
-  type StoryRow,
-} from '../../db/client.js';
+import { type RequirementRow, type StoryRow } from '../../db/client.js';
+import type { DatabaseProvider } from '../../db/provider.js';
 import { getAgentById } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { getStoryById, updateStory, type StoryStatus } from '../../db/queries/stories.js';
@@ -79,7 +73,7 @@ function createJiraClient(tokenStore: TokenStore): JiraClient {
  * @returns Number of stories acted upon
  */
 async function processBidirectionalStatusSync(
-  db: Database,
+  db: DatabaseProvider,
   client: JiraClient,
   config: JiraConfig,
   stories: StoryRow[],
@@ -110,7 +104,7 @@ async function processBidirectionalStatusSync(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.warn(`Failed to sync Jira status for story ${story.id} (${issueKey}): ${message}`);
-      createLog(db, {
+      await createLog(db, {
         agentId: 'manager',
         storyId: story.id,
         eventType: 'JIRA_SYNC_WARNING',
@@ -134,7 +128,7 @@ async function processBidirectionalStatusSync(
  * @returns Number of stories updated
  */
 export async function syncJiraStatusesToHive(
-  db: Database,
+  db: DatabaseProvider,
   tokenStore: TokenStore,
   config: JiraConfig
 ): Promise<number> {
@@ -145,8 +139,7 @@ export async function syncJiraStatusesToHive(
   }
 
   // Fetch all stories that have an external issue key (provider-agnostic query)
-  const storiesWithJira = queryAll<StoryRow>(
-    db,
+  const storiesWithJira = await db.queryAll<StoryRow>(
     `SELECT * FROM stories WHERE external_issue_key IS NOT NULL AND status NOT IN ('merged')`
   );
 
@@ -183,10 +176,10 @@ export async function syncJiraStatusesToHive(
       }
 
       // Update the story status in Hive
-      await withTransaction(db, () => {
-        updateStory(db, story.id, { status: mappedHiveStatus as StoryStatus });
+      await db.withTransaction(async () => {
+        await updateStory(db, story.id, { status: mappedHiveStatus as StoryStatus });
 
-        createLog(db, {
+        await createLog(db, {
           agentId: 'manager',
           storyId: story.id,
           eventType: 'JIRA_SYNC_COMPLETED',
@@ -222,13 +215,12 @@ export async function syncJiraStatusesToHive(
  * @returns Number of stories synced to Jira
  */
 export async function syncUnsyncedStoriesToJira(
-  db: Database,
+  db: DatabaseProvider,
   tokenStore: TokenStore,
   config: JiraConfig
 ): Promise<number> {
   // Find stories that have no external_issue_key but are not in draft status
-  const unsyncedStories = queryAll<StoryRow>(
-    db,
+  const unsyncedStories = await db.queryAll<StoryRow>(
     `SELECT * FROM stories WHERE external_issue_key IS NULL AND status NOT IN ('draft') ORDER BY requirement_id, id`
   );
 
@@ -257,9 +249,10 @@ export async function syncUnsyncedStoriesToJira(
         continue;
       }
 
-      const requirement = queryOne<RequirementRow>(db, `SELECT * FROM requirements WHERE id = ?`, [
-        requirementId,
-      ]);
+      const requirement = await db.queryOne<RequirementRow>(
+        `SELECT * FROM requirements WHERE id = ?`,
+        [requirementId]
+      );
 
       if (!requirement) {
         logger.warn(`Requirement ${requirementId} not found, skipping ${stories.length} stories`);
@@ -273,7 +266,7 @@ export async function syncUnsyncedStoriesToJira(
       // (another sync cycle may have updated it since our initial query)
       const confirmedStoryIds: string[] = [];
       for (const s of stories) {
-        const fresh = getStoryById(db, s.id);
+        const fresh = await getStoryById(db, s.id);
         if (fresh && !fresh.jira_issue_key) {
           confirmedStoryIds.push(s.id);
         } else {
@@ -336,7 +329,7 @@ export async function syncUnsyncedStoriesToJira(
  * @returns Number of stories repaired
  */
 export async function repairMissedAssignmentHooks(
-  db: Database,
+  db: DatabaseProvider,
   tokenStore: TokenStore,
   config: JiraConfig
 ): Promise<number> {
@@ -344,8 +337,7 @@ export async function repairMissedAssignmentHooks(
   // - Have an external_issue_key (synced to a PM provider)
   // - Have an assigned_agent_id (assigned to an agent)
   // - But are missing an external_subtask_key (subtask never created)
-  const storiesMissingSubtasks = queryAll<StoryRow>(
-    db,
+  const storiesMissingSubtasks = await db.queryAll<StoryRow>(
     `SELECT * FROM stories
      WHERE external_issue_key IS NOT NULL
        AND assigned_agent_id IS NOT NULL
@@ -369,7 +361,7 @@ export async function repairMissedAssignmentHooks(
   for (const story of storiesMissingSubtasks) {
     try {
       // Look up the assigned agent for naming
-      const agent = getAgentById(db, story.assigned_agent_id!);
+      const agent = await getAgentById(db, story.assigned_agent_id!);
       const agentName = agent?.tmux_session || agent?.id || story.assigned_agent_id!;
 
       // Create the subtask
@@ -382,7 +374,7 @@ export async function repairMissedAssignmentHooks(
 
       if (subtask) {
         // Persist subtask reference
-        updateStory(db, story.id, {
+        await updateStory(db, story.id, {
           externalSubtaskKey: subtask.key,
           externalSubtaskId: subtask.id,
         });
@@ -399,7 +391,7 @@ export async function repairMissedAssignmentHooks(
 
         repairedCount++;
 
-        createLog(db, {
+        await createLog(db, {
           agentId: 'manager',
           storyId: story.id,
           eventType: 'JIRA_ASSIGNMENT_REPAIRED',
@@ -421,7 +413,7 @@ export async function repairMissedAssignmentHooks(
       const message = err instanceof Error ? err.message : String(err);
       logger.warn(`Failed to repair assignment hook for story ${story.id}: ${message}`);
 
-      createLog(db, {
+      await createLog(db, {
         agentId: 'manager',
         storyId: story.id,
         eventType: 'JIRA_ASSIGNMENT_REPAIR_FAILED',
@@ -445,12 +437,11 @@ export async function repairMissedAssignmentHooks(
  * @returns Number of stories moved to sprint
  */
 export async function retrySprintAssignment(
-  db: Database,
+  db: DatabaseProvider,
   tokenStore: TokenStore,
   config: JiraConfig
 ): Promise<number> {
-  const storiesNotInSprint = queryAll<StoryRow>(
-    db,
+  const storiesNotInSprint = await db.queryAll<StoryRow>(
     `SELECT * FROM stories
      WHERE jira_issue_key IS NOT NULL
        AND (in_sprint IS NULL OR in_sprint = 0)
@@ -471,7 +462,7 @@ export async function retrySprintAssignment(
   const moved = await tryMoveToActiveSprint(client, config, issueKeys);
   if (moved) {
     for (const story of storiesNotInSprint) {
-      updateStory(db, story.id, { inSprint: true });
+      await updateStory(db, story.id, { inSprint: true });
     }
     return storiesNotInSprint.length;
   }
@@ -490,7 +481,7 @@ export async function retrySprintAssignment(
  * @returns Number of stories pushed to Jira
  */
 export async function syncHiveStatusesToJira(
-  db: Database,
+  db: DatabaseProvider,
   tokenStore: TokenStore,
   config: JiraConfig
 ): Promise<number> {
@@ -501,8 +492,7 @@ export async function syncHiveStatusesToJira(
   }
 
   // Fetch all stories that have a Jira issue key
-  const storiesWithJira = queryAll<StoryRow>(
-    db,
+  const storiesWithJira = await db.queryAll<StoryRow>(
     `SELECT * FROM stories WHERE jira_issue_key IS NOT NULL AND status NOT IN ('merged')`
   );
 
@@ -539,7 +529,7 @@ export async function syncHiveStatusesToJira(
       );
 
       if (transitioned) {
-        createLog(db, {
+        await createLog(db, {
           agentId: 'manager',
           storyId: story.id,
           eventType: 'JIRA_SYNC_COMPLETED',
@@ -577,7 +567,7 @@ export async function syncHiveStatusesToJira(
  * @param db - Database instance
  * @returns Number of stories updated (from bidirectional status sync)
  */
-export async function syncFromJira(root: string, db: Database): Promise<number> {
+export async function syncFromJira(root: string, db: DatabaseProvider): Promise<number> {
   try {
     const paths = getHivePaths(root);
     const config = loadConfig(paths.hiveDir);

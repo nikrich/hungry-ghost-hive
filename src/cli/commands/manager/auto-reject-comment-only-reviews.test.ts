@@ -167,7 +167,12 @@ import { autoRejectCommentOnlyReviews } from './index.js';
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function makeMockCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheckContext {
-  const mockDb = { db: {} as any, save: vi.fn(), close: vi.fn() };
+  const mockDb = {
+    db: {} as any,
+    provider: { withTransaction: vi.fn(async (fn: () => unknown) => fn()) },
+    save: vi.fn(),
+    close: vi.fn(),
+  };
   return {
     root: '/test/project',
     verbose: false,
@@ -228,7 +233,7 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should return early when no PRs are in reviewing status', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([]);
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([]);
 
     const ctx = makeMockCtx();
     await autoRejectCommentOnlyReviews(ctx);
@@ -239,7 +244,7 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should return early when reviewing PRs have no github_pr_number', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([
       makeReviewingPR({ github_pr_number: null }),
     ] as any);
 
@@ -250,8 +255,8 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should skip PRs where QA agent is not idle', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([makeReviewingPR()] as any);
-    vi.mocked(getAllTeams).mockReturnValue([
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([makeReviewingPR()] as any);
+    vi.mocked(getAllTeams).mockResolvedValue([
       { id: 'team-1', repo_path: 'repos/mini-marty' },
     ] as any);
 
@@ -275,8 +280,8 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should skip PRs when QA has formal APPROVED review on GitHub', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([makeReviewingPR()] as any);
-    vi.mocked(getAllTeams).mockReturnValue([
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([makeReviewingPR()] as any);
+    vi.mocked(getAllTeams).mockResolvedValue([
       { id: 'team-1', repo_path: 'repos/mini-marty' },
     ] as any);
 
@@ -304,8 +309,8 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should auto-reject when QA left CHANGES_REQUESTED review', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([makeReviewingPR()] as any);
-    vi.mocked(getAllTeams).mockReturnValue([
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([makeReviewingPR()] as any);
+    vi.mocked(getAllTeams).mockResolvedValue([
       { id: 'team-1', repo_path: 'repos/mini-marty' },
     ] as any);
 
@@ -352,8 +357,8 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should auto-reject when QA left substantive comments (>= 20 chars)', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([makeReviewingPR()] as any);
-    vi.mocked(getAllTeams).mockReturnValue([
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([makeReviewingPR()] as any);
+    vi.mocked(getAllTeams).mockResolvedValue([
       { id: 'team-1', repo_path: 'repos/mini-marty' },
     ] as any);
 
@@ -392,8 +397,8 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should ignore short comments (< 20 chars) and not reject', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([makeReviewingPR()] as any);
-    vi.mocked(getAllTeams).mockReturnValue([
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([makeReviewingPR()] as any);
+    vi.mocked(getAllTeams).mockResolvedValue([
       { id: 'team-1', repo_path: 'repos/mini-marty' },
     ] as any);
 
@@ -421,8 +426,8 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should skip bot "Looks good to me" comments under 100 chars', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([makeReviewingPR()] as any);
-    vi.mocked(getAllTeams).mockReturnValue([
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([makeReviewingPR()] as any);
+    vi.mocked(getAllTeams).mockResolvedValue([
       { id: 'team-1', repo_path: 'repos/mini-marty' },
     ] as any);
 
@@ -453,8 +458,8 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should gracefully skip PR when GitHub API call fails', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([makeReviewingPR()] as any);
-    vi.mocked(getAllTeams).mockReturnValue([
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([makeReviewingPR()] as any);
+    vi.mocked(getAllTeams).mockResolvedValue([
       { id: 'team-1', repo_path: 'repos/mini-marty' },
     ] as any);
 
@@ -481,8 +486,8 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should notify developer agent via tmux after rejection', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([makeReviewingPR()] as any);
-    vi.mocked(getAllTeams).mockReturnValue([
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([makeReviewingPR()] as any);
+    vi.mocked(getAllTeams).mockResolvedValue([
       { id: 'team-1', repo_path: 'repos/mini-marty' },
     ] as any);
 
@@ -514,8 +519,8 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should handle idle status from agent record even without agentStates entry', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([makeReviewingPR()] as any);
-    vi.mocked(getAllTeams).mockReturnValue([
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([makeReviewingPR()] as any);
+    vi.mocked(getAllTeams).mockResolvedValue([
       { id: 'team-1', repo_path: 'repos/mini-marty' },
     ] as any);
 
@@ -541,8 +546,8 @@ describe('autoRejectCommentOnlyReviews', () => {
   });
 
   it('should combine feedback from both reviews and comments in rejection reason', async () => {
-    vi.mocked(getPullRequestsByStatus).mockReturnValue([makeReviewingPR()] as any);
-    vi.mocked(getAllTeams).mockReturnValue([
+    vi.mocked(getPullRequestsByStatus).mockResolvedValue([makeReviewingPR()] as any);
+    vi.mocked(getAllTeams).mockResolvedValue([
       { id: 'team-1', repo_path: 'repos/mini-marty' },
     ] as any);
 
