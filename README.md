@@ -60,8 +60,11 @@ npm link
 ## Quick Start
 
 ```bash
-# Initialize a workspace
+# Initialize a workspace (SQLite backend, default)
 hive init
+
+# Initialize with Postgres distributed backend
+hive init --distributed  # requires HIVE_DATABASE_URL env var
 
 # Add a repository with a team
 hive add-repo --url git@github.com:org/my-service.git --team my-team
@@ -371,8 +374,9 @@ hive approach --from <session>
 ```
 my-workspace/
 ├── .hive/
-│   ├── hive.db              # SQLite database (all state)
-│   ├── hive.config.yaml     # Configuration
+│   ├── hive.db              # SQLite database (all state) — absent in distributed mode
+│   ├── workspace.id         # Unique workspace ID for Postgres multi-tenancy (distributed mode only)
+│   ├── hive.config.yaml     # Configuration (distributed: true when using Postgres backend)
 │   ├── .env                 # OAuth credentials (auto-managed)
 │   ├── agents/              # Agent session states
 │   └── logs/                # Conversation logs
@@ -612,6 +616,49 @@ When a requirement is synced to Jira, Hive will:
 
 ### Distributed Mode
 
+Hive supports two distributed backends:
+
+| Backend | When to use |
+|---------|-------------|
+| **HTTP peer replication** (default cluster mode) | Small clusters on the same network; no external DB needed |
+| **Postgres backend** (`--distributed`) | Multi-node deployments sharing a managed Postgres instance (e.g. Neon, Supabase, RDS) |
+
+#### Postgres-backed distributed mode
+
+Each workspace gets a unique `workspace_id` written to `.hive/workspace.id`. All database rows are scoped by this ID, enabling multiple independent workspaces to share the same Postgres instance safely (multi-tenancy).
+
+**Setup:**
+
+```bash
+# 1. Set your Postgres connection string
+export HIVE_DATABASE_URL=postgres://user:pass@host:5432/hive
+# Or put it in a .env file in the project root — hive will load it automatically
+
+# 2. Initialize with distributed mode
+hive init --distributed
+# This will:
+# - Validate the HIVE_DATABASE_URL connection
+# - Run Postgres migrations (idempotent — safe to run on all nodes)
+# - Generate a unique workspace_id stored in .hive/workspace.id
+# - Set distributed: true in hive.config.yaml
+# - Skip creating a local SQLite hive.db
+
+# 3. Start the manager on every node
+hive manager start
+```
+
+All subsequent `hive` commands on this workspace automatically use Postgres instead of SQLite.
+
+**Environment variable:**
+
+```bash
+HIVE_DATABASE_URL=postgres://user:pass@host:5432/hive  # Required for distributed mode
+```
+
+Hive loads `.env` from the project root automatically via dotenv, so you can store this in a `.env` file instead of exporting it in every shell.
+
+#### HTTP peer replication (RAFT cluster)
+
 - Run `hive manager start` on every host in the same cluster.
 - Each host runs manager/scheduler runtime, but only one node is elected leader at a time (RAFT consensus).
 - Leader is the only node allowed to run orchestration decisions (`assign`, scheduler loops, tech lead spawn).
@@ -769,10 +816,15 @@ ANTHROPIC_API_KEY=sk-ant-...  # Required for Claude agents
 OPENAI_API_KEY=sk-...         # Required if using OpenAI-based agents
 GITHUB_TOKEN=ghp_...          # Required for PR creation
 
+# Distributed / Postgres mode (required when using hive init --distributed)
+HIVE_DATABASE_URL=postgres://user:pass@host:5432/hive  # Postgres connection string
+
 # Jira (auto-managed in .hive/.env after `hive init` or `hive auth jira`)
 JIRA_CLIENT_ID=...            # OAuth 2.0 client ID
 JIRA_CLIENT_SECRET=...        # OAuth 2.0 client secret
 ```
+
+`HIVE_DATABASE_URL` can also be placed in a `.env` file at the workspace root — Hive loads it automatically via dotenv.
 
 ## License
 
