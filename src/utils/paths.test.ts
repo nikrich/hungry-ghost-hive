@@ -99,6 +99,7 @@ describe('paths utility', () => {
         hiveDir: join(rootDir, '.hive'),
         dbPath: join(rootDir, '.hive', 'hive.db'),
         configPath: join(rootDir, '.hive', 'hive.config.yaml'),
+        workspaceIdPath: join(rootDir, '.hive', 'workspace.id'),
         agentsDir: join(rootDir, '.hive', 'agents'),
         logsDir: join(rootDir, '.hive', 'logs'),
         reposDir: join(rootDir, 'repos'),

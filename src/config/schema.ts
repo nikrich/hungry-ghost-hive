@@ -343,6 +343,7 @@ const ClusterConfigSchema = z
 // Main configuration schema
 export const HiveConfigSchema = z.object({
   version: z.string().default('1.0'),
+  distributed: z.boolean().default(false),
   models: ModelsConfigSchema.default({}),
   scaling: ScalingConfigSchema.default({}),
   integrations: IntegrationsConfigSchema.default({}),
