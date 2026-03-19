@@ -25,11 +25,19 @@ describe('SqliteProvider', () => {
   });
 
   describe('queryAll', () => {
-    it('should return all matching rows', () => {
-      provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['1', 'a', 10]);
-      provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['2', 'b', 20]);
+    it('should return all matching rows', async () => {
+      await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+        '1',
+        'a',
+        10,
+      ]);
+      await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+        '2',
+        'b',
+        20,
+      ]);
 
-      const results = provider.queryAll<{ id: string; name: string; value: number }>(
+      const results = await provider.queryAll<{ id: string; name: string; value: number }>(
         'SELECT * FROM test_items ORDER BY id'
       );
 
@@ -38,16 +46,24 @@ describe('SqliteProvider', () => {
       expect(results[1]).toEqual({ id: '2', name: 'b', value: 20 });
     });
 
-    it('should return empty array when no matches', () => {
-      const results = provider.queryAll('SELECT * FROM test_items');
+    it('should return empty array when no matches', async () => {
+      const results = await provider.queryAll('SELECT * FROM test_items');
       expect(results).toEqual([]);
     });
 
-    it('should support parameterized queries', () => {
-      provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['1', 'a', 10]);
-      provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['2', 'b', 20]);
+    it('should support parameterized queries', async () => {
+      await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+        '1',
+        'a',
+        10,
+      ]);
+      await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+        '2',
+        'b',
+        20,
+      ]);
 
-      const results = provider.queryAll<{ id: string; name: string; value: number }>(
+      const results = await provider.queryAll<{ id: string; name: string; value: number }>(
         'SELECT * FROM test_items WHERE value > ?',
         [15]
       );
@@ -58,10 +74,14 @@ describe('SqliteProvider', () => {
   });
 
   describe('queryOne', () => {
-    it('should return the first matching row', () => {
-      provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['1', 'a', 10]);
+    it('should return the first matching row', async () => {
+      await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+        '1',
+        'a',
+        10,
+      ]);
 
-      const result = provider.queryOne<{ id: string; name: string; value: number }>(
+      const result = await provider.queryOne<{ id: string; name: string; value: number }>(
         'SELECT * FROM test_items WHERE id = ?',
         ['1']
       );
@@ -69,76 +89,110 @@ describe('SqliteProvider', () => {
       expect(result).toEqual({ id: '1', name: 'a', value: 10 });
     });
 
-    it('should return undefined when no match', () => {
-      const result = provider.queryOne('SELECT * FROM test_items WHERE id = ?', ['nonexistent']);
+    it('should return undefined when no match', async () => {
+      const result = await provider.queryOne('SELECT * FROM test_items WHERE id = ?', [
+        'nonexistent',
+      ]);
       expect(result).toBeUndefined();
     });
   });
 
   describe('run', () => {
-    it('should execute INSERT statements', () => {
-      provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['1', 'test', 42]);
+    it('should execute INSERT statements', async () => {
+      await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+        '1',
+        'test',
+        42,
+      ]);
 
-      const result = provider.queryOne<{ id: string; name: string; value: number }>(
+      const result = await provider.queryOne<{ id: string; name: string; value: number }>(
         'SELECT * FROM test_items WHERE id = ?',
         ['1']
       );
       expect(result).toEqual({ id: '1', name: 'test', value: 42 });
     });
 
-    it('should execute UPDATE statements', () => {
-      provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['1', 'test', 42]);
-      provider.run('UPDATE test_items SET value = ? WHERE id = ?', [99, '1']);
+    it('should execute UPDATE statements', async () => {
+      await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+        '1',
+        'test',
+        42,
+      ]);
+      await provider.run('UPDATE test_items SET value = ? WHERE id = ?', [99, '1']);
 
-      const result = provider.queryOne<{ value: number }>(
+      const result = await provider.queryOne<{ value: number }>(
         'SELECT value FROM test_items WHERE id = ?',
         ['1']
       );
       expect(result?.value).toBe(99);
     });
 
-    it('should execute DELETE statements', () => {
-      provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['1', 'test', 42]);
-      provider.run('DELETE FROM test_items WHERE id = ?', ['1']);
+    it('should execute DELETE statements', async () => {
+      await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+        '1',
+        'test',
+        42,
+      ]);
+      await provider.run('DELETE FROM test_items WHERE id = ?', ['1']);
 
-      const result = provider.queryOne('SELECT * FROM test_items WHERE id = ?', ['1']);
+      const result = await provider.queryOne('SELECT * FROM test_items WHERE id = ?', ['1']);
       expect(result).toBeUndefined();
     });
   });
 
   describe('withTransaction', () => {
     it('should commit on success and call save', async () => {
-      await provider.withTransaction(() => {
-        provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['1', 'a', 10]);
-        provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['2', 'b', 20]);
+      await provider.withTransaction(async () => {
+        await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+          '1',
+          'a',
+          10,
+        ]);
+        await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+          '2',
+          'b',
+          20,
+        ]);
       });
 
-      const results = provider.queryAll('SELECT * FROM test_items');
+      const results = await provider.queryAll('SELECT * FROM test_items');
       expect(results).toHaveLength(2);
       expect(saveFn).toHaveBeenCalledOnce();
     });
 
     it('should rollback on error and not call save', async () => {
       await expect(
-        provider.withTransaction(() => {
-          provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['1', 'a', 10]);
+        provider.withTransaction(async () => {
+          await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+            '1',
+            'a',
+            10,
+          ]);
           throw new Error('test error');
         })
       ).rejects.toThrow('test error');
 
-      const results = provider.queryAll('SELECT * FROM test_items');
+      const results = await provider.queryAll('SELECT * FROM test_items');
       expect(results).toHaveLength(0);
       expect(saveFn).not.toHaveBeenCalled();
     });
 
     it('should support async functions', async () => {
       await provider.withTransaction(async () => {
-        provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['1', 'a', 10]);
+        await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+          '1',
+          'a',
+          10,
+        ]);
         await Promise.resolve();
-        provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', ['2', 'b', 20]);
+        await provider.run('INSERT INTO test_items (id, name, value) VALUES (?, ?, ?)', [
+          '2',
+          'b',
+          20,
+        ]);
       });
 
-      const results = provider.queryAll('SELECT * FROM test_items');
+      const results = await provider.queryAll('SELECT * FROM test_items');
       expect(results).toHaveLength(2);
     });
   });
@@ -156,9 +210,9 @@ describe('SqliteProvider', () => {
   });
 
   describe('close', () => {
-    it('should close the underlying database', () => {
-      provider.close();
-      expect(() => provider.queryAll('SELECT 1')).toThrow();
+    it('should close the underlying database', async () => {
+      await provider.close();
+      await expect(provider.queryAll('SELECT 1')).rejects.toThrow();
     });
   });
 
@@ -191,8 +245,8 @@ describe('ReadOnlySqliteProvider', () => {
   });
 
   describe('queryAll', () => {
-    it('should return all matching rows', () => {
-      const results = provider.queryAll<{ id: string; name: string; value: number }>(
+    it('should return all matching rows', async () => {
+      const results = await provider.queryAll<{ id: string; name: string; value: number }>(
         'SELECT * FROM test_items ORDER BY id'
       );
       expect(results).toHaveLength(2);
@@ -201,8 +255,8 @@ describe('ReadOnlySqliteProvider', () => {
   });
 
   describe('queryOne', () => {
-    it('should return the first matching row', () => {
-      const result = provider.queryOne<{ name: string }>(
+    it('should return the first matching row', async () => {
+      const result = await provider.queryOne<{ name: string }>(
         'SELECT name FROM test_items WHERE id = ?',
         ['1']
       );
@@ -212,11 +266,11 @@ describe('ReadOnlySqliteProvider', () => {
 
   describe('withTransaction', () => {
     it('should commit on success without saving', async () => {
-      await provider.withTransaction(() => {
-        provider.run("INSERT INTO test_items (id, name, value) VALUES ('3', 'c', 30)");
+      await provider.withTransaction(async () => {
+        await provider.run("INSERT INTO test_items (id, name, value) VALUES ('3', 'c', 30)");
       });
 
-      const results = provider.queryAll('SELECT * FROM test_items');
+      const results = await provider.queryAll('SELECT * FROM test_items');
       expect(results).toHaveLength(3);
     });
   });

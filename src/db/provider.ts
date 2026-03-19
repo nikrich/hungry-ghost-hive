@@ -4,14 +4,14 @@ import type { Database as SqlJsDatabase } from 'sql.js';
 
 /**
  * Abstract database provider interface that supports both SQLite and Postgres backends.
- * All query modules can target this interface instead of a specific database engine.
+ * All methods are async to support inherently asynchronous backends like Postgres.
  */
 export interface DatabaseProvider {
-  queryAll<T>(sql: string, params?: unknown[]): T[];
-  queryOne<T>(sql: string, params?: unknown[]): T | undefined;
-  run(sql: string, params?: unknown[]): void;
+  queryAll<T>(sql: string, params?: unknown[]): Promise<T[]>;
+  queryOne<T>(sql: string, params?: unknown[]): Promise<T | undefined>;
+  run(sql: string, params?: unknown[]): Promise<void>;
   withTransaction<T>(fn: () => Promise<T> | T): Promise<T>;
-  close(): void;
+  close(): Promise<void>;
 }
 
 /**
@@ -32,6 +32,7 @@ export interface QueryResult<T> {
 /**
  * SQLite implementation of DatabaseProvider using sql.js.
  * Wraps an in-memory sql.js Database with the provider interface.
+ * Methods return resolved Promises wrapping synchronous sql.js operations.
  */
 export class SqliteProvider implements WritableDatabaseProvider {
   /**
@@ -48,7 +49,7 @@ export class SqliteProvider implements WritableDatabaseProvider {
     this._saveFn = saveFn;
   }
 
-  queryAll<T>(sql: string, params: unknown[] = []): T[] {
+  async queryAll<T>(sql: string, params: unknown[] = []): Promise<T[]> {
     const stmt = this.db.prepare(sql);
     try {
       stmt.bind(params);
@@ -64,12 +65,12 @@ export class SqliteProvider implements WritableDatabaseProvider {
     }
   }
 
-  queryOne<T>(sql: string, params: unknown[] = []): T | undefined {
-    const results = this.queryAll<T>(sql, params);
+  async queryOne<T>(sql: string, params: unknown[] = []): Promise<T | undefined> {
+    const results = await this.queryAll<T>(sql, params);
     return results[0];
   }
 
-  run(sql: string, params: unknown[] = []): void {
+  async run(sql: string, params: unknown[] = []): Promise<void> {
     this.db.run(sql, params);
   }
 
@@ -98,7 +99,7 @@ export class SqliteProvider implements WritableDatabaseProvider {
     }
   }
 
-  close(): void {
+  async close(): Promise<void> {
     this.db.close();
   }
 }
@@ -113,7 +114,7 @@ export class ReadOnlySqliteProvider implements DatabaseProvider {
     this.db = db;
   }
 
-  queryAll<T>(sql: string, params: unknown[] = []): T[] {
+  async queryAll<T>(sql: string, params: unknown[] = []): Promise<T[]> {
     const stmt = this.db.prepare(sql);
     try {
       stmt.bind(params);
@@ -129,12 +130,12 @@ export class ReadOnlySqliteProvider implements DatabaseProvider {
     }
   }
 
-  queryOne<T>(sql: string, params: unknown[] = []): T | undefined {
-    const results = this.queryAll<T>(sql, params);
+  async queryOne<T>(sql: string, params: unknown[] = []): Promise<T | undefined> {
+    const results = await this.queryAll<T>(sql, params);
     return results[0];
   }
 
-  run(sql: string, params: unknown[] = []): void {
+  async run(sql: string, params: unknown[] = []): Promise<void> {
     this.db.run(sql, params);
   }
 
@@ -154,7 +155,7 @@ export class ReadOnlySqliteProvider implements DatabaseProvider {
     }
   }
 
-  close(): void {
+  async close(): Promise<void> {
     this.db.close();
   }
 }
