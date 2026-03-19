@@ -3,9 +3,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Create mock provider functions at module scope so tests can access them
-const mockQueryOne = vi.fn(async () => ({ count: 0 }));
-const mockQueryAll = vi.fn(async () => []);
-const mockRun = vi.fn(async () => {});
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockQueryOne = vi.fn(
+  async (_sql: string, _params?: unknown[]): Promise<any> => ({ count: 0 })
+);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockQueryAll = vi.fn(async (_sql: string, _params?: unknown[]): Promise<any[]> => []);
+const mockRun = vi.fn(async (_sql: string, _params?: unknown[]): Promise<void> => {});
 const mockSave = vi.fn();
 
 // Mock dependencies
