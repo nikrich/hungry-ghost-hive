@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.50.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.49.0...hungry-ghost-hive-v0.50.0) (2026-03-19)
+
+
+### Features
+
+* add --workspace flag to hive init for resuming distributed workspaces ([#572](https://github.com/nikrich/hungry-ghost-hive/issues/572)) ([a856c2d](https://github.com/nikrich/hungry-ghost-hive/commit/a856c2d189d9f53e88ee6260e4e842342c3e3140))
+
+
+### Bug Fixes
+
+* resolve distributed mode compatibility issues ([#571](https://github.com/nikrich/hungry-ghost-hive/issues/571)) ([fd169e3](https://github.com/nikrich/hungry-ghost-hive/commit/fd169e319f614d9d5bb165059b7042583cd04c13))
+
 ## [0.49.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.48.0...hungry-ghost-hive-v0.49.0) (2026-03-19)
 
 
