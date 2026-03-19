@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.50.0...hungry-ghost-hive-v0.50.1) (2026-03-19)
+
+
+### Bug Fixes
+
+* migrate auto-assignment and msg commands to use db.provider ([#574](https://github.com/nikrich/hungry-ghost-hive/issues/574)) ([0a9e687](https://github.com/nikrich/hungry-ghost-hive/commit/0a9e687bcbc601a988505b9173e7fc1783849204))
+
 ## [0.50.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.49.0...hungry-ghost-hive-v0.50.0) (2026-03-19)
 
 
