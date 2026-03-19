@@ -612,12 +612,125 @@ When a requirement is synced to Jira, Hive will:
 
 ### Distributed Mode
 
-- Run `hive manager start` on every host in the same cluster.
-- Each host runs manager/scheduler runtime, but only one node is elected leader at a time (RAFT consensus).
-- Leader is the only node allowed to run orchestration decisions (`assign`, scheduler loops, tech lead spawn).
-- Followers stay in sync and do not schedule work.
-- State replication is logical row/event sync over HTTP (no centralized DB).
-- Duplicate story detection across nodes using configurable similarity threshold.
+Distributed mode lets you run multiple Hive instances across separate machines (or separate workspaces on the same machine) that coordinate via RAFT-based leader election and peer-to-peer state replication over HTTP. There is no central database — each node maintains its own SQLite store and exchanges logical events with peers.
+
+#### How it works
+
+- One node is elected **leader** at any given time (RAFT consensus).
+- The leader is the only node that runs orchestration decisions: story assignment, scheduler loops, and Tech Lead spawning.
+- **Followers** stay in sync via anti-entropy pull and do not schedule work.
+- State replication is logical row/event sync over HTTP — each write produces a versioned `ClusterEvent` that peers pull during their sync interval.
+- Duplicate story detection merges near-identical stories created concurrently on different nodes, using a configurable similarity threshold.
+
+#### Prerequisites
+
+1. **PostgreSQL** — distributed mode requires a shared Postgres instance that all nodes can reach. Set the connection string in your environment before initialising:
+
+   ```bash
+   export HIVE_DATABASE_URL=postgres://user:pass@host:5432/hive
+   ```
+
+   Or place it in a `.env` file in your workspace root. Hive reads this file automatically on startup.
+
+2. **Network access** — each node must be reachable by its peers on the configured `listen_port` (default `8787`). Expose this port in your firewall/security group rules.
+
+3. **Shared secret** — when `listen_host` is not a loopback address, `auth_token` is **required**. Use a strong random value (e.g. `openssl rand -hex 32`).
+
+#### Setting up a cluster
+
+**Step 1 — initialise each node with `--distributed`:**
+
+```bash
+HIVE_DATABASE_URL=postgres://user:pass@host:5432/hive hive init --distributed
+```
+
+This validates the Postgres connection, runs migrations, and generates a unique workspace ID.
+
+**Step 2 — configure `.hive/hive.config.yaml` on each node:**
+
+```yaml
+cluster:
+  enabled: true
+  node_id: node-a                       # Unique ID for this node
+  listen_host: 0.0.0.0                  # Bind address for cluster API
+  listen_port: 8787                     # Port for cluster API
+  public_url: http://203.0.113.10:8787  # Address peers use to reach this node
+  auth_token: replace-with-strong-shared-secret
+  peers:
+    - id: node-b
+      url: http://198.51.100.20:8787
+    - id: node-c
+      url: http://198.51.100.30:8787
+```
+
+Repeat on every node, updating `node_id` and `public_url` accordingly. Add all other nodes to each node's `peers` list.
+
+**Step 3 — start the manager on every node:**
+
+```bash
+hive manager start
+```
+
+The nodes elect a leader automatically. Use `hive cluster status` to confirm.
+
+**Step 4 (optional) — dynamically join a new node:**
+
+```bash
+# On the new node, after configuring hive.config.yaml:
+hive cluster join http://203.0.113.10:8787
+```
+
+#### Cluster CLI commands
+
+```bash
+# Show local node role (leader/follower), term, and per-peer replication lag
+hive cluster status
+hive cluster status --json
+
+# Check connectivity and latency to all peers
+hive cluster health
+
+# Show per-peer replication lag details
+hive cluster replication-lag
+hive cluster replication-lag --json
+
+# Show recent replication events (upserts/deletes across replicated tables)
+hive cluster events
+hive cluster events --limit 100
+hive cluster events --table stories
+
+# Dynamically join an existing cluster
+hive cluster join <peer-url>
+
+# Gracefully remove this node from the cluster (leader must step down first)
+hive cluster leave
+```
+
+#### Configuration reference
+
+All options live under the `cluster:` key in `.hive/hive.config.yaml`.
+
+| Option | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Enable distributed mode |
+| `node_id` | `node-local` | Stable unique identifier for this node |
+| `listen_host` | `127.0.0.1` | Host/IP to bind the cluster HTTP API |
+| `listen_port` | `8787` | Port to bind the cluster HTTP API |
+| `public_url` | `http://127.0.0.1:8787` | URL peers use to reach this node |
+| `auth_token` | — | Shared bearer token; **required** when `listen_host` is not loopback |
+| `peers` | `[]` | List of `{ id, url }` objects for other cluster nodes |
+| `heartbeat_interval_ms` | `2000` | How often the leader sends heartbeats (ms) |
+| `election_timeout_min_ms` | `3000` | Lower bound of randomised election timeout (ms) |
+| `election_timeout_max_ms` | `6000` | Upper bound of randomised election timeout (ms) |
+| `sync_interval_ms` | `5000` | Anti-entropy pull cadence — how often followers sync from peers (ms) |
+| `request_timeout_ms` | `5000` | Timeout for outbound HTTP calls to peers (ms) |
+| `leader_lease_ms` | `3×heartbeat` | Followers reject commands from a leader whose last heartbeat is older than this |
+| `story_similarity_threshold` | `0.92` | Cosine similarity threshold `[0..1]` for duplicate story merge detection |
+| `max_log_entries` | — | Maximum RAFT log entries before triggering compaction (0 = disabled) |
+| `max_cluster_events` | — | Maximum `cluster_events` rows to retain after pruning (0 = disabled) |
+| `compaction_interval_ms` | — | Minimum interval between compaction runs (ms) |
+
+> **Security note:** Always set `auth_token` when nodes communicate over public networks. The token is sent as a `Bearer` header on all inter-node HTTP requests.
 
 ## Escalation Protocol
 
