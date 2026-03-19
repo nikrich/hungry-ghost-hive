@@ -77,7 +77,7 @@ export async function getRequirementById(
 
 export async function getAllRequirements(provider: DatabaseProvider): Promise<RequirementRow[]> {
   return await provider.queryAll<RequirementRow>(
-    'SELECT * FROM requirements ORDER BY created_at DESC, rowid DESC'
+    'SELECT * FROM requirements ORDER BY created_at DESC, id DESC'
   );
 }
 
@@ -86,7 +86,7 @@ export async function getRequirementsByStatus(
   status: RequirementStatus
 ): Promise<RequirementRow[]> {
   return await provider.queryAll<RequirementRow>(
-    'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC, rowid DESC',
+    'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC, id DESC',
     [status]
   );
 }
@@ -97,7 +97,7 @@ export async function getPendingRequirements(
   return await provider.queryAll<RequirementRow>(`
     SELECT * FROM requirements
     WHERE status IN ('pending', 'planning', 'in_progress')
-    ORDER BY created_at, rowid
+    ORDER BY created_at, id
   `);
 }
 

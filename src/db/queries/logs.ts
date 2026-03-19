@@ -92,6 +92,17 @@ function inferAgentType(
 }
 
 async function getAgentColumnNames(provider: DatabaseProvider): Promise<Set<string>> {
+  try {
+    // Try Postgres information_schema first
+    const pgRows = await provider.queryAll<{ column_name: string }>(
+      "SELECT column_name FROM information_schema.columns WHERE table_name = 'agents'"
+    );
+    if (pgRows.length > 0) {
+      return new Set(pgRows.map(r => r.column_name));
+    }
+  } catch {
+    // Fall back to SQLite PRAGMA
+  }
   const rows = await provider.queryAll<{ name: string }>('PRAGMA table_info(agents)');
   const columnNames = new Set<string>();
   for (const row of rows) {
@@ -133,13 +144,18 @@ async function ensureLogAgentExists(provider: DatabaseProvider, agentId: string)
   }
 
   const placeholders = insertColumns.map(() => '?').join(', ');
-  await provider.run(
-    `
-    INSERT OR IGNORE INTO agents (${insertColumns.join(', ')})
-    VALUES (${placeholders})
-  `,
-    insertValues
-  );
+  try {
+    await provider.run(
+      `
+      INSERT INTO agents (${insertColumns.join(', ')})
+      VALUES (${placeholders})
+      ON CONFLICT DO NOTHING
+    `,
+      insertValues
+    );
+  } catch {
+    // Ignore insert conflicts — agent row already exists
+  }
 }
 
 async function resolveLogAgentId(provider: DatabaseProvider, rawAgentId: string): Promise<string> {
@@ -188,10 +204,13 @@ export async function createLog(
   const resolvedAgentId = await resolveLogAgentId(provider, input.agentId);
   const resolvedStoryId = await resolveLogStoryId(provider, input.storyId);
 
-  await provider.run(
+  // Use queryOne with RETURNING to get the inserted id in a single statement.
+  // RETURNING is supported by both SQLite (3.35+) and Postgres.
+  const result = await provider.queryOne<{ id: number }>(
     `
     INSERT INTO agent_logs (agent_id, story_id, event_type, status, message, metadata, timestamp)
     VALUES (?, ?, ?, ?, ?, ?, ?)
+    RETURNING id
   `,
     [
       resolvedAgentId,
@@ -204,8 +223,6 @@ export async function createLog(
     ]
   );
 
-  // Get the last inserted row
-  const result = await provider.queryOne<{ id: number }>('SELECT last_insert_rowid() as id');
   return (await getLogById(provider, result?.id || 0))!;
 }
 

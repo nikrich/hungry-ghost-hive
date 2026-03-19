@@ -60,8 +60,11 @@ export async function updateActivityPanel(
   box.setScrollPerc(100);
 }
 
-function formatTimestamp(timestamp: string): string {
-  return timestamp.substring(11, 19);
+function formatTimestamp(timestamp: string | Date): string {
+  if (timestamp instanceof Date) {
+    return timestamp.toISOString().substring(11, 19);
+  }
+  return String(timestamp).substring(11, 19);
 }
 
 function formatEventType(event: string): string {

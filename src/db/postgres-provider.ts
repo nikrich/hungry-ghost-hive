@@ -84,6 +84,66 @@ function detectTable(sql: string): string | null {
 }
 
 /**
+ * Detect the alias (or table name) for the primary table in a SQL statement.
+ * For `SELECT ... FROM stories s LEFT JOIN ...`, returns "s".
+ * For `SELECT ... FROM stories LEFT JOIN ...`, returns "stories".
+ * For UPDATE/DELETE, returns the table name or alias.
+ */
+function detectTableQualifier(sql: string): string | null {
+  const normalized = sql.replace(/\s+/g, ' ').trim();
+
+  // SELECT ... FROM table [alias] [JOIN|WHERE|ORDER|GROUP|HAVING|LIMIT|,|)]
+  const selectMatch = normalized.match(/FROM\s+(\w+)(?:\s+(?:AS\s+)?(\w+))?/i);
+  if (selectMatch) {
+    const alias = selectMatch[2];
+    const table = selectMatch[1];
+    // Only treat as alias if the next word is not a SQL keyword
+    if (alias) {
+      const upper = alias.toUpperCase();
+      const keywords = new Set([
+        'WHERE',
+        'LEFT',
+        'RIGHT',
+        'INNER',
+        'OUTER',
+        'CROSS',
+        'JOIN',
+        'ON',
+        'ORDER',
+        'GROUP',
+        'HAVING',
+        'LIMIT',
+        'OFFSET',
+        'UNION',
+        'EXCEPT',
+        'INTERSECT',
+        'FOR',
+        'SET',
+        'VALUES',
+      ]);
+      if (!keywords.has(upper)) {
+        return alias;
+      }
+    }
+    return table;
+  }
+
+  // UPDATE table [alias]
+  const updateMatch = normalized.match(/UPDATE\s+(\w+)(?:\s+(?:AS\s+)?(\w+))?/i);
+  if (updateMatch) {
+    return updateMatch[2] || updateMatch[1];
+  }
+
+  // DELETE FROM table [alias]
+  const deleteMatch = normalized.match(/DELETE\s+FROM\s+(\w+)(?:\s+(?:AS\s+)?(\w+))?/i);
+  if (deleteMatch) {
+    return deleteMatch[2] || deleteMatch[1];
+  }
+
+  return null;
+}
+
+/**
  * Check if a SQL statement needs workspace_id injection.
  */
 function needsWorkspaceScope(sql: string): boolean {
@@ -123,6 +183,8 @@ function injectInsertWorkspaceId(
 /**
  * Inject workspace_id into SELECT/UPDATE/DELETE WHERE clauses.
  * Adds `AND workspace_id = ?` to existing WHERE, or `WHERE workspace_id = ?` if none.
+ * When the query uses JOINs, qualifies workspace_id with the primary table alias
+ * to avoid ambiguous column references.
  */
 function injectWhereWorkspaceId(
   sql: string,
@@ -136,18 +198,46 @@ function injectWhereWorkspaceId(
     return { sql, params };
   }
 
+  // Determine if we need to qualify workspace_id (JOIN queries have ambiguous columns)
+  const hasJoin = /\bJOIN\b/i.test(normalized);
+  const qualifier = hasJoin ? detectTableQualifier(sql) : null;
+  const wsCol = qualifier ? `${qualifier}.workspace_id` : 'workspace_id';
+
   const upperSql = normalized.toUpperCase();
 
   // Find WHERE clause position
   const whereIndex = upperSql.indexOf(' WHERE ');
 
   if (whereIndex !== -1) {
-    // Insert workspace_id condition right after WHERE
+    // Append workspace_id condition at the end of the WHERE clause.
+    // We must NOT prepend because params are positional — SET clause params
+    // come before WHERE clause params, and prepending would shift them.
     const before = normalized.substring(0, whereIndex + 7); // includes " WHERE "
     const after = normalized.substring(whereIndex + 7);
+
+    // Find any trailing clauses (ORDER BY, GROUP BY, etc.) after the WHERE
+    const upperAfter = after.toUpperCase();
+    const trailingPatterns = [
+      ' ORDER BY',
+      ' GROUP BY',
+      ' HAVING',
+      ' LIMIT',
+      ' OFFSET',
+      ' FOR UPDATE',
+    ];
+    let trailingPos = after.length;
+    for (const pattern of trailingPatterns) {
+      const idx = upperAfter.indexOf(pattern);
+      if (idx !== -1 && idx < trailingPos) {
+        trailingPos = idx;
+      }
+    }
+
+    const whereBody = after.substring(0, trailingPos);
+    const trailing = after.substring(trailingPos);
     return {
-      sql: `${before}workspace_id = ? AND ${after}`,
-      params: [workspaceId, ...params],
+      sql: `${before}${whereBody} AND ${wsCol} = ?${trailing}`,
+      params: [...params, workspaceId],
     };
   }
 
@@ -163,9 +253,16 @@ function injectWhereWorkspaceId(
 
   const before = normalized.substring(0, insertPos);
   const after = normalized.substring(insertPos);
+
+  // Count how many ? appear before the insertion point to determine where
+  // in the params array the workspace_id value should be spliced in.
+  const questionsBefore = (before.match(/\?/g) || []).length;
+  const newParams = [...params];
+  newParams.splice(questionsBefore, 0, workspaceId);
+
   return {
-    sql: `${before} WHERE workspace_id = ?${after}`,
-    params: [workspaceId, ...params],
+    sql: `${before} WHERE ${wsCol} = ?${after}`,
+    params: newParams,
   };
 }
 
@@ -190,6 +287,17 @@ function loadPgMigration(migrationName: string): string {
 }
 
 const PG_MIGRATIONS = [{ name: '001-full-schema.sql' }];
+
+/**
+ * Strip SQLite-specific syntax that Postgres does not understand.
+ */
+function sanitizeForPostgres(sql: string): string {
+  // Remove COLLATE NOCASE (SQLite case-insensitive collation)
+  let result = sql.replace(/\s+COLLATE\s+NOCASE/gi, '');
+  // Convert INSERT OR IGNORE to INSERT ... ON CONFLICT DO NOTHING
+  result = result.replace(/INSERT\s+OR\s+IGNORE\s+INTO/gi, 'INSERT INTO');
+  return result;
+}
 
 /**
  * Postgres implementation of DatabaseProvider using node-postgres (pg).
@@ -242,12 +350,16 @@ export class PostgresProvider implements WritableDatabaseProvider {
   }
 
   async queryAll<T>(sql: string, params: unknown[] = []): Promise<T[]> {
-    let finalSql = sql;
+    let finalSql = sanitizeForPostgres(sql);
     let finalParams = params;
 
     if (needsWorkspaceScope(sql)) {
       const normalized = sql.replace(/\s+/g, ' ').trim().toUpperCase();
-      if (!normalized.startsWith('INSERT')) {
+      if (normalized.startsWith('INSERT')) {
+        const result = injectInsertWorkspaceId(finalSql, this.workspaceId, finalParams);
+        finalSql = result.sql;
+        finalParams = result.params;
+      } else {
         const result = injectWhereWorkspaceId(finalSql, this.workspaceId, finalParams);
         finalSql = result.sql;
         finalParams = result.params;
@@ -265,7 +377,7 @@ export class PostgresProvider implements WritableDatabaseProvider {
   }
 
   async run(sql: string, params: unknown[] = []): Promise<void> {
-    let finalSql = sql;
+    let finalSql = sanitizeForPostgres(sql);
     let finalParams = params;
 
     if (needsWorkspaceScope(sql)) {
@@ -340,11 +452,18 @@ export class PostgresProvider implements WritableDatabaseProvider {
  * Create a PostgresProvider from the HIVE_DATABASE_URL environment variable.
  * Loads .env file via dotenv if available.
  */
-export async function createPostgresProvider(workspaceId: string): Promise<PostgresProvider> {
-  // Load .env file if dotenv is available
+export async function createPostgresProvider(
+  workspaceId: string,
+  envPath?: string
+): Promise<PostgresProvider> {
+  // Load .env file if dotenv is available — use workspace root if provided
   try {
     const dotenv = await import('dotenv');
-    dotenv.config();
+    if (envPath) {
+      dotenv.config({ path: envPath });
+    } else {
+      dotenv.config();
+    }
   } catch {
     // dotenv not available, rely on environment variables
   }
