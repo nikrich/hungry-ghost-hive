@@ -47,7 +47,7 @@ async function findOrphanedWorktrees(root: string, db: DatabaseClient): Promise<
 
   try {
     const entries = await fs.readdir(reposDir, { withFileTypes: true });
-    const allAgents = getAllAgents(db.db);
+    const allAgents = getAllAgents(db.provider);
     const agentWorktrees = new Set(
       allAgents.filter(a => a.worktree_path).map(a => a.worktree_path)
     );
@@ -110,7 +110,7 @@ async function findDeadTmuxSessions(db: DatabaseClient): Promise<string[]> {
 
   try {
     const hiveSessions = await getHiveSessions();
-    const allAgents = getAllAgents(db.db);
+    const allAgents = getAllAgents(db.provider);
     const agentSessionNames = new Set(
       allAgents.filter(a => a.tmux_session).map(a => a.tmux_session)
     );
@@ -134,7 +134,7 @@ async function findDeadTmuxSessions(db: DatabaseClient): Promise<string[]> {
 
 function findOrphanedAssignments(db: DatabaseClient): Array<{ id: string; agent_id: string }> {
   try {
-    return getStoriesWithOrphanedAssignments(db.db);
+    return getStoriesWithOrphanedAssignments(db.provider);
   } catch (err) {
     console.error(
       chalk.yellow(
@@ -237,7 +237,7 @@ function cleanupOrphanedAssignments(
       if (dryRun) {
         console.log(chalk.gray(`  Would unassign: ${assignment.id} from ${assignment.agent_id}`));
       } else {
-        updateStoryAssignment(db.db, assignment.id, null);
+        updateStoryAssignment(db.provider, assignment.id, null);
         console.log(chalk.gray(`  ✓ Unassigned: ${assignment.id}`));
         cleaned++;
       }

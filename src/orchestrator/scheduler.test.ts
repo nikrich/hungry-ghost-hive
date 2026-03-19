@@ -3,9 +3,9 @@
 import { existsSync, mkdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SqliteProvider, type DatabaseProvider } from '../db/provider.js';
 
 import { getLogsByEventType } from '../db/queries/logs.js';
 import { createPullRequest } from '../db/queries/pull-requests.js';
@@ -39,7 +39,7 @@ vi.mock('../git/worktree.js', () => ({
   removeWorktree: vi.fn().mockResolvedValue(true),
 }));
 
-let db: Database;
+let db: DatabaseProvider;
 let scheduler: Scheduler;
 
 const mockConfig = {
@@ -184,10 +184,11 @@ CREATE TABLE IF NOT EXISTS requirements (
 
 beforeEach(async () => {
   const SQL = await initSqlJs();
-  db = new SQL.Database();
-  db.run('PRAGMA foreign_keys = ON');
-  db.run(INITIAL_MIGRATION);
-  db.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
+  const rawDb = new SQL.Database();
+  rawDb.run('PRAGMA foreign_keys = ON');
+  rawDb.run(INITIAL_MIGRATION);
+  rawDb.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
+  db = new SqliteProvider(rawDb);
 
   scheduler = new Scheduler(db, mockConfig as any);
 });
@@ -516,7 +517,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(recovered.length).toBe(1);
 
     // Verify the story's assignment was cleared and status changed
-    const recoveredStory = db.exec(
+    const recoveredStory = (db as SqliteProvider).db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
@@ -554,7 +555,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     expect(recovered.length).toBe(0);
 
     // Verify the story's assignment was NOT changed
-    const unchangedStory = db.exec(
+    const unchangedStory = (db as SqliteProvider).db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
@@ -590,7 +591,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     expect(recovered).toContain(story.id);
 
-    const recoveredStory = db.exec(
+    const recoveredStory = (db as SqliteProvider).db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
@@ -626,7 +627,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     expect(recovered).toContain(story.id);
 
-    const recoveredStory = db.exec(
+    const recoveredStory = (db as SqliteProvider).db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
@@ -661,7 +662,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     expect(recovered).toContain(story.id);
 
-    const recoveredStory = db.exec(
+    const recoveredStory = (db as SqliteProvider).db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${story.id}'`
     )[0]?.values[0];
 
@@ -697,7 +698,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     expect(recovered).not.toContain(reviewStory.id);
 
-    const unchangedStory = db.exec(
+    const unchangedStory = (db as SqliteProvider).db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${reviewStory.id}'`
     )[0]?.values[0];
 
@@ -726,7 +727,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
 
     expect(recovered).toContain(staleStory.id);
 
-    const recoveredStory = db.exec(
+    const recoveredStory = (db as SqliteProvider).db.exec(
       `SELECT assigned_agent_id, status FROM stories WHERE id = '${staleStory.id}'`
     )[0]?.values[0];
 
@@ -1576,7 +1577,9 @@ describe('Scheduler Story Assignment Prevention', () => {
     updateStory(db, story.id, { assignedAgentId: 'agent-1', status: 'in_progress' });
 
     // Verify the story is now assigned
-    const result = db.exec(`SELECT assigned_agent_id FROM stories WHERE id = '${story.id}'`);
+    const result = (db as SqliteProvider).db.exec(
+      `SELECT assigned_agent_id FROM stories WHERE id = '${story.id}'`
+    );
     expect(result[0].values[0][0]).toBe('agent-1');
   });
 
@@ -1598,7 +1601,9 @@ describe('Scheduler Story Assignment Prevention', () => {
     updateStory(db, story.id, { status: 'in_progress' });
 
     // Verify status changed
-    const result = db.exec(`SELECT status FROM stories WHERE id = '${story.id}'`);
+    const result = (db as SqliteProvider).db.exec(
+      `SELECT status FROM stories WHERE id = '${story.id}'`
+    );
     expect(result[0].values[0][0]).toBe('in_progress');
   });
 
@@ -1754,7 +1759,7 @@ describe('Scheduler Agent Reassignment for Working Agents with NULL currentStory
     );
 
     // Query agents using the same filter logic from assignStories
-    const result = db.exec(
+    const result = (db as SqliteProvider).db.exec(
       `SELECT id, type, status, current_story_id FROM agents
        WHERE team_id = '${team.id}' AND type != 'qa'
        AND (status = 'idle' OR (status = 'working' AND current_story_id IS NULL))`
@@ -1781,7 +1786,7 @@ describe('Scheduler Agent Reassignment for Working Agents with NULL currentStory
     );
 
     // Query agents using the same filter logic from assignStories
-    const result = db.exec(
+    const result = (db as SqliteProvider).db.exec(
       `SELECT id, type, status, current_story_id FROM agents
        WHERE team_id = '${team.id}' AND type != 'qa'
        AND (status = 'idle' OR (status = 'working' AND current_story_id IS NULL))`
@@ -1940,7 +1945,7 @@ describe('Scheduler checkScaling', () => {
     expect(updatedStory.status).toBe('in_progress');
     expect(updatedStory.assigned_agent_id).toBe('senior-spawned-2');
 
-    const busySeniorRow = db.exec(
+    const busySeniorRow = (db as SqliteProvider).db.exec(
       `SELECT status, current_story_id FROM agents WHERE id = 'senior-busy-1'`
     )[0]?.values[0];
     expect(busySeniorRow?.[0]).toBe('working');
@@ -2057,7 +2062,7 @@ describe('Scheduler checkScaling', () => {
     expect(inProgress[0].assigned_agent_id).toBe('senior-single-1');
     expect(planned[0].assigned_agent_id).toBeNull();
 
-    const seniorRow = db.exec(
+    const seniorRow = (db as SqliteProvider).db.exec(
       `SELECT status, current_story_id FROM agents WHERE id = 'senior-single-1'`
     )[0]?.values[0];
     expect(seniorRow?.[0]).toBe('working');
@@ -2322,7 +2327,7 @@ describe('Scheduler Target Branch Propagation', () => {
     expect(story.team_id).toBe(team.id);
 
     // Verify we can retrieve the requirement and its target_branch
-    const retrievedReq = db.exec(
+    const retrievedReq = (db as SqliteProvider).db.exec(
       `SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`
     )[0]?.values[0];
     expect(retrievedReq?.[0]).toBe('release/v2.0');
@@ -2336,7 +2341,7 @@ describe('Scheduler Target Branch Propagation', () => {
     });
 
     // Verify the requirement defaults to main branch
-    const retrievedReq = db.exec(
+    const retrievedReq = (db as SqliteProvider).db.exec(
       `SELECT target_branch FROM requirements WHERE id = '${requirement.id}'`
     )[0]?.values[0];
     expect(retrievedReq?.[0]).toBe('main');
@@ -2378,7 +2383,7 @@ describe('Scheduler Target Branch Propagation', () => {
     });
 
     // Verify each story can access its requirement's target_branch via JOIN
-    const result = db.exec(
+    const result = (db as SqliteProvider).db.exec(
       `SELECT s.id, r.target_branch
        FROM stories s
        LEFT JOIN requirements r ON s.requirement_id = r.id
@@ -2409,7 +2414,7 @@ describe('Scheduler Target Branch Propagation', () => {
     expect(story.requirement_id).toBeNull();
 
     // When joining with requirements, should get null for target_branch
-    const result = db.exec(
+    const result = (db as SqliteProvider).db.exec(
       `SELECT s.id, r.target_branch
        FROM stories s
        LEFT JOIN requirements r ON s.requirement_id = r.id

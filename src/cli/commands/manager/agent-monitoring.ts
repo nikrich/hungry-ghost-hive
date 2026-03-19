@@ -252,7 +252,7 @@ export async function handlePermissionPrompt(
     const approved = await autoApprovePermission(sessionName);
     if (approved) {
       await ctx.withDb(async db => {
-        createLog(db.db, {
+        createLog(db.provider, {
           agentId: 'manager',
           eventType: 'STORY_PROGRESS_UPDATE',
           message: `Auto-approved permission prompt for ${sessionName}`,

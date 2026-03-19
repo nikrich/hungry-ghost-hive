@@ -1,9 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import type { ClusterConfig, ClusterPeerConfig } from '../config/schema.js';
-import { queryAll } from '../db/client.js';
+import type { DatabaseProvider } from '../db/provider.js';
 import { REPLICATED_TABLES } from './adapters.js';
 import {
   ClusterHttpServer,
@@ -247,7 +246,7 @@ export class ClusterRuntime {
     };
   }
 
-  async sync(db: Database): Promise<ClusterSyncResult> {
+  async sync(db: DatabaseProvider): Promise<ClusterSyncResult> {
     if (!this.config.enabled) {
       return {
         local_events_emitted: 0,
@@ -403,7 +402,7 @@ export class ClusterRuntime {
     };
   }
 
-  private maybeCompact(db: Database): { logCompacted: number; eventsPruned: number } {
+  private maybeCompact(db: DatabaseProvider): { logCompacted: number; eventsPruned: number } {
     const now = Date.now();
     const interval = this.config.compaction_interval_ms ?? 300000;
 
@@ -445,12 +444,12 @@ export class ClusterRuntime {
     return { logCompacted, eventsPruned };
   }
 
-  private refreshCache(db: Database): void {
+  private refreshCache(db: DatabaseProvider): void {
     this.eventCache = getAllClusterEvents(db).slice(-20000);
     this.versionVectorCache = getVersionVector(db);
   }
 
-  private async pullEventsFromPeers(db: Database): Promise<{
+  private async pullEventsFromPeers(db: DatabaseProvider): Promise<{
     imported: number;
     usedSnapshot: boolean;
     catchUpApplied: number;
@@ -577,7 +576,7 @@ export class ClusterRuntime {
    * Returns { applied, total } on success, null on failure.
    */
   private async recoverFromSnapshot(
-    db: Database,
+    db: DatabaseProvider,
     peer: ClusterPeerConfig
   ): Promise<{ applied: number; total: number } | null> {
     this.raft.isCatchingUp = true;
@@ -611,7 +610,7 @@ export class ClusterRuntime {
    * Stores the snapshot's version vector so future delta requests start from here.
    */
   private applySnapshot(
-    db: Database,
+    db: DatabaseProvider,
     snapshot: ClusterSnapshot
   ): { applied: number; total: number } {
     let applied = 0;
@@ -638,11 +637,11 @@ export class ClusterRuntime {
    * Builds a full snapshot of all replicated tables from the current db state.
    * Called during sync to keep cachedSnapshot fresh for the HTTP endpoint.
    */
-  private buildSnapshot(db: Database): ClusterSnapshot {
+  private buildSnapshot(db: DatabaseProvider): ClusterSnapshot {
     const tables: ClusterSnapshot['tables'] = {};
 
     for (const adapter of REPLICATED_TABLES) {
-      const rows = queryAll<Record<string, unknown>>(db, adapter.selectSql);
+      const rows = db.queryAll<Record<string, unknown>>(adapter.selectSql);
       tables[adapter.table] = rows.map(row => ({
         rowId: adapter.rowId(row),
         payload: adapter.payload(row),

@@ -52,7 +52,14 @@ function makeCtx(
   overrides: Partial<ManagerCheckContext> = {},
   schedulerOverrides: Record<string, unknown> = {}
 ): ManagerCheckContext {
-  const mockDb = { db: {} as never, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+  const mockProvider = {} as any;
+  const mockDb = {
+    db: {} as never,
+    provider: mockProvider,
+    save: vi.fn(),
+    close: vi.fn(),
+    runMigrations: vi.fn(),
+  };
   const mockScheduler = {
     spawnAuditor: vi.fn().mockResolvedValue({ id: 'auditor-abc123' }),
     ...schedulerOverrides,

@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { execa } from 'execa';
-import type { Database } from 'sql.js';
 import type { HiveConfig } from '../config/schema.js';
-import { queryAll } from '../db/client.js';
+import type { DatabaseProvider } from '../db/provider.js';
+// import { queryAll } from '../db/client.js' — removed (using provider methods);
 import { createLog } from '../db/queries/logs.js';
 import {
   getRequirementById,
@@ -59,7 +59,7 @@ export function isEligibleForFeatureBranch(
  * @returns The feature branch name, or null if creation failed
  */
 export async function createRequirementFeatureBranch(
-  db: Database,
+  db: DatabaseProvider,
   repoPath: string,
   requirementId: string,
   saveFn?: () => void
@@ -171,7 +171,7 @@ export async function createFeatureBranchPR(
  * is in 'planned' status and doesn't have a feature branch yet.
  */
 export function getRequirementsNeedingFeatureBranch(
-  db: Database,
+  db: DatabaseProvider,
   storyIds: string[],
   hiveConfig: HiveConfig | undefined
 ): string[] {
@@ -181,7 +181,7 @@ export function getRequirementsNeedingFeatureBranch(
   const requirementIds = new Set<string>();
 
   for (const storyId of storyIds) {
-    const stories = queryAll<StoryRow>(db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
+    const stories = db.queryAll<StoryRow>('SELECT * FROM stories WHERE id = ?', [storyId]);
     const story = stories[0];
     if (!story?.requirement_id) continue;
 

@@ -27,9 +27,9 @@ storiesCommand
     await withReadOnlyHiveContext(async ({ db }) => {
       let stories;
       if (options.status) {
-        stories = getStoriesByStatus(db.db, options.status as StoryStatus);
+        stories = getStoriesByStatus(db.provider, options.status as StoryStatus);
       } else {
-        stories = getAllStories(db.db);
+        stories = getAllStories(db.provider);
       }
 
       if (options.json) {
@@ -90,7 +90,7 @@ storiesCommand
       await withHiveContext(async ({ root, paths, db }) => {
         // Create local story
         const story = createStory(
-          db.db,
+          db.provider,
           {
             requirementId: options.requirement || null,
             teamId: options.team || null,
@@ -104,7 +104,7 @@ storiesCommand
         // Update with optional fields
         if (options.points !== undefined || options.complexity !== undefined) {
           updateStory(
-            db.db,
+            db.provider,
             story.id,
             {
               storyPoints: options.points ?? null,
@@ -118,8 +118,8 @@ storiesCommand
         // Sync to PM provider if configured
         let externalKey: string | null = null;
         try {
-          const updatedStory = getStoryById(db.db, story.id)!;
-          const result = await syncStoryToProvider(root, db.db, updatedStory);
+          const updatedStory = getStoryById(db.provider, story.id)!;
+          const result = await syncStoryToProvider(root, db.provider, updatedStory);
 
           if (result) {
             externalKey = result.key;
@@ -134,7 +134,7 @@ storiesCommand
         }
 
         if (options.json) {
-          const finalStory = getStoryById(db.db, story.id);
+          const finalStory = getStoryById(db.provider, story.id);
           console.log(JSON.stringify(finalStory, null, 2));
           return;
         }
@@ -154,9 +154,9 @@ storiesCommand
   .description('Show story details')
   .action(async (storyId: string) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const story = requireStory(db.db, storyId);
+      const story = requireStory(db.provider, storyId);
 
-      const dependencies = getStoryDependencies(db.db, story.id);
+      const dependencies = getStoryDependencies(db.provider, story.id);
 
       console.log(chalk.bold(`\nStory: ${story.id}\n`));
       console.log(chalk.bold('Title:'), story.title);

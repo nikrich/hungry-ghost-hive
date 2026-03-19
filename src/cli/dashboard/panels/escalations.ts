@@ -2,7 +2,7 @@
 
 import blessed, { type Widgets } from 'blessed';
 import { spawnSync } from 'child_process';
-import type { Database } from 'sql.js';
+import type { DatabaseProvider } from '../../../db/provider.js';
 import { getPendingEscalations, type EscalationRow } from '../../../db/queries/escalations.js';
 
 // Store escalations for selection lookup
@@ -23,7 +23,7 @@ function summarizeEscalationReason(reason: string): string {
 
 export function createEscalationsPanel(
   screen: Widgets.Screen,
-  db: Database,
+  db: DatabaseProvider,
   pauseRefresh: () => void,
   resumeRefresh: () => void
 ): Widgets.ListElement {
@@ -135,7 +135,7 @@ export function createEscalationsPanel(
 
 export async function updateEscalationsPanel(
   list: Widgets.ListElement,
-  db: Database
+  db: DatabaseProvider
 ): Promise<void> {
   const escalations = getPendingEscalations(db);
   currentEscalations = escalations; // Store for selection lookup

@@ -25,10 +25,6 @@ vi.mock('../../config/loader.js', () => ({
   })),
 }));
 
-vi.mock('../../db/client.js', () => ({
-  queryOne: vi.fn(() => ({ id: 'TEST-1', external_subtask_key: 'JIRA-123' })),
-}));
-
 vi.mock('../../db/queries/logs.js', () => ({
   createLog: vi.fn(),
 }));
@@ -42,14 +38,21 @@ vi.mock('../../integrations/jira/comments.js', () => ({
   transitionSubtask: vi.fn(),
 }));
 
+const mockProviderQueryOne = vi.fn(() => ({ id: 'TEST-1', external_subtask_key: 'JIRA-123' }));
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(callback =>
-    callback({ root: '/tmp', db: { db: {} }, paths: { hiveDir: '/tmp/.hive' } })
+    callback({
+      root: '/tmp',
+      db: {
+        db: {},
+        provider: { queryOne: mockProviderQueryOne, queryAll: vi.fn(), run: vi.fn() },
+      },
+      paths: { hiveDir: '/tmp/.hive' },
+    })
   ),
 }));
 
 import { loadConfig } from '../../config/loader.js';
-import { queryOne } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import { progressCommand } from './progress.js';
 
@@ -118,7 +121,7 @@ describe('progress command', () => {
           message: 'Implemented fix',
         })
       );
-      expect(queryOne).not.toHaveBeenCalled();
+      expect(mockProviderQueryOne).not.toHaveBeenCalled();
       expect(String(logSpy.mock.calls[0]?.[0] || '')).toContain(
         'No project management provider configured'
       );

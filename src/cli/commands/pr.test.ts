@@ -89,9 +89,13 @@ vi.mock('../../utils/story-id.js', () => ({
 
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(callback =>
-    callback({ db: { db: {}, save: vi.fn() }, root: '/tmp', paths: { hiveDir: '/tmp/.hive' } })
+    callback({
+      db: { db: {}, provider: {} as any, save: vi.fn() },
+      root: '/tmp',
+      paths: { hiveDir: '/tmp/.hive' },
+    })
   ),
-  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {} } })),
+  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {}, provider: {} as any } })),
 }));
 
 import { prCommand } from './pr.js';

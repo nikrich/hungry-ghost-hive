@@ -3,7 +3,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { syncStatusForStory } from '../../connectors/project-management/operations.js';
-import { queryAll, queryOne, run, type StoryRow } from '../../db/client.js';
+import { type StoryRow } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import { createStory, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
 import { requireAgentBySession, requireStory } from '../../utils/cli-helpers.js';
@@ -17,17 +17,16 @@ export const myStoriesCommand = new Command('my-stories')
     await withReadOnlyHiveContext(async ({ db }) => {
       if (!session) {
         // Show all in-progress stories
-        const stories = queryAll<StoryRow & { tmux_session?: string; target_branch?: string }>(
-          db.db,
-          `
+        const stories = db.provider.queryAll<
+          StoryRow & { tmux_session?: string; target_branch?: string }
+        >(`
           SELECT s.*, a.tmux_session, r.target_branch
           FROM stories s
           LEFT JOIN agents a ON s.assigned_agent_id = a.id
           LEFT JOIN requirements r ON s.requirement_id = r.id
           WHERE s.status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed')
           ORDER BY s.status, s.created_at
-        `
-        );
+        `);
 
         if (stories.length === 0) {
           console.log(chalk.gray('No active stories found.'));
@@ -42,8 +41,7 @@ export const myStoriesCommand = new Command('my-stories')
       }
 
       // Find agent by tmux session
-      const agent = queryOne<{ id: string; team_id: string }>(
-        db.db,
+      const agent = db.provider.queryOne<{ id: string; team_id: string }>(
         "SELECT id, team_id FROM agents WHERE tmux_session = ? AND status != 'terminated'",
         [session]
       );
@@ -51,8 +49,7 @@ export const myStoriesCommand = new Command('my-stories')
       if (!agent) {
         console.error(chalk.red(`No agent found with session: ${session}`));
         console.log(chalk.gray('Available sessions:'));
-        const agents = queryAll<{ tmux_session: string }>(
-          db.db,
+        const agents = db.provider.queryAll<{ tmux_session: string }>(
           "SELECT tmux_session FROM agents WHERE tmux_session IS NOT NULL AND status != 'terminated'"
         );
         for (const a of agents) {
@@ -64,8 +61,7 @@ export const myStoriesCommand = new Command('my-stories')
       let stories: (StoryRow & { target_branch?: string })[];
       if (options.all && agent.team_id) {
         // Show all team stories
-        stories = queryAll<StoryRow & { target_branch?: string }>(
-          db.db,
+        stories = db.provider.queryAll<StoryRow & { target_branch?: string }>(
           `
           SELECT s.*, r.target_branch
           FROM stories s
@@ -85,8 +81,7 @@ export const myStoriesCommand = new Command('my-stories')
         );
       } else {
         // Show only assigned active stories (exclude merged/terminal states)
-        stories = queryAll<StoryRow & { target_branch?: string }>(
-          db.db,
+        stories = db.provider.queryAll<StoryRow & { target_branch?: string }>(
           `
           SELECT s.*, r.target_branch
           FROM stories s
@@ -124,10 +119,10 @@ myStoriesCommand
   .action(async (storyId: string, options: { session: string }) => {
     await withHiveContext(async ({ root, db }) => {
       // Find agent by session
-      const agent = requireAgentBySession(db.db, options.session);
+      const agent = requireAgentBySession(db.provider, options.session);
 
       // Check story exists and is available
-      const story = requireStory(db.db, storyId);
+      const story = requireStory(db.provider, storyId);
 
       if (story.assigned_agent_id && story.assigned_agent_id !== agent.id) {
         console.error(chalk.red(`Story already assigned to another agent.`));
@@ -135,7 +130,7 @@ myStoriesCommand
       }
 
       // Check if all dependencies are resolved (merged)
-      const dependencies = getStoryDependencies(db.db, storyId);
+      const dependencies = getStoryDependencies(db.provider, storyId);
       const unresolvedDeps = dependencies.filter(dep => dep.status !== 'merged');
       if (unresolvedDeps.length > 0) {
         console.error(chalk.red(`Cannot claim story: unresolved dependencies`));
@@ -149,8 +144,7 @@ myStoriesCommand
       }
 
       // Claim the story
-      run(
-        db.db,
+      db.provider.run(
         `
         UPDATE stories
         SET assigned_agent_id = ?, status = 'in_progress', updated_at = datetime('now')
@@ -161,7 +155,7 @@ myStoriesCommand
       db.save();
 
       // Sync status change to Jira
-      await syncStatusForStory(root, db.db, storyId, 'in_progress');
+      await syncStatusForStory(root, db.provider, storyId, 'in_progress');
 
       console.log(chalk.green(`Claimed story: ${storyId}`));
       console.log(chalk.gray(`Title: ${story.title}`));
@@ -173,10 +167,9 @@ myStoriesCommand
   .description('Mark a story as complete (ready for review)')
   .action(async (storyId: string) => {
     await withHiveContext(async ({ root, db }) => {
-      requireStory(db.db, storyId);
+      requireStory(db.provider, storyId);
 
-      run(
-        db.db,
+      db.provider.run(
         `
         UPDATE stories
         SET status = 'review', updated_at = datetime('now')
@@ -187,7 +180,7 @@ myStoriesCommand
       db.save();
 
       // Sync status change to Jira
-      await syncStatusForStory(root, db.db, storyId, 'review');
+      await syncStatusForStory(root, db.provider, storyId, 'review');
 
       console.log(chalk.green(`Story ${storyId} marked as ready for review.`));
     });
@@ -229,7 +222,7 @@ myStoriesCommand
       }
 
       await withHiveContext(async ({ paths, db }) => {
-        const agent = requireAgentBySession(db.db, options.session);
+        const agent = requireAgentBySession(db.provider, options.session);
 
         if (!agent.team_id) {
           console.error(
@@ -246,7 +239,7 @@ myStoriesCommand
           : `Refactor: ${trimmedTitle}`;
 
         const story = createStory(
-          db.db,
+          db.provider,
           {
             teamId: agent.team_id,
             title: normalizedTitle,
@@ -258,7 +251,7 @@ myStoriesCommand
         );
 
         const updatedStory = updateStory(
-          db.db,
+          db.provider,
           story.id,
           {
             complexityScore: points,
@@ -268,7 +261,7 @@ myStoriesCommand
           paths.storiesDir
         );
 
-        createLog(db.db, {
+        createLog(db.provider, {
           agentId: agent.id,
           storyId: story.id,
           eventType: 'STORY_CREATED',

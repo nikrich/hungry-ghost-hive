@@ -1,13 +1,13 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { DatabaseProvider } from '../../db/provider.js';
 import { createRequirement, updateRequirement } from '../../db/queries/requirements.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
 import { isGodmodeActive } from './index.js';
 
 describe('isGodmodeActive', () => {
-  let db: Database;
+  let db: DatabaseProvider;
 
   beforeEach(async () => {
     db = await createTestDatabase();

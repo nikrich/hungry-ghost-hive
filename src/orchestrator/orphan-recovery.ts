@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { syncStatusForStory } from '../connectors/project-management/operations.js';
+import type { DatabaseProvider } from '../db/provider.js';
 import { createLog } from '../db/queries/logs.js';
 import {
   getInProgressStoriesWithInconsistentAssignments,
@@ -15,7 +15,7 @@ import {
  * Returns the story IDs that were recovered.
  */
 export function detectAndRecoverOrphanedStories(
-  db: Database,
+  db: DatabaseProvider,
   rootDir: string,
   storiesDir?: string
 ): string[] {

@@ -1,10 +1,13 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import blessed, { type Widgets } from 'blessed';
-import type { Database } from 'sql.js';
-import { queryAll, type StoryRow } from '../../../db/client.js';
+import { type StoryRow } from '../../../db/client.js';
+import type { DatabaseProvider } from '../../../db/provider.js';
 
-export function createStoriesPanel(screen: Widgets.Screen, db: Database): Widgets.ListTableElement {
+export function createStoriesPanel(
+  screen: Widgets.Screen,
+  db: DatabaseProvider
+): Widgets.ListTableElement {
   const table = blessed.listtable({
     parent: screen,
     top: '30%',
@@ -32,11 +35,9 @@ export function createStoriesPanel(screen: Widgets.Screen, db: Database): Widget
 
 export async function updateStoriesPanel(
   table: Widgets.ListTableElement,
-  db: Database
+  db: DatabaseProvider
 ): Promise<void> {
-  const stories = queryAll<StoryRow>(
-    db,
-    `
+  const stories = db.queryAll<StoryRow>(`
     SELECT * FROM stories
     ORDER BY
       CASE status
@@ -50,8 +51,7 @@ export async function updateStoriesPanel(
       END,
       created_at DESC
     LIMIT 20
-  `
-  );
+  `);
 
   const headers = ['ID', 'Title', 'Status', 'Complexity', 'Assigned To'];
 

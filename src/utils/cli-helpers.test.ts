@@ -2,10 +2,6 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../db/client.js', () => ({
-  queryOne: vi.fn(),
-}));
-
 vi.mock('../db/queries/agents.js', () => ({
   getAgentById: vi.fn(),
 }));
@@ -18,7 +14,6 @@ vi.mock('../db/queries/stories.js', () => ({
   getStoryById: vi.fn(),
 }));
 
-import { queryOne } from '../db/client.js';
 import { getAgentById } from '../db/queries/agents.js';
 import { getPullRequestById } from '../db/queries/pull-requests.js';
 import { getStoryById } from '../db/queries/stories.js';
@@ -29,7 +24,13 @@ import {
   requireStory,
 } from './cli-helpers.js';
 
-const mockDb = {} as any;
+const mockDb = {
+  queryOne: vi.fn(),
+  queryAll: vi.fn(),
+  run: vi.fn(),
+  close: vi.fn(),
+  withTransaction: vi.fn(),
+} as any;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -86,20 +87,19 @@ describe('requireAgent', () => {
 describe('requireAgentBySession', () => {
   it('returns the agent when session matches', () => {
     const agent = { id: 'agent-1', tmux_session: 'hive-senior-team' };
-    vi.mocked(queryOne).mockReturnValue(agent as any);
+    mockDb.queryOne.mockReturnValue(agent as any);
 
     const result = requireAgentBySession(mockDb, 'hive-senior-team');
 
     expect(result).toBe(agent);
-    expect(queryOne).toHaveBeenCalledWith(
-      mockDb,
+    expect(mockDb.queryOne).toHaveBeenCalledWith(
       expect.stringContaining("status != 'terminated'"),
       ['hive-senior-team']
     );
   });
 
   it('exits with error when session not found', () => {
-    vi.mocked(queryOne).mockReturnValue(undefined);
+    mockDb.queryOne.mockReturnValue(undefined);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
       throw new Error('process.exit called');

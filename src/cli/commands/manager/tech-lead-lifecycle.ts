@@ -33,7 +33,7 @@ export async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<vo
 
   // Phase 1: Read tech lead agents (brief lock)
   const techLeads = await ctx.withDb(async db => {
-    const leads = getAgentsByType(db.db, 'tech_lead');
+    const leads = getAgentsByType(db.provider, 'tech_lead');
     verboseLogCtx(ctx, `restartStaleTechLead: found ${leads.length} tech lead agent(s)`);
     return leads.map(tl => ({
       id: tl.id,
@@ -139,10 +139,10 @@ export async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<vo
 
     // Look up active requirement and teams to provide context to the restarted tech lead
     const initialPrompt = await ctx.withDb(async db => {
-      const planningReqs = getRequirementsByStatus(db.db, 'planning');
-      const inProgressReqs = getRequirementsByStatus(db.db, 'in_progress');
+      const planningReqs = getRequirementsByStatus(db.provider, 'planning');
+      const inProgressReqs = getRequirementsByStatus(db.provider, 'in_progress');
       const activeReq = planningReqs[0] ?? inProgressReqs[0] ?? null;
-      const teams = getAllTeams(db.db);
+      const teams = getAllTeams(db.provider);
 
       if (activeReq) {
         return generateTechLeadPrompt(
@@ -185,7 +185,7 @@ hive msg inbox ${techLeadInbox}
 
     // DB writes under brief lock
     await ctx.withDb(async db => {
-      createLog(db.db, {
+      createLog(db.provider, {
         agentId: 'manager',
         eventType: 'AGENT_SPAWNED',
         status: 'info',
@@ -198,7 +198,7 @@ hive msg inbox ${techLeadInbox}
           restart_reason: 'context_freshness',
         },
       });
-      updateAgent(db.db, techLead.id, {
+      updateAgent(db.provider, techLead.id, {
         status: 'working',
         createdAt: new Date().toISOString(),
       });

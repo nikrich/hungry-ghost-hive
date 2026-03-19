@@ -53,7 +53,14 @@ import { checkFeatureSignOff } from './feature-sign-off.js';
 import type { ManagerCheckContext } from './types.js';
 
 function makeCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheckContext {
-  const mockDb = { db: {} as never, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+  const mockProvider = {} as any;
+  const mockDb = {
+    db: {} as never,
+    provider: mockProvider,
+    save: vi.fn(),
+    close: vi.fn(),
+    runMigrations: vi.fn(),
+  };
   const mockScheduler = {
     spawnFeatureTest: vi.fn().mockResolvedValue({ id: 'team-1-feature-test-1' }),
   };

@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SqliteProvider, type DatabaseProvider } from '../db/provider.js';
 
 import type { HiveConfig } from '../config/schema.js';
 import { getLogsByEventType } from '../db/queries/logs.js';
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS requirements (
 );
 `;
 
-let db: Database;
+let db: DatabaseProvider;
 
 const mockHiveConfigWithE2E: HiveConfig = {
   e2e_tests: { path: './e2e' },
@@ -135,10 +135,11 @@ const mockHiveConfigWithoutE2E: HiveConfig = {} as HiveConfig;
 
 beforeEach(async () => {
   const SQL = await initSqlJs();
-  db = new SQL.Database();
-  db.run('PRAGMA foreign_keys = ON');
-  db.run(INITIAL_MIGRATION);
-  db.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
+  const rawDb = new SQL.Database();
+  rawDb.run('PRAGMA foreign_keys = ON');
+  rawDb.run(INITIAL_MIGRATION);
+  rawDb.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
+  db = new SqliteProvider(rawDb);
   vi.clearAllMocks();
 });
 

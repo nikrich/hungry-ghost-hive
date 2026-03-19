@@ -1,11 +1,11 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
 import { loadConfig } from '../../config/loader.js';
 import type { JiraConfig } from '../../config/schema.js';
+import type { DatabaseProvider } from '../../db/provider.js';
 import { createLog } from '../../db/queries/logs.js';
 import { getStoryById } from '../../db/queries/stories.js';
 import * as logger from '../../utils/logger.js';
@@ -122,7 +122,7 @@ export async function transitionJiraIssue(
  * @param newStatus - The new Hive status
  */
 export async function syncStoryStatusToJira(
-  db: Database,
+  db: DatabaseProvider,
   tokenStore: TokenStore,
   config: JiraConfig,
   storyId: string,
@@ -194,7 +194,7 @@ export async function syncStoryStatusToJira(
  */
 export async function syncStatusToJira(
   root: string,
-  db: Database,
+  db: DatabaseProvider,
   storyId: string,
   newStatus: string
 ): Promise<void> {

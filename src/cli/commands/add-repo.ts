@@ -25,7 +25,7 @@ export const addRepoCommand = new Command('add-repo')
 
       try {
         // Check if team already exists
-        const existingTeam = getTeamByName(db.db, options.team);
+        const existingTeam = getTeamByName(db.provider, options.team);
         if (existingTeam) {
           spinner.fail(chalk.red(`Team "${options.team}" already exists`));
           process.exit(1);
@@ -61,7 +61,7 @@ export const addRepoCommand = new Command('add-repo')
 
         // Create team in database
         spinner.text = 'Creating team...';
-        const team = createTeam(db.db, {
+        const team = createTeam(db.provider, {
           repoUrl: options.url,
           repoPath: relativeRepoPath,
           name: options.team,

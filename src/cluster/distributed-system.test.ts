@@ -4,7 +4,6 @@ import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'f
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { queryAll, queryOne, run } from '../db/client.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
 import { RaftMetadataStore } from './raft-store.js';
 import {
@@ -31,8 +30,7 @@ describe('distributed replication primitives', () => {
 
     ensureClusterTables(db, 'node-a');
 
-    const state = queryOne<{ node_id: string; event_counter: number }>(
-      db,
+    const state = db.queryOne<{ node_id: string; event_counter: number }>(
       'SELECT node_id, event_counter FROM cluster_state WHERE id = 1'
     );
 
@@ -48,8 +46,7 @@ describe('distributed replication primitives', () => {
     ensureClusterTables(db, 'node-a');
     ensureClusterTables(db, 'node-b');
 
-    const state = queryOne<{ node_id: string }>(
-      db,
+    const state = db.queryOne<{ node_id: string }>(
       'SELECT node_id FROM cluster_state WHERE id = 1'
     );
     expect(state?.node_id).toBe('node-b');
@@ -70,8 +67,7 @@ describe('distributed replication primitives', () => {
     const db = await createTestDatabase();
     const now = new Date().toISOString();
 
-    run(
-      db,
+    db.run(
       `
       INSERT INTO teams (id, repo_url, repo_path, name, created_at)
       VALUES ('team-1', 'https://example.com/a.git', 'repos/a', 'alpha', ?)
@@ -81,7 +77,7 @@ describe('distributed replication primitives', () => {
 
     const first = scanLocalChanges(db, 'node-a');
     const second = scanLocalChanges(db, 'node-a');
-    run(db, `UPDATE teams SET name = 'alpha-updated' WHERE id = 'team-1'`);
+    db.run(`UPDATE teams SET name = 'alpha-updated' WHERE id = 'team-1'`);
     const third = scanLocalChanges(db, 'node-a');
     const vv = getVersionVector(db);
 
@@ -97,8 +93,7 @@ describe('distributed replication primitives', () => {
     const db = await createTestDatabase();
     const now = new Date().toISOString();
 
-    run(
-      db,
+    db.run(
       `
       INSERT INTO teams (id, repo_url, repo_path, name, created_at)
       VALUES ('team-del', 'https://example.com/a.git', 'repos/a', 'alpha', ?)
@@ -107,17 +102,14 @@ describe('distributed replication primitives', () => {
     );
 
     scanLocalChanges(db, 'node-a');
-    run(db, `DELETE FROM teams WHERE id = 'team-del'`);
+    db.run(`DELETE FROM teams WHERE id = 'team-del'`);
     const emitted = scanLocalChanges(db, 'node-a');
-    const lastEvent = queryOne<{ op: string; row_id: string }>(
-      db,
-      `
+    const lastEvent = db.queryOne<{ op: string; row_id: string }>(`
       SELECT op, row_id
       FROM cluster_events
       ORDER BY actor_counter DESC
       LIMIT 1
-    `
-    );
+    `);
 
     expect(emitted).toBe(1);
     expect(lastEvent?.op).toBe('delete');
@@ -130,8 +122,7 @@ describe('distributed replication primitives', () => {
     const db = await createTestDatabase();
     const now = new Date().toISOString();
 
-    run(
-      db,
+    db.run(
       `
       INSERT INTO teams (id, repo_url, repo_path, name, created_at)
       VALUES
@@ -157,8 +148,7 @@ describe('distributed replication primitives', () => {
     const db = await createTestDatabase();
     const now = new Date().toISOString();
 
-    run(
-      db,
+    db.run(
       `
       INSERT INTO teams (id, repo_url, repo_path, name, created_at)
       VALUES
@@ -187,7 +177,7 @@ describe('distributed replication primitives', () => {
     });
 
     const applied = applyRemoteEvents(db, 'node-a', [event]);
-    const count = queryOne<{ count: number }>(db, 'SELECT COUNT(*) as count FROM cluster_events');
+    const count = db.queryOne<{ count: number }>('SELECT COUNT(*) as count FROM cluster_events');
 
     expect(applied).toBe(0);
     expect(count?.count).toBe(0);
@@ -206,7 +196,7 @@ describe('distributed replication primitives', () => {
 
     const first = applyRemoteEvents(db, 'node-a', [event]);
     const second = applyRemoteEvents(db, 'node-a', [event]);
-    const count = queryOne<{ count: number }>(db, 'SELECT COUNT(*) as count FROM cluster_events');
+    const count = db.queryOne<{ count: number }>('SELECT COUNT(*) as count FROM cluster_events');
 
     expect(first).toBe(1);
     expect(second).toBe(0);
@@ -233,7 +223,7 @@ describe('distributed replication primitives', () => {
 
     applyRemoteEvents(db, 'node-a', [newer]);
     const appliedStale = applyRemoteEvents(db, 'node-a', [stale]);
-    const story = queryOne<{ title: string }>(db, `SELECT title FROM stories WHERE id = 'STORY-1'`);
+    const story = db.queryOne<{ title: string }>(`SELECT title FROM stories WHERE id = 'STORY-1'`);
 
     expect(appliedStale).toBe(0);
     expect(story?.title).toBe('New title');
@@ -259,8 +249,7 @@ describe('distributed replication primitives', () => {
     });
 
     const applied = applyRemoteEvents(db, 'node-local', [fromZ, fromA]);
-    const story = queryOne<{ title: string }>(
-      db,
+    const story = db.queryOne<{ title: string }>(
       `SELECT title FROM stories WHERE id = 'STORY-TIE-A'`
     );
 
@@ -288,8 +277,7 @@ describe('distributed replication primitives', () => {
     });
 
     const applied = applyRemoteEvents(db, 'node-local', [counter2, counter1]);
-    const story = queryOne<{ title: string }>(
-      db,
+    const story = db.queryOne<{ title: string }>(
       `SELECT title FROM stories WHERE id = 'STORY-TIE-C'`
     );
 
@@ -305,8 +293,7 @@ describe('distributed story merge behavior', () => {
     const db = await createTestDatabase();
     const now = new Date().toISOString();
 
-    run(
-      db,
+    db.run(
       `
       INSERT INTO teams (id, repo_url, repo_path, name, created_at)
       VALUES
@@ -328,9 +315,9 @@ describe('distributed story merge behavior', () => {
     });
 
     const merged = mergeSimilarStories(db, 0.8);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
-      row => row.id
-    );
+    const ids = db
+      .queryAll<{ id: string }>('SELECT id FROM stories ORDER BY id')
+      .map(row => row.id);
 
     expect(merged).toBe(0);
     expect(ids).toEqual(['STORY-TA', 'STORY-TB']);
@@ -341,8 +328,7 @@ describe('distributed story merge behavior', () => {
   it('does not merge similar stories from different requirements', async () => {
     const db = await createTestDatabase();
 
-    run(
-      db,
+    db.run(
       `
       INSERT INTO requirements (id, title, description, submitted_by, status, created_at)
       VALUES
@@ -364,9 +350,9 @@ describe('distributed story merge behavior', () => {
     });
 
     const merged = mergeSimilarStories(db, 0.8);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
-      row => row.id
-    );
+    const ids = db
+      .queryAll<{ id: string }>('SELECT id FROM stories ORDER BY id')
+      .map(row => row.id);
 
     expect(merged).toBe(0);
     expect(ids).toEqual(['STORY-R1', 'STORY-R2']);
@@ -391,9 +377,9 @@ describe('distributed story merge behavior', () => {
     });
 
     const merged = mergeSimilarStories(db, 0.45);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
-      row => row.id
-    );
+    const ids = db
+      .queryAll<{ id: string }>('SELECT id FROM stories ORDER BY id')
+      .map(row => row.id);
 
     expect(merged).toBe(2);
     expect(ids).toEqual(['STORY-100']);
@@ -422,75 +408,60 @@ describe('distributed story merge behavior', () => {
       description: 'Generate downloadable invoice PDFs for enterprise customers',
     });
 
-    run(
-      db,
+    db.run(
       `
       INSERT INTO agents (id, type, status, current_story_id, created_at, updated_at)
       VALUES ('agent-1', 'senior', 'working', 'STORY-DUP', ?, ?)
     `,
       [now, now]
     );
-    run(
-      db,
+    db.run(
       `
       INSERT INTO pull_requests (id, story_id, team_id, branch_name, status, created_at, updated_at)
       VALUES ('PR-1', 'STORY-DUP', NULL, 'feature/story-dup', 'queued', ?, ?)
     `,
       [now, now]
     );
-    run(
-      db,
+    db.run(
       `
       INSERT INTO escalations (id, story_id, from_agent_id, to_agent_id, reason, status, created_at)
       VALUES ('ESC-1', 'STORY-DUP', 'agent-1', NULL, 'blocked', 'pending', ?)
     `,
       [now]
     );
-    run(
-      db,
+    db.run(
       `
       INSERT INTO agent_logs (agent_id, story_id, event_type, status, message, timestamp)
       VALUES ('agent-1', 'STORY-DUP', 'INFO', 'working', 'Working duplicate story', ?)
     `,
       [now]
     );
-    run(
-      db,
-      `
+    db.run(`
       INSERT INTO story_dependencies (story_id, depends_on_story_id)
       VALUES ('STORY-DUP', 'STORY-DEP'), ('STORY-ROOT', 'STORY-DUP')
-    `
-    );
+    `);
 
     const merged = mergeSimilarStories(db, 0.8);
 
-    const prStory = queryOne<{ story_id: string }>(
-      db,
+    const prStory = db.queryOne<{ story_id: string }>(
       `SELECT story_id FROM pull_requests WHERE id = 'PR-1'`
     );
-    const escStory = queryOne<{ story_id: string }>(
-      db,
+    const escStory = db.queryOne<{ story_id: string }>(
       `SELECT story_id FROM escalations WHERE id = 'ESC-1'`
     );
-    const logStory = queryOne<{ story_id: string }>(db, `SELECT story_id FROM agent_logs LIMIT 1`);
-    const agentStory = queryOne<{ current_story_id: string }>(
-      db,
+    const logStory = db.queryOne<{ story_id: string }>(`SELECT story_id FROM agent_logs LIMIT 1`);
+    const agentStory = db.queryOne<{ current_story_id: string }>(
       `SELECT current_story_id FROM agents WHERE id = 'agent-1'`
     );
-    const mergeRecord = queryOne<{ duplicate_story_id: string; canonical_story_id: string }>(
-      db,
+    const mergeRecord = db.queryOne<{ duplicate_story_id: string; canonical_story_id: string }>(
       `SELECT duplicate_story_id, canonical_story_id FROM cluster_story_merges WHERE duplicate_story_id = 'STORY-DUP'`
     );
-    const dupRefs = queryOne<{ count: number }>(
-      db,
-      `
+    const dupRefs = db.queryOne<{ count: number }>(`
       SELECT COUNT(*) as count
       FROM story_dependencies
       WHERE story_id = 'STORY-DUP' OR depends_on_story_id = 'STORY-DUP'
-    `
-    );
-    const selfRefs = queryOne<{ count: number }>(
-      db,
+    `);
+    const selfRefs = db.queryOne<{ count: number }>(
       `SELECT COUNT(*) as count FROM story_dependencies WHERE story_id = depends_on_story_id`
     );
 
@@ -522,9 +493,9 @@ describe('distributed story merge behavior', () => {
     });
 
     const merged = mergeSimilarStories(db, 0.95);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
-      row => row.id
-    );
+    const ids = db
+      .queryAll<{ id: string }>('SELECT id FROM stories ORDER BY id')
+      .map(row => row.id);
 
     expect(merged).toBe(0);
     expect(ids).toEqual(['STORY-S1', 'STORY-S2']);
@@ -553,9 +524,9 @@ describe('distributed story merge behavior', () => {
     });
 
     const secondMerge = mergeSimilarStories(db, 0.8);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
-      row => row.id
-    );
+    const ids = db
+      .queryAll<{ id: string }>('SELECT id FROM stories ORDER BY id')
+      .map(row => row.id);
 
     expect(secondMerge).toBe(0);
     expect(ids).toEqual(['STORY-001', 'STORY-002']);
@@ -870,8 +841,7 @@ function insertStoryRow(
 ): void {
   const payload = storyPayload(id, overrides);
 
-  run(
-    db,
+  db.run(
     `
     INSERT INTO stories (
       id, requirement_id, team_id, title, description, acceptance_criteria,

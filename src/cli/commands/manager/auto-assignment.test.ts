@@ -3,11 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { autoAssignPlannedStories } from './auto-assignment.js';
 
-vi.mock('../../../db/client.js', () => ({
-  queryAll: vi.fn(),
-}));
-
-import { queryAll } from '../../../db/client.js';
+const mockProviderQueryAll = vi.fn();
 
 describe('autoAssignPlannedStories', () => {
   beforeEach(() => {
@@ -28,13 +24,17 @@ describe('autoAssignPlannedStories', () => {
       preventedDuplicates: 0,
     });
     const save = vi.fn();
-    const mockDb = { db: {} as never, save };
+    const mockDb = {
+      db: {} as never,
+      provider: { queryAll: mockProviderQueryAll },
+      save,
+    };
     const scheduler = { checkScaling, checkMergeQueue, assignStories } as never;
 
     let callCount = 0;
     const withDb = vi.fn(async (fn: (db: typeof mockDb, scheduler: any) => unknown) => {
       callCount += 1;
-      vi.mocked(queryAll).mockReturnValueOnce([
+      mockProviderQueryAll.mockReturnValueOnce([
         { count: options?.assignableUnassigned ?? 0 },
       ] as never);
       return fn(mockDb, scheduler);

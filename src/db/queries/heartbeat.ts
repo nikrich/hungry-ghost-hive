@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
-import { run } from '../client.js';
+import type { DatabaseProvider } from '../provider.js';
 
 /** Default timeout in seconds for considering an agent stale */
 const DEFAULT_STALE_TIMEOUT_SECONDS = 15;
@@ -9,15 +8,15 @@ const DEFAULT_STALE_TIMEOUT_SECONDS = 15;
 /**
  * Update agent's last_seen timestamp (heartbeat)
  */
-export function updateAgentHeartbeat(db: Database, agentId: string): void {
-  run(db, 'UPDATE agents SET last_seen = CURRENT_TIMESTAMP WHERE id = ?', [agentId]);
+export function updateAgentHeartbeat(provider: DatabaseProvider, agentId: string): void {
+  provider.run('UPDATE agents SET last_seen = CURRENT_TIMESTAMP WHERE id = ?', [agentId]);
 }
 
 /**
  * Get agents that haven't sent a heartbeat within the specified timeout (in seconds)
  */
 export function getStaleAgents(
-  db: Database,
+  provider: DatabaseProvider,
   timeoutSeconds: number = DEFAULT_STALE_TIMEOUT_SECONDS
 ): Array<{
   id: string;
@@ -42,37 +41,20 @@ export function getStaleAgents(
       )
   `;
 
-  const stmt = db.prepare(query);
-  stmt.bind([timeoutSeconds, timeoutSeconds]);
-
-  const results: Array<{
+  return provider.queryAll<{
     id: string;
     type: string;
     status: string;
     last_seen: string | null;
     seconds_since_heartbeat: number;
-  }> = [];
-
-  while (stmt.step()) {
-    const row = stmt.getAsObject() as {
-      id: string;
-      type: string;
-      status: string;
-      last_seen: string | null;
-      seconds_since_heartbeat: number;
-    };
-    results.push(row);
-  }
-  stmt.free();
-
-  return results;
+  }>(query, [timeoutSeconds, timeoutSeconds]);
 }
 
 /**
  * Check if agent's heartbeat is current (within timeout)
  */
 export function isAgentHeartbeatCurrent(
-  db: Database,
+  provider: DatabaseProvider,
   agentId: string,
   timeoutSeconds: number = DEFAULT_STALE_TIMEOUT_SECONDS
 ): boolean {
@@ -87,15 +69,6 @@ export function isAgentHeartbeatCurrent(
     WHERE id = ?
   `;
 
-  const stmt = db.prepare(query);
-  stmt.bind([timeoutSeconds, agentId]);
-
-  let isCurrent = false;
-  if (stmt.step()) {
-    const row = stmt.getAsObject() as { is_current: number };
-    isCurrent = row.is_current === 1;
-  }
-  stmt.free();
-
-  return isCurrent;
+  const row = provider.queryOne<{ is_current: number }>(query, [timeoutSeconds, agentId]);
+  return row?.is_current === 1;
 }

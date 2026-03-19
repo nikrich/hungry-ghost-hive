@@ -19,18 +19,18 @@ export async function checkFeatureSignOff(ctx: ManagerCheckContext): Promise<voi
   }
 
   await ctx.withDb(async (db, scheduler) => {
-    const inProgressReqs = getRequirementsByStatus(db.db, 'in_progress').filter(
+    const inProgressReqs = getRequirementsByStatus(db.provider, 'in_progress').filter(
       req => req.feature_branch || req.target_branch !== 'main'
     );
     verboseLogCtx(ctx, `checkFeatureSignOff: candidates=${inProgressReqs.length}`);
 
     if (inProgressReqs.length === 0) return;
 
-    const teams = getAllTeams(db.db);
+    const teams = getAllTeams(db.provider);
     const e2eTestsPath = ctx.config.e2e_tests!.path;
 
     for (const req of inProgressReqs) {
-      const stories = getStoriesByRequirement(db.db, req.id);
+      const stories = getStoriesByRequirement(db.provider, req.id);
       if (stories.length === 0) {
         verboseLogCtx(ctx, `checkFeatureSignOff: req=${req.id} skip=no_stories`);
         continue;
@@ -68,7 +68,7 @@ export async function checkFeatureSignOff(ctx: ManagerCheckContext): Promise<voi
 
       try {
         // Transition requirement to sign_off
-        updateRequirement(db.db, req.id, { status: 'sign_off' });
+        updateRequirement(db.provider, req.id, { status: 'sign_off' });
 
         // Spawn feature_test agent
         const agent = await scheduler.spawnFeatureTest(teamId, team.name, team.repo_path, {
@@ -77,7 +77,7 @@ export async function checkFeatureSignOff(ctx: ManagerCheckContext): Promise<voi
           e2eTestsPath,
         });
 
-        createLog(db.db, {
+        createLog(db.provider, {
           agentId: agent.id,
           eventType: 'FEATURE_TEST_SPAWNED',
           message: `Spawned feature_test agent for requirement ${req.id} (branch: ${effectiveBranch})`,
@@ -88,7 +88,7 @@ export async function checkFeatureSignOff(ctx: ManagerCheckContext): Promise<voi
             stories_merged: stories.length,
           },
         });
-        createLog(db.db, {
+        createLog(db.provider, {
           agentId: 'manager',
           eventType: 'FEATURE_SIGN_OFF_TRIGGERED',
           message: `All ${stories.length} stories merged for ${req.id} — triggered feature sign-off`,
@@ -108,7 +108,7 @@ export async function checkFeatureSignOff(ctx: ManagerCheckContext): Promise<voi
         );
       } catch (err) {
         // Revert status on failure
-        updateRequirement(db.db, req.id, { status: 'in_progress' });
+        updateRequirement(db.provider, req.id, { status: 'in_progress' });
         db.save();
         console.error(
           chalk.red(`  Feature sign-off failed for ${req.id}:`),

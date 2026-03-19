@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SqliteProvider, type DatabaseProvider } from '../db/provider.js';
 import { createPullRequest } from '../db/queries/pull-requests.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
 import { closeStaleGitHubPRs, getExistingPRIdentifiers, syncOpenGitHubPRs } from './pr-sync.js';
@@ -14,7 +14,7 @@ import { execa } from 'execa';
 
 const mockExeca = vi.mocked(execa);
 
-let db: Database;
+let db: DatabaseProvider;
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -200,7 +200,9 @@ describe('syncOpenGitHubPRs', () => {
     expect(existingBranches.has('feature/shared')).toBe(true);
     expect(existingPrNumbers.has(10)).toBe(true);
 
-    const countResult = db.exec('SELECT COUNT(*) as count FROM pull_requests');
+    const countResult = (db as SqliteProvider).db.exec(
+      'SELECT COUNT(*) as count FROM pull_requests'
+    );
     expect(countResult[0].values[0][0]).toBe(1);
   });
 
@@ -246,7 +248,7 @@ describe('syncOpenGitHubPRs', () => {
 
     expect(result.synced).toBe(1);
     // Verify the PR was created with the team ID
-    const prs = db.exec('SELECT team_id FROM pull_requests');
+    const prs = (db as SqliteProvider).db.exec('SELECT team_id FROM pull_requests');
     expect(prs[0].values[0][0]).toBe('team-1');
   });
 
@@ -270,7 +272,7 @@ describe('syncOpenGitHubPRs', () => {
 
     await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set());
 
-    const prs = db.exec('SELECT story_id FROM pull_requests');
+    const prs = (db as SqliteProvider).db.exec('SELECT story_id FROM pull_requests');
     expect(prs[0].values[0][0]).toBe('STORY-GOD-001');
   });
 
@@ -293,7 +295,7 @@ describe('syncOpenGitHubPRs', () => {
     expect(result.imported).toHaveLength(1);
 
     // Verify the PR was created with null story_id
-    const prs = db.exec('SELECT story_id FROM pull_requests');
+    const prs = (db as SqliteProvider).db.exec('SELECT story_id FROM pull_requests');
     expect(prs[0].values[0][0]).toBeNull();
   });
 
@@ -491,7 +493,9 @@ describe('syncOpenGitHubPRs', () => {
     await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set(), null, maxAgeHours);
 
     // Check that a log entry was created
-    const logs = db.exec("SELECT * FROM agent_logs WHERE event_type = 'PR_SYNC_SKIPPED'");
+    const logs = (db as SqliteProvider).db.exec(
+      "SELECT * FROM agent_logs WHERE event_type = 'PR_SYNC_SKIPPED'"
+    );
     expect(logs.length).toBeGreaterThan(0);
     expect(logs[0].values.length).toBeGreaterThan(0);
   });
@@ -512,7 +516,9 @@ describe('syncOpenGitHubPRs', () => {
     await syncOpenGitHubPRs(db, '/repo', null, new Set(), new Set());
 
     // Check that a log entry was created
-    const logs = db.exec("SELECT * FROM agent_logs WHERE event_type = 'PR_SYNC_SKIPPED'");
+    const logs = (db as SqliteProvider).db.exec(
+      "SELECT * FROM agent_logs WHERE event_type = 'PR_SYNC_SKIPPED'"
+    );
     expect(logs.length).toBeGreaterThan(0);
     expect(logs[0].values.length).toBeGreaterThan(0);
   });
@@ -660,7 +666,9 @@ describe('closeStaleGitHubPRs', () => {
 
     await closeStaleGitHubPRs('/root', db);
 
-    const logs = db.exec("SELECT message, metadata FROM agent_logs WHERE event_type = 'PR_CLOSED'");
+    const logs = (db as SqliteProvider).db.exec(
+      "SELECT message, metadata FROM agent_logs WHERE event_type = 'PR_CLOSED'"
+    );
     expect(logs.length).toBeGreaterThan(0);
     const message = logs[0].values[0][0] as string;
     expect(message).toContain('#15');

@@ -5,7 +5,6 @@ import { Command } from 'commander';
 import { existsSync, unlinkSync } from 'fs';
 import { join, resolve } from 'path';
 import readline from 'readline';
-import { queryAll, queryOne, run } from '../../db/client.js';
 import { removeWorktree } from '../../git/worktree.js';
 import { killAllHiveSessions } from '../../tmux/manager.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
@@ -17,13 +16,13 @@ import { withHiveContext } from '../../utils/with-hive-context.js';
  * is already performing a destructive nuke operation.
  */
 async function runDbDeletions(
-  dbRef: { db: { run: (sql: string, params?: unknown[]) => void }; save: () => void },
+  dbRef: { provider: { run: (sql: string, params?: unknown[]) => void }; save: () => void },
   statements: string[],
   label: string
 ): Promise<boolean> {
   try {
     for (const sql of statements) {
-      run(dbRef.db as Parameters<typeof run>[0], sql);
+      dbRef.provider.run(sql);
     }
     dbRef.save();
     return true;
@@ -92,10 +91,9 @@ async function confirm(message: string): Promise<boolean> {
  */
 async function removeAgentWorktrees(
   root: string,
-  db: { db: Parameters<typeof queryAll>[0] }
+  db: { provider: { queryAll: <T>(sql: string, params?: unknown[]) => T[] } }
 ): Promise<number> {
-  const agents = queryAll<{ worktree_path: string | null }>(
-    db.db,
+  const agents = db.provider.queryAll<{ worktree_path: string | null }>(
     'SELECT worktree_path FROM agents WHERE worktree_path IS NOT NULL'
   );
   let removed = 0;
@@ -133,7 +131,9 @@ export const nukeCommand = new Command('nuke')
       .action(async (options: { force?: boolean }) => {
         await withHiveContext(async ({ db }) => {
           // Count stories
-          const count = queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM stories');
+          const count = db.provider.queryOne<{ count: number }>(
+            'SELECT COUNT(*) as count FROM stories'
+          );
           const storyCount = count?.count || 0;
 
           if (storyCount === 0) {
@@ -182,8 +182,7 @@ export const nukeCommand = new Command('nuke')
       .action(async (options: { force?: boolean }) => {
         try {
           await withHiveContext(async ({ db, root, paths }) => {
-            const count = queryOne<{ count: number }>(
-              db.db,
+            const count = db.provider.queryOne<{ count: number }>(
               'SELECT COUNT(*) as count FROM agents'
             );
             const agentCount = count?.count || 0;
@@ -259,8 +258,7 @@ export const nukeCommand = new Command('nuke')
       .option('--force', 'Skip confirmation')
       .action(async (options: { force?: boolean }) => {
         await withHiveContext(async ({ db }) => {
-          const count = queryOne<{ count: number }>(
-            db.db,
+          const count = db.provider.queryOne<{ count: number }>(
             'SELECT COUNT(*) as count FROM requirements'
           );
           const reqCount = count?.count || 0;
@@ -271,7 +269,8 @@ export const nukeCommand = new Command('nuke')
           }
 
           const storyCount =
-            queryOne<{ count: number }>(db.db, 'SELECT COUNT(*) as count FROM stories')?.count || 0;
+            db.provider.queryOne<{ count: number }>('SELECT COUNT(*) as count FROM stories')
+              ?.count || 0;
 
           console.log(
             chalk.yellow(

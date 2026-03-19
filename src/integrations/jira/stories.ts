@@ -1,10 +1,10 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import type { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
 import type { StoryRow } from '../../db/client.js';
+import type { DatabaseProvider } from '../../db/provider.js';
 import { createSyncRecord, getSyncRecordByEntity } from '../../db/queries/integration-sync.js';
 import { updateRequirement, type RequirementRow } from '../../db/queries/requirements.js';
 import { getStoryById, getStoryDependencies, updateStory } from '../../db/queries/stories.js';
@@ -204,7 +204,7 @@ export async function tryMoveToActiveSprint(
  * and moves stories to the active sprint.
  */
 export async function syncRequirementToJira(
-  db: Database,
+  db: DatabaseProvider,
   tokenStore: TokenStore,
   config: JiraConfig,
   requirement: RequirementRow,
@@ -398,7 +398,7 @@ export async function syncRequirementToJira(
  * Moves the story to the active sprint after creation.
  */
 export async function syncStoryToJira(
-  db: Database,
+  db: DatabaseProvider,
   tokenStore: TokenStore,
   config: JiraConfig,
   story: StoryRow,

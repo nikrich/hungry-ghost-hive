@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import {
   getCliRuntimeBuilder,
   resolveRuntimeModelForCli,
@@ -14,7 +13,7 @@ import {
   postCommentOnIssue,
   syncStatusForStory,
 } from '../connectors/project-management/operations.js';
-import { queryAll, withTransaction } from '../db/client.js';
+import type { DatabaseProvider } from '../db/provider.js';
 import {
   createAgent,
   getAgentById,
@@ -95,12 +94,12 @@ export interface SchedulerConfig {
 }
 
 export class Scheduler {
-  private db: Database;
+  private db: DatabaseProvider;
   private config: SchedulerConfig;
   private saveFn?: () => void;
   private pmQueue: PMOperationQueue;
 
-  constructor(db: Database, config: SchedulerConfig) {
+  constructor(db: DatabaseProvider, config: SchedulerConfig) {
     this.db = db;
     this.config = config;
     this.saveFn = config.saveFn;
@@ -398,37 +397,33 @@ export class Scheduler {
 
         // Assign the story (atomic transaction)
         try {
-          await withTransaction(
-            this.db,
-            () => {
-              updateStory(
-                this.db,
-                story.id,
-                {
-                  assignedAgentId: targetAgent.id,
-                  status: 'in_progress',
-                },
-                this.storiesDir
-              );
+          await this.db.withTransaction(() => {
+            updateStory(
+              this.db,
+              story.id,
+              {
+                assignedAgentId: targetAgent.id,
+                status: 'in_progress',
+              },
+              this.storiesDir
+            );
 
-              updateAgent(this.db, targetAgent.id, {
-                status: 'working',
-                currentStoryId: story.id,
-              });
+            updateAgent(this.db, targetAgent.id, {
+              status: 'working',
+              currentStoryId: story.id,
+            });
 
-              const message = isBlocker
-                ? `Assigned to ${targetAgent.type} (escalated due to being a dependency blocker)`
-                : `Assigned to ${targetAgent.type}`;
+            const message = isBlocker
+              ? `Assigned to ${targetAgent.type} (escalated due to being a dependency blocker)`
+              : `Assigned to ${targetAgent.type}`;
 
-              createLog(this.db, {
-                agentId: targetAgent.id,
-                storyId: story.id,
-                eventType: 'STORY_ASSIGNED',
-                message,
-              });
-            },
-            this.saveFn
-          );
+            createLog(this.db, {
+              agentId: targetAgent.id,
+              storyId: story.id,
+              eventType: 'STORY_ASSIGNED',
+              message,
+            });
+          }, this.saveFn);
           assigned++;
 
           // Keep local availability snapshot in sync so we don't reassign
@@ -595,8 +590,7 @@ export class Scheduler {
     if (!agent || !agent.team_id) return null;
 
     // Find unassigned planned stories for this team
-    const stories = queryAll<StoryRow>(
-      this.db,
+    const stories = this.db.queryAll<StoryRow>(
       `
       SELECT * FROM stories
       WHERE team_id = ?
@@ -685,8 +679,7 @@ export class Scheduler {
     revived: string[];
     orphanedRecovered: string[];
   }> {
-    const allAgents = queryAll<AgentRow>(
-      this.db,
+    const allAgents = this.db.queryAll<AgentRow>(
       `
       SELECT * FROM agents WHERE status != 'terminated'
     `
@@ -780,8 +773,7 @@ export class Scheduler {
    */
   private async scaleQAAgents(teamId: string, teamName: string, repoPath: string): Promise<void> {
     // Count pending QA work: explicit QA statuses OR any non-merged story with an open PR.
-    const qaStories = queryAll<StoryRow>(
-      this.db,
+    const qaStories = this.db.queryAll<StoryRow>(
       `
       SELECT DISTINCT s.* FROM stories s
       LEFT JOIN pull_requests pr ON pr.story_id = s.id
@@ -1135,8 +1127,7 @@ export class Scheduler {
    * active even after stories move from planned to in_progress/review/qa.
    */
   private isGodmodeActive(): boolean {
-    const activeRequirements = queryAll<RequirementRow>(
-      this.db,
+    const activeRequirements = this.db.queryAll<RequirementRow>(
       `SELECT * FROM requirements WHERE status IN ('planning', 'planned', 'in_progress') AND godmode = 1`
     );
     return activeRequirements.length > 0;
@@ -1257,8 +1248,7 @@ export class Scheduler {
   }
 
   private getTeamStories(teamId: string): StoryRow[] {
-    return queryAll<StoryRow>(
-      this.db,
+    return this.db.queryAll<StoryRow>(
       `
       SELECT * FROM stories
       WHERE team_id = ? AND status IN ('planned', 'estimated')

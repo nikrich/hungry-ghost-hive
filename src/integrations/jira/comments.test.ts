@@ -3,9 +3,10 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import initSqlJs, { type Database } from 'sql.js';
+import initSqlJs from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
+import { SqliteProvider, type DatabaseProvider } from '../../db/provider.js';
 import { JiraClient } from './client.js';
 import {
   createSubtask,
@@ -322,13 +323,13 @@ describe('postComment', () => {
 });
 
 describe('postJiraLifecycleComment', () => {
-  let db: Database;
+  let db: DatabaseProvider;
 
   beforeEach(async () => {
     const SQL = await initSqlJs();
-    db = new SQL.Database();
+    const rawDb = new SQL.Database();
 
-    db.run(`
+    rawDb.run(`
       CREATE TABLE stories (
         id TEXT PRIMARY KEY,
         title TEXT,
@@ -338,12 +339,13 @@ describe('postJiraLifecycleComment', () => {
       )
     `);
 
-    db.run(`INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`, [
+    rawDb.run(`INSERT INTO stories (id, title, description, jira_issue_key) VALUES (?, ?, ?, ?)`, [
       'STORY-1',
       'Test Story',
       'Description',
       'PROJ-123',
     ]);
+    db = new SqliteProvider(rawDb);
   });
 
   it('should skip posting comment if story has no Jira issue key', async () => {
@@ -465,13 +467,13 @@ describe('transitionSubtask', () => {
 });
 
 describe('postProgressToSubtask', () => {
-  let db: Database;
+  let db: DatabaseProvider;
 
   beforeEach(async () => {
     const SQL = await initSqlJs();
-    db = new SQL.Database();
+    const rawDb = new SQL.Database();
 
-    db.run(`
+    rawDb.run(`
       CREATE TABLE stories (
         id TEXT PRIMARY KEY,
         title TEXT,
@@ -480,6 +482,7 @@ describe('postProgressToSubtask', () => {
         jira_subtask_key TEXT
       )
     `);
+    db = new SqliteProvider(rawDb);
   });
 
   it('should skip when story has no subtask key', async () => {

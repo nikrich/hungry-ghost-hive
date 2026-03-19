@@ -2,6 +2,7 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
+import type { DatabaseProvider } from '../../db/provider.js';
 import { getActiveAgents, getAllAgents } from '../../db/queries/agents.js';
 import { getPendingEscalations, getPendingHumanEscalations } from '../../db/queries/escalations.js';
 import { getLogsByStory, getRecentLogs } from '../../db/queries/logs.js';
@@ -25,16 +26,16 @@ export const statusCommand = new Command('status')
   .action(async (options: { team?: string; story?: string; json?: boolean }) => {
     await withReadOnlyHiveContext(({ db }) => {
       if (options.story) {
-        showStoryStatus(db.db, options.story, options.json);
+        showStoryStatus(db.provider, options.story, options.json);
       } else if (options.team) {
-        showTeamStatus(db.db, options.team, options.json);
+        showTeamStatus(db.provider, options.team, options.json);
       } else {
-        showOverallStatus(db.db, options.json);
+        showOverallStatus(db.provider, options.json);
       }
     });
   });
 
-function showOverallStatus(db: import('sql.js').Database, json?: boolean): void {
+function showOverallStatus(db: DatabaseProvider, json?: boolean): void {
   const teams = getAllTeams(db);
   const allAgents = getAllAgents(db);
   const activeAgents = getActiveAgents(db);
@@ -153,7 +154,7 @@ function showOverallStatus(db: import('sql.js').Database, json?: boolean): void 
   }
 }
 
-function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: boolean): void {
+function showTeamStatus(db: DatabaseProvider, teamName: string, json?: boolean): void {
   const team = getTeamByName(db, teamName);
   if (!team) {
     console.error(chalk.red(`Team not found: ${teamName}`));
@@ -237,7 +238,7 @@ function showTeamStatus(db: import('sql.js').Database, teamName: string, json?: 
   }
 }
 
-function showStoryStatus(db: import('sql.js').Database, storyId: string, json?: boolean): void {
+function showStoryStatus(db: DatabaseProvider, storyId: string, json?: boolean): void {
   const story = requireStory(db, storyId);
 
   const dependencies = getStoryDependencies(db, story.id);

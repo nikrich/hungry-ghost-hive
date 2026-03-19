@@ -1,9 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { execa } from 'execa';
-import type { Database } from 'sql.js';
 import { syncStatusForStory } from '../connectors/project-management/operations.js';
-import { queryAll, withTransaction } from '../db/client.js';
+import type { DatabaseProvider } from '../db/provider.js';
+// import { queryAll, withTransaction } from '../db/client.js' — removed (using provider methods);
 import { createLog } from '../db/queries/logs.js';
 import { createPullRequest } from '../db/queries/pull-requests.js';
 import { updateStory } from '../db/queries/stories.js';
@@ -59,23 +59,20 @@ interface ExistingPRNumberRow {
  *   Defaults to true.
  */
 export function getExistingPRIdentifiers(
-  db: Database,
+  db: DatabaseProvider,
   includeTerminalBranches = true
 ): { existingBranches: Set<string>; existingPrNumbers: Set<number> } {
   const branchQuery = includeTerminalBranches
     ? 'SELECT branch_name FROM pull_requests'
     : "SELECT branch_name FROM pull_requests WHERE status NOT IN ('merged', 'closed')";
-  const branchRows = queryAll<ExistingPRBranchRow>(db, branchQuery);
+  const branchRows = db.queryAll<ExistingPRBranchRow>(branchQuery);
   const existingBranches = new Set(branchRows.map(row => row.branch_name));
 
-  const numberRows = queryAll<ExistingPRNumberRow>(
-    db,
-    `
+  const numberRows = db.queryAll<ExistingPRNumberRow>(`
     SELECT DISTINCT github_pr_number
     FROM pull_requests
     WHERE github_pr_number IS NOT NULL
-  `
-  );
+  `);
   const existingPrNumbers = new Set(numberRows.map(row => Number(row.github_pr_number)));
 
   return { existingBranches, existingPrNumbers };
@@ -120,7 +117,7 @@ export async function fetchOpenGitHubPRs(
  * @param maxAgeHours - Optional max age in hours for PRs (default: no limit)
  */
 export async function syncOpenGitHubPRs(
-  db: Database,
+  db: DatabaseProvider,
   repoDir: string,
   teamId: string | null,
   existingBranches: Set<string>,
@@ -164,8 +161,7 @@ export async function syncOpenGitHubPRs(
     // If the PR has a story ID, check if the story is active
     if (storyId) {
       // Check if the story exists and is active (not merged)
-      const storyRows = queryAll<{ id: string; status: string }>(
-        db,
+      const storyRows = db.queryAll<{ id: string; status: string }>(
         `SELECT id, status FROM stories WHERE id = ? COLLATE NOCASE AND status != 'merged'`,
         [storyId]
       );
@@ -222,7 +218,7 @@ export async function syncOpenGitHubPRs(
  */
 export async function syncAllTeamOpenPRs(
   root: string,
-  db: Database,
+  db: DatabaseProvider,
   saveFn: () => void,
   maxAgeHours?: number
 ): Promise<number> {
@@ -265,7 +261,7 @@ export async function syncAllTeamOpenPRs(
  */
 export async function syncMergedPRsFromGitHub(
   root: string,
-  db: Database,
+  db: DatabaseProvider,
   saveFn: () => void
 ): Promise<number> {
   const teams = getAllTeams(db);
@@ -308,8 +304,7 @@ export async function syncMergedPRsFromGitHub(
       }
 
       const placeholders = candidateStoryIds.map(() => '?').join(',');
-      const updatableStories = queryAll<{ id: string }>(
-        db,
+      const updatableStories = db.queryAll<{ id: string }>(
         `
         SELECT id
         FROM stories
@@ -333,7 +328,7 @@ export async function syncMergedPRsFromGitHub(
         continue;
       }
 
-      await withTransaction(db, () => {
+      await db.withTransaction(() => {
         for (const update of toUpdate) {
           updateStory(db, update.storyId, { status: 'merged', assignedAgentId: null });
           createLog(db, {
@@ -383,7 +378,7 @@ export interface ClosedPRInfo {
  */
 export async function closeStaleGitHubPRs(
   root: string,
-  db: Database,
+  db: DatabaseProvider,
   baseBranch = 'main'
 ): Promise<ClosedPRInfo[]> {
   const teams = getAllTeams(db);
@@ -408,8 +403,7 @@ export async function closeStaleGitHubPRs(
         if (!storyId) continue;
 
         // Check if there are other PRs for this story in the queue
-        const prsForStory = queryAll<{ id: string; github_pr_number: number | null }>(
-          db,
+        const prsForStory = db.queryAll<{ id: string; github_pr_number: number | null }>(
           `
           SELECT id, github_pr_number
           FROM pull_requests

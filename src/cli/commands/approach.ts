@@ -18,10 +18,10 @@ export const approachCommand = new Command('approach')
       const agentName = options.from || 'unknown-agent';
 
       // Look up the story
-      const story = requireStory(db.db, storyId);
+      const story = requireStory(db.provider, storyId);
 
       // Log approach to agent_logs
-      createLog(db.db, {
+      createLog(db.provider, {
         agentId: agentName,
         storyId,
         eventType: 'APPROACH_POSTED',

@@ -88,8 +88,8 @@ export interface TableAdapter {
   selectSql: string;
   rowId: (row: Record<string, unknown>) => string;
   payload: (row: Record<string, unknown>) => Record<string, unknown>;
-  upsert: (db: Database, payload: Record<string, unknown>) => void;
-  delete: (db: Database, rowId: string) => void;
+  upsert: (db: DatabaseProvider, payload: Record<string, unknown>) => void;
+  delete: (db: DatabaseProvider, rowId: string) => void;
 }
 
 export interface RaftSnapshot {
@@ -124,5 +124,4 @@ export interface CatchUpProgress {
   total: number;
 }
 
-// Re-import Database type for TableAdapter interface
-import type { Database } from 'sql.js';
+import type { DatabaseProvider } from '../db/provider.js';

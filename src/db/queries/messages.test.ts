@@ -1,8 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { run } from '../client.js';
+import type { DatabaseProvider } from '../provider.js';
 import {
   getAllPendingMessages,
   getMessageById,
@@ -12,7 +11,7 @@ import {
 import { createTestDatabase } from './test-helpers.js';
 
 describe('messages queries', () => {
-  let db: Database;
+  let db: DatabaseProvider;
 
   beforeEach(async () => {
     db = await createTestDatabase();
@@ -28,8 +27,7 @@ describe('messages queries', () => {
     subject?: string | null
   ): void {
     const now = new Date().toISOString();
-    run(
-      db,
+    db.run(
       `
       INSERT INTO messages (id, from_session, to_session, subject, body, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -225,8 +223,7 @@ describe('messages queries', () => {
 
     it('should handle reply and replied_at fields', () => {
       const now = new Date().toISOString();
-      run(
-        db,
+      db.run(
         `
         INSERT INTO messages (id, from_session, to_session, body, status, reply, replied_at, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)

@@ -14,10 +14,9 @@
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ClusterConfig } from '../config/schema.js';
-import { run } from '../db/client.js';
+import { SqliteProvider, type DatabaseProvider } from '../db/provider.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
 import { RaftStateMachine } from './raft-state-machine.js';
 import {
@@ -47,10 +46,9 @@ function makeHiveDir(): string {
   return join(dir, '.hive');
 }
 
-function insertStory(db: Database, id: string, title: string): void {
+function insertStory(db: DatabaseProvider, id: string, title: string): void {
   const now = new Date().toISOString();
-  run(
-    db,
+  db.run(
     `INSERT OR IGNORE INTO stories (id, requirement_id, team_id, title, description, status, created_at, updated_at)
      VALUES (?, NULL, NULL, ?, '', 'planned', ?, ?)`,
     [id, title, now, now]
@@ -349,8 +347,7 @@ describe('applying snapshot to local database', () => {
     };
 
     // Manually apply like applySnapshot would
-    run(
-      db,
+    db.run(
       `INSERT OR REPLACE INTO stories
         (id, requirement_id, team_id, title, description, acceptance_criteria,
          complexity_score, story_points, status, assigned_agent_id, branch_name, pr_url, created_at, updated_at)
@@ -375,7 +372,9 @@ describe('applying snapshot to local database', () => {
     setSnapshotVersionVector(db, snapshotVersionVector);
 
     // Verify story was applied
-    const story = db.exec(`SELECT id, title FROM stories WHERE id = 'STORY-SNAP-1'`);
+    const story = (db as SqliteProvider).db.exec(
+      `SELECT id, title FROM stories WHERE id = 'STORY-SNAP-1'`
+    );
     expect(story[0]?.values[0]?.[0]).toBe('STORY-SNAP-1');
     expect(story[0]?.values[0]?.[1]).toBe('Snapshot story');
 

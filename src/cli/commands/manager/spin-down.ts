@@ -2,7 +2,7 @@
 
 import chalk from 'chalk';
 import type { StoryRow } from '../../../db/client.js';
-import { queryAll, withTransaction } from '../../../db/client.js';
+// import { queryAll, withTransaction } from '../../../db/client.js' — removed (using provider methods);
 import { getAgentById, updateAgent } from '../../../db/queries/agents.js';
 import { createLog } from '../../../db/queries/logs.js';
 import { updateStoryAssignment } from '../../../db/queries/stories.js';
@@ -18,8 +18,7 @@ function verboseLog(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string):
 export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read merged stories and determine actions (brief lock)
   const actions = await ctx.withDb(async db => {
-    const mergedStoriesWithAgents = queryAll<StoryRow>(
-      db.db,
+    const mergedStoriesWithAgents = db.provider.queryAll<StoryRow>(
       `SELECT * FROM stories WHERE status = 'merged' AND assigned_agent_id IS NOT NULL`
     );
     verboseLog(ctx, `spinDownMergedAgents: mergedStories=${mergedStoriesWithAgents.length}`);
@@ -42,7 +41,7 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
     for (const story of mergedStoriesWithAgents) {
       if (!story.assigned_agent_id) continue;
 
-      const agent = getAgentById(db.db, story.assigned_agent_id);
+      const agent = getAgentById(db.provider, story.assigned_agent_id);
       if (!agent || agent.status === 'terminated') {
         verboseLog(
           ctx,
@@ -53,8 +52,8 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
 
       // Safety: Don't kill agents that are working on other stories
       if (agent.current_story_id && agent.current_story_id !== story.id) {
-        await withTransaction(db.db, () => {
-          updateStoryAssignment(db.db, story.id, null);
+        await db.provider.withTransaction(() => {
+          updateStoryAssignment(db.provider, story.id, null);
         });
         verboseLog(
           ctx,
@@ -64,14 +63,13 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
       }
 
       // Check if agent has other non-merged stories assigned
-      const otherActiveStories = queryAll<StoryRow>(
-        db.db,
+      const otherActiveStories = db.provider.queryAll<StoryRow>(
         `SELECT * FROM stories WHERE assigned_agent_id = ? AND id != ? AND status NOT IN ('merged', 'draft')`,
         [agent.id, story.id]
       );
       if (otherActiveStories.length > 0) {
-        await withTransaction(db.db, () => {
-          updateStoryAssignment(db.db, story.id, null);
+        await db.provider.withTransaction(() => {
+          updateStoryAssignment(db.provider, story.id, null);
         });
         verboseLog(
           ctx,
@@ -93,19 +91,15 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
     }
 
     // Also find working agents with no current story that have no active stories assigned
-    const orphanedWorkingAgents = queryAll<{
+    const orphanedWorkingAgents = db.provider.queryAll<{
       id: string;
       tmux_session: string | null;
       type: string;
-    }>(
-      db.db,
-      `SELECT id, tmux_session, type FROM agents
-       WHERE status = 'working' AND current_story_id IS NULL AND type != 'tech_lead'`
-    );
+    }>(`SELECT id, tmux_session, type FROM agents
+       WHERE status = 'working' AND current_story_id IS NULL AND type != 'tech_lead'`);
 
     for (const agent of orphanedWorkingAgents) {
-      const activeStories = queryAll<StoryRow>(
-        db.db,
+      const activeStories = db.provider.queryAll<StoryRow>(
         `SELECT * FROM stories WHERE assigned_agent_id = ? AND status NOT IN ('merged', 'draft')`,
         [agent.id]
       );
@@ -150,9 +144,9 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
   if (spindownActions.length > 0) {
     await ctx.withDb(async db => {
       for (const action of spindownActions) {
-        await withTransaction(db.db, () => {
-          updateAgent(db.db, action.agentId, { status: 'terminated', currentStoryId: null });
-          createLog(db.db, {
+        await db.provider.withTransaction(() => {
+          updateAgent(db.provider, action.agentId, { status: 'terminated', currentStoryId: null });
+          createLog(db.provider, {
             agentId: action.agentId,
             storyId: action.storyId || undefined,
             eventType: 'AGENT_TERMINATED',
@@ -161,7 +155,7 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
               : `Agent spun down: status was working with no current story and no active stories`,
           });
           if (action.storyId) {
-            updateStoryAssignment(db.db, action.storyId, null);
+            updateStoryAssignment(db.provider, action.storyId, null);
           }
         });
         verboseLog(
@@ -181,8 +175,7 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
 export async function spinDownIdleAgents(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read agent state (brief lock)
   const workingAgents = await ctx.withDb(async db => {
-    const activeStories = queryAll<StoryRow>(
-      db.db,
+    const activeStories = db.provider.queryAll<StoryRow>(
       `SELECT * FROM stories WHERE status IN ('planned', 'in_progress', 'review', 'qa', 'qa_failed', 'pr_submitted')`
     );
     verboseLog(ctx, `spinDownIdleAgents: activeStories=${activeStories.length}`);
@@ -192,8 +185,7 @@ export async function spinDownIdleAgents(ctx: ManagerCheckContext): Promise<void
       return [];
     }
 
-    const agents = queryAll<{ id: string; tmux_session: string | null; type: string }>(
-      db.db,
+    const agents = db.provider.queryAll<{ id: string; tmux_session: string | null; type: string }>(
       `SELECT id, tmux_session, type FROM agents WHERE status = 'working' AND type != 'tech_lead'`
     );
     verboseLog(ctx, `spinDownIdleAgents: workingAgents=${agents.length}`);
@@ -218,9 +210,9 @@ export async function spinDownIdleAgents(ctx: ManagerCheckContext): Promise<void
   // Phase 3: DB writes (brief lock)
   await ctx.withDb(async db => {
     for (const agent of workingAgents) {
-      await withTransaction(db.db, () => {
-        updateAgent(db.db, agent.id, { status: 'terminated', currentStoryId: null });
-        createLog(db.db, {
+      await db.provider.withTransaction(() => {
+        updateAgent(db.provider, agent.id, { status: 'terminated', currentStoryId: null });
+        createLog(db.provider, {
           agentId: agent.id,
           eventType: 'AGENT_TERMINATED',
           message: 'Agent spun down - no work remaining in pipeline',

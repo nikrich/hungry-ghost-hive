@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { createHash } from 'crypto';
-import type { Database } from 'sql.js';
-import { queryAll, queryOne, run } from '../db/client.js';
+import type { DatabaseProvider } from '../db/provider.js';
+// import { queryAll, queryOne, run } from '../db/client.js' — removed (using provider methods);
 import type { ClusterEventVersion, ReplicatedTable } from './types.js';
 
 export function stableStringify(value: unknown): string {
@@ -92,28 +92,26 @@ export function toAgentLogPayload(row: Record<string, unknown>): Record<string, 
   };
 }
 
-export function deleteAgentLogByRowId(db: Database, rowId: string): void {
-  const rows = queryAll<Record<string, unknown>>(
-    db,
+export function deleteAgentLogByRowId(db: DatabaseProvider, rowId: string): void {
+  const rows = db.queryAll<Record<string, unknown>>(
     'SELECT id, agent_id, story_id, event_type, status, message, metadata, timestamp FROM agent_logs'
   );
 
   for (const row of rows) {
     const payload = toAgentLogPayload(row);
     if (hashPayload(payload) !== rowId) continue;
-    run(db, 'DELETE FROM agent_logs WHERE id = ?', [asNumber(row.id)]);
+    db.run('DELETE FROM agent_logs WHERE id = ?', [asNumber(row.id)]);
     break;
   }
 }
 
 export function setRowHash(
-  db: Database,
+  db: DatabaseProvider,
   table: ReplicatedTable,
   rowId: string,
   rowHash: string
 ): void {
-  run(
-    db,
+  db.run(
     `
     INSERT INTO cluster_row_hashes (table_name, row_id, row_hash)
     VALUES (?, ?, ?)
@@ -123,15 +121,13 @@ export function setRowHash(
   );
 }
 
-export function incrementAndGetCounter(db: Database): number {
-  run(
-    db,
+export function incrementAndGetCounter(db: DatabaseProvider): number {
+  db.run(
     'UPDATE cluster_state SET event_counter = event_counter + 1, updated_at = ? WHERE id = 1',
     [new Date().toISOString()]
   );
 
-  const state = queryOne<{ event_counter: number }>(
-    db,
+  const state = db.queryOne<{ event_counter: number }>(
     'SELECT event_counter FROM cluster_state WHERE id = 1'
   );
 

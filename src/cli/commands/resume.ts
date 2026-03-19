@@ -9,7 +9,7 @@ import {
   selectCompatibleModelForCli,
 } from '../../cli-runtimes/index.js';
 import { loadConfig } from '../../config/index.js';
-import { withTransaction } from '../../db/client.js';
+// import { withTransaction } from '../../db/client.js' — removed (using provider methods);
 import { getAllAgents, updateAgent, type AgentRow } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
 import { getTeamById } from '../../db/queries/teams.js';
@@ -35,17 +35,17 @@ export const resumeCommand = new Command('resume')
       let agentsToResume: AgentRow[];
 
       if (options.agent) {
-        const agent = requireAgent(db.db, options.agent);
+        const agent = requireAgent(db.provider, options.agent);
         if (agent.status === 'terminated') {
           console.error(chalk.red('Cannot resume a terminated agent'));
           process.exit(1);
         }
         agentsToResume = [agent];
       } else if (options.all) {
-        agentsToResume = getAllAgents(db.db).filter(a => a.status !== 'terminated');
+        agentsToResume = getAllAgents(db.provider).filter(a => a.status !== 'terminated');
       } else {
         // Default: resume blocked or idle agents that have memory state
-        agentsToResume = getAllAgents(db.db).filter(
+        agentsToResume = getAllAgents(db.provider).filter(
           a => a.status !== 'terminated' && a.memory_state
         );
       }
@@ -73,7 +73,7 @@ export const resumeCommand = new Command('resume')
           // Determine work directory
           let workDir = root;
           if (agent.team_id) {
-            const team = getTeamById(db.db, agent.team_id);
+            const team = getTeamById(db.provider, agent.team_id);
             if (team) {
               workDir = `${root}/${team.repo_path}`;
             }
@@ -105,13 +105,13 @@ export const resumeCommand = new Command('resume')
           });
 
           // Update agent state and log event (atomic transaction)
-          await withTransaction(db.db, () => {
-            updateAgent(db.db, agent.id, {
+          await db.provider.withTransaction(() => {
+            updateAgent(db.provider, agent.id, {
               status: 'working',
               tmuxSession: sessionName,
             });
 
-            createLog(db.db, {
+            createLog(db.provider, {
               agentId: agent.id,
               storyId: agent.current_story_id,
               eventType: 'AGENT_RESUMED',

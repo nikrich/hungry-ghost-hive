@@ -1,11 +1,11 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import { loadEnvIntoProcess } from '../../auth/env-store.js';
 import { TokenStore } from '../../auth/token-store.js';
 import type { HiveConfig } from '../../config/schema.js';
-import { queryOne } from '../../db/client.js';
+import type { DatabaseProvider } from '../../db/provider.js';
+// import { queryOne } from '../../db/client.js' — removed (using provider methods);
 import type { StoryRow } from '../../db/queries/stories.js';
 import * as logger from '../../utils/logger.js';
 import { JiraClient } from './client.js';
@@ -349,7 +349,7 @@ function createCode(text: string) {
  * @param context - Additional context for the comment
  */
 export async function postJiraLifecycleComment(
-  db: Database,
+  db: DatabaseProvider,
   hiveDir: string,
   hiveConfig: HiveConfig | undefined,
   storyId: string,
@@ -363,7 +363,7 @@ export async function postJiraLifecycleComment(
     if (!pmConfig || pmConfig.provider !== 'jira' || !pmConfig.jira) return;
 
     // Get story to check if it has a Jira issue key
-    const story = queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
+    const story = db.queryOne<StoryRow>('SELECT * FROM stories WHERE id = ?', [storyId]);
     if (!story || !story.external_issue_key) {
       logger.debug(`Story ${storyId} has no external issue key, skipping ${event} comment`);
       return;
@@ -403,7 +403,7 @@ export async function postJiraLifecycleComment(
  * @param agentName - Name of the agent posting the update
  */
 export async function postProgressToSubtask(
-  db: Database,
+  db: DatabaseProvider,
   hiveDir: string,
   hiveConfig: HiveConfig | undefined,
   storyId: string,
@@ -415,7 +415,7 @@ export async function postProgressToSubtask(
     const pmConfig = hiveConfig.integrations?.project_management;
     if (!pmConfig || pmConfig.provider !== 'jira' || !pmConfig.jira) return;
 
-    const story = queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
+    const story = db.queryOne<StoryRow>('SELECT * FROM stories WHERE id = ?', [storyId]);
     if (!story?.external_subtask_key) {
       logger.debug(`Story ${storyId} has no external subtask, skipping progress update`);
       return;

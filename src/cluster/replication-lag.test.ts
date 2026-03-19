@@ -94,7 +94,7 @@ describe('replication lag tracking', () => {
       story_similarity_threshold: 0.92,
     });
 
-    await runtime.sync(db.db);
+    await runtime.sync(db.provider);
 
     const lag = runtime.getReplicationLag();
     expect(lag.node_id).toBe('node-lag-unreach');
@@ -179,7 +179,7 @@ describe('replication lag tracking', () => {
        VALUES ('STORY-B1', NULL, NULL, 'Story from B', 'Test story', 'planned', ?, ?)`,
       [new Date().toISOString(), new Date().toISOString()]
     );
-    await runtimeB.sync(dbB.db);
+    await runtimeB.sync(dbB.provider);
     dbB.save();
 
     // Start node A with node B as a peer
@@ -200,7 +200,7 @@ describe('replication lag tracking', () => {
     });
 
     // Sync node A - it should pull events from B
-    await runtimeA.sync(dbA.db);
+    await runtimeA.sync(dbA.provider);
 
     const lag = runtimeA.getReplicationLag();
     expect(lag.node_id).toBe('node-a');

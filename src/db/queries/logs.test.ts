@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { SqliteProvider, type DatabaseProvider } from '../provider.js';
 import { createAgent } from './agents.js';
 import {
   countQaFailuresByStory,
@@ -21,7 +21,7 @@ import { createTeam } from './teams.js';
 import { createTestDatabase } from './test-helpers.js';
 
 describe('logs queries', () => {
-  let db: Database;
+  let db: DatabaseProvider;
   let teamId: string;
   let agentId: string;
   let storyId: string;
@@ -147,7 +147,9 @@ describe('logs queries', () => {
       });
 
       expect(log.agent_id).toBe('scheduler');
-      const result = db.exec("SELECT id, type, status FROM agents WHERE id = 'scheduler'");
+      const result = (db as SqliteProvider).db.exec(
+        "SELECT id, type, status FROM agents WHERE id = 'scheduler'"
+      );
       expect(result[0]?.values[0]).toEqual(['scheduler', 'tech_lead', 'terminated']);
     });
 
@@ -163,9 +165,9 @@ describe('logs queries', () => {
 
     it('should support legacy agents schemas without last_seen', async () => {
       const SQL = await initSqlJs();
-      const legacyDb = new SQL.Database();
-      legacyDb.run('PRAGMA foreign_keys = ON');
-      legacyDb.run(`
+      const rawLegacyDb = new SQL.Database();
+      rawLegacyDb.run('PRAGMA foreign_keys = ON');
+      rawLegacyDb.run(`
         CREATE TABLE agents (
           id TEXT PRIMARY KEY,
           type TEXT,
@@ -174,8 +176,8 @@ describe('logs queries', () => {
           updated_at TIMESTAMP
         );
       `);
-      legacyDb.run(`CREATE TABLE stories (id TEXT PRIMARY KEY);`);
-      legacyDb.run(`
+      rawLegacyDb.run(`CREATE TABLE stories (id TEXT PRIMARY KEY);`);
+      rawLegacyDb.run(`
         CREATE TABLE agent_logs (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           agent_id TEXT NOT NULL REFERENCES agents(id),
@@ -188,12 +190,13 @@ describe('logs queries', () => {
         );
       `);
 
+      const legacyDb = new SqliteProvider(rawLegacyDb);
       const log = createLog(legacyDb, {
         agentId: 'scheduler',
         eventType: 'TEAM_SCALED_UP',
       });
       expect(log.agent_id).toBe('scheduler');
-      const row = legacyDb.exec("SELECT id, status FROM agents WHERE id = 'scheduler'");
+      const row = rawLegacyDb.exec("SELECT id, status FROM agents WHERE id = 'scheduler'");
       expect(row[0]?.values[0]).toEqual(['scheduler', 'terminated']);
     });
   });

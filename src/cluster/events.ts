@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
-import { queryAll, queryOne, run } from '../db/client.js';
+import type { DatabaseProvider } from '../db/provider.js';
 import type {
   ClusterEvent,
   ClusterEventRow,
@@ -13,22 +12,17 @@ import type {
 } from './types.js';
 import { hashPayload, incrementAndGetCounter, stableStringify, toObject } from './utils.js';
 
-export function ensureClusterTables(db: Database, nodeId: string): void {
-  run(
-    db,
-    `
+export function ensureClusterTables(db: DatabaseProvider, nodeId: string): void {
+  db.run(`
     CREATE TABLE IF NOT EXISTS cluster_state (
       id INTEGER PRIMARY KEY CHECK(id = 1),
       node_id TEXT NOT NULL,
       event_counter INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
     )
-  `
-  );
+  `);
 
-  run(
-    db,
-    `
+  db.run(`
     CREATE TABLE IF NOT EXISTS cluster_events (
       event_id TEXT PRIMARY KEY,
       actor_id TEXT NOT NULL,
@@ -40,28 +34,19 @@ export function ensureClusterTables(db: Database, nodeId: string): void {
       payload TEXT,
       created_at TEXT NOT NULL
     )
-  `
-  );
+  `);
 
-  run(
-    db,
-    `
+  db.run(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_cluster_events_actor_counter
     ON cluster_events(actor_id, actor_counter)
-  `
-  );
+  `);
 
-  run(
-    db,
-    `
+  db.run(`
     CREATE INDEX IF NOT EXISTS idx_cluster_events_logical_ts
     ON cluster_events(logical_ts)
-  `
-  );
+  `);
 
-  run(
-    db,
-    `
+  db.run(`
     CREATE TABLE IF NOT EXISTS cluster_row_versions (
       table_name TEXT NOT NULL,
       row_id TEXT NOT NULL,
@@ -70,62 +55,51 @@ export function ensureClusterTables(db: Database, nodeId: string): void {
       logical_ts INTEGER NOT NULL,
       PRIMARY KEY (table_name, row_id)
     )
-  `
-  );
+  `);
 
-  run(
-    db,
-    `
+  db.run(`
     CREATE TABLE IF NOT EXISTS cluster_row_hashes (
       table_name TEXT NOT NULL,
       row_id TEXT NOT NULL,
       row_hash TEXT NOT NULL,
       PRIMARY KEY (table_name, row_id)
     )
-  `
-  );
+  `);
 
-  run(
-    db,
-    `
+  db.run(`
     CREATE TABLE IF NOT EXISTS cluster_story_merges (
       duplicate_story_id TEXT PRIMARY KEY,
       canonical_story_id TEXT NOT NULL,
       merged_at TEXT NOT NULL
     )
-  `
-  );
+  `);
 
   // Add snapshot_version_vector column if it doesn't exist yet (backward-compat migration)
   try {
-    run(db, 'ALTER TABLE cluster_state ADD COLUMN snapshot_version_vector TEXT');
+    db.run('ALTER TABLE cluster_state ADD COLUMN snapshot_version_vector TEXT');
   } catch {
     // Column already exists — ignore
   }
 
-  const state = queryOne<{ id: number }>(db, 'SELECT id FROM cluster_state WHERE id = 1');
+  const state = db.queryOne<{ id: number }>('SELECT id FROM cluster_state WHERE id = 1');
   const now = new Date().toISOString();
 
   if (!state) {
-    run(
-      db,
+    db.run(
       'INSERT INTO cluster_state (id, node_id, event_counter, updated_at) VALUES (1, ?, 0, ?)',
       [nodeId, now]
     );
   } else {
-    run(db, 'UPDATE cluster_state SET node_id = ?, updated_at = ? WHERE id = 1', [nodeId, now]);
+    db.run('UPDATE cluster_state SET node_id = ?, updated_at = ? WHERE id = 1', [nodeId, now]);
   }
 }
 
-export function getVersionVector(db: Database): VersionVector {
-  const rows = queryAll<{ actor_id: string; max_counter: number }>(
-    db,
-    `
+export function getVersionVector(db: DatabaseProvider): VersionVector {
+  const rows = db.queryAll<{ actor_id: string; max_counter: number }>(`
     SELECT actor_id, MAX(actor_counter) as max_counter
     FROM cluster_events
     GROUP BY actor_id
-  `
-  );
+  `);
 
   const vector: VersionVector = {};
   for (const row of rows) {
@@ -139,9 +113,8 @@ export function getVersionVector(db: Database): VersionVector {
  * Returns the snapshot version vector stored after the last snapshot-based recovery.
  * Empty object if no snapshot has been applied.
  */
-export function getSnapshotVersionVector(db: Database): VersionVector {
-  const row = queryOne<{ snapshot_version_vector: string | null }>(
-    db,
+export function getSnapshotVersionVector(db: DatabaseProvider): VersionVector {
+  const row = db.queryOne<{ snapshot_version_vector: string | null }>(
     'SELECT snapshot_version_vector FROM cluster_state WHERE id = 1'
   );
 
@@ -158,8 +131,8 @@ export function getSnapshotVersionVector(db: Database): VersionVector {
  * Persists the snapshot version vector so that future delta requests start
  * from this point rather than from the (empty) event log.
  */
-export function setSnapshotVersionVector(db: Database, vector: VersionVector): void {
-  run(db, 'UPDATE cluster_state SET snapshot_version_vector = ? WHERE id = 1', [
+export function setSnapshotVersionVector(db: DatabaseProvider, vector: VersionVector): void {
+  db.run('UPDATE cluster_state SET snapshot_version_vector = ? WHERE id = 1', [
     JSON.stringify(vector),
   ]);
 }
@@ -170,7 +143,7 @@ export function setSnapshotVersionVector(db: Database, vector: VersionVector): v
  * snapshot vector stored from a previous snapshot-based recovery.
  * This prevents re-requesting events that were already covered by a snapshot.
  */
-export function getEffectiveVersionVector(db: Database): VersionVector {
+export function getEffectiveVersionVector(db: DatabaseProvider): VersionVector {
   const eventVector = getVersionVector(db);
   const snapshotVector = getSnapshotVersionVector(db);
 
@@ -182,21 +155,18 @@ export function getEffectiveVersionVector(db: Database): VersionVector {
   return effective;
 }
 
-export function getAllClusterEvents(db: Database): ClusterEvent[] {
-  const rows = queryAll<ClusterEventRow>(
-    db,
-    `
+export function getAllClusterEvents(db: DatabaseProvider): ClusterEvent[] {
+  const rows = db.queryAll<ClusterEventRow>(`
     SELECT event_id, actor_id, actor_counter, logical_ts, table_name, row_id, op, payload, created_at
     FROM cluster_events
     ORDER BY logical_ts ASC, actor_id ASC, actor_counter ASC
-  `
-  );
+  `);
 
   return rows.map(mapEventRow);
 }
 
 export function getDeltaEvents(
-  db: Database,
+  db: DatabaseProvider,
   remoteVersionVector: VersionVector,
   limit = 2000
 ): ClusterEvent[] {
@@ -210,7 +180,7 @@ export function getDeltaEvents(
 }
 
 export function emitLocalEvent(
-  db: Database,
+  db: DatabaseProvider,
   nodeId: string,
   input: {
     table_name: ReplicatedTable;
@@ -224,8 +194,7 @@ export function emitLocalEvent(
   const createdAt = new Date(logicalTs).toISOString();
   const eventId = `${nodeId}:${nextCounter}`;
 
-  run(
-    db,
+  db.run(
     `
     INSERT OR REPLACE INTO cluster_events
       (event_id, actor_id, actor_counter, logical_ts, table_name, row_id, op, payload, created_at)
@@ -244,8 +213,7 @@ export function emitLocalEvent(
     ]
   );
 
-  run(
-    db,
+  db.run(
     `
     INSERT INTO cluster_row_versions (table_name, row_id, actor_id, actor_counter, logical_ts)
     VALUES (?, ?, ?, ?, ?)
@@ -262,18 +230,17 @@ export function emitLocalEvent(
  * Prune old cluster_events rows, retaining only the most recent `retainCount` events.
  * Returns the number of rows deleted.
  */
-export function pruneClusterEvents(db: Database, retainCount: number): number {
+export function pruneClusterEvents(db: DatabaseProvider, retainCount: number): number {
   if (retainCount <= 0) return 0;
 
-  const countRow = queryOne<{ total: number }>(db, 'SELECT COUNT(*) as total FROM cluster_events');
+  const countRow = db.queryOne<{ total: number }>('SELECT COUNT(*) as total FROM cluster_events');
   const total = countRow?.total || 0;
 
   if (total <= retainCount) return 0;
 
   // Delete events that are not in the most recent `retainCount` by logical_ts ordering.
   // We keep the newest events and delete the oldest.
-  run(
-    db,
+  db.run(
     `
     DELETE FROM cluster_events
     WHERE event_id NOT IN (
@@ -285,17 +252,20 @@ export function pruneClusterEvents(db: Database, retainCount: number): number {
     [retainCount]
   );
 
-  const afterRow = queryOne<{ total: number }>(db, 'SELECT COUNT(*) as total FROM cluster_events');
+  const afterRow = db.queryOne<{ total: number }>('SELECT COUNT(*) as total FROM cluster_events');
   return total - (afterRow?.total || 0);
 }
 
-export function getClusterEventCount(db: Database): number {
-  const row = queryOne<{ total: number }>(db, 'SELECT COUNT(*) as total FROM cluster_events');
+export function getClusterEventCount(db: DatabaseProvider): number {
+  const row = db.queryOne<{ total: number }>('SELECT COUNT(*) as total FROM cluster_events');
   return row?.total || 0;
 }
 
-export function fetchTableSnapshots(db: Database, adapter: TableAdapter): TableRowSnapshot[] {
-  const rows = queryAll<Record<string, unknown>>(db, adapter.selectSql);
+export function fetchTableSnapshots(
+  db: DatabaseProvider,
+  adapter: TableAdapter
+): TableRowSnapshot[] {
+  const rows = db.queryAll<Record<string, unknown>>(adapter.selectSql);
 
   return rows.map(row => {
     const payload = adapter.payload(row);

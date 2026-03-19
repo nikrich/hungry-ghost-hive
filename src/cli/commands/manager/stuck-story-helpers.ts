@@ -106,13 +106,13 @@ export async function applyHumanInterventionStateOverride(
       ? null
       : await ctx.withDb(async db => {
           return (
-            (agentId ? getActiveEscalationsForAgent(db.db, agentId) : []).find(
+            (agentId ? getActiveEscalationsForAgent(db.provider, agentId) : []).find(
               escalation =>
                 escalation.story_id === storyId &&
                 (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
                   escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX))
             ) ??
-            getPendingEscalations(db.db).find(
+            getPendingEscalations(db.provider).find(
               escalation =>
                 escalation.story_id === storyId &&
                 (escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX) ||
@@ -158,16 +158,16 @@ export async function markClassifierTimeoutForHumanIntervention(
 
   await ctx.withDb(async db => {
     const activeTimeoutEscalation = (
-      agentId ? getActiveEscalationsForAgent(db.db, agentId) : []
+      agentId ? getActiveEscalationsForAgent(db.provider, agentId) : []
     ).some(escalation => escalation.reason.startsWith(CLASSIFIER_TIMEOUT_REASON_PREFIX));
     if (!activeTimeoutEscalation) {
-      const escalation = createEscalation(db.db, {
+      const escalation = createEscalation(db.provider, {
         storyId,
         fromAgentId: agentId,
         toAgentId: null,
         reason: escalationReason,
       });
-      createLog(db.db, {
+      createLog(db.provider, {
         agentId: 'manager',
         storyId,
         eventType: 'ESCALATION_CREATED',
@@ -213,17 +213,17 @@ export async function markDoneFalseForHumanIntervention(
   });
 
   await ctx.withDb(async db => {
-    const hasActiveEscalation = (agentId ? getActiveEscalationsForAgent(db.db, agentId) : []).some(
-      escalation => escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX)
-    );
+    const hasActiveEscalation = (
+      agentId ? getActiveEscalationsForAgent(db.provider, agentId) : []
+    ).some(escalation => escalation.reason.startsWith(AI_DONE_FALSE_REASON_PREFIX));
     if (!hasActiveEscalation) {
-      const escalation = createEscalation(db.db, {
+      const escalation = createEscalation(db.provider, {
         storyId,
         fromAgentId: agentId,
         toAgentId: null,
         reason: escalationReason,
       });
-      createLog(db.db, {
+      createLog(db.provider, {
         agentId: 'manager',
         storyId,
         eventType: 'ESCALATION_CREATED',

@@ -3,11 +3,10 @@
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
-import { queryAll, run } from '../../db/client.js';
+import type { DatabaseProvider } from '../../db/provider.js';
 import { createStory, getStoryById } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
 import { repairMissedAssignmentHooks } from './sync.js';
@@ -20,7 +19,7 @@ vi.mock('./stories.js');
 vi.mock('./transitions.js');
 
 describe('repairMissedAssignmentHooks', () => {
-  let db: Database;
+  let db: DatabaseProvider;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -53,20 +52,20 @@ describe('repairMissedAssignmentHooks', () => {
 
   function addJiraColumnsToStories(): void {
     // The test helper schema only has jira_issue_key. Add the other Jira columns.
-    const columnInfo = queryAll<{ name: string }>(db, 'PRAGMA table_info(stories)');
+    const columnInfo = db.queryAll<{ name: string }>('PRAGMA table_info(stories)');
     const columnNames = columnInfo.map(c => c.name);
 
     if (!columnNames.includes('jira_issue_id')) {
-      run(db, 'ALTER TABLE stories ADD COLUMN jira_issue_id TEXT');
+      db.run('ALTER TABLE stories ADD COLUMN jira_issue_id TEXT');
     }
     if (!columnNames.includes('jira_project_key')) {
-      run(db, 'ALTER TABLE stories ADD COLUMN jira_project_key TEXT');
+      db.run('ALTER TABLE stories ADD COLUMN jira_project_key TEXT');
     }
     if (!columnNames.includes('jira_subtask_key')) {
-      run(db, 'ALTER TABLE stories ADD COLUMN jira_subtask_key TEXT');
+      db.run('ALTER TABLE stories ADD COLUMN jira_subtask_key TEXT');
     }
     if (!columnNames.includes('jira_subtask_id')) {
-      run(db, 'ALTER TABLE stories ADD COLUMN jira_subtask_id TEXT');
+      db.run('ALTER TABLE stories ADD COLUMN jira_subtask_id TEXT');
     }
   }
 
@@ -98,8 +97,7 @@ describe('repairMissedAssignmentHooks', () => {
       title: 'Already has subtask',
       description: 'Test',
     });
-    run(
-      db,
+    db.run(
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, jira_subtask_key = ?, external_subtask_key = ?, status = ? WHERE id = ?`,
       ['TEST-1', 'TEST-1', 'agent-senior-1', 'TEST-2', 'TEST-2', 'in_progress', story.id]
     );
@@ -114,7 +112,7 @@ describe('repairMissedAssignmentHooks', () => {
       title: 'No Jira key',
       description: 'Test',
     });
-    run(db, `UPDATE stories SET assigned_agent_id = ?, status = ? WHERE id = ?`, [
+    db.run(`UPDATE stories SET assigned_agent_id = ?, status = ? WHERE id = ?`, [
       'agent-senior-1',
       'in_progress',
       story.id,
@@ -130,8 +128,7 @@ describe('repairMissedAssignmentHooks', () => {
       title: 'Not assigned',
       description: 'Test',
     });
-    run(
-      db,
+    db.run(
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?`,
       ['TEST-1', 'TEST-1', 'planned', story.id]
     );
@@ -146,8 +143,7 @@ describe('repairMissedAssignmentHooks', () => {
       title: 'Needs repair',
       description: 'Test',
     });
-    run(
-      db,
+    db.run(
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, jira_project_key = ?, external_project_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
       ['TEST-10', 'TEST-10', 'TEST', 'TEST', 'agent-senior-1', 'in_progress', story.id]
     );
@@ -220,8 +216,7 @@ describe('repairMissedAssignmentHooks', () => {
       title: 'Repair idempotency',
       description: 'Test',
     });
-    run(
-      db,
+    db.run(
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
       ['TEST-20', 'TEST-20', 'agent-senior-1', 'in_progress', story.id]
     );
@@ -262,8 +257,7 @@ describe('repairMissedAssignmentHooks', () => {
       title: 'Merged story',
       description: 'Test',
     });
-    run(
-      db,
+    db.run(
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
       ['TEST-30', 'TEST-30', 'agent-senior-1', 'merged', story.id]
     );
@@ -278,8 +272,7 @@ describe('repairMissedAssignmentHooks', () => {
       title: 'Error story',
       description: 'Test',
     });
-    run(
-      db,
+    db.run(
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
       ['TEST-40', 'TEST-40', 'agent-senior-1', 'in_progress', story.id]
     );

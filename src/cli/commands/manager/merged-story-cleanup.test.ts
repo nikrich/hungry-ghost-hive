@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { describe, expect, it } from 'vitest';
-import { run } from '../../../db/client.js';
 import { createAgent, getAgentById, updateAgent } from '../../../db/queries/agents.js';
 import { createTestDatabase } from '../../../db/queries/test-helpers.js';
 import { cleanupAgentsReferencingMergedStory } from './merged-story-cleanup.js';
@@ -15,8 +14,7 @@ function insertStoryRow(
   }
 ): void {
   const now = new Date().toISOString();
-  run(
-    db,
+  db.run(
     `
       INSERT INTO stories (id, title, description, status, assigned_agent_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)

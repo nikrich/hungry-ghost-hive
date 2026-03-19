@@ -30,14 +30,7 @@ vi.mock('../../../db/queries/teams.js', () => ({
   getAllTeams: vi.fn(() => []),
 }));
 
-vi.mock('../../../db/client.js', () => ({
-  queryAll: vi.fn(() => []),
-  queryOne: vi.fn(),
-  withTransaction: vi.fn((_db: unknown, fn: () => void, saveFn: () => void) => {
-    fn();
-    saveFn();
-  }),
-}));
+// db/client.js standalone functions no longer used - provider methods are called directly
 
 vi.mock('../../../git/github.js', () => ({
   getPullRequestReviews: vi.fn(() => Promise.resolve([])),
@@ -167,7 +160,18 @@ import { autoRejectCommentOnlyReviews } from './index.js';
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function makeMockCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheckContext {
-  const mockDb = { db: {} as any, save: vi.fn(), close: vi.fn() };
+  const mockDb = {
+    db: {} as any,
+    provider: {
+      queryAll: vi.fn(() => []),
+      queryOne: vi.fn(),
+      run: vi.fn(),
+      withTransaction: vi.fn((fn: () => void) => fn()),
+      close: vi.fn(),
+    } as any,
+    save: vi.fn(),
+    close: vi.fn(),
+  };
   return {
     root: '/test/project',
     verbose: false,

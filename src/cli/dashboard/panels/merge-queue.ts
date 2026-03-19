@@ -1,12 +1,12 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import blessed, { type Widgets } from 'blessed';
-import type { Database } from 'sql.js';
+import type { DatabaseProvider } from '../../../db/provider.js';
 import { getMergeQueue, type PullRequestRow } from '../../../db/queries/pull-requests.js';
 
 export function createMergeQueuePanel(
   screen: Widgets.Screen,
-  db: Database
+  db: DatabaseProvider
 ): Widgets.ListTableElement {
   const table = blessed.listtable({
     parent: screen,
@@ -37,7 +37,7 @@ export function createMergeQueuePanel(
 
 export async function updateMergeQueuePanel(
   table: Widgets.ListTableElement,
-  db: Database
+  db: DatabaseProvider
 ): Promise<void> {
   const queue = getMergeQueue(db);
 

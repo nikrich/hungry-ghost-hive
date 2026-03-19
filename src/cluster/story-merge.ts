@@ -1,24 +1,21 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
-import { queryAll, queryOne, run } from '../db/client.js';
+import type { DatabaseProvider } from '../db/provider.js';
+// import { queryAll, queryOne, run } from '../db/client.js' — removed (using provider methods);
 import { STORY_STATUS_ORDER } from './adapters.js';
 import { ensureClusterTables } from './events.js';
 import type { StoryRecord } from './types.js';
 
-export function mergeSimilarStories(db: Database, similarityThreshold: number): number {
+export function mergeSimilarStories(db: DatabaseProvider, similarityThreshold: number): number {
   ensureClusterTables(db, 'node-local');
 
-  const stories = queryAll<StoryRecord>(
-    db,
-    `
+  const stories = db.queryAll<StoryRecord>(`
     SELECT id, requirement_id, team_id, title, description, acceptance_criteria, complexity_score, story_points, status,
            assigned_agent_id, branch_name, pr_url, created_at, updated_at
     FROM stories
     WHERE status != 'merged'
     ORDER BY id
-  `
-  );
+  `);
 
   if (stories.length < 2) return 0;
 
@@ -76,8 +73,7 @@ export function mergeSimilarStories(db: Database, similarityThreshold: number): 
     const canonical = sorted[0];
 
     for (const duplicate of sorted.slice(1)) {
-      const alreadyMerged = queryOne<{ duplicate_story_id: string }>(
-        db,
+      const alreadyMerged = db.queryOne<{ duplicate_story_id: string }>(
         'SELECT duplicate_story_id FROM cluster_story_merges WHERE duplicate_story_id = ?',
         [duplicate]
       );
@@ -93,9 +89,13 @@ export function mergeSimilarStories(db: Database, similarityThreshold: number): 
   return merged;
 }
 
-function mergeStoryIntoCanonical(db: Database, canonicalId: string, duplicateId: string): boolean {
-  const canonical = queryOne<StoryRecord>(db, 'SELECT * FROM stories WHERE id = ?', [canonicalId]);
-  const duplicate = queryOne<StoryRecord>(db, 'SELECT * FROM stories WHERE id = ?', [duplicateId]);
+function mergeStoryIntoCanonical(
+  db: DatabaseProvider,
+  canonicalId: string,
+  duplicateId: string
+): boolean {
+  const canonical = db.queryOne<StoryRecord>('SELECT * FROM stories WHERE id = ?', [canonicalId]);
+  const duplicate = db.queryOne<StoryRecord>('SELECT * FROM stories WHERE id = ?', [duplicateId]);
 
   if (!canonical || !duplicate) return false;
 
@@ -107,8 +107,7 @@ function mergeStoryIntoCanonical(db: Database, canonicalId: string, duplicateId:
   const mergedTitle = pickLonger(canonical.title, duplicate.title);
   const mergedDescription = pickLonger(canonical.description, duplicate.description);
 
-  run(
-    db,
+  db.run(
     `
     UPDATE stories
     SET
@@ -156,16 +155,15 @@ function mergeStoryIntoCanonical(db: Database, canonicalId: string, duplicateId:
   );
 
   // Rebind all references to canonical story.
-  run(db, 'UPDATE pull_requests SET story_id = ? WHERE story_id = ?', [canonicalId, duplicateId]);
-  run(db, 'UPDATE escalations SET story_id = ? WHERE story_id = ?', [canonicalId, duplicateId]);
-  run(db, 'UPDATE agent_logs SET story_id = ? WHERE story_id = ?', [canonicalId, duplicateId]);
-  run(db, 'UPDATE agents SET current_story_id = ? WHERE current_story_id = ?', [
+  db.run('UPDATE pull_requests SET story_id = ? WHERE story_id = ?', [canonicalId, duplicateId]);
+  db.run('UPDATE escalations SET story_id = ? WHERE story_id = ?', [canonicalId, duplicateId]);
+  db.run('UPDATE agent_logs SET story_id = ? WHERE story_id = ?', [canonicalId, duplicateId]);
+  db.run('UPDATE agents SET current_story_id = ? WHERE current_story_id = ?', [
     canonicalId,
     duplicateId,
   ]);
 
-  run(
-    db,
+  db.run(
     `
     INSERT OR IGNORE INTO story_dependencies (story_id, depends_on_story_id)
     SELECT ?, depends_on_story_id
@@ -175,8 +173,7 @@ function mergeStoryIntoCanonical(db: Database, canonicalId: string, duplicateId:
     [canonicalId, duplicateId]
   );
 
-  run(
-    db,
+  db.run(
     `
     INSERT OR IGNORE INTO story_dependencies (story_id, depends_on_story_id)
     SELECT story_id, ?
@@ -186,16 +183,15 @@ function mergeStoryIntoCanonical(db: Database, canonicalId: string, duplicateId:
     [canonicalId, duplicateId]
   );
 
-  run(db, 'DELETE FROM story_dependencies WHERE story_id = ? OR depends_on_story_id = ?', [
+  db.run('DELETE FROM story_dependencies WHERE story_id = ? OR depends_on_story_id = ?', [
     duplicateId,
     duplicateId,
   ]);
-  run(db, 'DELETE FROM story_dependencies WHERE story_id = depends_on_story_id');
+  db.run('DELETE FROM story_dependencies WHERE story_id = depends_on_story_id');
 
-  run(db, 'DELETE FROM stories WHERE id = ?', [duplicateId]);
+  db.run('DELETE FROM stories WHERE id = ?', [duplicateId]);
 
-  run(
-    db,
+  db.run(
     'INSERT INTO cluster_story_merges (duplicate_story_id, canonical_story_id, merged_at) VALUES (?, ?, ?)',
     [duplicateId, canonicalId, new Date().toISOString()]
   );

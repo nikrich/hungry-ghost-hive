@@ -1,8 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { nanoid } from 'nanoid';
-import type { Database } from 'sql.js';
-import { queryAll, queryOne, run } from '../client.js';
+import type { DatabaseProvider } from '../provider.js';
 
 export type SyncEntityType = 'story' | 'requirement' | 'pull_request';
 export type SyncProvider = 'jira' | 'github' | 'confluence';
@@ -28,12 +27,14 @@ export interface CreateSyncRecordInput {
   externalId: string;
 }
 
-export function createSyncRecord(db: Database, input: CreateSyncRecordInput): IntegrationSyncRow {
+export function createSyncRecord(
+  db: DatabaseProvider,
+  input: CreateSyncRecordInput
+): IntegrationSyncRow {
   const id = `SYNC-${nanoid(8).toUpperCase()}`;
   const now = new Date().toISOString();
 
-  run(
-    db,
+  db.run(
     `
     INSERT INTO integration_sync (id, entity_type, entity_id, provider, external_id, last_synced_at, sync_status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, 'synced', ?, ?)
@@ -44,32 +45,33 @@ export function createSyncRecord(db: Database, input: CreateSyncRecordInput): In
   return getSyncRecordById(db, id)!;
 }
 
-export function getSyncRecordById(db: Database, id: string): IntegrationSyncRow | undefined {
-  return queryOne<IntegrationSyncRow>(db, 'SELECT * FROM integration_sync WHERE id = ?', [id]);
+export function getSyncRecordById(
+  db: DatabaseProvider,
+  id: string
+): IntegrationSyncRow | undefined {
+  return db.queryOne<IntegrationSyncRow>('SELECT * FROM integration_sync WHERE id = ?', [id]);
 }
 
 export function getSyncRecordByEntity(
-  db: Database,
+  db: DatabaseProvider,
   entityType: SyncEntityType,
   entityId: string,
   provider: SyncProvider
 ): IntegrationSyncRow | undefined {
-  return queryOne<IntegrationSyncRow>(
-    db,
+  return db.queryOne<IntegrationSyncRow>(
     'SELECT * FROM integration_sync WHERE entity_type = ? AND entity_id = ? AND provider = ?',
     [entityType, entityId, provider]
   );
 }
 
 export function updateSyncStatus(
-  db: Database,
+  db: DatabaseProvider,
   id: string,
   status: SyncStatus,
   errorMessage?: string | null
 ): void {
   const now = new Date().toISOString();
-  run(
-    db,
+  db.run(
     `
     UPDATE integration_sync
     SET sync_status = ?, error_message = ?, last_synced_at = ?, updated_at = ?
@@ -80,19 +82,17 @@ export function updateSyncStatus(
 }
 
 export function getSyncRecordsByProvider(
-  db: Database,
+  db: DatabaseProvider,
   provider: SyncProvider
 ): IntegrationSyncRow[] {
-  return queryAll<IntegrationSyncRow>(
-    db,
+  return db.queryAll<IntegrationSyncRow>(
     'SELECT * FROM integration_sync WHERE provider = ? ORDER BY created_at DESC',
     [provider]
   );
 }
 
-export function getFailedSyncRecords(db: Database): IntegrationSyncRow[] {
-  return queryAll<IntegrationSyncRow>(
-    db,
+export function getFailedSyncRecords(db: DatabaseProvider): IntegrationSyncRow[] {
+  return db.queryAll<IntegrationSyncRow>(
     "SELECT * FROM integration_sync WHERE sync_status = 'failed' ORDER BY created_at DESC"
   );
 }

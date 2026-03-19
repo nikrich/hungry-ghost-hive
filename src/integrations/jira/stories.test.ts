@@ -3,10 +3,10 @@
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
+import type { DatabaseProvider } from '../../db/provider.js';
 import { createStory } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
 import { AnthropicProvider } from '../../llm/anthropic.js';
@@ -260,7 +260,7 @@ describe('Jira Story Creation', () => {
   });
 
   describe('Story Points Fallback', () => {
-    let db: Database;
+    let db: DatabaseProvider;
     let envDir: string;
     let tokenStore: TokenStore;
 

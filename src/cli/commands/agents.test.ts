@@ -28,11 +28,12 @@ vi.mock('../../git/worktree.js', () => ({
 }));
 
 const mockSave = vi.fn();
+const mockProvider = {} as any;
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(callback =>
-    callback({ db: { db: {}, save: mockSave }, root: '/tmp/hive' })
+    callback({ db: { db: {}, provider: mockProvider, save: mockSave }, root: '/tmp/hive' })
   ),
-  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {} } })),
+  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {}, provider: mockProvider } })),
 }));
 
 import { getAgentByTmuxSession, updateAgent } from '../../db/queries/agents.js';
@@ -138,20 +139,17 @@ describe('agents command', () => {
 
       await selfTerminate('hive-auditor-123');
 
-      expect(getAgentByTmuxSession).toHaveBeenCalledWith({}, 'hive-auditor-123');
+      expect(getAgentByTmuxSession).toHaveBeenCalledWith(mockProvider, 'hive-auditor-123');
       expect(removeWorktree).toHaveBeenCalledWith('/tmp/hive', 'repos/auditor-abc123');
-      expect(updateAgent).toHaveBeenCalledWith({}, 'auditor-abc123', {
+      expect(updateAgent).toHaveBeenCalledWith(mockProvider, 'auditor-abc123', {
         status: 'terminated',
         currentStoryId: null,
       });
-      expect(createLog).toHaveBeenCalledWith(
-        {},
-        {
-          agentId: 'auditor-abc123',
-          eventType: 'AGENT_TERMINATED',
-          message: 'Agent self-terminated (session: hive-auditor-123)',
-        }
-      );
+      expect(createLog).toHaveBeenCalledWith(mockProvider, {
+        agentId: 'auditor-abc123',
+        eventType: 'AGENT_TERMINATED',
+        message: 'Agent self-terminated (session: hive-auditor-123)',
+      });
       expect(mockSave).toHaveBeenCalled();
     });
 
@@ -164,7 +162,7 @@ describe('agents command', () => {
       await selfTerminate('hive-auditor-123');
 
       expect(removeWorktree).not.toHaveBeenCalled();
-      expect(updateAgent).toHaveBeenCalledWith({}, 'auditor-abc123', {
+      expect(updateAgent).toHaveBeenCalledWith(mockProvider, 'auditor-abc123', {
         status: 'terminated',
         currentStoryId: null,
       });

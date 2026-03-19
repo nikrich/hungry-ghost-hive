@@ -1,8 +1,9 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DatabaseProvider } from '../../db/provider.js';
+import { SqliteProvider } from '../../db/provider.js';
 import { getPlannedStories } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
 
@@ -16,7 +17,7 @@ vi.mock('../../db/queries/stories.js');
 vi.mock('../../db/queries/teams.js');
 
 describe('Assign Command', () => {
-  let db: Database;
+  let db: DatabaseProvider;
 
   const mockConfig = {
     scaling: {
@@ -90,9 +91,10 @@ CREATE TABLE IF NOT EXISTS stories (
 
   beforeEach(async () => {
     const SQL = await initSqlJs();
-    db = new SQL.Database();
-    db.run('PRAGMA foreign_keys = ON');
-    db.run(INITIAL_MIGRATION);
+    const rawDb = new SQL.Database();
+    rawDb.run('PRAGMA foreign_keys = ON');
+    rawDb.run(INITIAL_MIGRATION);
+    db = new SqliteProvider(rawDb);
     vi.clearAllMocks();
   });
 

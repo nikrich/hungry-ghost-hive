@@ -2,7 +2,7 @@
 
 import chalk from 'chalk';
 import { syncStatusForStory } from '../../../connectors/project-management/operations.js';
-import { withTransaction } from '../../../db/client.js';
+// import { withTransaction } from '../../../db/client.js' — removed (using provider methods);
 import { createLog } from '../../../db/queries/logs.js';
 import {
   getMergeQueue,
@@ -19,7 +19,7 @@ import type { ManagerCheckContext } from './types.js';
 export async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read PR queue and assign reviews (brief lock)
   const { queuedPRs, dispatched } = await ctx.withDb(async db => {
-    const openPRs = getMergeQueue(db.db);
+    const openPRs = getMergeQueue(db.provider);
     verboseLogCtx(ctx, `notifyQAOfQueuedPRs: open=${openPRs.length}`);
 
     const queued = openPRs.filter(pr => pr.status === 'queued');
@@ -64,14 +64,13 @@ export async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<voi
       const nextPR = queued[dispatchCount];
       if (!nextPR) break;
 
-      await withTransaction(
-        db.db,
+      await db.provider.withTransaction(
         () => {
-          updatePullRequest(db.db, nextPR.id, {
+          updatePullRequest(db.provider, nextPR.id, {
             status: 'reviewing',
             reviewedBy: qa.name,
           });
-          createLog(db.db, {
+          createLog(db.provider, {
             agentId: qa.name,
             storyId: nextPR.story_id || undefined,
             eventType: 'PR_REVIEW_STARTED',
@@ -138,7 +137,7 @@ export async function notifyQAOfQueuedPRs(ctx: ManagerCheckContext): Promise<voi
 export async function autoRejectCommentOnlyReviews(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Identify reviewing PRs with idle QA agents (brief lock)
   const candidates = await ctx.withDb(async db => {
-    const reviewingPRs = getPullRequestsByStatus(db.db, 'reviewing').filter(
+    const reviewingPRs = getPullRequestsByStatus(db.provider, 'reviewing').filter(
       pr => pr.github_pr_number && pr.team_id && pr.reviewed_by
     );
 
@@ -158,7 +157,7 @@ export async function autoRejectCommentOnlyReviews(ctx: ManagerCheckContext): Pr
     if (idlePRs.length === 0) return [];
 
     const { getAllTeams } = await import('../../../db/queries/teams.js');
-    const teams = getAllTeams(db.db);
+    const teams = getAllTeams(db.provider);
     const teamsById = new Map(teams.map(team => [team.id, team]));
 
     return idlePRs
@@ -263,17 +262,16 @@ export async function autoRejectCommentOnlyReviews(ctx: ManagerCheckContext): Pr
   // Phase 3: Reject PRs in DB (brief lock)
   await ctx.withDb(async db => {
     for (const { candidate, reason } of toReject) {
-      await withTransaction(
-        db.db,
+      await db.provider.withTransaction(
         () => {
-          updatePullRequest(db.db, candidate.id, {
+          updatePullRequest(db.provider, candidate.id, {
             status: 'rejected',
             reviewNotes: reason,
           });
           if (candidate.storyId) {
-            updateStory(db.db, candidate.storyId, { status: 'qa_failed' });
+            updateStory(db.provider, candidate.storyId, { status: 'qa_failed' });
           }
-          createLog(db.db, {
+          createLog(db.provider, {
             agentId: 'manager',
             eventType: 'PR_REJECTED',
             message: `Auto-rejected PR ${candidate.id}: QA posted review comments without formal approve/reject`,
@@ -315,7 +313,7 @@ export async function autoRejectCommentOnlyReviews(ctx: ManagerCheckContext): Pr
 export async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read rejected PRs and update DB (brief lock)
   const rejectedPRData = await ctx.withDb(async db => {
-    const rejectedPRs = getPullRequestsByStatus(db.db, 'rejected');
+    const rejectedPRs = getPullRequestsByStatus(db.provider, 'rejected');
     verboseLogCtx(ctx, `handleRejectedPRs: rejected=${rejectedPRs.length}`);
     if (rejectedPRs.length === 0) return [];
 
@@ -330,11 +328,10 @@ export async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void>
     for (const pr of rejectedPRs) {
       if (pr.story_id) {
         const storyId = pr.story_id;
-        await withTransaction(
-          db.db,
+        await db.provider.withTransaction(
           () => {
-            updateStory(db.db, storyId, { status: 'qa_failed' });
-            createLog(db.db, {
+            updateStory(db.provider, storyId, { status: 'qa_failed' });
+            createLog(db.provider, {
               agentId: 'manager',
               eventType: 'STORY_QA_FAILED',
               message: `Story ${storyId} QA failed: ${pr.review_notes || 'See review comments'}`,
@@ -345,14 +342,13 @@ export async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void>
         );
 
         // Sync status change to Jira
-        await syncStatusForStory(ctx.root, db.db, storyId, 'qa_failed');
+        await syncStatusForStory(ctx.root, db.provider, storyId, 'qa_failed');
       }
 
       // Mark as closed to prevent re-notification spam
-      await withTransaction(
-        db.db,
+      await db.provider.withTransaction(
         () => {
-          updatePullRequest(db.db, pr.id, { status: 'closed' });
+          updatePullRequest(db.provider, pr.id, { status: 'closed' });
         },
         () => db.save()
       );

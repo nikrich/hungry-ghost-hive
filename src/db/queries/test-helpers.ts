@@ -1,12 +1,13 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+import initSqlJs from 'sql.js';
+import { SqliteProvider, type DatabaseProvider } from '../provider.js';
 
 /**
- * Creates an in-memory database for testing
- * This is a shared helper for all query module tests
+ * Creates an in-memory database provider for testing.
+ * Returns a DatabaseProvider backed by an in-memory sql.js database.
  */
-export async function createTestDatabase(): Promise<SqlJsDatabase> {
+export async function createTestDatabase(): Promise<DatabaseProvider> {
   const SQL = await initSqlJs();
   const db = new SQL.Database();
 
@@ -185,5 +186,5 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
     CREATE INDEX IF NOT EXISTS idx_integration_sync_last_synced ON integration_sync(last_synced_at);
   `);
 
-  return db;
+  return new SqliteProvider(db);
 }

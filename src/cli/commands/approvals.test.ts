@@ -61,7 +61,7 @@ describe('approvals command', () => {
       await fn({
         root: '/tmp',
         paths: {} as any,
-        db: { db: {} as any } as any,
+        db: { db: {} as any, provider: {} as any } as any,
       });
     });
   });

@@ -56,20 +56,20 @@ prCommand
 
         // Get team from story
         let teamId = options.team || null;
-        const story = requireStory(db.db, storyId);
+        const story = requireStory(db.provider, storyId);
 
         teamId = story.team_id;
 
         // Auto-close any existing open PRs for this story
         const incomingPrNumber = options.prNumber ? parseInt(options.prNumber, 10) : null;
-        const existingPRs = getOpenPullRequestsByStory(db.db, storyId);
+        const existingPRs = getOpenPullRequestsByStory(db.provider, storyId);
         for (const existingPR of existingPRs) {
           // Skip auto-close if this is a resubmit of the same GitHub PR
           if (incomingPrNumber !== null && existingPR.github_pr_number === incomingPrNumber) {
             continue;
           }
-          updatePullRequest(db.db, existingPR.id, { status: 'closed' });
-          createLog(db.db, {
+          updatePullRequest(db.provider, existingPR.id, { status: 'closed' });
+          createLog(db.provider, {
             agentId: options.from || 'system',
             storyId,
             eventType: 'PR_CLOSED',
@@ -79,12 +79,12 @@ prCommand
         }
 
         // Update story status
-        updateStory(db.db, storyId, { status: 'pr_submitted' });
+        updateStory(db.provider, storyId, { status: 'pr_submitted' });
 
         // Sync status change to Jira
-        await syncStatusForStory(root, db.db, storyId, 'pr_submitted');
+        await syncStatusForStory(root, db.provider, storyId, 'pr_submitted');
 
-        const pr = createPullRequest(db.db, {
+        const pr = createPullRequest(db.provider, {
           storyId,
           teamId,
           branchName: options.branch,
@@ -95,7 +95,7 @@ prCommand
 
         db.save();
 
-        const position = getQueuePosition(db.db, pr.id);
+        const position = getQueuePosition(db.provider, pr.id);
 
         console.log(chalk.green(`PR submitted to merge queue`));
         console.log(chalk.gray(`  ID: ${pr.id}`));
@@ -106,7 +106,7 @@ prCommand
         }
 
         if (options.from) {
-          createLog(db.db, {
+          createLog(db.provider, {
             agentId: options.from,
             storyId: storyId || undefined,
             eventType: 'PR_SUBMITTED',
@@ -119,7 +119,7 @@ prCommand
         // Post Jira comment for PR created event
         try {
           const config = loadConfig(paths.hiveDir);
-          await postLifecycleComment(db.db, paths.hiveDir, config, storyId, 'pr_created', {
+          await postLifecycleComment(db.provider, paths.hiveDir, config, storyId, 'pr_created', {
             agentName: options.from,
             prUrl: pr.github_pr_url || undefined,
           });
@@ -135,7 +135,7 @@ prCommand
             : null;
 
           if (!config.cluster.enabled || clusterStatus?.is_leader) {
-            const scheduler = new Scheduler(db.db, {
+            const scheduler = new Scheduler(db.provider, {
               scaling: config.scaling,
               models: config.models,
               qa: config.qa,
@@ -162,7 +162,7 @@ prCommand
   .option('--json', 'Output as JSON')
   .action(async (options: { team?: string; json?: boolean }) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const queue = getMergeQueue(db.db, options.team);
+      const queue = getMergeQueue(db.provider, options.team);
 
       if (options.json) {
         console.log(JSON.stringify(queue, null, 2));
@@ -204,14 +204,14 @@ prCommand
   .option('--from <session>', 'QA agent session')
   .action(async (options: { team?: string; from?: string }) => {
     await withHiveContext(async ({ db }) => {
-      const pr = getNextInQueue(db.db, options.team);
+      const pr = getNextInQueue(db.provider, options.team);
 
       if (!pr) {
         console.log(chalk.yellow('No PRs waiting for review.'));
         return;
       }
 
-      updatePullRequest(db.db, pr.id, {
+      updatePullRequest(db.provider, pr.id, {
         status: 'reviewing',
         reviewedBy: options.from || null,
       });
@@ -230,7 +230,7 @@ prCommand
       console.log(chalk.gray(`  hive pr reject ${pr.id} --reason "..."`));
 
       if (options.from) {
-        createLog(db.db, {
+        createLog(db.provider, {
           agentId: options.from,
           storyId: pr.story_id || undefined,
           eventType: 'PR_REVIEW_STARTED',
@@ -248,7 +248,7 @@ prCommand
   .description('View details of a PR')
   .action(async (prId: string) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const pr = requirePullRequest(db.db, prId);
+      const pr = requirePullRequest(db.provider, prId);
 
       console.log(chalk.bold(`\nPull Request: ${pr.id}\n`));
       console.log(chalk.gray(`Branch:       ${pr.branch_name}`));
@@ -267,7 +267,7 @@ prCommand
         console.log(pr.review_notes);
       }
 
-      const position = getQueuePosition(db.db, pr.id);
+      const position = getQueuePosition(db.provider, pr.id);
       if (position > 0) {
         console.log(chalk.cyan(`\nQueue Position: ${position}`));
       }
@@ -284,7 +284,7 @@ prCommand
   .option('--no-merge', 'Approve without merging (manual merge needed)')
   .action(async (prId: string, options: { notes?: string; from?: string; merge?: boolean }) => {
     await withHiveContext(async ({ root, db }) => {
-      const pr = requirePullRequest(db.db, prId);
+      const pr = requirePullRequest(db.provider, prId);
 
       if (pr.status === 'merged') {
         console.log(chalk.yellow('PR already merged.'));
@@ -305,7 +305,7 @@ prCommand
         // Use the team's repo path as cwd so gh knows which repo to operate on
         let repoCwd = root;
         if (pr.team_id) {
-          const team = getTeamById(db.db, pr.team_id);
+          const team = getTeamById(db.provider, pr.team_id);
           if (team?.repo_path) {
             repoCwd = join(root, team.repo_path);
           }
@@ -347,21 +347,21 @@ prCommand
         ? markManualMergeRequired(options.notes)
         : (options.notes ?? null);
 
-      updatePullRequest(db.db, prId, {
+      updatePullRequest(db.provider, prId, {
         status: newStatus,
         reviewedBy: options.from || pr.reviewed_by,
         reviewNotes,
       });
 
       if (storyId && newStatus === 'merged') {
-        updateStory(db.db, storyId, { status: 'merged' });
+        updateStory(db.provider, storyId, { status: 'merged' });
       }
 
       db.save();
 
       // Sync status change to Jira
       if (storyId && newStatus === 'merged') {
-        await syncStatusForStory(root, db.db, storyId, 'merged');
+        await syncStatusForStory(root, db.provider, storyId, 'merged');
       }
 
       // Immediately attempt to auto-merge approved PRs instead of waiting for manager daemon cycle
@@ -386,7 +386,7 @@ prCommand
       }
 
       if (options.from) {
-        createLog(db.db, {
+        createLog(db.provider, {
           agentId: options.from,
           storyId: storyId || undefined,
           eventType: newStatus === 'merged' ? 'PR_MERGED' : 'PR_APPROVED',
@@ -406,9 +406,9 @@ prCommand
   .option('--from <session>', 'QA agent session')
   .action(async (prId: string, options: { reason: string; from?: string }) => {
     await withHiveContext(async ({ root, db }) => {
-      const pr = requirePullRequest(db.db, prId);
+      const pr = requirePullRequest(db.provider, prId);
 
-      updatePullRequest(db.db, prId, {
+      updatePullRequest(db.provider, prId, {
         status: 'rejected',
         reviewedBy: options.from || pr.reviewed_by,
         reviewNotes: options.reason,
@@ -420,14 +420,14 @@ prCommand
         storyId = extractStoryIdFromBranch(pr.branch_name);
       }
       if (storyId) {
-        updateStory(db.db, storyId, { status: 'qa_failed' });
+        updateStory(db.provider, storyId, { status: 'qa_failed' });
       }
 
       db.save();
 
       // Sync status change to Jira
       if (storyId) {
-        await syncStatusForStory(root, db.db, storyId, 'qa_failed');
+        await syncStatusForStory(root, db.provider, storyId, 'qa_failed');
       }
 
       console.log(chalk.yellow(`PR ${prId} rejected.`));
@@ -461,7 +461,7 @@ prCommand
       }
 
       if (options.from) {
-        createLog(db.db, {
+        createLog(db.provider, {
           agentId: options.from,
           storyId: storyId || undefined,
           eventType: 'PR_REJECTED',
@@ -480,7 +480,7 @@ prCommand
   .option('-r, --repo <path>', 'Repository path (relative to repos/)')
   .action(async (options: { repo?: string }) => {
     await withHiveContext(async ({ root, paths, db }) => {
-      const { existingBranches, existingPrNumbers } = getExistingPRIdentifiers(db.db, false);
+      const { existingBranches, existingPrNumbers } = getExistingPRIdentifiers(db.provider, false);
 
       // Find repo directory
       const repoDir = options.repo ? `${root}/repos/${options.repo}` : process.cwd();
@@ -489,7 +489,13 @@ prCommand
 
       let result;
       try {
-        result = await syncOpenGitHubPRs(db.db, repoDir, null, existingBranches, existingPrNumbers);
+        result = await syncOpenGitHubPRs(
+          db.provider,
+          repoDir,
+          null,
+          existingBranches,
+          existingPrNumbers
+        );
       } catch (err) {
         console.error(chalk.red('Failed to list GitHub PRs. Is gh CLI authenticated?'), err);
         process.exit(1);
@@ -512,7 +518,7 @@ prCommand
             : null;
 
           if (!config.cluster.enabled || clusterStatus?.is_leader) {
-            const scheduler = new Scheduler(db.db, {
+            const scheduler = new Scheduler(db.provider, {
               scaling: config.scaling,
               models: config.models,
               rootDir: root,
@@ -541,7 +547,7 @@ prCommand
   .action(async (options: { limit?: string; json?: boolean }) => {
     await withReadOnlyHiveContext(async ({ db }) => {
       const limit = parseInt(options.limit ?? '20', 10);
-      const logs = getLogsByEventType(db.db, 'PR_CLOSED', limit);
+      const logs = getLogsByEventType(db.provider, 'PR_CLOSED', limit);
 
       if (options.json) {
         console.log(JSON.stringify(logs, null, 2));

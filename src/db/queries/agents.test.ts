@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { DatabaseProvider } from '../provider.js';
 import {
   createAgent,
   deleteAgent,
@@ -19,7 +19,7 @@ import { createTeam } from './teams.js';
 import { createTestDatabase } from './test-helpers.js';
 
 describe('agents queries', () => {
-  let db: Database;
+  let db: DatabaseProvider;
   let teamId: string;
 
   beforeEach(async () => {

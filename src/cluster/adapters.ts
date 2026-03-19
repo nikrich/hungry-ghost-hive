@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { run } from '../db/client.js';
+// import { run } from '../db/client.js' — removed (using provider methods);
 import { STORY_STATUS_ORDER } from '../utils/story-status.js';
 import type { ReplicatedTable, TableAdapter } from './types.js';
 import {
@@ -28,8 +28,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       created_at: asString(row.created_at),
     }),
     upsert: (db, payload) => {
-      run(
-        db,
+      db.run(
         `
         INSERT INTO teams (id, repo_url, repo_path, name, created_at)
         VALUES (?, ?, ?, ?, ?)
@@ -49,7 +48,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       );
     },
     delete: (db, rowId) => {
-      run(db, 'DELETE FROM teams WHERE id = ?', [rowId]);
+      db.run('DELETE FROM teams WHERE id = ?', [rowId]);
     },
   },
   {
@@ -72,8 +71,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       worktree_path: asNullableString(row.worktree_path),
     }),
     upsert: (db, payload) => {
-      run(
-        db,
+      db.run(
         `
         INSERT INTO agents (id, type, team_id, tmux_session, model, status, current_story_id, memory_state, created_at, updated_at, last_seen, worktree_path)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -107,7 +105,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       );
     },
     delete: (db, rowId) => {
-      run(db, 'DELETE FROM agents WHERE id = ?', [rowId]);
+      db.run('DELETE FROM agents WHERE id = ?', [rowId]);
     },
   },
   {
@@ -125,8 +123,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       created_at: asString(row.created_at),
     }),
     upsert: (db, payload) => {
-      run(
-        db,
+      db.run(
         `
         INSERT INTO requirements (id, title, description, submitted_by, status, godmode, created_at)
         VALUES (?, ?, ?, ?, ?, COALESCE(?, 0), ?)
@@ -155,7 +152,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       );
     },
     delete: (db, rowId) => {
-      run(db, 'DELETE FROM requirements WHERE id = ?', [rowId]);
+      db.run('DELETE FROM requirements WHERE id = ?', [rowId]);
     },
   },
   {
@@ -180,8 +177,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       updated_at: asString(row.updated_at),
     }),
     upsert: (db, payload) => {
-      run(
-        db,
+      db.run(
         `
         INSERT INTO stories (id, requirement_id, team_id, title, description, acceptance_criteria, complexity_score, story_points, status, assigned_agent_id, branch_name, pr_url, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -219,11 +215,11 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       );
     },
     delete: (db, rowId) => {
-      run(db, 'DELETE FROM story_dependencies WHERE story_id = ? OR depends_on_story_id = ?', [
+      db.run('DELETE FROM story_dependencies WHERE story_id = ? OR depends_on_story_id = ?', [
         rowId,
         rowId,
       ]);
-      run(db, 'DELETE FROM stories WHERE id = ?', [rowId]);
+      db.run('DELETE FROM stories WHERE id = ?', [rowId]);
     },
   },
   {
@@ -236,8 +232,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       depends_on_story_id: asString(row.depends_on_story_id),
     }),
     upsert: (db, payload) => {
-      run(
-        db,
+      db.run(
         `
         INSERT OR IGNORE INTO story_dependencies (story_id, depends_on_story_id)
         VALUES (?, ?)
@@ -247,7 +242,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
     },
     delete: (db, rowId) => {
       const [storyId, dependsOnId] = splitDependencyRowId(rowId);
-      run(db, 'DELETE FROM story_dependencies WHERE story_id = ? AND depends_on_story_id = ?', [
+      db.run('DELETE FROM story_dependencies WHERE story_id = ? AND depends_on_story_id = ?', [
         storyId,
         dependsOnId,
       ]);
@@ -263,8 +258,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
     },
     payload: row => toAgentLogPayload(row),
     upsert: (db, payload) => {
-      run(
-        db,
+      db.run(
         `
         INSERT INTO agent_logs (agent_id, story_id, event_type, status, message, metadata, timestamp)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -301,8 +295,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       resolved_at: asNullableString(row.resolved_at),
     }),
     upsert: (db, payload) => {
-      run(
-        db,
+      db.run(
         `
         INSERT INTO escalations (id, story_id, from_agent_id, to_agent_id, reason, status, resolution, created_at, resolved_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -330,7 +323,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       );
     },
     delete: (db, rowId) => {
-      run(db, 'DELETE FROM escalations WHERE id = ?', [rowId]);
+      db.run('DELETE FROM escalations WHERE id = ?', [rowId]);
     },
   },
   {
@@ -354,8 +347,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       reviewed_at: asNullableString(row.reviewed_at),
     }),
     upsert: (db, payload) => {
-      run(
-        db,
+      db.run(
         `
         INSERT INTO pull_requests (id, story_id, team_id, branch_name, github_pr_number, github_pr_url, submitted_by, reviewed_by, status, review_notes, created_at, updated_at, reviewed_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -391,7 +383,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       );
     },
     delete: (db, rowId) => {
-      run(db, 'DELETE FROM pull_requests WHERE id = ?', [rowId]);
+      db.run('DELETE FROM pull_requests WHERE id = ?', [rowId]);
     },
   },
   {
@@ -411,8 +403,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       replied_at: asNullableString(row.replied_at),
     }),
     upsert: (db, payload) => {
-      run(
-        db,
+      db.run(
         `
         INSERT INTO messages (id, from_session, to_session, subject, body, reply, status, created_at, replied_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -440,7 +431,7 @@ export const REPLICATED_TABLES: TableAdapter[] = [
       );
     },
     delete: (db, rowId) => {
-      run(db, 'DELETE FROM messages WHERE id = ?', [rowId]);
+      db.run('DELETE FROM messages WHERE id = ?', [rowId]);
     },
   },
 ];

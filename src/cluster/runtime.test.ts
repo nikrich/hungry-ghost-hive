@@ -112,7 +112,7 @@ describe('cluster runtime helpers', () => {
       [new Date().toISOString(), new Date().toISOString()]
     );
 
-    await runtimeA.sync(db.db);
+    await runtimeA.sync(db.provider);
     db.save();
 
     const statusBefore = runtimeA.getStatus();

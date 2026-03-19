@@ -79,7 +79,7 @@ describe('cluster integration harness', () => {
 
       for (let i = 0; i < 20; i++) {
         for (const fixture of fixtures) {
-          await fixture.runtime.sync(fixture.db.db);
+          await fixture.runtime.sync(fixture.db.provider);
           fixture.db.save();
         }
         await sleep(100);

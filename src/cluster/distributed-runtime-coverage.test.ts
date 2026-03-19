@@ -7,7 +7,6 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ClusterConfig } from '../config/schema.js';
-import { queryAll, queryOne, run } from '../db/client.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
 import { getAllClusterEvents } from './replication.js';
 import {
@@ -530,9 +529,9 @@ describe('distributed runtime sync behavior', () => {
     );
 
     const result = await fixture.runtime.sync(db);
-    const ids = queryAll<{ id: string }>(db, 'SELECT id FROM stories ORDER BY id').map(
-      row => row.id
-    );
+    const ids = db
+      .queryAll<{ id: string }>('SELECT id FROM stories ORDER BY id')
+      .map(row => row.id);
 
     expect(result.merged_duplicate_stories).toBe(1);
     expect(ids).toEqual(['STORY-DUP-A']);
@@ -584,8 +583,7 @@ describe('distributed runtime sync behavior', () => {
     await fixtureA.runtime.sync(dbA);
 
     const resultB = await fixtureB.runtime.sync(dbB);
-    const replicated = queryOne<{ id: string }>(
-      dbB,
+    const replicated = dbB.queryOne<{ id: string }>(
       `SELECT id FROM stories WHERE id = 'STORY-REMOTE-1'`
     );
 
@@ -756,8 +754,7 @@ function insertStory(
   description: string
 ): void {
   const now = new Date().toISOString();
-  run(
-    db,
+  db.run(
     `
     INSERT INTO stories (id, title, description, status, created_at, updated_at)
     VALUES (?, ?, ?, 'planned', ?, ?)

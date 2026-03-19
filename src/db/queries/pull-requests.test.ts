@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { DatabaseProvider } from '../provider.js';
 import {
   createPullRequest,
   deletePullRequest,
@@ -23,7 +23,7 @@ import { createTeam } from './teams.js';
 import { createTestDatabase } from './test-helpers.js';
 
 describe('pull-requests queries', () => {
-  let db: Database;
+  let db: DatabaseProvider;
   let teamId: string;
   let storyId: string;
 

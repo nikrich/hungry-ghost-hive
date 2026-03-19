@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { nanoid } from 'nanoid';
-import type { Database } from 'sql.js';
-import { queryAll, queryOne, run, type EscalationRow } from '../client.js';
+import type { EscalationRow } from '../client.js';
+import type { DatabaseProvider } from '../provider.js';
 
 export type { EscalationRow };
 
@@ -21,12 +21,14 @@ export interface UpdateEscalationInput {
   resolution?: string | null;
 }
 
-export function createEscalation(db: Database, input: CreateEscalationInput): EscalationRow {
+export function createEscalation(
+  provider: DatabaseProvider,
+  input: CreateEscalationInput
+): EscalationRow {
   const id = `ESC-${nanoid(6).toUpperCase()}`;
   const now = new Date().toISOString();
 
-  run(
-    db,
+  provider.run(
     `
     INSERT INTO escalations (id, story_id, from_agent_id, to_agent_id, reason, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -41,16 +43,21 @@ export function createEscalation(db: Database, input: CreateEscalationInput): Es
     ]
   );
 
-  return getEscalationById(db, id)!;
+  return getEscalationById(provider, id)!;
 }
 
-export function getEscalationById(db: Database, id: string): EscalationRow | undefined {
-  return queryOne<EscalationRow>(db, 'SELECT * FROM escalations WHERE id = ?', [id]);
+export function getEscalationById(
+  provider: DatabaseProvider,
+  id: string
+): EscalationRow | undefined {
+  return provider.queryOne<EscalationRow>('SELECT * FROM escalations WHERE id = ?', [id]);
 }
 
-export function getEscalationsByStory(db: Database, storyId: string): EscalationRow[] {
-  return queryAll<EscalationRow>(
-    db,
+export function getEscalationsByStory(
+  provider: DatabaseProvider,
+  storyId: string
+): EscalationRow[] {
+  return provider.queryAll<EscalationRow>(
     `
     SELECT * FROM escalations
     WHERE story_id = ?
@@ -60,9 +67,11 @@ export function getEscalationsByStory(db: Database, storyId: string): Escalation
   );
 }
 
-export function getEscalationsByFromAgent(db: Database, agentId: string): EscalationRow[] {
-  return queryAll<EscalationRow>(
-    db,
+export function getEscalationsByFromAgent(
+  provider: DatabaseProvider,
+  agentId: string
+): EscalationRow[] {
+  return provider.queryAll<EscalationRow>(
     `
     SELECT * FROM escalations
     WHERE from_agent_id = ?
@@ -72,19 +81,18 @@ export function getEscalationsByFromAgent(db: Database, agentId: string): Escala
   );
 }
 
-export function getEscalationsByToAgent(db: Database, agentId: string | null): EscalationRow[] {
+export function getEscalationsByToAgent(
+  provider: DatabaseProvider,
+  agentId: string | null
+): EscalationRow[] {
   if (agentId === null) {
-    return queryAll<EscalationRow>(
-      db,
-      `
+    return provider.queryAll<EscalationRow>(`
       SELECT * FROM escalations
       WHERE to_agent_id IS NULL
       ORDER BY created_at DESC
-    `
-    );
+    `);
   }
-  return queryAll<EscalationRow>(
-    db,
+  return provider.queryAll<EscalationRow>(
     `
     SELECT * FROM escalations
     WHERE to_agent_id = ?
@@ -94,9 +102,11 @@ export function getEscalationsByToAgent(db: Database, agentId: string | null): E
   );
 }
 
-export function getEscalationsByStatus(db: Database, status: EscalationStatus): EscalationRow[] {
-  return queryAll<EscalationRow>(
-    db,
+export function getEscalationsByStatus(
+  provider: DatabaseProvider,
+  status: EscalationStatus
+): EscalationRow[] {
+  return provider.queryAll<EscalationRow>(
     `
     SELECT * FROM escalations
     WHERE status = ?
@@ -106,28 +116,24 @@ export function getEscalationsByStatus(db: Database, status: EscalationStatus): 
   );
 }
 
-export function getPendingEscalations(db: Database): EscalationRow[] {
-  return getEscalationsByStatus(db, 'pending');
+export function getPendingEscalations(provider: DatabaseProvider): EscalationRow[] {
+  return getEscalationsByStatus(provider, 'pending');
 }
 
-export function getPendingHumanEscalations(db: Database): EscalationRow[] {
-  return queryAll<EscalationRow>(
-    db,
-    `
+export function getPendingHumanEscalations(provider: DatabaseProvider): EscalationRow[] {
+  return provider.queryAll<EscalationRow>(`
     SELECT * FROM escalations
     WHERE status = 'pending' AND to_agent_id IS NULL
     ORDER BY created_at
-  `
-  );
+  `);
 }
 
 export function getRecentEscalationsForAgent(
-  db: Database,
+  provider: DatabaseProvider,
   agentId: string,
   minutesBack: number = 30
 ): EscalationRow[] {
-  return queryAll<EscalationRow>(
-    db,
+  return provider.queryAll<EscalationRow>(
     `
     SELECT * FROM escalations
     WHERE from_agent_id = ?
@@ -138,9 +144,11 @@ export function getRecentEscalationsForAgent(
   );
 }
 
-export function getActiveEscalationsForAgent(db: Database, agentId: string): EscalationRow[] {
-  return queryAll<EscalationRow>(
-    db,
+export function getActiveEscalationsForAgent(
+  provider: DatabaseProvider,
+  agentId: string
+): EscalationRow[] {
+  return provider.queryAll<EscalationRow>(
     `
     SELECT * FROM escalations
     WHERE from_agent_id = ?
@@ -151,12 +159,12 @@ export function getActiveEscalationsForAgent(db: Database, agentId: string): Esc
   );
 }
 
-export function getAllEscalations(db: Database): EscalationRow[] {
-  return queryAll<EscalationRow>(db, 'SELECT * FROM escalations ORDER BY created_at DESC');
+export function getAllEscalations(provider: DatabaseProvider): EscalationRow[] {
+  return provider.queryAll<EscalationRow>('SELECT * FROM escalations ORDER BY created_at DESC');
 }
 
 export function updateEscalation(
-  db: Database,
+  provider: DatabaseProvider,
   id: string,
   input: UpdateEscalationInput
 ): EscalationRow | undefined {
@@ -181,26 +189,29 @@ export function updateEscalation(
   }
 
   if (updates.length === 0) {
-    return getEscalationById(db, id);
+    return getEscalationById(provider, id);
   }
 
   values.push(id);
-  run(db, `UPDATE escalations SET ${updates.join(', ')} WHERE id = ?`, values);
-  return getEscalationById(db, id);
+  provider.run(`UPDATE escalations SET ${updates.join(', ')} WHERE id = ?`, values);
+  return getEscalationById(provider, id);
 }
 
 export function resolveEscalation(
-  db: Database,
+  provider: DatabaseProvider,
   id: string,
   resolution: string
 ): EscalationRow | undefined {
-  return updateEscalation(db, id, { status: 'resolved', resolution });
+  return updateEscalation(provider, id, { status: 'resolved', resolution });
 }
 
-export function acknowledgeEscalation(db: Database, id: string): EscalationRow | undefined {
-  return updateEscalation(db, id, { status: 'acknowledged' });
+export function acknowledgeEscalation(
+  provider: DatabaseProvider,
+  id: string
+): EscalationRow | undefined {
+  return updateEscalation(provider, id, { status: 'acknowledged' });
 }
 
-export function deleteEscalation(db: Database, id: string): void {
-  run(db, 'DELETE FROM escalations WHERE id = ?', [id]);
+export function deleteEscalation(provider: DatabaseProvider, id: string): void {
+  provider.run('DELETE FROM escalations WHERE id = ?', [id]);
 }

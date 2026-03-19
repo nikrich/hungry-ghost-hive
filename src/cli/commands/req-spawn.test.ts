@@ -39,9 +39,7 @@ vi.mock('../../connectors/registry.js', () => ({
   },
 }));
 
-vi.mock('../../db/client.js', () => ({
-  withTransaction: vi.fn(async (_db: unknown, fn: () => unknown) => fn()),
-}));
+// db/client.js mock no longer needed - provider methods used directly
 
 vi.mock('../../db/queries/agents.js', () => ({
   createAgent: vi.fn(() => ({ id: 'agent-1' })),
@@ -75,8 +73,26 @@ vi.mock('../../utils/instance.js', () => ({
 
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(
-    (cb: (ctx: { root: string; paths: { hiveDir: string }; db: { db: object } }) => unknown) =>
-      cb({ root: '/tmp/hive', paths: { hiveDir: '/tmp/hive/.hive' }, db: { db: {} } })
+    (
+      cb: (ctx: {
+        root: string;
+        paths: { hiveDir: string };
+        db: { db: object; provider: object };
+      }) => unknown
+    ) =>
+      cb({
+        root: '/tmp/hive',
+        paths: { hiveDir: '/tmp/hive/.hive' },
+        db: {
+          db: {},
+          provider: {
+            withTransaction: async (fn: () => unknown) => fn(),
+            queryOne: () => undefined,
+            queryAll: () => [],
+            run: () => {},
+          },
+        },
+      })
   ),
 }));
 

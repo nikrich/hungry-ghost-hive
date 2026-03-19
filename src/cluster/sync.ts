@@ -1,20 +1,19 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
-import { queryAll, queryOne, run } from '../db/client.js';
+import type { DatabaseProvider } from '../db/provider.js';
+// import { queryAll, queryOne, run } from '../db/client.js' — removed (using provider methods);
 import { ADAPTERS_BY_TABLE, REPLICATED_TABLES } from './adapters.js';
 import { emitLocalEvent, ensureClusterTables, fetchTableSnapshots } from './events.js';
 import type { ClusterEvent, RowVersionRow } from './types.js';
 import { compareVersion, hashPayload, setRowHash, stableStringify } from './utils.js';
 
-export function scanLocalChanges(db: Database, nodeId: string): number {
+export function scanLocalChanges(db: DatabaseProvider, nodeId: string): number {
   ensureClusterTables(db, nodeId);
 
   let emitted = 0;
 
   for (const adapter of REPLICATED_TABLES) {
-    const knownRows = queryAll<{ row_id: string; row_hash: string }>(
-      db,
+    const knownRows = db.queryAll<{ row_id: string; row_hash: string }>(
       'SELECT row_id, row_hash FROM cluster_row_hashes WHERE table_name = ?',
       [adapter.table]
     );
@@ -38,8 +37,7 @@ export function scanLocalChanges(db: Database, nodeId: string): number {
         emitted += 1;
       }
 
-      run(
-        db,
+      db.run(
         `
         INSERT INTO cluster_row_hashes (table_name, row_id, row_hash)
         VALUES (?, ?, ?)
@@ -60,7 +58,7 @@ export function scanLocalChanges(db: Database, nodeId: string): number {
       });
       emitted += 1;
 
-      run(db, 'DELETE FROM cluster_row_hashes WHERE table_name = ? AND row_id = ?', [
+      db.run('DELETE FROM cluster_row_hashes WHERE table_name = ? AND row_id = ?', [
         adapter.table,
         previous.row_id,
       ]);
@@ -70,15 +68,18 @@ export function scanLocalChanges(db: Database, nodeId: string): number {
   return emitted;
 }
 
-export function applyRemoteEvents(db: Database, nodeId: string, events: ClusterEvent[]): number {
+export function applyRemoteEvents(
+  db: DatabaseProvider,
+  nodeId: string,
+  events: ClusterEvent[]
+): number {
   ensureClusterTables(db, nodeId);
 
   let applied = 0;
   const sorted = [...events].sort((a, b) => compareVersion(a.version, b.version));
 
   for (const event of sorted) {
-    const existing = queryOne<{ event_id: string }>(
-      db,
+    const existing = db.queryOne<{ event_id: string }>(
       'SELECT event_id FROM cluster_events WHERE event_id = ?',
       [event.event_id]
     );
@@ -96,14 +97,13 @@ export function applyRemoteEvents(db: Database, nodeId: string, events: ClusterE
         setRowHash(db, event.table_name, event.row_id, hashPayload(event.payload));
       } else if (event.op === 'delete') {
         adapter.delete(db, event.row_id);
-        run(db, 'DELETE FROM cluster_row_hashes WHERE table_name = ? AND row_id = ?', [
+        db.run('DELETE FROM cluster_row_hashes WHERE table_name = ? AND row_id = ?', [
           event.table_name,
           event.row_id,
         ]);
       }
 
-      run(
-        db,
+      db.run(
         `
         INSERT INTO cluster_row_versions (table_name, row_id, actor_id, actor_counter, logical_ts)
         VALUES (?, ?, ?, ?, ?)
@@ -124,8 +124,7 @@ export function applyRemoteEvents(db: Database, nodeId: string, events: ClusterE
       applied += 1;
     }
 
-    run(
-      db,
+    db.run(
       `
       INSERT OR IGNORE INTO cluster_events (event_id, actor_id, actor_counter, logical_ts, table_name, row_id, op, payload, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -147,9 +146,8 @@ export function applyRemoteEvents(db: Database, nodeId: string, events: ClusterE
   return applied;
 }
 
-function shouldApplyEvent(db: Database, event: ClusterEvent): boolean {
-  const existing = queryOne<RowVersionRow>(
-    db,
+function shouldApplyEvent(db: DatabaseProvider, event: ClusterEvent): boolean {
+  const existing = db.queryOne<RowVersionRow>(
     `
     SELECT table_name, row_id, actor_id, actor_counter, logical_ts
     FROM cluster_row_versions

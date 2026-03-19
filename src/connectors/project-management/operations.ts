@@ -10,10 +10,10 @@
  */
 
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import type { TokenStore } from '../../auth/token-store.js';
 import type { HiveConfig } from '../../config/schema.js';
-import { queryOne } from '../../db/client.js';
+import type { DatabaseProvider } from '../../db/provider.js';
+// import { queryOne } from '../../db/client.js' — removed (using provider methods);
 import type { StoryRow } from '../../db/queries/stories.js';
 import * as logger from '../../utils/logger.js';
 import type {
@@ -94,7 +94,7 @@ async function resolveProvider(root: string) {
  */
 export async function syncStatusForStory(
   root: string,
-  db: Database,
+  db: DatabaseProvider,
   storyId: string,
   newStatus: string
 ): Promise<void> {
@@ -124,7 +124,7 @@ export async function syncStatusForStory(
  * Never throws — failures are logged as warnings.
  */
 export async function postLifecycleComment(
-  db: Database,
+  db: DatabaseProvider,
   _hiveDir: string,
   hiveConfig: HiveConfig | undefined,
   storyId: string,
@@ -136,7 +136,7 @@ export async function postLifecycleComment(
     const pmConfig = hiveConfig.integrations?.project_management;
     if (!pmConfig || pmConfig.provider === 'none') return;
 
-    const story = queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
+    const story = db.queryOne<StoryRow>('SELECT * FROM stories WHERE id = ?', [storyId]);
     if (!story || !story.external_issue_key) {
       logger.debug(`Story ${storyId} has no external issue key, skipping ${event} comment`);
       return;
@@ -160,7 +160,7 @@ export async function postLifecycleComment(
  * Never throws — failures are logged as warnings.
  */
 export async function postProgressUpdate(
-  db: Database,
+  db: DatabaseProvider,
   _hiveDir: string,
   hiveConfig: HiveConfig | undefined,
   storyId: string,
@@ -172,7 +172,7 @@ export async function postProgressUpdate(
     const pmConfig = hiveConfig.integrations?.project_management;
     if (!pmConfig || pmConfig.provider === 'none') return;
 
-    const story = queryOne<StoryRow>(db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
+    const story = db.queryOne<StoryRow>('SELECT * FROM stories WHERE id = ?', [storyId]);
     if (!story?.external_subtask_key) {
       logger.debug(`Story ${storyId} has no external subtask, skipping progress update`);
       return;
@@ -200,7 +200,7 @@ export async function postProgressUpdate(
  *
  * Never throws — failures are logged.
  */
-export async function syncFromProvider(root: string, db: Database): Promise<number> {
+export async function syncFromProvider(root: string, db: DatabaseProvider): Promise<number> {
   try {
     const resolved = await resolveProvider(root);
     if (!resolved) return 0;
@@ -227,7 +227,7 @@ export async function syncFromProvider(root: string, db: Database): Promise<numb
  */
 export async function syncStoryToProvider(
   root: string,
-  db: Database,
+  db: DatabaseProvider,
   story: StoryRow,
   teamName?: string
 ): Promise<{ key: string; id: string } | null> {
@@ -256,7 +256,7 @@ export async function syncStoryToProvider(
  */
 export async function syncRequirementToProvider(
   root: string,
-  db: Database,
+  db: DatabaseProvider,
   requirement: { id: string; title: string; description: string },
   storyIds: string[],
   teamName?: string

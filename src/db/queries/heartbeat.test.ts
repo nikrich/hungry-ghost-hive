@@ -1,14 +1,14 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { SqliteProvider, type DatabaseProvider } from '../provider.js';
 import { createAgent } from './agents.js';
 import { getStaleAgents, isAgentHeartbeatCurrent, updateAgentHeartbeat } from './heartbeat.js';
 import { createTeam } from './teams.js';
 import { createTestDatabase } from './test-helpers.js';
 
 describe('heartbeat queries', () => {
-  let db: Database;
+  let db: DatabaseProvider;
   let teamId: string;
 
   beforeEach(async () => {
@@ -30,7 +30,7 @@ describe('heartbeat queries', () => {
 
       updateAgentHeartbeat(db, agent.id);
 
-      const stmt = db.prepare(`SELECT last_seen FROM agents WHERE id = ?`);
+      const stmt = (db as SqliteProvider).db.prepare(`SELECT last_seen FROM agents WHERE id = ?`);
       stmt.bind([agent.id]);
       const afterUpdate = [];
       while (stmt.step()) afterUpdate.push(stmt.getAsObject());
@@ -51,7 +51,9 @@ describe('heartbeat queries', () => {
       updateAgentHeartbeat(db, agent.id);
       updateAgentHeartbeat(db, agent.id);
 
-      const stmtResult = db.prepare(`SELECT last_seen FROM agents WHERE id = ?`);
+      const stmtResult = (db as SqliteProvider).db.prepare(
+        `SELECT last_seen FROM agents WHERE id = ?`
+      );
       stmtResult.bind([agent.id]);
       const result = [];
       while (stmtResult.step()) result.push(stmtResult.getAsObject());

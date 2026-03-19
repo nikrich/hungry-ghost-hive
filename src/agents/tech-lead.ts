@@ -4,7 +4,6 @@ import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../cli-runtimes
 import { loadConfig } from '../config/index.js';
 import type { HiveConfig } from '../config/schema.js';
 import { syncRequirementToProvider } from '../connectors/project-management/operations.js';
-import { queryAll } from '../db/client.js';
 import { createAgent, getAgentsByType, updateAgent } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
 import {
@@ -331,8 +330,7 @@ Respond in JSON format:
       }
 
       // Assign stories to the Senior
-      const teamStories = queryAll<{ id: string }>(
-        this.db,
+      const teamStories = this.db.queryAll<{ id: string }>(
         `
         SELECT id FROM stories WHERE team_id = ? AND status = 'estimated'
       `,

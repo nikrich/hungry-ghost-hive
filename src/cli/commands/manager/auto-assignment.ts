@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import chalk from 'chalk';
-import { queryAll } from '../../../db/client.js';
+// import { queryAll } from '../../../db/client.js' — removed (using provider methods);
 import type { ManagerCheckContext } from './types.js';
 
 function verboseLog(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string): void {
@@ -11,8 +11,7 @@ function verboseLog(ctx: Pick<ManagerCheckContext, 'verbose'>, message: string):
 
 async function getAssignableUnassignedStoryCount(ctx: ManagerCheckContext): Promise<number> {
   return ctx.withDb(async db => {
-    const rows = queryAll<{ count: number }>(
-      db.db,
+    const rows = db.provider.queryAll<{ count: number }>(
       "SELECT COUNT(*) as count FROM stories WHERE status IN ('planned', 'qa_failed') AND assigned_agent_id IS NULL"
     );
     return rows[0]?.count || 0;

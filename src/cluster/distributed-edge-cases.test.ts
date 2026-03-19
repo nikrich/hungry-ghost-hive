@@ -6,7 +6,6 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ClusterConfig } from '../config/schema.js';
-import { queryAll, queryOne, run } from '../db/client.js';
 import { createTestDatabase } from '../db/queries/test-helpers.js';
 import { RaftMetadataStore, type DurableRaftLogEntry } from './raft-store.js';
 import {
@@ -43,19 +42,16 @@ describe('distributed replication edge cases', () => {
     const db = await createTestDatabase();
     insertStory(db, 'S-A', 'A', 'A');
     insertStory(db, 'S-B', 'B', 'B');
-    run(db, `INSERT INTO story_dependencies (story_id, depends_on_story_id) VALUES ('S-A', 'S-B')`);
+    db.run(`INSERT INTO story_dependencies (story_id, depends_on_story_id) VALUES ('S-A', 'S-B')`);
 
     scanLocalChanges(db, 'node-a');
 
-    const depEvent = queryOne<{ row_id: string; op: string }>(
-      db,
-      `
+    const depEvent = db.queryOne<{ row_id: string; op: string }>(`
       SELECT row_id, op
       FROM cluster_events
       WHERE table_name = 'story_dependencies'
       LIMIT 1
-    `
-    );
+    `);
 
     expect(depEvent).toEqual({ row_id: 'S-A::S-B', op: 'upsert' });
     db.close();
@@ -65,25 +61,19 @@ describe('distributed replication edge cases', () => {
     const db = await createTestDatabase();
     insertStory(db, 'S-A', 'A', 'A');
     insertStory(db, 'S-B', 'B', 'B');
-    run(db, `INSERT INTO story_dependencies (story_id, depends_on_story_id) VALUES ('S-A', 'S-B')`);
+    db.run(`INSERT INTO story_dependencies (story_id, depends_on_story_id) VALUES ('S-A', 'S-B')`);
     scanLocalChanges(db, 'node-a');
 
-    run(
-      db,
-      `DELETE FROM story_dependencies WHERE story_id = 'S-A' AND depends_on_story_id = 'S-B'`
-    );
+    db.run(`DELETE FROM story_dependencies WHERE story_id = 'S-A' AND depends_on_story_id = 'S-B'`);
     const emitted = scanLocalChanges(db, 'node-a');
 
-    const lastDepEvent = queryOne<{ row_id: string; op: string }>(
-      db,
-      `
+    const lastDepEvent = db.queryOne<{ row_id: string; op: string }>(`
       SELECT row_id, op
       FROM cluster_events
       WHERE table_name = 'story_dependencies'
       ORDER BY actor_counter DESC
       LIMIT 1
-    `
-    );
+    `);
 
     expect(emitted).toBe(1);
     expect(lastDepEvent).toEqual({ row_id: 'S-A::S-B', op: 'delete' });
@@ -103,14 +93,11 @@ describe('distributed replication edge cases', () => {
     });
 
     const applied = applyRemoteEvents(db, 'node-local', [event]);
-    const dep = queryOne<{ story_id: string; depends_on_story_id: string }>(
-      db,
-      `
+    const dep = db.queryOne<{ story_id: string; depends_on_story_id: string }>(`
       SELECT story_id, depends_on_story_id
       FROM story_dependencies
       WHERE story_id = 'S-A' AND depends_on_story_id = 'S-B'
-    `
-    );
+    `);
 
     expect(applied).toBe(1);
     expect(dep).toEqual({ story_id: 'S-A', depends_on_story_id: 'S-B' });
@@ -121,7 +108,7 @@ describe('distributed replication edge cases', () => {
     const db = await createTestDatabase();
     insertStory(db, 'S-1', 'One', 'One');
     insertStory(db, 'S-2', 'Two', 'Two');
-    run(db, `INSERT INTO story_dependencies (story_id, depends_on_story_id) VALUES ('S-1', 'S-2')`);
+    db.run(`INSERT INTO story_dependencies (story_id, depends_on_story_id) VALUES ('S-1', 'S-2')`);
 
     const deleteEvent = buildEvent({
       event_id: 'node-r:2',
@@ -133,9 +120,8 @@ describe('distributed replication edge cases', () => {
     });
 
     const applied = applyRemoteEvents(db, 'node-local', [deleteEvent]);
-    const story = queryOne<{ id: string }>(db, `SELECT id FROM stories WHERE id = 'S-2'`);
-    const depsCount = queryOne<{ count: number }>(
-      db,
+    const story = db.queryOne<{ id: string }>(`SELECT id FROM stories WHERE id = 'S-2'`);
+    const depsCount = db.queryOne<{ count: number }>(
       `SELECT COUNT(*) as count FROM story_dependencies WHERE depends_on_story_id = 'S-2'`
     );
 
@@ -150,8 +136,7 @@ describe('distributed replication edge cases', () => {
     insertStory(db, 'S-HASH', 'Hash', 'Hash');
     scanLocalChanges(db, 'node-a');
 
-    const before = queryOne<{ count: number }>(
-      db,
+    const before = db.queryOne<{ count: number }>(
       `SELECT COUNT(*) as count FROM cluster_row_hashes WHERE table_name = 'stories' AND row_id = 'S-HASH'`
     );
 
@@ -165,8 +150,7 @@ describe('distributed replication edge cases', () => {
     });
 
     applyRemoteEvents(db, 'node-local', [deleteEvent]);
-    const after = queryOne<{ count: number }>(
-      db,
+    const after = db.queryOne<{ count: number }>(
       `SELECT COUNT(*) as count FROM cluster_row_hashes WHERE table_name = 'stories' AND row_id = 'S-HASH'`
     );
 
@@ -179,8 +163,7 @@ describe('distributed replication edge cases', () => {
     const db = await createTestDatabase();
     ensureClusterTables(db, 'node-a');
 
-    run(
-      db,
+    db.run(
       `
       INSERT INTO cluster_events (event_id, actor_id, actor_counter, logical_ts, table_name, row_id, op, payload, created_at)
       VALUES
@@ -221,9 +204,8 @@ describe('distributed replication edge cases', () => {
     });
 
     const applied = applyRemoteEvents(db, 'node-local', [event]);
-    const row = queryOne<{ id: string }>(db, `SELECT id FROM stories WHERE id = 'S-NULL'`);
-    const recorded = queryOne<{ event_id: string }>(
-      db,
+    const row = db.queryOne<{ id: string }>(`SELECT id FROM stories WHERE id = 'S-NULL'`);
+    const recorded = db.queryOne<{ event_id: string }>(
       `SELECT event_id FROM cluster_events WHERE event_id = 'node-r:7'`
     );
 
@@ -251,8 +233,7 @@ describe('distributed replication edge cases', () => {
     );
 
     const merged = mergeSimilarStories(db, 0.8);
-    const canonical = queryOne<{ status: string }>(
-      db,
+    const canonical = db.queryOne<{ status: string }>(
       `SELECT status FROM stories WHERE id = 'S-100'`
     );
 
@@ -272,8 +253,7 @@ describe('distributed replication edge cases', () => {
     );
 
     const merged = mergeSimilarStories(db, 0.5);
-    const canonical = queryOne<{ title: string; description: string }>(
-      db,
+    const canonical = db.queryOne<{ title: string; description: string }>(
       `SELECT title, description FROM stories WHERE id = 'S-LONG-1'`
     );
 
@@ -291,8 +271,7 @@ describe('distributed replication edge cases', () => {
     insertStory(db, 'S-COMP-2', 'Auth merge', 'Auth merge', 'planned', 8, 5);
 
     const merged = mergeSimilarStories(db, 0.8);
-    const canonical = queryOne<{ complexity_score: number; story_points: number }>(
-      db,
+    const canonical = db.queryOne<{ complexity_score: number; story_points: number }>(
       `SELECT complexity_score, story_points FROM stories WHERE id = 'S-COMP-1'`
     );
 
@@ -308,9 +287,9 @@ describe('distributed replication edge cases', () => {
     insertStory(db, 'S-MERGED-2', 'Auth duplicate', 'Auth duplicate', 'merged');
 
     const merged = mergeSimilarStories(db, 0.8);
-    const ids = queryAll<{ id: string }>(db, `SELECT id FROM stories ORDER BY id`).map(
-      row => row.id
-    );
+    const ids = db
+      .queryAll<{ id: string }>(`SELECT id FROM stories ORDER BY id`)
+      .map(row => row.id);
 
     expect(merged).toBe(0);
     expect(ids).toEqual(['S-MERGED-1', 'S-MERGED-2']);
@@ -555,8 +534,7 @@ function insertStory(
   storyPoints: number | null = null
 ): void {
   const now = new Date().toISOString();
-  run(
-    db,
+  db.run(
     `
     INSERT INTO stories (id, title, description, status, complexity_score, story_points, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)

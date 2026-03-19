@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
-import { queryAll, queryOne } from '../../../db/client.js';
+import type { DatabaseProvider } from '../../../db/provider.js';
+// import { queryAll, queryOne } from '../../../db/client.js' — removed (using provider methods);
 import { updateAgent } from '../../../db/queries/agents.js';
 
 const ACTIVE_STORY_STATUS_ORDER: ReadonlyArray<{
@@ -25,13 +25,12 @@ function buildActiveStatusPriorityCase(): string {
 }
 
 function getNextAssignedActiveStoryId(
-  db: Database,
+  db: DatabaseProvider,
   agentId: string,
   mergedStoryId: string
 ): string | null {
   const statusPriorityCase = buildActiveStatusPriorityCase();
-  const row = queryOne<{ id: string }>(
-    db,
+  const row = db.queryOne<{ id: string }>(
     `
       SELECT id
       FROM stories
@@ -52,11 +51,10 @@ export interface MergedStoryCleanupResult {
 }
 
 export function cleanupAgentsReferencingMergedStory(
-  db: Database,
+  db: DatabaseProvider,
   mergedStoryId: string
 ): MergedStoryCleanupResult {
-  const staleAgents = queryAll<{ id: string }>(
-    db,
+  const staleAgents = db.queryAll<{ id: string }>(
     `
       SELECT id
       FROM agents

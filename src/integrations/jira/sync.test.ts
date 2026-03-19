@@ -3,11 +3,10 @@
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
-import { run } from '../../db/client.js';
+import type { DatabaseProvider } from '../../db/provider.js';
 import { createSyncRecord } from '../../db/queries/integration-sync.js';
 import { createStory, getStoryById } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
@@ -89,7 +88,7 @@ describe('isForwardTransition', () => {
 });
 
 describe('syncJiraStatusesToHive', () => {
-  let db: Database;
+  let db: DatabaseProvider;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -158,8 +157,7 @@ describe('syncJiraStatusesToHive', () => {
     });
 
     // Update story to add Jira key and set initial status
-    run(
-      db,
+    db.run(
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'planned', story.id]
     );
@@ -222,8 +220,7 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(
-      db,
+    db.run(
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'in_progress', story.id]
     );
@@ -278,8 +275,7 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(
-      db,
+    db.run(
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'planned', story.id]
     );
@@ -309,8 +305,7 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(
-      db,
+    db.run(
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'in_progress', story.id]
     );
@@ -374,8 +369,7 @@ describe('syncJiraStatusesToHive', () => {
       description: 'Test',
     });
 
-    run(
-      db,
+    db.run(
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'merged', story.id]
     );
@@ -389,7 +383,7 @@ describe('syncJiraStatusesToHive', () => {
 });
 
 describe('syncUnsyncedStoriesToJira', () => {
-  let db: Database;
+  let db: DatabaseProvider;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -429,8 +423,7 @@ describe('syncUnsyncedStoriesToJira', () => {
       title: 'Synced Story',
       description: 'Already synced',
     });
-    run(
-      db,
+    db.run(
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-1', 'TEST-1', 'planned', story.id]
     );
@@ -460,7 +453,7 @@ describe('syncUnsyncedStoriesToJira', () => {
 
   it('syncs stories without jira keys that have a requirement', async () => {
     // Create a requirement
-    run(db, `INSERT INTO requirements (id, title, description, status) VALUES (?, ?, ?, ?)`, [
+    db.run(`INSERT INTO requirements (id, title, description, status) VALUES (?, ?, ?, ?)`, [
       'REQ-TEST',
       'Test Req',
       'Test requirement',
@@ -468,7 +461,7 @@ describe('syncUnsyncedStoriesToJira', () => {
     ]);
 
     // Create a team
-    run(db, `INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)`, [
+    db.run(`INSERT INTO teams (id, repo_url, repo_path, name) VALUES (?, ?, ?, ?)`, [
       'team-test',
       'https://github.com/test/test.git',
       'repos/test',
@@ -482,7 +475,7 @@ describe('syncUnsyncedStoriesToJira', () => {
       title: 'Unsynced Story',
       description: 'Needs Jira sync',
     });
-    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story.id]);
+    db.run('UPDATE stories SET status = ? WHERE id = ?', ['planned', story.id]);
 
     const tokenStore = createTestTokenStore({
       JIRA_ACCESS_TOKEN: 'fake-token',
@@ -515,7 +508,7 @@ describe('syncUnsyncedStoriesToJira', () => {
       title: 'Orphan Story',
       description: 'No requirement',
     });
-    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story.id]);
+    db.run('UPDATE stories SET status = ? WHERE id = ?', ['planned', story.id]);
 
     const tokenStore = createTestTokenStore();
     const synced = await syncUnsyncedStoriesToJira(db, tokenStore, baseConfig);
@@ -524,7 +517,7 @@ describe('syncUnsyncedStoriesToJira', () => {
 
   it('re-query guard filters stories that gained jira_issue_key after initial query', async () => {
     // Create a requirement
-    run(db, `INSERT INTO requirements (id, title, description, status) VALUES (?, ?, ?, ?)`, [
+    db.run(`INSERT INTO requirements (id, title, description, status) VALUES (?, ?, ?, ?)`, [
       'REQ-GUARD',
       'Guard Req',
       'Test re-query guard',
@@ -542,8 +535,8 @@ describe('syncUnsyncedStoriesToJira', () => {
       title: 'Story 2 - stays unsynced',
       description: 'Stays without key',
     });
-    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story1.id]);
-    run(db, 'UPDATE stories SET status = ? WHERE id = ?', ['planned', story2.id]);
+    db.run('UPDATE stories SET status = ? WHERE id = ?', ['planned', story1.id]);
+    db.run('UPDATE stories SET status = ? WHERE id = ?', ['planned', story2.id]);
 
     const tokenStore = createTestTokenStore({
       JIRA_ACCESS_TOKEN: 'fake-token',
@@ -558,7 +551,7 @@ describe('syncUnsyncedStoriesToJira', () => {
 
     // Give story1 a jira key BEFORE calling sync — this means the re-query guard
     // will find it already has a key and filter it out, only passing story2 to sync.
-    run(db, 'UPDATE stories SET jira_issue_key = ? WHERE id = ?', ['TEST-999', story1.id]);
+    db.run('UPDATE stories SET jira_issue_key = ? WHERE id = ?', ['TEST-999', story1.id]);
 
     vi.mocked(syncRequirementToJira).mockResolvedValue({
       epicKey: 'TEST-100',
@@ -583,7 +576,7 @@ describe('syncUnsyncedStoriesToJira', () => {
 });
 
 describe('retrySprintAssignment', () => {
-  let db: Database;
+  let db: DatabaseProvider;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -629,7 +622,7 @@ describe('retrySprintAssignment', () => {
       title: 'Sprint Story',
       description: 'Already in sprint',
     });
-    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 1, status = ? WHERE id = ?', [
+    db.run('UPDATE stories SET jira_issue_key = ?, in_sprint = 1, status = ? WHERE id = ?', [
       'TEST-1',
       'planned',
       story.id,
@@ -645,7 +638,7 @@ describe('retrySprintAssignment', () => {
       title: 'Not In Sprint',
       description: 'Needs sprint assignment',
     });
-    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
+    db.run('UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
       'TEST-2',
       'planned',
       story.id,
@@ -680,7 +673,7 @@ describe('retrySprintAssignment', () => {
       title: 'Sprint Fail',
       description: 'Sprint move will fail',
     });
-    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
+    db.run('UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
       'TEST-3',
       'planned',
       story.id,
@@ -708,7 +701,7 @@ describe('retrySprintAssignment', () => {
       title: 'Merged Story',
       description: 'Already merged',
     });
-    run(db, 'UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
+    db.run('UPDATE stories SET jira_issue_key = ?, in_sprint = 0, status = ? WHERE id = ?', [
       'TEST-4',
       'merged',
       story.id,
@@ -721,7 +714,7 @@ describe('retrySprintAssignment', () => {
 });
 
 describe('idempotency guards', () => {
-  let db: Database;
+  let db: DatabaseProvider;
 
   beforeEach(async () => {
     db = await createTestDatabase();
@@ -768,7 +761,7 @@ describe('idempotency guards', () => {
 });
 
 describe('syncHiveStatusesToJira', () => {
-  let db: Database;
+  let db: DatabaseProvider;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -832,8 +825,7 @@ describe('syncHiveStatusesToJira', () => {
     });
 
     // Story is in_progress in Hive, but Jira still shows planned
-    run(
-      db,
+    db.run(
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'in_progress', story.id]
     );
@@ -909,8 +901,7 @@ describe('syncHiveStatusesToJira', () => {
       description: 'Test',
     });
 
-    run(
-      db,
+    db.run(
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'in_progress', story.id]
     );
@@ -967,8 +958,7 @@ describe('syncHiveStatusesToJira', () => {
     });
 
     // Hive status is planned, but Jira is already in_progress (ahead)
-    run(
-      db,
+    db.run(
       'UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?',
       ['TEST-123', 'TEST-123', 'planned', story.id]
     );

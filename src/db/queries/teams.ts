@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { nanoid } from 'nanoid';
-import type { Database } from 'sql.js';
-import { queryAll, queryOne, run, type TeamRow } from '../client.js';
+import type { TeamRow } from '../client.js';
+import type { DatabaseProvider } from '../provider.js';
 
 export type { TeamRow };
 
@@ -12,12 +12,11 @@ export interface CreateTeamInput {
   name: string;
 }
 
-export function createTeam(db: Database, input: CreateTeamInput): TeamRow {
+export function createTeam(provider: DatabaseProvider, input: CreateTeamInput): TeamRow {
   const id = `team-${nanoid(10)}`;
   const now = new Date().toISOString();
 
-  run(
-    db,
+  provider.run(
     `
     INSERT INTO teams (id, repo_url, repo_path, name, created_at)
     VALUES (?, ?, ?, ?, ?)
@@ -25,21 +24,21 @@ export function createTeam(db: Database, input: CreateTeamInput): TeamRow {
     [id, input.repoUrl, input.repoPath, input.name, now]
   );
 
-  return getTeamById(db, id)!;
+  return getTeamById(provider, id)!;
 }
 
-export function getTeamById(db: Database, id: string): TeamRow | undefined {
-  return queryOne<TeamRow>(db, 'SELECT * FROM teams WHERE id = ?', [id]);
+export function getTeamById(provider: DatabaseProvider, id: string): TeamRow | undefined {
+  return provider.queryOne<TeamRow>('SELECT * FROM teams WHERE id = ?', [id]);
 }
 
-export function getTeamByName(db: Database, name: string): TeamRow | undefined {
-  return queryOne<TeamRow>(db, 'SELECT * FROM teams WHERE name = ?', [name]);
+export function getTeamByName(provider: DatabaseProvider, name: string): TeamRow | undefined {
+  return provider.queryOne<TeamRow>('SELECT * FROM teams WHERE name = ?', [name]);
 }
 
-export function getAllTeams(db: Database): TeamRow[] {
-  return queryAll<TeamRow>(db, 'SELECT * FROM teams ORDER BY created_at');
+export function getAllTeams(provider: DatabaseProvider): TeamRow[] {
+  return provider.queryAll<TeamRow>('SELECT * FROM teams ORDER BY created_at');
 }
 
-export function deleteTeam(db: Database, id: string): void {
-  run(db, 'DELETE FROM teams WHERE id = ?', [id]);
+export function deleteTeam(provider: DatabaseProvider, id: string): void {
+  provider.run('DELETE FROM teams WHERE id = ?', [id]);
 }

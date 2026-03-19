@@ -2,7 +2,10 @@
 
 export * from './agents.js';
 export * from './escalations.js';
+export * from './heartbeat.js';
+export * from './integration-sync.js';
 export * from './logs.js';
+export * from './messages.js';
 export * from './pull-requests.js';
 export * from './requirements.js';
 export * from './stories.js';

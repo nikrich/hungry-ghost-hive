@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type { DatabaseProvider } from '../db/provider.js';
 import {
   updateAgent,
   type AgentRow,
@@ -32,7 +32,7 @@ export interface MemoryState {
 }
 
 export interface AgentContext {
-  db: Database;
+  db: DatabaseProvider;
   provider: LLMProvider;
   agentRow: AgentRow;
   workDir: string;
@@ -46,7 +46,7 @@ export interface AgentContext {
 }
 
 export abstract class BaseAgent {
-  protected db: Database;
+  protected db: DatabaseProvider;
   protected provider: LLMProvider;
   protected agentId: string;
   protected agentType: AgentType;
