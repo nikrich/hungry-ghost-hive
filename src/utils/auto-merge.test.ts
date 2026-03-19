@@ -2,6 +2,7 @@
 
 import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SqliteProvider } from '../db/provider.js';
 import { createAgent, getAgentById, updateAgent } from '../db/queries/agents.js';
 import {
   createPullRequest,
@@ -229,6 +230,7 @@ describe('auto-merge functionality', () => {
       // Create a minimal database client wrapper
       const dbClient = {
         db,
+        provider: new SqliteProvider(db),
         save: vi.fn(),
         close: vi.fn(),
         runMigrations: vi.fn(),
@@ -257,6 +259,7 @@ describe('auto-merge functionality', () => {
       // Create a minimal database client wrapper (no approved PRs)
       const dbClient = {
         db,
+        provider: new SqliteProvider(db),
         save: vi.fn(),
         close: vi.fn(),
         runMigrations: vi.fn(),
@@ -302,7 +305,13 @@ describe('auto-merge functionality', () => {
 
       vi.doMock('child_process', () => ({ execSync: mockExecSync }));
 
-      const dbClient = { db, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+      const dbClient = {
+        db,
+        provider: new SqliteProvider(db),
+        save: vi.fn(),
+        close: vi.fn(),
+        runMigrations: vi.fn(),
+      };
       const result = await autoMergeApprovedPRs('/mock/root', dbClient);
 
       // Should return 0 because the PR was not actually merged yet
@@ -338,7 +347,13 @@ describe('auto-merge functionality', () => {
 
       vi.doMock('child_process', () => ({ execSync: mockExecSync }));
 
-      const dbClient = { db, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+      const dbClient = {
+        db,
+        provider: new SqliteProvider(db),
+        save: vi.fn(),
+        close: vi.fn(),
+        runMigrations: vi.fn(),
+      };
       const result = await autoMergeApprovedPRs('/mock/root', dbClient);
 
       // Should return 0 because no merge happened yet
@@ -371,6 +386,7 @@ describe('auto-merge functionality', () => {
 
       const dbClient = {
         db,
+        provider: new SqliteProvider(db),
         save: vi.fn(),
         close: vi.fn(),
         runMigrations: vi.fn(),
@@ -424,7 +440,13 @@ describe('auto-merge functionality', () => {
 
       vi.doMock('child_process', () => ({ execSync: mockExecSync }));
 
-      const dbClient = { db, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+      const dbClient = {
+        db,
+        provider: new SqliteProvider(db),
+        save: vi.fn(),
+        close: vi.fn(),
+        runMigrations: vi.fn(),
+      };
       const result = await autoMergeApprovedPRs('/mock/root', dbClient);
 
       expect(result).toBe(1);
@@ -472,7 +494,13 @@ describe('auto-merge functionality', () => {
 
       vi.doMock('child_process', () => ({ execSync: mockExecSync }));
 
-      const dbClient = { db, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+      const dbClient = {
+        db,
+        provider: new SqliteProvider(db),
+        save: vi.fn(),
+        close: vi.fn(),
+        runMigrations: vi.fn(),
+      };
       const result = await autoMergeApprovedPRs('/mock/root', dbClient);
 
       // Should not merge — 'build' is a new failure
@@ -506,7 +534,13 @@ describe('auto-merge functionality', () => {
 
       vi.doMock('child_process', () => ({ execSync: mockExecSync }));
 
-      const dbClient = { db, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+      const dbClient = {
+        db,
+        provider: new SqliteProvider(db),
+        save: vi.fn(),
+        close: vi.fn(),
+        runMigrations: vi.fn(),
+      };
       const result = await autoMergeApprovedPRs('/mock/root', dbClient);
 
       expect(result).toBe(0);

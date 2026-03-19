@@ -5,12 +5,21 @@ import { dirname, join } from 'path';
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { fileURLToPath } from 'url';
 import { DatabaseCorruptionError, InitializationError } from '../errors/index.js';
+import {
+  ReadOnlySqliteProvider,
+  SqliteProvider,
+  type DatabaseProvider,
+  type WritableDatabaseProvider,
+} from './provider.js';
+export { ReadOnlySqliteProvider, SqliteProvider } from './provider.js';
+export type { DatabaseProvider, QueryResult, WritableDatabaseProvider } from './provider.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export interface DatabaseClient {
   db: SqlJsDatabase;
+  provider: WritableDatabaseProvider;
   close: () => void;
   save: () => void;
   runMigrations: () => void;
@@ -18,6 +27,7 @@ export interface DatabaseClient {
 
 export interface ReadOnlyDatabaseClient {
   db: SqlJsDatabase;
+  provider: DatabaseProvider;
   close: () => void;
 }
 
@@ -186,8 +196,11 @@ export async function createDatabase(dbPath: string): Promise<DatabaseClient> {
     renameSync(tmpPath, dbPath);
   };
 
+  const provider = new SqliteProvider(db, save);
+
   const client: DatabaseClient = {
     db,
+    provider,
     close: () => {
       save();
       db.close();
@@ -660,8 +673,11 @@ export async function getReadOnlyDatabase(hiveDir: string): Promise<ReadOnlyData
     }
   }
 
+  const provider = new ReadOnlySqliteProvider(db);
+
   return {
     db,
+    provider,
     close: () => db.close(),
   };
 }
