@@ -2,12 +2,14 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Create mock provider functions at module scope so tests can access them
+const mockQueryOne = vi.fn(async () => ({ count: 0 }));
+const mockQueryAll = vi.fn(async () => []);
+const mockRun = vi.fn(async () => {});
+const mockSave = vi.fn();
+
 // Mock dependencies
-vi.mock('../../db/client.js', () => ({
-  queryOne: vi.fn(() => ({ count: 0 })),
-  queryAll: vi.fn(() => []),
-  run: vi.fn(),
-}));
+vi.mock('../../db/client.js', () => ({}));
 
 vi.mock('../../tmux/manager.js', () => ({
   killAllHiveSessions: vi.fn(() => 0),
@@ -19,7 +21,19 @@ vi.mock('../../git/worktree.js', () => ({
 
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(callback =>
-    callback({ db: { db: {}, provider: {}, save: vi.fn() }, root: '/root', paths: {} })
+    callback({
+      db: {
+        db: {},
+        provider: {
+          queryOne: mockQueryOne,
+          queryAll: mockQueryAll,
+          run: mockRun,
+        },
+        save: mockSave,
+      },
+      root: '/root',
+      paths: {},
+    })
   ),
 }));
 
@@ -33,7 +47,6 @@ vi.mock('fs', async importOriginal => {
 });
 
 import { existsSync } from 'fs';
-import { queryAll, run } from '../../db/client.js';
 import { removeWorktree } from '../../git/worktree.js';
 import { killAllHiveSessions } from '../../tmux/manager.js';
 import { nukeCommand } from './nuke.js';
@@ -102,7 +115,7 @@ describe('nuke command', () => {
 
   describe('nuke agents worktree cleanup', () => {
     it('should remove agent worktrees before deleting agents from DB', async () => {
-      vi.mocked(queryAll).mockReturnValue([
+      mockQueryAll.mockResolvedValue([
         { worktree_path: 'repos/team-agent-abc123' },
         { worktree_path: 'repos/team-agent-def456' },
       ]);
@@ -117,11 +130,11 @@ describe('nuke command', () => {
 
     it('should remove worktrees before DB deletions (worktree query runs first)', async () => {
       const callOrder: string[] = [];
-      vi.mocked(queryAll).mockImplementation(() => {
+      mockQueryAll.mockImplementation(async () => {
         callOrder.push('queryAll');
         return [];
       });
-      vi.mocked(run).mockImplementation(() => {
+      mockRun.mockImplementation(async () => {
         callOrder.push('run');
       });
 
@@ -134,7 +147,7 @@ describe('nuke command', () => {
     });
 
     it('should skip worktree removal when agent has no worktree_path', async () => {
-      vi.mocked(queryAll).mockReturnValue([{ worktree_path: null }]);
+      mockQueryAll.mockResolvedValue([{ worktree_path: null }]);
 
       const agentsCmd = nukeCommand.commands.find(cmd => cmd.name() === 'agents');
       await agentsCmd?.parseAsync(['--force'], { from: 'user' });
@@ -146,7 +159,7 @@ describe('nuke command', () => {
       const agentsCmd = nukeCommand.commands.find(cmd => cmd.name() === 'agents');
       await agentsCmd?.parseAsync(['--force'], { from: 'user' });
 
-      const runCalls = vi.mocked(run).mock.calls.map(c => c[1] as string);
+      const runCalls = mockRun.mock.calls.map(c => c[0] as string);
       expect(runCalls).toContain('DELETE FROM messages');
     });
 
@@ -158,7 +171,7 @@ describe('nuke command', () => {
     });
 
     it('should skip worktree removal when path does not exist on disk', async () => {
-      vi.mocked(queryAll).mockReturnValue([{ worktree_path: 'repos/team-agent-stale' }]);
+      mockQueryAll.mockResolvedValue([{ worktree_path: 'repos/team-agent-stale' }]);
       vi.mocked(existsSync).mockReturnValue(false);
 
       const agentsCmd = nukeCommand.commands.find(cmd => cmd.name() === 'agents');
@@ -168,7 +181,7 @@ describe('nuke command', () => {
     });
 
     it('should call removeWorktree when worktree path exists on disk', async () => {
-      vi.mocked(queryAll).mockReturnValue([{ worktree_path: 'repos/team-agent-abc123' }]);
+      mockQueryAll.mockResolvedValue([{ worktree_path: 'repos/team-agent-abc123' }]);
       vi.mocked(existsSync).mockReturnValue(true);
 
       const agentsCmd = nukeCommand.commands.find(cmd => cmd.name() === 'agents');
@@ -180,7 +193,7 @@ describe('nuke command', () => {
 
   describe('nuke all worktree and table cleanup', () => {
     it('should remove agent worktrees when nuking all', async () => {
-      vi.mocked(queryAll).mockReturnValue([{ worktree_path: 'repos/team-agent-xyz789' }]);
+      mockQueryAll.mockResolvedValue([{ worktree_path: 'repos/team-agent-xyz789' }]);
 
       const allCmd = nukeCommand.commands.find(cmd => cmd.name() === 'all');
       await allCmd?.parseAsync(['--force'], { from: 'user' });
@@ -192,7 +205,7 @@ describe('nuke command', () => {
       const allCmd = nukeCommand.commands.find(cmd => cmd.name() === 'all');
       await allCmd?.parseAsync(['--force'], { from: 'user' });
 
-      const runCalls = vi.mocked(run).mock.calls.map(c => c[1] as string);
+      const runCalls = mockRun.mock.calls.map(c => c[0] as string);
       expect(runCalls).toContain('DELETE FROM messages');
     });
 
@@ -200,7 +213,7 @@ describe('nuke command', () => {
       const allCmd = nukeCommand.commands.find(cmd => cmd.name() === 'all');
       await allCmd?.parseAsync(['--force'], { from: 'user' });
 
-      const runCalls = vi.mocked(run).mock.calls.map(c => c[1] as string);
+      const runCalls = mockRun.mock.calls.map(c => c[0] as string);
       expect(runCalls).toContain('DELETE FROM integration_sync');
     });
   });
@@ -208,14 +221,13 @@ describe('nuke command', () => {
   describe('nuke stories integration_sync cleanup', () => {
     it('should delete story and pull_request integration_sync entries when nuking stories', async () => {
       // Return story count > 0 so the action proceeds
-      vi.mocked(queryAll).mockReturnValue([]);
-      const { queryOne } = await import('../../db/client.js');
-      vi.mocked(queryOne).mockReturnValue({ count: 3 });
+      mockQueryAll.mockResolvedValue([]);
+      mockQueryOne.mockResolvedValue({ count: 3 });
 
       const storiesCmd = nukeCommand.commands.find(cmd => cmd.name() === 'stories');
       await storiesCmd?.parseAsync(['--force'], { from: 'user' });
 
-      const runCalls = vi.mocked(run).mock.calls.map(c => c[1] as string);
+      const runCalls = mockRun.mock.calls.map(c => c[0] as string);
       expect(runCalls).toContain(
         "DELETE FROM integration_sync WHERE entity_type IN ('story', 'pull_request')"
       );
@@ -224,13 +236,12 @@ describe('nuke command', () => {
 
   describe('nuke requirements integration_sync cleanup', () => {
     it('should delete all integration_sync entries when nuking requirements', async () => {
-      const { queryOne } = await import('../../db/client.js');
-      vi.mocked(queryOne).mockReturnValue({ count: 2 });
+      mockQueryOne.mockResolvedValue({ count: 2 });
 
       const reqCmd = nukeCommand.commands.find(cmd => cmd.name() === 'requirements');
       await reqCmd?.parseAsync(['--force'], { from: 'user' });
 
-      const runCalls = vi.mocked(run).mock.calls.map(c => c[1] as string);
+      const runCalls = mockRun.mock.calls.map(c => c[0] as string);
       expect(runCalls).toContain('DELETE FROM integration_sync');
     });
   });
