@@ -4,6 +4,7 @@ import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryAll, queryOne } from '../db/client.js';
+import { SqliteProvider } from '../db/provider.js';
 import type { AgentRow } from '../db/queries/agents.js';
 import type { CompletionOptions, CompletionResult, LLMProvider, Message } from '../llm/provider.js';
 import { BaseAgent, type AgentContext, type MemoryState } from './base-agent.js';
@@ -103,7 +104,7 @@ CREATE TABLE IF NOT EXISTS agent_logs (
     ]);
 
     context = {
-      db,
+      db: new SqliteProvider(db),
       provider,
       agentRow,
       workDir: '/tmp/test',

@@ -1,19 +1,21 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
-import { queryOne } from '../db/client.js';
+import type { DatabaseProvider } from '../db/provider.js';
 import type { AgentRow } from '../db/queries/agents.js';
 
 /**
  * Select the agent with the least workload (queue-depth aware).
  * Returns the agent with fewest active stories; breaks ties by creation order.
  */
-export function selectAgentWithLeastWorkload(db: Database, agents: AgentRow[]): AgentRow {
+export async function selectAgentWithLeastWorkload(
+  db: DatabaseProvider,
+  agents: AgentRow[]
+): Promise<AgentRow> {
   let selectedAgent = agents[0];
-  let minWorkload = getAgentWorkload(db, selectedAgent.id);
+  let minWorkload = await getAgentWorkload(db, selectedAgent.id);
 
   for (let i = 1; i < agents.length; i++) {
-    const workload = getAgentWorkload(db, agents[i].id);
+    const workload = await getAgentWorkload(db, agents[i].id);
     if (workload < minWorkload) {
       minWorkload = workload;
       selectedAgent = agents[i];
@@ -26,9 +28,8 @@ export function selectAgentWithLeastWorkload(db: Database, agents: AgentRow[]): 
 /**
  * Calculate queue depth for an agent (number of active stories).
  */
-export function getAgentWorkload(db: Database, agentId: string): number {
-  const result = queryOne<{ count: number }>(
-    db,
+export async function getAgentWorkload(db: DatabaseProvider, agentId: string): Promise<number> {
+  const result = await db.queryOne<{ count: number }>(
     `
     SELECT COUNT(*) as count FROM stories
     WHERE assigned_agent_id = ?

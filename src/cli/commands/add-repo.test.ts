@@ -15,7 +15,7 @@ vi.mock('../../db/queries/teams.js', () => ({
 
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(callback =>
-    callback({ db: { db: {} }, root: '/tmp', paths: { reposDir: '/tmp/repos' } })
+    callback({ db: { db: {}, provider: {} }, root: '/tmp', paths: { reposDir: '/tmp/repos' } })
   ),
 }));
 

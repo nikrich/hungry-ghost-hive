@@ -1,10 +1,10 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { HiveConfig } from '../config/schema.js';
+import { SqliteProvider } from '../db/provider.js';
 import { getLogsByEventType } from '../db/queries/logs.js';
 import {
   createRequirement,
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS requirements (
 );
 `;
 
-let db: Database;
+let db: SqliteProvider;
 
 const mockHiveConfigWithE2E: HiveConfig = {
   e2e_tests: { path: './e2e' },
@@ -135,10 +135,11 @@ const mockHiveConfigWithoutE2E: HiveConfig = {} as HiveConfig;
 
 beforeEach(async () => {
   const SQL = await initSqlJs();
-  db = new SQL.Database();
-  db.run('PRAGMA foreign_keys = ON');
-  db.run(INITIAL_MIGRATION);
-  db.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
+  const rawDb = new SQL.Database();
+  rawDb.run('PRAGMA foreign_keys = ON');
+  rawDb.run(INITIAL_MIGRATION);
+  rawDb.run("INSERT INTO migrations (name) VALUES ('001-initial.sql')");
+  db = new SqliteProvider(rawDb);
   vi.clearAllMocks();
 });
 
@@ -167,46 +168,46 @@ describe('requiresFeatureBranch', () => {
 });
 
 describe('isEligibleForFeatureBranch', () => {
-  it('should return true for planned requirement with e2e_tests and no feature branch', () => {
-    const req = createRequirement(db, {
+  it('should return true for planned requirement with e2e_tests and no feature branch', async () => {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
     });
-    updateRequirement(db, req.id, { status: 'planned' });
-    const updated = getRequirementById(db, req.id)!;
+    await updateRequirement(db, req.id, { status: 'planned' });
+    const updated = (await getRequirementById(db, req.id))!;
 
     expect(isEligibleForFeatureBranch(updated, mockHiveConfigWithE2E)).toBe(true);
   });
 
-  it('should return false when requirement already has a feature branch', () => {
-    const req = createRequirement(db, {
+  it('should return false when requirement already has a feature branch', async () => {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
     });
-    updateRequirement(db, req.id, { status: 'planned', featureBranch: 'feature/REQ-123' });
-    const updated = getRequirementById(db, req.id)!;
+    await updateRequirement(db, req.id, { status: 'planned', featureBranch: 'feature/REQ-123' });
+    const updated = (await getRequirementById(db, req.id))!;
 
     expect(isEligibleForFeatureBranch(updated, mockHiveConfigWithE2E)).toBe(false);
   });
 
-  it('should return false when requirement is not in planned status', () => {
-    const req = createRequirement(db, {
+  it('should return false when requirement is not in planned status', async () => {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
     });
-    updateRequirement(db, req.id, { status: 'in_progress' });
-    const updated = getRequirementById(db, req.id)!;
+    await updateRequirement(db, req.id, { status: 'in_progress' });
+    const updated = (await getRequirementById(db, req.id))!;
 
     expect(isEligibleForFeatureBranch(updated, mockHiveConfigWithE2E)).toBe(false);
   });
 
-  it('should return false when e2e_tests is not configured', () => {
-    const req = createRequirement(db, {
+  it('should return false when e2e_tests is not configured', async () => {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
     });
-    updateRequirement(db, req.id, { status: 'planned' });
-    const updated = getRequirementById(db, req.id)!;
+    await updateRequirement(db, req.id, { status: 'planned' });
+    const updated = (await getRequirementById(db, req.id))!;
 
     expect(isEligibleForFeatureBranch(updated, mockHiveConfigWithoutE2E)).toBe(false);
   });
@@ -217,11 +218,11 @@ describe('createRequirementFeatureBranch', () => {
     const { execa } = await import('execa');
     const mockExeca = vi.mocked(execa);
 
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Test Feature',
       description: 'Test feature req',
     });
-    updateRequirement(db, req.id, { status: 'planned' });
+    await updateRequirement(db, req.id, { status: 'planned' });
 
     const saveFn = vi.fn();
     const result = await createRequirementFeatureBranch(db, '/tmp/repo', req.id, saveFn);
@@ -242,7 +243,7 @@ describe('createRequirementFeatureBranch', () => {
     );
 
     // Verify requirement was updated
-    const updated = getRequirementById(db, req.id)!;
+    const updated = (await getRequirementById(db, req.id))!;
     expect(updated.feature_branch).toBe(`feature/${req.id}`);
     expect(updated.target_branch).toBe(`feature/${req.id}`);
     expect(updated.status).toBe('in_progress');
@@ -251,7 +252,7 @@ describe('createRequirementFeatureBranch', () => {
     expect(saveFn).toHaveBeenCalled();
 
     // Verify log was created
-    const logs = getLogsByEventType(db, 'FEATURE_BRANCH_CREATED');
+    const logs = await getLogsByEventType(db, 'FEATURE_BRANCH_CREATED');
     expect(logs.length).toBe(1);
     expect(logs[0].message).toContain(req.id);
   });
@@ -261,7 +262,7 @@ describe('createRequirementFeatureBranch', () => {
 
     expect(result).toBeNull();
 
-    const logs = getLogsByEventType(db, 'FEATURE_BRANCH_FAILED');
+    const logs = await getLogsByEventType(db, 'FEATURE_BRANCH_FAILED');
     expect(logs.length).toBe(1);
     expect(logs[0].message).toContain('not found');
   });
@@ -273,23 +274,23 @@ describe('createRequirementFeatureBranch', () => {
     mockExeca.mockRejectedValueOnce(new Error('fetch failed')); // fetch (non-fatal)
     mockExeca.mockRejectedValueOnce(new Error('branch already exists'));
 
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
     });
-    updateRequirement(db, req.id, { status: 'planned' });
+    await updateRequirement(db, req.id, { status: 'planned' });
 
     const result = await createRequirementFeatureBranch(db, '/tmp/repo', req.id);
 
     expect(result).toBeNull();
 
     // Requirement should still transition to in_progress as a fallback
-    const updated = getRequirementById(db, req.id)!;
+    const updated = (await getRequirementById(db, req.id))!;
     expect(updated.status).toBe('in_progress');
     // feature_branch should NOT be set on failure
     expect(updated.feature_branch).toBeNull();
 
-    const logs = getLogsByEventType(db, 'FEATURE_BRANCH_FAILED');
+    const logs = await getLogsByEventType(db, 'FEATURE_BRANCH_FAILED');
     expect(logs.length).toBe(1);
   });
 
@@ -302,11 +303,11 @@ describe('createRequirementFeatureBranch', () => {
     mockExeca.mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
     mockExeca.mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
 
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
     });
-    updateRequirement(db, req.id, { status: 'planned' });
+    await updateRequirement(db, req.id, { status: 'planned' });
 
     const result = await createRequirementFeatureBranch(db, '/tmp/repo', req.id);
 
@@ -318,16 +319,16 @@ describe('createFeatureBranchPR', () => {
   it('should create PR from feature branch to main', async () => {
     const { createPullRequest } = await import('../git/github.js');
 
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Test Feature',
       description: 'Test feature req',
     });
-    updateRequirement(db, req.id, {
+    await updateRequirement(db, req.id, {
       status: 'sign_off_passed',
       featureBranch: `feature/${req.id}`,
     });
 
-    const updated = getRequirementById(db, req.id)!;
+    const updated = (await getRequirementById(db, req.id))!;
     const result = await createFeatureBranchPR('/tmp/repo', updated);
 
     expect(result).not.toBeNull();
@@ -343,11 +344,11 @@ describe('createFeatureBranchPR', () => {
   });
 
   it('should return null when requirement has no feature branch', async () => {
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
     });
-    const updated = getRequirementById(db, req.id)!;
+    const updated = (await getRequirementById(db, req.id))!;
 
     const result = await createFeatureBranchPR('/tmp/repo', updated);
     expect(result).toBeNull();
@@ -357,121 +358,125 @@ describe('createFeatureBranchPR', () => {
     const { createPullRequest } = await import('../git/github.js');
     vi.mocked(createPullRequest).mockRejectedValueOnce(new Error('PR creation failed'));
 
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
       featureBranch: 'feature/REQ-TEST',
     });
 
-    const updated = getRequirementById(db, req.id)!;
+    const updated = (await getRequirementById(db, req.id))!;
     const result = await createFeatureBranchPR('/tmp/repo', updated);
     expect(result).toBeNull();
   });
 });
 
 describe('getRequirementsNeedingFeatureBranch', () => {
-  it('should return requirement IDs for stories with eligible requirements', () => {
-    const team = createTeam(db, {
+  it('should return requirement IDs for stories with eligible requirements', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
     });
-    updateRequirement(db, req.id, { status: 'planned' });
+    await updateRequirement(db, req.id, { status: 'planned' });
 
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Story 1',
       description: 'Test',
       requirementId: req.id,
     });
 
-    const result = getRequirementsNeedingFeatureBranch(db, [story.id], mockHiveConfigWithE2E);
+    const result = await getRequirementsNeedingFeatureBranch(db, [story.id], mockHiveConfigWithE2E);
 
     expect(result).toEqual([req.id]);
   });
 
-  it('should not return requirements that already have feature branches', () => {
-    const team = createTeam(db, {
+  it('should not return requirements that already have feature branches', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
     });
-    updateRequirement(db, req.id, { status: 'planned', featureBranch: 'feature/REQ-123' });
+    await updateRequirement(db, req.id, { status: 'planned', featureBranch: 'feature/REQ-123' });
 
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Story 1',
       description: 'Test',
       requirementId: req.id,
     });
 
-    const result = getRequirementsNeedingFeatureBranch(db, [story.id], mockHiveConfigWithE2E);
+    const result = await getRequirementsNeedingFeatureBranch(db, [story.id], mockHiveConfigWithE2E);
 
     expect(result).toEqual([]);
   });
 
-  it('should return empty array when e2e_tests is not configured', () => {
-    const team = createTeam(db, {
+  it('should return empty array when e2e_tests is not configured', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
     });
-    updateRequirement(db, req.id, { status: 'planned' });
+    await updateRequirement(db, req.id, { status: 'planned' });
 
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Story 1',
       description: 'Test',
       requirementId: req.id,
     });
 
-    const result = getRequirementsNeedingFeatureBranch(db, [story.id], mockHiveConfigWithoutE2E);
+    const result = await getRequirementsNeedingFeatureBranch(
+      db,
+      [story.id],
+      mockHiveConfigWithoutE2E
+    );
 
     expect(result).toEqual([]);
   });
 
-  it('should deduplicate requirements from multiple stories', () => {
-    const team = createTeam(db, {
+  it('should deduplicate requirements from multiple stories', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    const req = createRequirement(db, {
+    const req = await createRequirement(db, {
       title: 'Test',
       description: 'Test req',
     });
-    updateRequirement(db, req.id, { status: 'planned' });
+    await updateRequirement(db, req.id, { status: 'planned' });
 
-    const story1 = createStory(db, {
+    const story1 = await createStory(db, {
       teamId: team.id,
       title: 'Story 1',
       description: 'Test',
       requirementId: req.id,
     });
-    const story2 = createStory(db, {
+    const story2 = await createStory(db, {
       teamId: team.id,
       title: 'Story 2',
       description: 'Test',
       requirementId: req.id,
     });
 
-    const result = getRequirementsNeedingFeatureBranch(
+    const result = await getRequirementsNeedingFeatureBranch(
       db,
       [story1.id, story2.id],
       mockHiveConfigWithE2E
@@ -481,62 +486,62 @@ describe('getRequirementsNeedingFeatureBranch', () => {
     expect(result).toEqual([req.id]);
   });
 
-  it('should return empty array for empty story list', () => {
-    const result = getRequirementsNeedingFeatureBranch(db, [], mockHiveConfigWithE2E);
+  it('should return empty array for empty story list', async () => {
+    const result = await getRequirementsNeedingFeatureBranch(db, [], mockHiveConfigWithE2E);
     expect(result).toEqual([]);
   });
 
-  it('should skip stories without requirement_id', () => {
-    const team = createTeam(db, {
+  it('should skip stories without requirement_id', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    const story = createStory(db, {
+    const story = await createStory(db, {
       teamId: team.id,
       title: 'Story without requirement',
       description: 'Test',
     });
 
-    const result = getRequirementsNeedingFeatureBranch(db, [story.id], mockHiveConfigWithE2E);
+    const result = await getRequirementsNeedingFeatureBranch(db, [story.id], mockHiveConfigWithE2E);
 
     expect(result).toEqual([]);
   });
 
-  it('should handle multiple requirements from different stories', () => {
-    const team = createTeam(db, {
+  it('should handle multiple requirements from different stories', async () => {
+    const team = await createTeam(db, {
       name: 'Test Team',
       repoUrl: 'https://github.com/test/repo',
       repoPath: 'test',
     });
 
-    const req1 = createRequirement(db, {
+    const req1 = await createRequirement(db, {
       title: 'Req 1',
       description: 'Test req 1',
     });
-    updateRequirement(db, req1.id, { status: 'planned' });
+    await updateRequirement(db, req1.id, { status: 'planned' });
 
-    const req2 = createRequirement(db, {
+    const req2 = await createRequirement(db, {
       title: 'Req 2',
       description: 'Test req 2',
     });
-    updateRequirement(db, req2.id, { status: 'planned' });
+    await updateRequirement(db, req2.id, { status: 'planned' });
 
-    const story1 = createStory(db, {
+    const story1 = await createStory(db, {
       teamId: team.id,
       title: 'Story 1',
       description: 'Test',
       requirementId: req1.id,
     });
-    const story2 = createStory(db, {
+    const story2 = await createStory(db, {
       teamId: team.id,
       title: 'Story 2',
       description: 'Test',
       requirementId: req2.id,
     });
 
-    const result = getRequirementsNeedingFeatureBranch(
+    const result = await getRequirementsNeedingFeatureBranch(
       db,
       [story1.id, story2.id],
       mockHiveConfigWithE2E

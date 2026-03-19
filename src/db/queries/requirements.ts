@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { nanoid } from 'nanoid';
-import type { Database } from 'sql.js';
-import { queryAll, queryOne, run, type RequirementRow } from '../client.js';
+import { type RequirementRow } from '../client.js';
+import type { DatabaseProvider } from '../provider.js';
 
 export type { RequirementRow };
 
@@ -41,12 +41,14 @@ export interface UpdateRequirementInput {
   featureBranch?: string | null;
 }
 
-export function createRequirement(db: Database, input: CreateRequirementInput): RequirementRow {
+export async function createRequirement(
+  provider: DatabaseProvider,
+  input: CreateRequirementInput
+): Promise<RequirementRow> {
   const id = `REQ-${nanoid(8).toUpperCase()}`;
   const now = new Date().toISOString();
 
-  run(
-    db,
+  await provider.run(
     `
     INSERT INTO requirements (id, title, description, submitted_by, godmode, target_branch, feature_branch, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -63,44 +65,47 @@ export function createRequirement(db: Database, input: CreateRequirementInput): 
     ]
   );
 
-  return getRequirementById(db, id)!;
+  return (await getRequirementById(provider, id))!;
 }
 
-export function getRequirementById(db: Database, id: string): RequirementRow | undefined {
-  return queryOne<RequirementRow>(db, 'SELECT * FROM requirements WHERE id = ?', [id]);
+export async function getRequirementById(
+  provider: DatabaseProvider,
+  id: string
+): Promise<RequirementRow | undefined> {
+  return await provider.queryOne<RequirementRow>('SELECT * FROM requirements WHERE id = ?', [id]);
 }
 
-export function getAllRequirements(db: Database): RequirementRow[] {
-  return queryAll<RequirementRow>(
-    db,
+export async function getAllRequirements(provider: DatabaseProvider): Promise<RequirementRow[]> {
+  return await provider.queryAll<RequirementRow>(
     'SELECT * FROM requirements ORDER BY created_at DESC, rowid DESC'
   );
 }
 
-export function getRequirementsByStatus(db: Database, status: RequirementStatus): RequirementRow[] {
-  return queryAll<RequirementRow>(
-    db,
+export async function getRequirementsByStatus(
+  provider: DatabaseProvider,
+  status: RequirementStatus
+): Promise<RequirementRow[]> {
+  return await provider.queryAll<RequirementRow>(
     'SELECT * FROM requirements WHERE status = ? ORDER BY created_at DESC, rowid DESC',
     [status]
   );
 }
 
-export function getPendingRequirements(db: Database): RequirementRow[] {
-  return queryAll<RequirementRow>(
-    db,
-    `
+export async function getPendingRequirements(
+  provider: DatabaseProvider
+): Promise<RequirementRow[]> {
+  return await provider.queryAll<RequirementRow>(`
     SELECT * FROM requirements
     WHERE status IN ('pending', 'planning', 'in_progress')
     ORDER BY created_at, rowid
-  `
-  );
+  `);
 }
 
-export function updateRequirement(
-  db: Database,
+export async function updateRequirement(
+  provider: DatabaseProvider,
   id: string,
   input: UpdateRequirementInput
-): RequirementRow | undefined {
+): Promise<RequirementRow | undefined> {
   const updates: string[] = [];
   const values: unknown[] = [];
 
@@ -150,14 +155,14 @@ export function updateRequirement(
   }
 
   if (updates.length === 0) {
-    return getRequirementById(db, id);
+    return await getRequirementById(provider, id);
   }
 
   values.push(id);
-  run(db, `UPDATE requirements SET ${updates.join(', ')} WHERE id = ?`, values);
-  return getRequirementById(db, id);
+  await provider.run(`UPDATE requirements SET ${updates.join(', ')} WHERE id = ?`, values);
+  return await getRequirementById(provider, id);
 }
 
-export function deleteRequirement(db: Database, id: string): void {
-  run(db, 'DELETE FROM requirements WHERE id = ?', [id]);
+export async function deleteRequirement(provider: DatabaseProvider, id: string): Promise<void> {
+  await provider.run('DELETE FROM requirements WHERE id = ?', [id]);
 }

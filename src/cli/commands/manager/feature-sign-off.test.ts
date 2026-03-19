@@ -53,7 +53,14 @@ import { checkFeatureSignOff } from './feature-sign-off.js';
 import type { ManagerCheckContext } from './types.js';
 
 function makeCtx(overrides: Partial<ManagerCheckContext> = {}): ManagerCheckContext {
-  const mockDb = { db: {} as never, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+  const mockProvider = {} as never;
+  const mockDb = {
+    db: {} as never,
+    provider: mockProvider,
+    save: vi.fn(),
+    close: vi.fn(),
+    runMigrations: vi.fn(),
+  };
   const mockScheduler = {
     spawnFeatureTest: vi.fn().mockResolvedValue({ id: 'team-1-feature-test-1' }),
   };
@@ -172,7 +179,7 @@ describe('checkFeatureSignOff', () => {
 
   it('should skip when no in_progress requirements with feature branches exist', async () => {
     const ctx = makeCtx();
-    mockGetRequirementsByStatus.mockReturnValue([]);
+    mockGetRequirementsByStatus.mockResolvedValue([]);
 
     await checkFeatureSignOff(ctx);
 
@@ -181,7 +188,7 @@ describe('checkFeatureSignOff', () => {
 
   it('should skip requirements without feature_branch and with default target_branch (main)', async () => {
     const ctx = makeCtx();
-    mockGetRequirementsByStatus.mockReturnValue([
+    mockGetRequirementsByStatus.mockResolvedValue([
       makeRequirement({ feature_branch: null, target_branch: 'main' }),
     ]);
 
@@ -194,9 +201,9 @@ describe('checkFeatureSignOff', () => {
   it('should process requirements with target_branch but no feature_branch', async () => {
     const ctx = makeCtx();
     const req = makeRequirement({ feature_branch: null, target_branch: 'feature/REQ-TEST1234' });
-    mockGetRequirementsByStatus.mockReturnValue([req]);
-    mockGetStoriesByRequirement.mockReturnValue([makeStory({ status: 'merged' })]);
-    mockGetAllTeams.mockReturnValue([makeTeam()]);
+    mockGetRequirementsByStatus.mockResolvedValue([req]);
+    mockGetStoriesByRequirement.mockResolvedValue([makeStory({ status: 'merged' })]);
+    mockGetAllTeams.mockResolvedValue([makeTeam()]);
 
     await checkFeatureSignOff(ctx);
 
@@ -218,12 +225,12 @@ describe('checkFeatureSignOff', () => {
 
   it('should skip when not all stories are merged', async () => {
     const ctx = makeCtx();
-    mockGetRequirementsByStatus.mockReturnValue([makeRequirement()]);
-    mockGetStoriesByRequirement.mockReturnValue([
+    mockGetRequirementsByStatus.mockResolvedValue([makeRequirement()]);
+    mockGetStoriesByRequirement.mockResolvedValue([
       makeStory({ id: 'STORY-1', status: 'merged' }),
       makeStory({ id: 'STORY-2', status: 'in_progress' }),
     ]);
-    mockGetAllTeams.mockReturnValue([makeTeam()]);
+    mockGetAllTeams.mockResolvedValue([makeTeam()]);
 
     await checkFeatureSignOff(ctx);
 
@@ -232,9 +239,9 @@ describe('checkFeatureSignOff', () => {
 
   it('should skip requirements with no stories', async () => {
     const ctx = makeCtx();
-    mockGetRequirementsByStatus.mockReturnValue([makeRequirement()]);
-    mockGetStoriesByRequirement.mockReturnValue([]);
-    mockGetAllTeams.mockReturnValue([makeTeam()]);
+    mockGetRequirementsByStatus.mockResolvedValue([makeRequirement()]);
+    mockGetStoriesByRequirement.mockResolvedValue([]);
+    mockGetAllTeams.mockResolvedValue([makeTeam()]);
 
     await checkFeatureSignOff(ctx);
 
@@ -244,12 +251,12 @@ describe('checkFeatureSignOff', () => {
   it('should spawn feature_test agent when all stories are merged', async () => {
     const ctx = makeCtx();
     const req = makeRequirement();
-    mockGetRequirementsByStatus.mockReturnValue([req]);
-    mockGetStoriesByRequirement.mockReturnValue([
+    mockGetRequirementsByStatus.mockResolvedValue([req]);
+    mockGetStoriesByRequirement.mockResolvedValue([
       makeStory({ id: 'STORY-1', status: 'merged' }),
       makeStory({ id: 'STORY-2', status: 'merged' }),
     ]);
-    mockGetAllTeams.mockReturnValue([makeTeam()]);
+    mockGetAllTeams.mockResolvedValue([makeTeam()]);
 
     await checkFeatureSignOff(ctx);
 
@@ -278,9 +285,9 @@ describe('checkFeatureSignOff', () => {
 
   it('should create log entries on successful spawn', async () => {
     const ctx = makeCtx();
-    mockGetRequirementsByStatus.mockReturnValue([makeRequirement()]);
-    mockGetStoriesByRequirement.mockReturnValue([makeStory({ status: 'merged' })]);
-    mockGetAllTeams.mockReturnValue([makeTeam()]);
+    mockGetRequirementsByStatus.mockResolvedValue([makeRequirement()]);
+    mockGetStoriesByRequirement.mockResolvedValue([makeStory({ status: 'merged' })]);
+    mockGetAllTeams.mockResolvedValue([makeTeam()]);
 
     await checkFeatureSignOff(ctx);
 
@@ -304,14 +311,16 @@ describe('checkFeatureSignOff', () => {
     const ctx = makeCtx();
     const req1 = makeRequirement({ id: 'REQ-AAA', feature_branch: 'feature/REQ-AAA' });
     const req2 = makeRequirement({ id: 'REQ-BBB', feature_branch: 'feature/REQ-BBB' });
-    mockGetRequirementsByStatus.mockReturnValue([req1, req2]);
+    mockGetRequirementsByStatus.mockResolvedValue([req1, req2]);
     mockGetStoriesByRequirement
-      .mockReturnValueOnce([makeStory({ id: 'S-1', status: 'merged', requirement_id: 'REQ-AAA' })])
-      .mockReturnValueOnce([
+      .mockResolvedValueOnce([
+        makeStory({ id: 'S-1', status: 'merged', requirement_id: 'REQ-AAA' }),
+      ])
+      .mockResolvedValueOnce([
         makeStory({ id: 'S-2', status: 'merged', requirement_id: 'REQ-BBB' }),
         makeStory({ id: 'S-3', status: 'in_progress', requirement_id: 'REQ-BBB' }),
       ]);
-    mockGetAllTeams.mockReturnValue([makeTeam()]);
+    mockGetAllTeams.mockResolvedValue([makeTeam()]);
 
     await checkFeatureSignOff(ctx);
 
@@ -325,11 +334,11 @@ describe('checkFeatureSignOff', () => {
 
   it('should skip when story has no team_id', async () => {
     const ctx = makeCtx();
-    mockGetRequirementsByStatus.mockReturnValue([makeRequirement()]);
-    mockGetStoriesByRequirement.mockReturnValue([
+    mockGetRequirementsByStatus.mockResolvedValue([makeRequirement()]);
+    mockGetStoriesByRequirement.mockResolvedValue([
       makeStory({ status: 'merged', team_id: null as unknown as string }),
     ]);
-    mockGetAllTeams.mockReturnValue([makeTeam()]);
+    mockGetAllTeams.mockResolvedValue([makeTeam()]);
 
     await checkFeatureSignOff(ctx);
 
@@ -338,11 +347,11 @@ describe('checkFeatureSignOff', () => {
 
   it('should skip when team is not found', async () => {
     const ctx = makeCtx();
-    mockGetRequirementsByStatus.mockReturnValue([makeRequirement()]);
-    mockGetStoriesByRequirement.mockReturnValue([
+    mockGetRequirementsByStatus.mockResolvedValue([makeRequirement()]);
+    mockGetStoriesByRequirement.mockResolvedValue([
       makeStory({ status: 'merged', team_id: 'team-unknown' }),
     ]);
-    mockGetAllTeams.mockReturnValue([makeTeam({ id: 'team-other' })]);
+    mockGetAllTeams.mockResolvedValue([makeTeam({ id: 'team-other' })]);
 
     await checkFeatureSignOff(ctx);
 
@@ -355,9 +364,9 @@ describe('checkFeatureSignOff', () => {
       spawnFeatureTest: ReturnType<typeof vi.fn>;
     };
     mockScheduler.spawnFeatureTest.mockRejectedValue(new Error('spawn failed'));
-    mockGetRequirementsByStatus.mockReturnValue([makeRequirement()]);
-    mockGetStoriesByRequirement.mockReturnValue([makeStory({ status: 'merged' })]);
-    mockGetAllTeams.mockReturnValue([makeTeam()]);
+    mockGetRequirementsByStatus.mockResolvedValue([makeRequirement()]);
+    mockGetStoriesByRequirement.mockResolvedValue([makeStory({ status: 'merged' })]);
+    mockGetAllTeams.mockResolvedValue([makeTeam()]);
 
     await checkFeatureSignOff(ctx);
 

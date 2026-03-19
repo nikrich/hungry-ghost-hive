@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type { DatabaseProvider } from '../db/provider.js';
 import {
   updateAgent,
   type AgentRow,
@@ -32,7 +32,7 @@ export interface MemoryState {
 }
 
 export interface AgentContext {
-  db: Database;
+  db: DatabaseProvider;
   provider: LLMProvider;
   agentRow: AgentRow;
   workDir: string;
@@ -46,7 +46,7 @@ export interface AgentContext {
 }
 
 export abstract class BaseAgent {
-  protected db: Database;
+  protected db: DatabaseProvider;
   protected provider: LLMProvider;
   protected agentId: string;
   protected agentType: AgentType;
@@ -112,9 +112,9 @@ export abstract class BaseAgent {
     }, HEARTBEAT_INTERVAL_MS);
   }
 
-  private sendHeartbeat(): void {
+  private async sendHeartbeat(): Promise<void> {
     try {
-      updateAgentHeartbeat(this.db, this.agentId);
+      await updateAgentHeartbeat(this.db, this.agentId);
     } catch (err) {
       // Heartbeat failure shouldn't crash the agent
       console.error(`Heartbeat failed for ${this.agentId}:`, err);
@@ -128,8 +128,12 @@ export abstract class BaseAgent {
     }
   }
 
-  protected log(eventType: EventType, message?: string, metadata?: Record<string, unknown>): void {
-    createLog(this.db, {
+  protected async log(
+    eventType: EventType,
+    message?: string,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    await createLog(this.db, {
       agentId: this.agentId,
       storyId: this.memoryState.currentTask?.storyId,
       eventType,
@@ -138,13 +142,13 @@ export abstract class BaseAgent {
     });
   }
 
-  protected updateStatus(status: AgentStatus): void {
-    updateAgent(this.db, this.agentId, { status });
+  protected async updateStatus(status: AgentStatus): Promise<void> {
+    await updateAgent(this.db, this.agentId, { status });
   }
 
-  protected saveMemoryState(): void {
+  protected async saveMemoryState(): Promise<void> {
     this.memoryState.checkpointTokens = this.totalTokens;
-    updateAgent(this.db, this.agentId, {
+    await updateAgent(this.db, this.agentId, {
       memoryState: JSON.stringify(this.memoryState),
     });
   }
@@ -169,7 +173,7 @@ export abstract class BaseAgent {
       return result.content;
     } catch (err) {
       // Log timeout/error event
-      this.log(
+      await this.log(
         'AGENT_TERMINATED',
         `LLM call failed: ${err instanceof Error ? err.message : String(err)}`,
         {
@@ -195,9 +199,9 @@ Keep it under 500 words.`;
     const summaryResult = await this.provider.complete(this.messages);
 
     this.memoryState.conversationSummary = summaryResult.content;
-    this.saveMemoryState();
+    await this.saveMemoryState();
 
-    this.log('AGENT_CHECKPOINT', 'Checkpoint saved', {
+    await this.log('AGENT_CHECKPOINT', 'Checkpoint saved', {
       totalTokens: this.totalTokens,
     });
 
@@ -212,52 +216,52 @@ Keep it under 500 words.`;
     this.totalTokens = 0;
   }
 
-  protected addDecision(decision: string): void {
+  protected async addDecision(decision: string): Promise<void> {
     this.memoryState.context.decisionsMade.push(decision);
-    this.saveMemoryState();
+    await this.saveMemoryState();
   }
 
-  protected addBlocker(blocker: string): void {
+  protected async addBlocker(blocker: string): Promise<void> {
     this.memoryState.context.blockers.push(blocker);
-    this.saveMemoryState();
+    await this.saveMemoryState();
   }
 
-  protected removeBlocker(blocker: string): void {
+  protected async removeBlocker(blocker: string): Promise<void> {
     this.memoryState.context.blockers = this.memoryState.context.blockers.filter(
       b => b !== blocker
     );
-    this.saveMemoryState();
+    await this.saveMemoryState();
   }
 
-  protected setCurrentTask(storyId: string, phase: string): void {
+  protected async setCurrentTask(storyId: string, phase: string): Promise<void> {
     this.memoryState.currentTask = {
       storyId,
       phase,
       filesModified: [],
       lastAction: '',
     };
-    this.saveMemoryState();
+    await this.saveMemoryState();
   }
 
-  protected updateTaskProgress(lastAction: string, filesModified?: string[]): void {
+  protected async updateTaskProgress(lastAction: string, filesModified?: string[]): Promise<void> {
     if (this.memoryState.currentTask) {
       this.memoryState.currentTask.lastAction = lastAction;
       if (filesModified) {
         this.memoryState.currentTask.filesModified.push(...filesModified);
       }
-      this.saveMemoryState();
+      await this.saveMemoryState();
     }
   }
 
   async run(): Promise<void> {
-    this.updateStatus('working');
-    this.log('AGENT_SPAWNED', `${this.agentType} agent started`);
+    await this.updateStatus('working');
+    await this.log('AGENT_SPAWNED', `${this.agentType} agent started`);
 
     try {
       await this.execute();
     } catch (err) {
-      this.updateStatus('blocked');
-      this.log(
+      await this.updateStatus('blocked');
+      await this.log(
         'AGENT_TERMINATED',
         `Error: ${err instanceof Error ? err.message : 'Unknown error'}`,
         {

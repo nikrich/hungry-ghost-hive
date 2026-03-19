@@ -24,8 +24,10 @@ vi.mock('../../integrations/jira/transitions.js', () => ({
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withHiveContext: vi.fn(callback => callback({ db: { db: {}, save: vi.fn() }, root: '/tmp' })),
-  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {} } })),
+  withHiveContext: vi.fn(callback =>
+    callback({ db: { db: {}, provider: {}, save: vi.fn() }, root: '/tmp' })
+  ),
+  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {}, provider: {} } })),
 }));
 
 import { myStoriesCommand } from './my-stories.js';

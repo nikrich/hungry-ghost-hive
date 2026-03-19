@@ -55,7 +55,7 @@ export async function spawnAuditorIfNeeded(ctx: ManagerCheckContext): Promise<bo
 
   // Check if a previous auditor is still running
   const hasActiveAuditor = await ctx.withDb(async db => {
-    const auditors = getAgentsByType(db.db, 'auditor');
+    const auditors = await getAgentsByType(db.provider, 'auditor');
     return auditors.some(a => a.status === 'idle' || a.status === 'working');
   });
 
@@ -67,7 +67,7 @@ export async function spawnAuditorIfNeeded(ctx: ManagerCheckContext): Promise<bo
   // Spawn a new auditor agent
   try {
     const agent = await ctx.withDb(async (db, scheduler) => {
-      const teams = getAllTeams(db.db);
+      const teams = await getAllTeams(db.provider);
       if (teams.length === 0) {
         verboseLogCtx(ctx, 'spawnAuditorIfNeeded: skip=no_teams');
         return null;
@@ -76,7 +76,7 @@ export async function spawnAuditorIfNeeded(ctx: ManagerCheckContext): Promise<bo
       const team = teams[0];
       const spawned = await scheduler.spawnAuditor(team.id, team.name, team.repo_path);
 
-      createLog(db.db, {
+      await createLog(db.provider, {
         agentId: spawned.id,
         eventType: 'AGENT_SPAWNED',
         message: `Spawned auditor agent ${spawned.id} for team ${team.name}`,

@@ -21,7 +21,9 @@ escalationsCommand
   .option('--json', 'Output as JSON')
   .action(async (options: { all?: boolean; json?: boolean }) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const escalations = options.all ? getAllEscalations(db.db) : getPendingEscalations(db.db);
+      const escalations = options.all
+        ? await getAllEscalations(db.provider)
+        : await getPendingEscalations(db.provider);
 
       if (options.json) {
         console.log(JSON.stringify(escalations, null, 2));
@@ -64,7 +66,7 @@ escalationsCommand
   .description('Show escalation details')
   .action(async (id: string) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const escalation = getEscalationById(db.db, id);
+      const escalation = await getEscalationById(db.provider, id);
       if (!escalation) {
         console.error(chalk.red(`Escalation not found: ${id}`));
         process.exit(1);
@@ -95,7 +97,7 @@ escalationsCommand
   .requiredOption('-m, --message <message>', 'Resolution message/guidance')
   .action(async (id: string, options: { message: string }) => {
     await withHiveContext(async ({ db }) => {
-      const escalation = getEscalationById(db.db, id);
+      const escalation = await getEscalationById(db.provider, id);
       if (!escalation) {
         console.error(chalk.red(`Escalation not found: ${id}`));
         process.exit(1);
@@ -106,11 +108,11 @@ escalationsCommand
         return;
       }
 
-      const resolved = resolveEscalation(db.db, id, options.message);
+      const resolved = await resolveEscalation(db.provider, id, options.message);
 
       // Log the resolution
       if (escalation.from_agent_id) {
-        createLog(db.db, {
+        await createLog(db.provider, {
           agentId: escalation.from_agent_id,
           storyId: escalation.story_id,
           eventType: 'ESCALATION_RESOLVED',
@@ -129,7 +131,7 @@ escalationsCommand
   .description('Acknowledge an escalation (mark as being worked on)')
   .action(async (id: string) => {
     await withHiveContext(async ({ db }) => {
-      const escalation = getEscalationById(db.db, id);
+      const escalation = await getEscalationById(db.provider, id);
       if (!escalation) {
         console.error(chalk.red(`Escalation not found: ${id}`));
         process.exit(1);
@@ -140,7 +142,7 @@ escalationsCommand
         return;
       }
 
-      acknowledgeEscalation(db.db, id);
+      await acknowledgeEscalation(db.provider, id);
       console.log(chalk.green(`Escalation ${id} acknowledged.`));
     });
   });

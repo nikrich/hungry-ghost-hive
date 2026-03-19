@@ -3,11 +3,11 @@
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenStore } from '../../auth/token-store.js';
 import type { JiraConfig } from '../../config/schema.js';
 import { queryAll, run } from '../../db/client.js';
+import { SqliteProvider } from '../../db/provider.js';
 import { createStory, getStoryById } from '../../db/queries/stories.js';
 import { createTestDatabase } from '../../db/queries/test-helpers.js';
 import { repairMissedAssignmentHooks } from './sync.js';
@@ -20,7 +20,7 @@ vi.mock('./stories.js');
 vi.mock('./transitions.js');
 
 describe('repairMissedAssignmentHooks', () => {
-  let db: Database;
+  let db: SqliteProvider;
   let envDir: string;
 
   const baseConfig: JiraConfig = {
@@ -53,34 +53,35 @@ describe('repairMissedAssignmentHooks', () => {
 
   function addJiraColumnsToStories(): void {
     // The test helper schema only has jira_issue_key. Add the other Jira columns.
-    const columnInfo = queryAll<{ name: string }>(db, 'PRAGMA table_info(stories)');
+    const columnInfo = queryAll<{ name: string }>(db.db, 'PRAGMA table_info(stories)');
     const columnNames = columnInfo.map(c => c.name);
 
     if (!columnNames.includes('jira_issue_id')) {
-      run(db, 'ALTER TABLE stories ADD COLUMN jira_issue_id TEXT');
+      run(db.db, 'ALTER TABLE stories ADD COLUMN jira_issue_id TEXT');
     }
     if (!columnNames.includes('jira_project_key')) {
-      run(db, 'ALTER TABLE stories ADD COLUMN jira_project_key TEXT');
+      run(db.db, 'ALTER TABLE stories ADD COLUMN jira_project_key TEXT');
     }
     if (!columnNames.includes('jira_subtask_key')) {
-      run(db, 'ALTER TABLE stories ADD COLUMN jira_subtask_key TEXT');
+      run(db.db, 'ALTER TABLE stories ADD COLUMN jira_subtask_key TEXT');
     }
     if (!columnNames.includes('jira_subtask_id')) {
-      run(db, 'ALTER TABLE stories ADD COLUMN jira_subtask_id TEXT');
+      run(db.db, 'ALTER TABLE stories ADD COLUMN jira_subtask_id TEXT');
     }
   }
 
   beforeEach(async () => {
-    db = await createTestDatabase();
+    const rawDb = await createTestDatabase();
+    db = new SqliteProvider(rawDb);
     envDir = mkdtempSync(join(tmpdir(), 'hive-repair-test-'));
     // Create a manager agent for logging purposes
-    db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
+    db.db.run(`INSERT INTO agents (id, type, status) VALUES ('manager', 'tech_lead', 'idle')`);
     // Create a team
-    db.run(
+    db.db.run(
       `INSERT INTO teams (id, repo_url, repo_path, name) VALUES ('team-test', 'https://github.com/test/test.git', 'repos/test', 'test-team')`
     );
     // Create a working agent
-    db.run(
+    db.db.run(
       `INSERT INTO agents (id, type, status, team_id, tmux_session) VALUES ('agent-senior-1', 'senior', 'working', 'team-test', 'hive-senior-test-team')`
     );
     // Add missing Jira columns to test schema
@@ -94,12 +95,12 @@ describe('repairMissedAssignmentHooks', () => {
   });
 
   it('skips stories that already have a subtask key', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Already has subtask',
       description: 'Test',
     });
     run(
-      db,
+      db.db,
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, jira_subtask_key = ?, external_subtask_key = ?, status = ? WHERE id = ?`,
       ['TEST-1', 'TEST-1', 'agent-senior-1', 'TEST-2', 'TEST-2', 'in_progress', story.id]
     );
@@ -110,11 +111,11 @@ describe('repairMissedAssignmentHooks', () => {
   });
 
   it('skips stories without jira_issue_key', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'No Jira key',
       description: 'Test',
     });
-    run(db, `UPDATE stories SET assigned_agent_id = ?, status = ? WHERE id = ?`, [
+    run(db.db, `UPDATE stories SET assigned_agent_id = ?, status = ? WHERE id = ?`, [
       'agent-senior-1',
       'in_progress',
       story.id,
@@ -126,12 +127,12 @@ describe('repairMissedAssignmentHooks', () => {
   });
 
   it('skips stories without assigned_agent_id', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Not assigned',
       description: 'Test',
     });
     run(
-      db,
+      db.db,
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, status = ? WHERE id = ?`,
       ['TEST-1', 'TEST-1', 'planned', story.id]
     );
@@ -142,12 +143,12 @@ describe('repairMissedAssignmentHooks', () => {
   });
 
   it('repairs assigned story missing subtask by creating subtask and posting comment', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Needs repair',
       description: 'Test',
     });
     run(
-      db,
+      db.db,
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, jira_project_key = ?, external_project_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
       ['TEST-10', 'TEST-10', 'TEST', 'TEST', 'agent-senior-1', 'in_progress', story.id]
     );
@@ -199,7 +200,7 @@ describe('repairMissedAssignmentHooks', () => {
     );
 
     // Verify subtask key was persisted to DB (both legacy and external columns)
-    const updatedStory = getStoryById(db, story.id);
+    const updatedStory = await getStoryById(db, story.id);
     expect(updatedStory?.jira_subtask_key).toBe('TEST-11');
     expect(updatedStory?.jira_subtask_id).toBe('20001');
     expect(updatedStory?.external_subtask_key).toBe('TEST-11');
@@ -216,12 +217,12 @@ describe('repairMissedAssignmentHooks', () => {
   });
 
   it('does not create duplicate subtasks when repair runs twice', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Repair idempotency',
       description: 'Test',
     });
     run(
-      db,
+      db.db,
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
       ['TEST-20', 'TEST-20', 'agent-senior-1', 'in_progress', story.id]
     );
@@ -258,12 +259,12 @@ describe('repairMissedAssignmentHooks', () => {
   });
 
   it('skips merged stories', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Merged story',
       description: 'Test',
     });
     run(
-      db,
+      db.db,
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
       ['TEST-30', 'TEST-30', 'agent-senior-1', 'merged', story.id]
     );
@@ -274,12 +275,12 @@ describe('repairMissedAssignmentHooks', () => {
   });
 
   it('handles API errors gracefully without crashing', async () => {
-    const story = createStory(db, {
+    const story = await createStory(db, {
       title: 'Error story',
       description: 'Test',
     });
     run(
-      db,
+      db.db,
       `UPDATE stories SET jira_issue_key = ?, external_issue_key = ?, assigned_agent_id = ?, status = ? WHERE id = ?`,
       ['TEST-40', 'TEST-40', 'agent-senior-1', 'in_progress', story.id]
     );

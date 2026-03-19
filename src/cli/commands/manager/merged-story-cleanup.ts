@@ -1,7 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
-import { queryAll, queryOne } from '../../../db/client.js';
+import type { DatabaseProvider } from '../../../db/provider.js';
 import { updateAgent } from '../../../db/queries/agents.js';
 
 const ACTIVE_STORY_STATUS_ORDER: ReadonlyArray<{
@@ -24,14 +23,13 @@ function buildActiveStatusPriorityCase(): string {
   return `CASE status ${clauses} ELSE 99 END`;
 }
 
-function getNextAssignedActiveStoryId(
-  db: Database,
+async function getNextAssignedActiveStoryId(
+  db: DatabaseProvider,
   agentId: string,
   mergedStoryId: string
-): string | null {
+): Promise<string | null> {
   const statusPriorityCase = buildActiveStatusPriorityCase();
-  const row = queryOne<{ id: string }>(
-    db,
+  const row = await db.queryOne<{ id: string }>(
     `
       SELECT id
       FROM stories
@@ -51,12 +49,11 @@ export interface MergedStoryCleanupResult {
   reassigned: number;
 }
 
-export function cleanupAgentsReferencingMergedStory(
-  db: Database,
+export async function cleanupAgentsReferencingMergedStory(
+  db: DatabaseProvider,
   mergedStoryId: string
-): MergedStoryCleanupResult {
-  const staleAgents = queryAll<{ id: string }>(
-    db,
+): Promise<MergedStoryCleanupResult> {
+  const staleAgents = await db.queryAll<{ id: string }>(
     `
       SELECT id
       FROM agents
@@ -70,8 +67,8 @@ export function cleanupAgentsReferencingMergedStory(
   let reassigned = 0;
 
   for (const agent of staleAgents) {
-    const nextStoryId = getNextAssignedActiveStoryId(db, agent.id, mergedStoryId);
-    updateAgent(db, agent.id, {
+    const nextStoryId = await getNextAssignedActiveStoryId(db, agent.id, mergedStoryId);
+    await updateAgent(db, agent.id, {
       currentStoryId: nextStoryId,
       status: nextStoryId ? 'working' : 'idle',
     });

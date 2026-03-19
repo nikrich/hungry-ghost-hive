@@ -15,7 +15,7 @@ teamsCommand
   .option('--json', 'Output as JSON')
   .action(async (options: { json?: boolean }) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const teams = getAllTeams(db.db);
+      const teams = await getAllTeams(db.provider);
 
       if (options.json) {
         console.log(JSON.stringify(teams, null, 2));
@@ -31,9 +31,9 @@ teamsCommand
       console.log(chalk.bold('\nTeams:\n'));
 
       for (const team of teams) {
-        const agents = getAgentsByTeam(db.db, team.id);
-        const stories = getStoriesByTeam(db.db, team.id);
-        const storyPoints = getStoryPointsByTeam(db.db, team.id);
+        const agents = await getAgentsByTeam(db.provider, team.id);
+        const stories = await getStoriesByTeam(db.provider, team.id);
+        const storyPoints = await getStoryPointsByTeam(db.provider, team.id);
 
         console.log(chalk.cyan(`  ${team.name}`));
         console.log(chalk.gray(`    ID:           ${team.id}`));
@@ -52,16 +52,16 @@ teamsCommand
   .description('Show team details')
   .action(async (name: string) => {
     await withReadOnlyHiveContext(async ({ db }) => {
-      const team = getTeamByName(db.db, name);
+      const team = await getTeamByName(db.provider, name);
 
       if (!team) {
         console.error(chalk.red(`Team not found: ${name}`));
         process.exit(1);
       }
 
-      const agents = getAgentsByTeam(db.db, team.id);
-      const stories = getStoriesByTeam(db.db, team.id);
-      const storyPoints = getStoryPointsByTeam(db.db, team.id);
+      const agents = await getAgentsByTeam(db.provider, team.id);
+      const stories = await getStoriesByTeam(db.provider, team.id);
+      const storyPoints = await getStoryPointsByTeam(db.provider, team.id);
 
       console.log(chalk.bold(`\nTeam: ${team.name}\n`));
       console.log(chalk.gray(`ID:           ${team.id}`));
@@ -113,14 +113,14 @@ teamsCommand
   .option('--force', 'Force removal even if team has active stories')
   .action(async (name: string, options: { force?: boolean }) => {
     await withHiveContext(async ({ db }) => {
-      const team = getTeamByName(db.db, name);
+      const team = await getTeamByName(db.provider, name);
 
       if (!team) {
         console.error(chalk.red(`Team not found: ${name}`));
         process.exit(1);
       }
 
-      const stories = getStoriesByTeam(db.db, team.id);
+      const stories = await getStoriesByTeam(db.provider, team.id);
       const activeStories = stories.filter(s => !['merged', 'draft'].includes(s.status));
 
       if (activeStories.length > 0 && !options.force) {
@@ -132,7 +132,7 @@ teamsCommand
         process.exit(1);
       }
 
-      deleteTeam(db.db, team.id);
+      await deleteTeam(db.provider, team.id);
       console.log(chalk.green(`Team "${name}" removed successfully.`));
       console.log(
         chalk.yellow('Note: Git submodule was not removed. Run the following to remove it:')

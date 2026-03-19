@@ -7,7 +7,6 @@ import {
   postProgressUpdate,
   transitionSubtaskStatus,
 } from '../../connectors/project-management/operations.js';
-import { queryOne } from '../../db/client.js';
 import { createLog } from '../../db/queries/logs.js';
 import { requireStory } from '../../utils/cli-helpers.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
@@ -24,7 +23,7 @@ export const progressCommand = new Command('progress')
       const pmProvider = config.integrations?.project_management?.provider || 'none';
 
       if (pmProvider === 'none') {
-        createLog(db.db, {
+        await createLog(db.provider, {
           agentId: options.from || 'manager',
           storyId,
           eventType: 'STORY_PROGRESS_UPDATE',
@@ -43,7 +42,7 @@ export const progressCommand = new Command('progress')
         return;
       }
 
-      const story = requireStory(db.db, storyId);
+      const story = await requireStory(db.provider, storyId);
 
       if (!story.external_subtask_key) {
         console.error(
@@ -60,8 +59,7 @@ export const progressCommand = new Command('progress')
       // Resolve agent name from session if provided
       let agentName = options.from;
       if (options.from) {
-        const agent = queryOne<{ id: string; tmux_session: string }>(
-          db.db,
+        const agent = await db.provider.queryOne<{ id: string; tmux_session: string }>(
           "SELECT id, tmux_session FROM agents WHERE tmux_session = ? AND status != 'terminated'",
           [options.from]
         );
@@ -70,7 +68,14 @@ export const progressCommand = new Command('progress')
         }
       }
 
-      await postProgressUpdate(db.db, paths.hiveDir, config, storyId, options.message, agentName);
+      await postProgressUpdate(
+        db.provider,
+        paths.hiveDir,
+        config,
+        storyId,
+        options.message,
+        agentName
+      );
 
       console.log(chalk.green(`Posted progress update to subtask ${story.external_subtask_key}`));
 

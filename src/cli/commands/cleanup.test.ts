@@ -19,7 +19,11 @@ vi.mock('../../tmux/manager.js', () => ({
 
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(callback =>
-    callback({ db: { db: {}, save: vi.fn() }, root: '/tmp', paths: { hiveDir: '/tmp/.hive' } })
+    callback({
+      db: { db: {}, provider: {}, save: vi.fn() },
+      root: '/tmp',
+      paths: { hiveDir: '/tmp/.hive' },
+    })
   ),
 }));
 

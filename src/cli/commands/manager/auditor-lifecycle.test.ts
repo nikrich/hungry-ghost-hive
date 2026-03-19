@@ -52,7 +52,14 @@ function makeCtx(
   overrides: Partial<ManagerCheckContext> = {},
   schedulerOverrides: Record<string, unknown> = {}
 ): ManagerCheckContext {
-  const mockDb = { db: {} as never, save: vi.fn(), close: vi.fn(), runMigrations: vi.fn() };
+  const mockProvider = {} as never;
+  const mockDb = {
+    db: {} as never,
+    provider: mockProvider,
+    save: vi.fn(),
+    close: vi.fn(),
+    runMigrations: vi.fn(),
+  };
   const mockScheduler = {
     spawnAuditor: vi.fn().mockResolvedValue({ id: 'auditor-abc123' }),
     ...schedulerOverrides,
@@ -118,8 +125,8 @@ describe('spawnAuditorIfNeeded', () => {
   });
 
   it('spawns auditor when interval elapsed and no active auditor', async () => {
-    mockGetAgentsByType.mockReturnValue([]);
-    mockGetAllTeams.mockReturnValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
+    mockGetAgentsByType.mockResolvedValue([]);
+    mockGetAllTeams.mockResolvedValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
 
     const ctx = makeCtx();
     const result = await spawnAuditorIfNeeded(ctx);
@@ -135,8 +142,8 @@ describe('spawnAuditorIfNeeded', () => {
   });
 
   it('skips spawn when interval has not elapsed', async () => {
-    mockGetAgentsByType.mockReturnValue([]);
-    mockGetAllTeams.mockReturnValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
+    mockGetAgentsByType.mockResolvedValue([]);
+    mockGetAllTeams.mockResolvedValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
 
     const ctx = makeCtx();
 
@@ -151,7 +158,7 @@ describe('spawnAuditorIfNeeded', () => {
   });
 
   it('skips spawn when an active auditor is running', async () => {
-    mockGetAgentsByType.mockReturnValue([
+    mockGetAgentsByType.mockResolvedValue([
       { id: 'auditor-existing', type: 'auditor', status: 'working' },
     ]);
 
@@ -166,8 +173,8 @@ describe('spawnAuditorIfNeeded', () => {
   });
 
   it('skips spawn when no teams exist', async () => {
-    mockGetAgentsByType.mockReturnValue([]);
-    mockGetAllTeams.mockReturnValue([]);
+    mockGetAgentsByType.mockResolvedValue([]);
+    mockGetAllTeams.mockResolvedValue([]);
 
     const ctx = makeCtx();
     const result = await spawnAuditorIfNeeded(ctx);
@@ -177,8 +184,8 @@ describe('spawnAuditorIfNeeded', () => {
   });
 
   it('handles spawn errors gracefully', async () => {
-    mockGetAgentsByType.mockReturnValue([]);
-    mockGetAllTeams.mockReturnValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
+    mockGetAgentsByType.mockResolvedValue([]);
+    mockGetAllTeams.mockResolvedValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
 
     const ctx = makeCtx(
       {},
@@ -193,10 +200,10 @@ describe('spawnAuditorIfNeeded', () => {
   });
 
   it('does not count terminated auditors as active', async () => {
-    mockGetAgentsByType.mockReturnValue([
+    mockGetAgentsByType.mockResolvedValue([
       { id: 'auditor-old', type: 'auditor', status: 'terminated' },
     ]);
-    mockGetAllTeams.mockReturnValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
+    mockGetAllTeams.mockResolvedValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
 
     const ctx = makeCtx();
     const result = await spawnAuditorIfNeeded(ctx);
@@ -206,8 +213,8 @@ describe('spawnAuditorIfNeeded', () => {
   });
 
   it('updates lastAuditorSpawnTime after successful spawn', async () => {
-    mockGetAgentsByType.mockReturnValue([]);
-    mockGetAllTeams.mockReturnValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
+    mockGetAgentsByType.mockResolvedValue([]);
+    mockGetAllTeams.mockResolvedValue([{ id: 'team-1', name: 'alpha', repo_path: '/repo' }]);
 
     expect(getLastAuditorSpawnTime()).toBe(0);
 

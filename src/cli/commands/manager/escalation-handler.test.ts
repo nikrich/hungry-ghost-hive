@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DatabaseProvider } from '../../../db/provider.js';
 import { AgentState } from '../../../state-detectors/types.js';
 import {
   buildHumanApprovalReason,
@@ -146,19 +146,19 @@ describe('handleEscalationAndNudge interruption recovery progression', () => {
     agentStates.clear();
     const { getRecentEscalationsForAgent, getActiveEscalationsForAgent } =
       await import('../../../db/queries/escalations.js');
-    vi.mocked(getRecentEscalationsForAgent).mockReturnValue([]);
-    vi.mocked(getActiveEscalationsForAgent).mockReturnValue([]);
+    vi.mocked(getRecentEscalationsForAgent).mockResolvedValue([]);
+    vi.mocked(getActiveEscalationsForAgent).mockResolvedValue([]);
   });
 
   function makeCtx() {
-    const dbInstance = {} as Database;
+    const dbInstance = {} as DatabaseProvider;
     return {
       ctx: {
         verbose: false,
         escalatedSessions: new Set<string>(),
         counters: { nudged: 0, escalationsCreated: 0, escalationsResolved: 0 },
         config: { manager: { nudge_cooldown_ms: 60000 } },
-        withDb: async (fn: (db: { db: Database; save: () => void }) => Promise<unknown>) =>
+        withDb: async (fn: (db: { db: DatabaseProvider; save: () => void }) => Promise<unknown>) =>
           fn({ db: dbInstance, save: vi.fn() }),
       },
     };
@@ -268,14 +268,14 @@ describe('handleEscalationAndNudge — fromAgentId FK fix', () => {
   });
 
   function makeCtx() {
-    const dbInstance = {} as Database;
+    const dbInstance = {} as DatabaseProvider;
     return {
       ctx: {
         verbose: false,
         escalatedSessions: new Set<string>(),
         counters: { nudged: 0, escalationsCreated: 0, escalationsResolved: 0 },
         config: { manager: { nudge_cooldown_ms: 60000 } },
-        withDb: async (fn: (db: { db: Database; save: () => void }) => Promise<unknown>) =>
+        withDb: async (fn: (db: { db: DatabaseProvider; save: () => void }) => Promise<unknown>) =>
           fn({ db: dbInstance, save: vi.fn() }),
       },
       dbInstance,
@@ -285,8 +285,8 @@ describe('handleEscalationAndNudge — fromAgentId FK fix', () => {
   it('uses agent.id (not session name) as fromAgentId when creating an escalation', async () => {
     const { createEscalation, getRecentEscalationsForAgent } =
       await import('../../../db/queries/escalations.js');
-    vi.mocked(getRecentEscalationsForAgent).mockReturnValue([]);
-    vi.mocked(createEscalation).mockReturnValue({
+    vi.mocked(getRecentEscalationsForAgent).mockResolvedValue([]);
+    vi.mocked(createEscalation).mockResolvedValue({
       id: 'ESC-TEST',
       story_id: 'STORY-001',
       from_agent_id: 'senior-AbCdEf',
@@ -299,7 +299,7 @@ describe('handleEscalationAndNudge — fromAgentId FK fix', () => {
     });
 
     const { createLog } = await import('../../../db/queries/logs.js');
-    vi.mocked(createLog).mockReturnValue(undefined as never);
+    vi.mocked(createLog).mockResolvedValue(undefined as never);
 
     const { ctx } = makeCtx();
     const sessionName = 'hive-senior-AbCdEf'; // tmux session name with hive- prefix
@@ -327,8 +327,8 @@ describe('handleEscalationAndNudge — fromAgentId FK fix', () => {
   it('uses null as fromAgentId when agent is undefined', async () => {
     const { createEscalation, getRecentEscalationsForAgent } =
       await import('../../../db/queries/escalations.js');
-    vi.mocked(getRecentEscalationsForAgent).mockReturnValue([]);
-    vi.mocked(createEscalation).mockReturnValue({
+    vi.mocked(getRecentEscalationsForAgent).mockResolvedValue([]);
+    vi.mocked(createEscalation).mockResolvedValue({
       id: 'ESC-NULL',
       story_id: null,
       from_agent_id: null,
@@ -341,7 +341,7 @@ describe('handleEscalationAndNudge — fromAgentId FK fix', () => {
     });
 
     const { createLog } = await import('../../../db/queries/logs.js');
-    vi.mocked(createLog).mockReturnValue(undefined as never);
+    vi.mocked(createLog).mockResolvedValue(undefined as never);
 
     const { ctx } = makeCtx();
 

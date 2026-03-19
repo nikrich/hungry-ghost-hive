@@ -1,8 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import type { HiveConfig } from '../../../config/schema.js';
-import type { DatabaseClient, StoryRow } from '../../../db/client.js';
-import type { getAllAgents } from '../../../db/queries/agents.js';
+import type { AgentRow, DatabaseClient, StoryRow } from '../../../db/client.js';
 import type { MessageRow } from '../../../db/queries/messages.js';
 import type { Scheduler } from '../../../orchestrator/scheduler.js';
 import type { TmuxSession } from '../../../tmux/manager.js';
@@ -86,7 +85,7 @@ export interface ManagerCheckContext {
   };
   // Shared state for dedup
   escalatedSessions: Set<string | null>;
-  agentsBySessionName: Map<string, ReturnType<typeof getAllAgents>[number]>;
+  agentsBySessionName: Map<string, AgentRow>;
   messagesToMarkRead: string[];
 }
 

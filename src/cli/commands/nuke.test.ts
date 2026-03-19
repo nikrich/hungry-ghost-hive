@@ -19,7 +19,7 @@ vi.mock('../../git/worktree.js', () => ({
 
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(callback =>
-    callback({ db: { db: {}, save: vi.fn() }, root: '/root', paths: {} })
+    callback({ db: { db: {}, provider: {}, save: vi.fn() }, root: '/root', paths: {} })
   ),
 }));
 

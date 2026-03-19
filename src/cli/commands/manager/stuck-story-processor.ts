@@ -5,8 +5,8 @@ import { execa } from 'execa';
 import { join } from 'path';
 import { syncStatusForStory } from '../../../connectors/project-management/operations.js';
 import type { StoryRow } from '../../../db/client.js';
-import { queryAll, withTransaction } from '../../../db/client.js';
-import { getAgentById, type getAllAgents } from '../../../db/queries/agents.js';
+import type { AgentRow } from '../../../db/queries/agents.js';
+import { getAgentById } from '../../../db/queries/agents.js';
 import { createLog } from '../../../db/queries/logs.js';
 import {
   createPullRequest,
@@ -52,12 +52,13 @@ export async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void>
 
   // Phase 1: Read stuck stories and agents (brief lock)
   const candidates = await ctx.withDb(async db => {
-    const stuckStories = queryAll<StoryRow>(
-      db.db,
-      `SELECT * FROM stories
+    const stuckStories = (
+      await db.provider.queryAll<StoryRow>(
+        `SELECT * FROM stories
        WHERE status = 'in_progress'
        AND updated_at < ?`,
-      [staleUpdatedAt]
+        [staleUpdatedAt]
+      )
     ).filter(story => !['merged', 'completed'].includes(story.status));
     verboseLogCtx(
       ctx,
@@ -66,7 +67,7 @@ export async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void>
 
     const result: Array<{
       story: StoryRow;
-      agent: ReturnType<typeof getAllAgents>[number];
+      agent: AgentRow;
       sessionName: string;
       cliTool: CLITool;
     }> = [];
@@ -77,7 +78,7 @@ export async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void>
         verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} skip=no_assigned_agent`);
         continue;
       }
-      const agent = getAgentById(db.db, story.assigned_agent_id);
+      const agent = await getAgentById(db.provider, story.assigned_agent_id);
       if (!agent) {
         verboseLogCtx(ctx, `nudgeStuckStories: story=${story.id} skip=missing_agent`);
         continue;
@@ -331,7 +332,7 @@ export async function nudgeStuckStories(ctx: ManagerCheckContext): Promise<void>
 export async function autoProgressDoneStory(
   ctx: ManagerCheckContext,
   story: StoryRow,
-  agent: ReturnType<typeof getAllAgents>[number],
+  agent: AgentRow,
   sessionName: string,
   reason: string,
   confidence: number
@@ -348,12 +349,12 @@ export async function autoProgressDoneStory(
 
   // DB operations under brief lock
   const action = await ctx.withDb(async (db, scheduler) => {
-    const openPRs = getOpenPullRequestsByStory(db.db, story.id);
+    const openPRs = await getOpenPullRequestsByStory(db.provider, story.id);
     verboseLogCtx(ctx, `autoProgressDoneStory: story=${story.id}, openPRs=${openPRs.length}`);
     if (openPRs.length > 0) {
       if (story.status !== 'pr_submitted') {
-        updateStory(db.db, story.id, { status: 'pr_submitted' });
-        createLog(db.db, {
+        await updateStory(db.provider, story.id, { status: 'pr_submitted' });
+        await createLog(db.provider, {
           agentId: 'manager',
           storyId: story.id,
           eventType: 'STORY_PROGRESS_UPDATE',
@@ -367,7 +368,7 @@ export async function autoProgressDoneStory(
           },
         });
         db.save();
-        await syncStatusForStory(ctx.root, db.db, story.id, 'pr_submitted');
+        await syncStatusForStory(ctx.root, db.provider, story.id, 'pr_submitted');
         verboseLogCtx(ctx, `autoProgressDoneStory: story=${story.id} status moved to pr_submitted`);
       }
       return 'existing_pr' as const;
@@ -378,33 +379,30 @@ export async function autoProgressDoneStory(
       return 'no_branch' as const;
     }
 
-    await withTransaction(
-      db.db,
-      () => {
-        updateStory(db.db, story.id, { status: 'pr_submitted', branchName: branch });
-        createPullRequest(db.db, {
-          storyId: story.id,
-          teamId: story.team_id || null,
-          branchName: branch,
-          submittedBy: sessionName,
-        });
-        createLog(db.db, {
-          agentId: 'manager',
-          storyId: story.id,
-          eventType: 'PR_SUBMITTED',
-          message: `Auto-submitted PR for ${story.id} after AI completion inference`,
-          metadata: {
-            session_name: sessionName,
-            recovery: 'done_inference_auto_submit',
-            reason,
-            confidence,
-            branch,
-          },
-        });
-      },
-      () => db.save()
-    );
-    await syncStatusForStory(ctx.root, db.db, story.id, 'pr_submitted');
+    await db.provider.withTransaction(async () => {
+      await updateStory(db.provider, story.id, { status: 'pr_submitted', branchName: branch });
+      await createPullRequest(db.provider, {
+        storyId: story.id,
+        teamId: story.team_id || null,
+        branchName: branch,
+        submittedBy: sessionName,
+      });
+      await createLog(db.provider, {
+        agentId: 'manager',
+        storyId: story.id,
+        eventType: 'PR_SUBMITTED',
+        message: `Auto-submitted PR for ${story.id} after AI completion inference`,
+        metadata: {
+          session_name: sessionName,
+          recovery: 'done_inference_auto_submit',
+          reason,
+          confidence,
+          branch,
+        },
+      });
+    });
+    db.save();
+    await syncStatusForStory(ctx.root, db.provider, story.id, 'pr_submitted');
     await scheduler.checkMergeQueue();
     db.save();
     verboseLogCtx(
@@ -440,7 +438,7 @@ export async function autoProgressDoneStory(
 async function resolveStoryBranchName(
   root: string,
   story: StoryRow,
-  agent: ReturnType<typeof getAllAgents>[number],
+  agent: AgentRow,
   log?: (message: string) => void
 ): Promise<string | null> {
   if (story.branch_name && story.branch_name.trim().length > 0) {
@@ -472,7 +470,7 @@ async function resolveStoryBranchName(
 export async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read QA-failed stories and agents (brief lock)
   const candidates = await ctx.withDb(async db => {
-    const qaFailedStories = getStoriesByStatus(db.db, 'qa_failed').filter(
+    const qaFailedStories = (await getStoriesByStatus(db.provider, 'qa_failed')).filter(
       story => !['merged', 'completed'].includes(story.status)
     );
     verboseLogCtx(ctx, `nudgeQAFailedStories: candidates=${qaFailedStories.length}`);
@@ -483,7 +481,7 @@ export async function nudgeQAFailedStories(ctx: ManagerCheckContext): Promise<vo
         verboseLogCtx(ctx, `nudgeQAFailedStories: story=${story.id} skip=no_assigned_agent`);
         continue;
       }
-      const agent = getAgentById(db.db, story.assigned_agent_id);
+      const agent = await getAgentById(db.provider, story.assigned_agent_id);
       if (!agent || agent.status !== 'working') {
         verboseLogCtx(
           ctx,
@@ -538,8 +536,7 @@ hive pr queue`
 
 export async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext): Promise<void> {
   const result = await ctx.withDb(async (db, scheduler) => {
-    const recoverableStories = queryAll<StoryRow>(
-      db.db,
+    const recoverableStories = await db.provider.queryAll<StoryRow>(
       `
       SELECT * FROM stories
       WHERE status = 'qa_failed'
@@ -550,25 +547,22 @@ export async function recoverUnassignedQAFailedStories(ctx: ManagerCheckContext)
     if (recoverableStories.length === 0) return null;
     verboseLogCtx(ctx, `recoverUnassignedQAFailedStories: recovered=${recoverableStories.length}`);
 
-    await withTransaction(
-      db.db,
-      () => {
-        for (const story of recoverableStories) {
-          updateStory(db.db, story.id, { status: 'planned', assignedAgentId: null });
-          createLog(db.db, {
-            agentId: 'manager',
-            storyId: story.id,
-            eventType: 'ORPHANED_STORY_RECOVERED',
-            message: `Recovered QA-failed story ${story.id} (unassigned) back to planned`,
-            metadata: { from_status: 'qa_failed', to_status: 'planned' },
-          });
-        }
-      },
-      () => db.save()
-    );
+    await db.provider.withTransaction(async () => {
+      for (const story of recoverableStories) {
+        await updateStory(db.provider, story.id, { status: 'planned', assignedAgentId: null });
+        await createLog(db.provider, {
+          agentId: 'manager',
+          storyId: story.id,
+          eventType: 'ORPHANED_STORY_RECOVERED',
+          message: `Recovered QA-failed story ${story.id} (unassigned) back to planned`,
+          metadata: { from_status: 'qa_failed', to_status: 'planned' },
+        });
+      }
+    });
+    db.save();
 
     for (const story of recoverableStories) {
-      await syncStatusForStory(ctx.root, db.db, story.id, 'planned');
+      await syncStatusForStory(ctx.root, db.provider, story.id, 'planned');
     }
 
     // Proactively re-assign recovered work so it does not stall until manual `hive assign`.

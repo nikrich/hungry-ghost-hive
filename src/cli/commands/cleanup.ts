@@ -47,7 +47,7 @@ async function findOrphanedWorktrees(root: string, db: DatabaseClient): Promise<
 
   try {
     const entries = await fs.readdir(reposDir, { withFileTypes: true });
-    const allAgents = getAllAgents(db.db);
+    const allAgents = await getAllAgents(db.provider);
     const agentWorktrees = new Set(
       allAgents.filter(a => a.worktree_path).map(a => a.worktree_path)
     );
@@ -110,7 +110,7 @@ async function findDeadTmuxSessions(db: DatabaseClient): Promise<string[]> {
 
   try {
     const hiveSessions = await getHiveSessions();
-    const allAgents = getAllAgents(db.db);
+    const allAgents = await getAllAgents(db.provider);
     const agentSessionNames = new Set(
       allAgents.filter(a => a.tmux_session).map(a => a.tmux_session)
     );
@@ -132,9 +132,11 @@ async function findDeadTmuxSessions(db: DatabaseClient): Promise<string[]> {
   return deadSessions;
 }
 
-function findOrphanedAssignments(db: DatabaseClient): Array<{ id: string; agent_id: string }> {
+async function findOrphanedAssignments(
+  db: DatabaseClient
+): Promise<Array<{ id: string; agent_id: string }>> {
   try {
-    return getStoriesWithOrphanedAssignments(db.db);
+    return await getStoriesWithOrphanedAssignments(db.provider);
   } catch (err) {
     console.error(
       chalk.yellow(
@@ -225,11 +227,11 @@ async function cleanupDeadTmuxSessions(deadSessions: string[], dryRun: boolean):
   return cleaned;
 }
 
-function cleanupOrphanedAssignments(
+async function cleanupOrphanedAssignments(
   db: DatabaseClient,
   orphaned: Array<{ id: string; agent_id: string }>,
   dryRun: boolean
-): number {
+): Promise<number> {
   let cleaned = 0;
 
   for (const assignment of orphaned) {
@@ -237,7 +239,7 @@ function cleanupOrphanedAssignments(
       if (dryRun) {
         console.log(chalk.gray(`  Would unassign: ${assignment.id} from ${assignment.agent_id}`));
       } else {
-        updateStoryAssignment(db.db, assignment.id, null);
+        await updateStoryAssignment(db.provider, assignment.id, null);
         console.log(chalk.gray(`  ✓ Unassigned: ${assignment.id}`));
         cleaned++;
       }
@@ -300,7 +302,7 @@ export const cleanupCommand = new Command('cleanup')
           stats.deadTmuxSessions = await findDeadTmuxSessions(db);
         }
         if (shouldCleanupAssignments) {
-          stats.orphanedStories = findOrphanedAssignments(db);
+          stats.orphanedStories = await findOrphanedAssignments(db);
         }
 
         stats.totalIssuesFound =
@@ -395,7 +397,7 @@ export const cleanupCommand = new Command('cleanup')
 
         if (stats.orphanedStories.length > 0) {
           console.log(chalk.cyan('Unassigning orphaned stories:'));
-          const cleaned = cleanupOrphanedAssignments(db, stats.orphanedStories, false);
+          const cleaned = await cleanupOrphanedAssignments(db, stats.orphanedStories, false);
           totalCleaned += cleaned;
           db.save();
           console.log();

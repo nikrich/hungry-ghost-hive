@@ -1,8 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SqliteProvider } from '../../db/provider.js';
 import { getPlannedStories } from '../../db/queries/stories.js';
 import { getTeamById } from '../../db/queries/teams.js';
 
@@ -16,7 +16,7 @@ vi.mock('../../db/queries/stories.js');
 vi.mock('../../db/queries/teams.js');
 
 describe('Assign Command', () => {
-  let db: Database;
+  let db: SqliteProvider;
 
   const mockConfig = {
     scaling: {
@@ -90,22 +90,23 @@ CREATE TABLE IF NOT EXISTS stories (
 
   beforeEach(async () => {
     const SQL = await initSqlJs();
-    db = new SQL.Database();
-    db.run('PRAGMA foreign_keys = ON');
-    db.run(INITIAL_MIGRATION);
+    const rawDb = new SQL.Database();
+    rawDb.run('PRAGMA foreign_keys = ON');
+    rawDb.run(INITIAL_MIGRATION);
+    db = new SqliteProvider(rawDb);
     vi.clearAllMocks();
   });
 
   describe('--dry-run flag', () => {
-    it('should return empty when no stories are planned', () => {
+    it('should return empty when no stories are planned', async () => {
       // Mock empty planned stories
-      vi.mocked(getPlannedStories).mockReturnValue([]);
+      vi.mocked(getPlannedStories).mockResolvedValue([]);
 
-      const plannedStories = getPlannedStories(db);
+      const plannedStories = await getPlannedStories(db);
       expect(plannedStories).toEqual([]);
     });
 
-    it('should show stories grouped by team without making assignments', () => {
+    it('should show stories grouped by team without making assignments', async () => {
       // Mock planned stories with team association
       const mockStories = [
         {
@@ -168,8 +169,8 @@ CREATE TABLE IF NOT EXISTS stories (
         },
       ];
 
-      vi.mocked(getPlannedStories).mockReturnValue(mockStories);
-      vi.mocked(getTeamById).mockReturnValue({
+      vi.mocked(getPlannedStories).mockResolvedValue(mockStories);
+      vi.mocked(getTeamById).mockResolvedValue({
         id: 'team-1',
         repo_url: 'https://github.com/test/repo',
         repo_path: '/path/to/repo',
@@ -177,7 +178,7 @@ CREATE TABLE IF NOT EXISTS stories (
         created_at: new Date().toISOString(),
       });
 
-      const plannedStories = getPlannedStories(db);
+      const plannedStories = await getPlannedStories(db);
       expect(plannedStories).toHaveLength(2);
       expect(plannedStories[0].team_id).toBe('team-1');
     });
@@ -220,7 +221,7 @@ CREATE TABLE IF NOT EXISTS stories (
       expect(targetLevel).toBe('Senior');
     });
 
-    it('should not make database changes during dry-run', () => {
+    it('should not make database changes during dry-run', async () => {
       // The dry-run option should only call getPlannedStories without making any changes
       const mockStories = [
         {
@@ -254,17 +255,17 @@ CREATE TABLE IF NOT EXISTS stories (
         },
       ];
 
-      vi.mocked(getPlannedStories).mockReturnValue(mockStories);
+      vi.mocked(getPlannedStories).mockResolvedValue(mockStories);
 
       // In dry-run mode, we should only read data, not write
-      const plannedStories = getPlannedStories(db);
+      const plannedStories = await getPlannedStories(db);
       expect(plannedStories).toHaveLength(1);
 
       // Verify that no assignment operations were performed
       // (This would be verified by checking that Scheduler.assignStories was not called)
     });
 
-    it('should handle multiple teams in planned stories', () => {
+    it('should handle multiple teams in planned stories', async () => {
       const mockStories = [
         {
           id: 'STORY-001',
@@ -326,9 +327,9 @@ CREATE TABLE IF NOT EXISTS stories (
         },
       ];
 
-      vi.mocked(getPlannedStories).mockReturnValue(mockStories);
+      vi.mocked(getPlannedStories).mockResolvedValue(mockStories);
 
-      const plannedStories = getPlannedStories(db);
+      const plannedStories = await getPlannedStories(db);
       expect(plannedStories).toHaveLength(2);
 
       // Verify stories are grouped by team

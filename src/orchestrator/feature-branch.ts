@@ -1,9 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { execa } from 'execa';
-import type { Database } from 'sql.js';
 import type { HiveConfig } from '../config/schema.js';
-import { queryAll } from '../db/client.js';
+import type { DatabaseProvider } from '../db/provider.js';
 import { createLog } from '../db/queries/logs.js';
 import {
   getRequirementById,
@@ -59,14 +58,14 @@ export function isEligibleForFeatureBranch(
  * @returns The feature branch name, or null if creation failed
  */
 export async function createRequirementFeatureBranch(
-  db: Database,
+  db: DatabaseProvider,
   repoPath: string,
   requirementId: string,
   saveFn?: () => void
 ): Promise<string | null> {
-  const requirement = getRequirementById(db, requirementId);
+  const requirement = await getRequirementById(db, requirementId);
   if (!requirement) {
-    createLog(db, {
+    await createLog(db, {
       agentId: 'scheduler',
       eventType: 'FEATURE_BRANCH_FAILED',
       status: 'error',
@@ -101,7 +100,7 @@ export async function createRequirementFeatureBranch(
     });
 
     // Update the requirement with the feature branch info
-    updateRequirement(db, requirementId, {
+    await updateRequirement(db, requirementId, {
       featureBranch,
       targetBranch: featureBranch,
       status: 'in_progress',
@@ -109,7 +108,7 @@ export async function createRequirementFeatureBranch(
 
     if (saveFn) saveFn();
 
-    createLog(db, {
+    await createLog(db, {
       agentId: 'scheduler',
       eventType: 'FEATURE_BRANCH_CREATED',
       message: `Created feature branch ${featureBranch} for requirement ${requirementId}`,
@@ -120,7 +119,7 @@ export async function createRequirementFeatureBranch(
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
 
-    createLog(db, {
+    await createLog(db, {
       agentId: 'scheduler',
       eventType: 'FEATURE_BRANCH_FAILED',
       status: 'error',
@@ -130,7 +129,7 @@ export async function createRequirementFeatureBranch(
 
     // Still transition requirement to in_progress even if branch creation fails,
     // but without the feature branch. Stories will target main as fallback.
-    updateRequirement(db, requirementId, { status: 'in_progress' });
+    await updateRequirement(db, requirementId, { status: 'in_progress' });
     if (saveFn) saveFn();
 
     return null;
@@ -170,22 +169,22 @@ export async function createFeatureBranchPR(
  * Returns requirement IDs for stories being assigned where the requirement
  * is in 'planned' status and doesn't have a feature branch yet.
  */
-export function getRequirementsNeedingFeatureBranch(
-  db: Database,
+export async function getRequirementsNeedingFeatureBranch(
+  db: DatabaseProvider,
   storyIds: string[],
   hiveConfig: HiveConfig | undefined
-): string[] {
+): Promise<string[]> {
   if (!requiresFeatureBranch(hiveConfig)) return [];
   if (storyIds.length === 0) return [];
 
   const requirementIds = new Set<string>();
 
   for (const storyId of storyIds) {
-    const stories = queryAll<StoryRow>(db, 'SELECT * FROM stories WHERE id = ?', [storyId]);
+    const stories = await db.queryAll<StoryRow>('SELECT * FROM stories WHERE id = ?', [storyId]);
     const story = stories[0];
     if (!story?.requirement_id) continue;
 
-    const requirement = getRequirementById(db, story.requirement_id);
+    const requirement = await getRequirementById(db, story.requirement_id);
     if (!requirement) continue;
 
     if (isEligibleForFeatureBranch(requirement, hiveConfig)) {

@@ -36,7 +36,7 @@ vi.mock('../../db/queries/teams.js', () => ({
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {} } })),
+  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {}, provider: {} } })),
 }));
 
 import { statusCommand } from './status.js';

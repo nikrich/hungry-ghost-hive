@@ -10,8 +10,8 @@ vi.mock('../../db/client.js', () => ({
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withHiveContext: vi.fn(callback => callback({ db: { db: {}, save: vi.fn() } })),
-  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {} } })),
+  withHiveContext: vi.fn(callback => callback({ db: { db: {}, provider: {}, save: vi.fn() } })),
+  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {}, provider: {} } })),
 }));
 
 import { msgCommand } from './msg.js';

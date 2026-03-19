@@ -4,7 +4,6 @@ import { getCliRuntimeBuilder, resolveRuntimeModelForCli } from '../cli-runtimes
 import { loadConfig } from '../config/index.js';
 import type { HiveConfig } from '../config/schema.js';
 import { syncRequirementToProvider } from '../connectors/project-management/operations.js';
-import { queryAll } from '../db/client.js';
 import { createAgent, getAgentsByType, updateAgent } from '../db/queries/agents.js';
 import { createEscalation } from '../db/queries/escalations.js';
 import {
@@ -37,11 +36,20 @@ export class TechLeadAgent extends BaseAgent {
   constructor(context: TechLeadContext) {
     super(context);
     this.requirementId = context.requirementId;
-    this.teams = getAllTeams(this.db);
+  }
+
+  private async init(): Promise<void> {
+    this.teams = await getAllTeams(this.db);
 
     if (this.requirementId) {
-      this.requirement = getRequirementById(this.db, this.requirementId);
+      this.requirement = await getRequirementById(this.db, this.requirementId);
     }
+  }
+
+  static async create(context: TechLeadContext): Promise<TechLeadAgent> {
+    const agent = new TechLeadAgent(context);
+    await agent.init();
+    return agent;
   }
 
   getSystemPrompt(): string {
@@ -88,11 +96,11 @@ ${this.getJiraInstructions()}`;
 
   async execute(): Promise<void> {
     if (!this.requirement) {
-      this.log('PLANNING_STARTED', 'Tech Lead ready, waiting for requirement');
+      await this.log('PLANNING_STARTED', 'Tech Lead ready, waiting for requirement');
       return;
     }
 
-    this.log('PLANNING_STARTED', `Analyzing requirement: ${this.requirement.title}`);
+    await this.log('PLANNING_STARTED', `Analyzing requirement: ${this.requirement.title}`);
 
     // Analyze the requirement
     const analysis = await this.analyzeRequirement();
@@ -113,8 +121,8 @@ ${this.getJiraInstructions()}`;
     await this.coordinateWithSeniors(stories);
 
     // Update requirement status
-    updateRequirement(this.db, this.requirement.id, { status: 'planned' });
-    this.log('PLANNING_COMPLETED', `Created ${stories.length} stories`);
+    await updateRequirement(this.db, this.requirement.id, { status: 'planned' });
+    await this.log('PLANNING_COMPLETED', `Created ${stories.length} stories`);
   }
 
   private async analyzeRequirement(): Promise<{
@@ -202,7 +210,7 @@ Respond in JSON format:
     for (const story of analysis.stories) {
       const team = this.teams.find(t => t.name === story.teamName);
 
-      const storyRow = createStory(
+      const storyRow = await createStory(
         this.db,
         {
           requirementId: this.requirement!.id,
@@ -215,7 +223,7 @@ Respond in JSON format:
       );
 
       // Update with complexity
-      updateStory(
+      await updateStory(
         this.db,
         storyRow.id,
         {
@@ -229,7 +237,7 @@ Respond in JSON format:
       storyIds.push(storyRow.id);
       storyIdMap[story.title] = storyRow.id;
 
-      this.log('STORY_CREATED', story.title, {
+      await this.log('STORY_CREATED', story.title, {
         storyId: storyRow.id,
         teamId: team?.id,
         complexity: story.estimatedComplexity,
@@ -243,7 +251,7 @@ Respond in JSON format:
         for (const depTitle of story.dependencies) {
           const depId = storyIdMap[depTitle];
           if (depId) {
-            addStoryDependency(this.db, storyId, depId);
+            await addStoryDependency(this.db, storyId, depId);
           }
         }
       }
@@ -256,7 +264,7 @@ Respond in JSON format:
     // Get unique teams from stories
     const teamIds = new Set<string>();
     for (const storyId of storyIds) {
-      const story = getStoryById(this.db, storyId);
+      const story = await getStoryById(this.db, storyId);
       if (story?.team_id) {
         teamIds.add(story.team_id);
       }
@@ -268,11 +276,11 @@ Respond in JSON format:
       if (!team) continue;
 
       // Check if Senior already exists for this team
-      let seniors = getAgentsByType(this.db, 'senior').filter(s => s.team_id === teamId);
+      let seniors = (await getAgentsByType(this.db, 'senior')).filter(s => s.team_id === teamId);
 
       if (seniors.length === 0) {
         // Create a new Senior agent
-        const senior = createAgent(this.db, {
+        const senior = await createAgent(this.db, {
           type: 'senior',
           teamId,
         });
@@ -306,19 +314,19 @@ Respond in JSON format:
             commandArgs,
           });
 
-          updateAgent(this.db, senior.id, {
+          await updateAgent(this.db, senior.id, {
             tmuxSession: sessionName,
             status: 'working',
           });
 
-          this.log('AGENT_SPAWNED', `Senior spawned for team ${team.name}`, {
+          await this.log('AGENT_SPAWNED', `Senior spawned for team ${team.name}`, {
             agentId: senior.id,
             teamId,
             tmuxSession: sessionName,
             godmode: this.requirement?.godmode ? true : false,
           });
         } catch (err) {
-          this.log(
+          await this.log(
             'AGENT_SPAWNED',
             `Failed to spawn Senior tmux session: ${err instanceof Error ? err.message : 'Unknown error'}`,
             {
@@ -331,8 +339,7 @@ Respond in JSON format:
       }
 
       // Assign stories to the Senior
-      const teamStories = queryAll<{ id: string }>(
-        this.db,
+      const teamStories = await this.db.queryAll<{ id: string }>(
         `
         SELECT id FROM stories WHERE team_id = ? AND status = 'estimated'
       `,
@@ -340,8 +347,8 @@ Respond in JSON format:
       );
 
       for (const story of teamStories) {
-        updateStory(this.db, story.id, { status: 'planned' });
-        this.log('STORY_ASSIGNED', `Story ${story.id} assigned to team ${team.name}`, {
+        await updateStory(this.db, story.id, { status: 'planned' });
+        await this.log('STORY_ASSIGNED', `Story ${story.id} assigned to team ${team.name}`, {
           storyId: story.id,
           teamId,
         });
@@ -378,13 +385,16 @@ Respond in JSON format:
 
     // Re-fetch requirement from DB to pick up external_epic_key/id that may have
     // been set after this agent was constructed (e.g., by `hive req <epic-url>`).
-    const freshRequirement = getRequirementById(this.db, this.requirement.id);
+    const freshRequirement = await getRequirementById(this.db, this.requirement.id);
     if (!freshRequirement) return;
 
     // Determine team name for labels
     const teamName = this.teams.length > 0 ? this.teams[0].name : undefined;
 
-    this.log('JIRA_SYNC_STARTED', `Syncing requirement ${freshRequirement.id} to PM provider`);
+    await this.log(
+      'JIRA_SYNC_STARTED',
+      `Syncing requirement ${freshRequirement.id} to PM provider`
+    );
 
     try {
       const result = await syncRequirementToProvider(
@@ -396,29 +406,29 @@ Respond in JSON format:
       );
 
       if (result.epicKey) {
-        this.log(
+        await this.log(
           freshRequirement.external_epic_key ? 'JIRA_EPIC_INGESTED' : 'JIRA_EPIC_CREATED',
           `Epic ${result.epicKey} ${freshRequirement.external_epic_key ? 'linked (existing)' : 'created'} for ${freshRequirement.id}`
         );
       }
 
       for (const story of result.stories) {
-        this.log('JIRA_STORY_CREATED', `Issue ${story.key} created for ${story.storyId}`);
+        await this.log('JIRA_STORY_CREATED', `Issue ${story.key} created for ${story.storyId}`);
       }
 
       if (result.errors.length > 0) {
         for (const error of result.errors) {
-          this.log('JIRA_SYNC_WARNING', error);
+          await this.log('JIRA_SYNC_WARNING', error);
         }
       }
 
-      this.log(
+      await this.log(
         'JIRA_SYNC_COMPLETED',
         `Synced ${result.stories.length}/${storyIds.length} stories to PM provider`
       );
     } catch (err) {
       // Jira sync failure should not block the pipeline
-      this.log(
+      await this.log(
         'JIRA_SYNC_WARNING',
         `Jira sync failed: ${err instanceof Error ? err.message : String(err)}`
       );
@@ -426,18 +436,18 @@ Respond in JSON format:
   }
 
   private async escalateToHuman(reason: string): Promise<void> {
-    const escalation = createEscalation(this.db, {
+    const escalation = await createEscalation(this.db, {
       storyId: null,
       fromAgentId: this.agentId,
       toAgentId: null, // null = human
       reason,
     });
 
-    this.log('ESCALATION_CREATED', reason, {
+    await this.log('ESCALATION_CREATED', reason, {
       escalationId: escalation.id,
     });
 
-    this.updateStatus('blocked');
-    this.addBlocker(`Waiting for human input: ${reason}`);
+    await this.updateStatus('blocked');
+    await this.addBlocker(`Waiting for human input: ${reason}`);
   }
 }

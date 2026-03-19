@@ -3,7 +3,7 @@
 import chalk from 'chalk';
 import { execSync } from 'child_process';
 import { join } from 'path';
-import { queryAll, type AgentLogRow } from '../../../db/client.js';
+import type { AgentLogRow } from '../../../db/client.js';
 import { getAgentsByType } from '../../../db/queries/agents.js';
 import { createLog } from '../../../db/queries/logs.js';
 import { getRequirementById, updateRequirement } from '../../../db/queries/requirements.js';
@@ -33,7 +33,7 @@ interface FeatureTestCandidate {
 export async function checkFeatureTestResult(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Read DB to find candidates (brief lock)
   const candidates = await ctx.withDb(async db => {
-    const featureTestAgents = getAgentsByType(db.db, 'feature_test');
+    const featureTestAgents = await getAgentsByType(db.provider, 'feature_test');
     verboseLogCtx(ctx, `checkFeatureTestResult: agents=${featureTestAgents.length}`);
 
     if (featureTestAgents.length === 0) return [];
@@ -41,8 +41,7 @@ export async function checkFeatureTestResult(ctx: ManagerCheckContext): Promise<
     const result: FeatureTestCandidate[] = [];
 
     for (const agent of featureTestAgents) {
-      const recentLogs = queryAll<AgentLogRow>(
-        db.db,
+      const recentLogs = await db.provider.queryAll<AgentLogRow>(
         `
         SELECT * FROM agent_logs
         WHERE agent_id = ?
@@ -62,8 +61,7 @@ export async function checkFeatureTestResult(ctx: ManagerCheckContext): Promise<
       const resultLog = recentLogs[0];
       const message = resultLog.message || '';
 
-      const alreadyProcessed = queryAll<AgentLogRow>(
-        db.db,
+      const alreadyProcessed = await db.provider.queryAll<AgentLogRow>(
         `
         SELECT * FROM agent_logs
         WHERE agent_id = 'manager'
@@ -79,8 +77,7 @@ export async function checkFeatureTestResult(ctx: ManagerCheckContext): Promise<
         continue;
       }
 
-      const spawnLog = queryAll<AgentLogRow>(
-        db.db,
+      const spawnLog = await db.provider.queryAll<AgentLogRow>(
         `
         SELECT * FROM agent_logs
         WHERE agent_id = ?
@@ -104,7 +101,7 @@ export async function checkFeatureTestResult(ctx: ManagerCheckContext): Promise<
         continue;
       }
 
-      const requirement = getRequirementById(db.db, requirementId);
+      const requirement = await getRequirementById(db.provider, requirementId);
       if (!requirement) {
         verboseLogCtx(
           ctx,
@@ -142,7 +139,7 @@ export async function checkFeatureTestResult(ctx: ManagerCheckContext): Promise<
       }
 
       // Find repo path
-      const teams = getAllTeams(db.db);
+      const teams = await getAllTeams(db.provider);
       const team = teams.length > 0 ? teams[0] : null;
       if (!team) {
         verboseLogCtx(ctx, `checkFeatureTestResult: agent=${agent.id} skip=no_team`);
@@ -223,8 +220,8 @@ Co-Authored-By: Feature Test Agent <noreply@hive>`;
 
     // Phase 2b: DB writes (brief lock)
     await ctx.withDb(async db => {
-      updateRequirement(db.db, requirementId, { status: 'sign_off_passed' });
-      createLog(db.db, {
+      await updateRequirement(db.provider, requirementId, { status: 'sign_off_passed' });
+      await createLog(db.provider, {
         agentId: 'manager',
         eventType: 'FEATURE_SIGN_OFF_PASSED',
         message: `Feature sign-off PASSED for ${requirementId} — feature branch ${featureBranch} merged to main`,
@@ -247,8 +244,8 @@ Co-Authored-By: Feature Test Agent <noreply@hive>`;
   } catch (err) {
     // Revert status on failure (brief lock)
     await ctx.withDb(async db => {
-      updateRequirement(db.db, requirementId, { status: 'sign_off' });
-      createLog(db.db, {
+      await updateRequirement(db.provider, requirementId, { status: 'sign_off' });
+      await createLog(db.provider, {
         agentId: 'manager',
         eventType: 'FEATURE_SIGN_OFF_FAILED',
         status: 'error',
@@ -281,8 +278,8 @@ async function handleTestFailure(
   );
 
   await ctx.withDb(async db => {
-    updateRequirement(db.db, requirementId, { status: 'sign_off_failed' });
-    createLog(db.db, {
+    await updateRequirement(db.provider, requirementId, { status: 'sign_off_failed' });
+    await createLog(db.provider, {
       agentId: 'manager',
       eventType: 'FEATURE_SIGN_OFF_FAILED',
       message: `Feature sign-off FAILED for ${requirementId} — E2E tests failed on ${featureBranch}`,

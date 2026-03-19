@@ -44,7 +44,7 @@ vi.mock('../../integrations/jira/comments.js', () => ({
 
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(callback =>
-    callback({ root: '/tmp', db: { db: {} }, paths: { hiveDir: '/tmp/.hive' } })
+    callback({ root: '/tmp', db: { db: {}, provider: {} }, paths: { hiveDir: '/tmp/.hive' } })
   ),
 }));
 

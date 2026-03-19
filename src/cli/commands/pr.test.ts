@@ -89,9 +89,13 @@ vi.mock('../../utils/story-id.js', () => ({
 
 vi.mock('../../utils/with-hive-context.js', () => ({
   withHiveContext: vi.fn(callback =>
-    callback({ db: { db: {}, save: vi.fn() }, root: '/tmp', paths: { hiveDir: '/tmp/.hive' } })
+    callback({
+      db: { db: {}, provider: {}, save: vi.fn() },
+      root: '/tmp',
+      paths: { hiveDir: '/tmp/.hive' },
+    })
   ),
-  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {} } })),
+  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {}, provider: {} } })),
 }));
 
 import { prCommand } from './pr.js';
@@ -114,7 +118,7 @@ describe('pr command', () => {
     vi.clearAllMocks();
     resetCommandOptions(prCommand);
 
-    vi.mocked(getPullRequestById).mockReturnValue({
+    vi.mocked(getPullRequestById).mockResolvedValue({
       id: 'pr-1',
       story_id: 'TEST-1',
       team_id: 'team-1',
@@ -216,7 +220,7 @@ describe('pr command', () => {
     });
 
     it('should auto-close existing PRs with different github_pr_number', async () => {
-      vi.mocked(getOpenPullRequestsByStory).mockReturnValue([
+      vi.mocked(getOpenPullRequestsByStory).mockResolvedValue([
         {
           id: 'old-pr-1',
           story_id: 'TEST-1',
@@ -267,7 +271,7 @@ describe('pr command', () => {
     });
 
     it('should not close GitHub PR when auto-closing duplicate internal PR records', async () => {
-      vi.mocked(getOpenPullRequestsByStory).mockReturnValue([
+      vi.mocked(getOpenPullRequestsByStory).mockResolvedValue([
         {
           id: 'old-pr-1',
           story_id: 'TEST-1',
@@ -310,7 +314,7 @@ describe('pr command', () => {
     });
 
     it('should skip auto-close when resubmitting same github PR number', async () => {
-      vi.mocked(getOpenPullRequestsByStory).mockReturnValue([
+      vi.mocked(getOpenPullRequestsByStory).mockResolvedValue([
         {
           id: 'existing-pr-1',
           story_id: 'TEST-1',

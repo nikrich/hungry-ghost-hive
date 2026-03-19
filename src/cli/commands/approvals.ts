@@ -63,8 +63,10 @@ approvalsCommand
   .action(async (options: { all?: boolean; json?: boolean }) => {
     await withHiveContext(async ({ db }) => {
       const approvals = options.all
-        ? getAllEscalations(db.db).filter(escalation => escalation.to_agent_id === null)
-        : getPendingHumanEscalations(db.db);
+        ? (await getAllEscalations(db.provider)).filter(
+            escalation => escalation.to_agent_id === null
+          )
+        : await getPendingHumanEscalations(db.provider);
 
       if (options.json) {
         console.log(JSON.stringify(approvals, null, 2));
@@ -107,7 +109,7 @@ approvalsCommand
   .description('Show a human approval request')
   .action(async (id: string) => {
     await withHiveContext(async ({ db }) => {
-      const approval = ensureHumanApprovalEscalation(getEscalationById(db.db, id), id);
+      const approval = ensureHumanApprovalEscalation(await getEscalationById(db.provider, id), id);
       const type = classifyApproval(approval.reason);
 
       console.log(chalk.bold(`\nApproval: ${approval.id}\n`));
@@ -132,14 +134,14 @@ approvalsCommand
   .option('-m, --message <message>', 'Optional guidance sent as approval context')
   .action(async (id: string, options: { message?: string }) => {
     await withHiveContext(async ({ db }) => {
-      const approval = ensureHumanApprovalEscalation(getEscalationById(db.db, id), id);
+      const approval = ensureHumanApprovalEscalation(await getEscalationById(db.provider, id), id);
       if (approval.status === 'resolved') {
         console.log(chalk.yellow(`Approval ${id} is already resolved.`));
         return;
       }
 
       const note = options.message?.trim() || 'Approved by human reviewer.';
-      resolveEscalation(db.db, id, `APPROVED: ${note}`);
+      await resolveEscalation(db.provider, id, `APPROVED: ${note}`);
       console.log(chalk.green(`Approved ${id}.`));
     });
   });
@@ -150,13 +152,13 @@ approvalsCommand
   .requiredOption('-m, --message <message>', 'Reason/guidance for denial')
   .action(async (id: string, options: { message: string }) => {
     await withHiveContext(async ({ db }) => {
-      const approval = ensureHumanApprovalEscalation(getEscalationById(db.db, id), id);
+      const approval = ensureHumanApprovalEscalation(await getEscalationById(db.provider, id), id);
       if (approval.status === 'resolved') {
         console.log(chalk.yellow(`Approval ${id} is already resolved.`));
         return;
       }
 
-      resolveEscalation(db.db, id, `DENIED: ${options.message}`);
+      await resolveEscalation(db.provider, id, `DENIED: ${options.message}`);
       console.log(chalk.green(`Denied ${id}.`));
     });
   });

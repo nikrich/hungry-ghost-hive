@@ -16,12 +16,21 @@ export class SeniorAgent extends BaseAgent {
 
   constructor(context: SeniorContext) {
     super(context);
+  }
+
+  private async init(context: SeniorContext): Promise<void> {
     if (context.teamId) {
-      this.team = getTeamById(this.db, context.teamId) || null;
-      this.assignedStories = getStoriesByTeam(this.db, context.teamId).filter(s =>
+      this.team = (await getTeamById(this.db, context.teamId)) || null;
+      this.assignedStories = (await getStoriesByTeam(this.db, context.teamId)).filter(s =>
         ['planned', 'in_progress', 'review'].includes(s.status)
       );
     }
+  }
+
+  static async create(context: SeniorContext): Promise<SeniorAgent> {
+    const agent = new SeniorAgent(context);
+    await agent.init(context);
+    return agent;
   }
 
   getSystemPrompt(): string {
@@ -65,11 +74,11 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
 
   async execute(): Promise<void> {
     if (!this.team) {
-      this.log('CODEBASE_SWEEP_STARTED', 'No team assigned, waiting for assignment');
+      await this.log('CODEBASE_SWEEP_STARTED', 'No team assigned, waiting for assignment');
       return;
     }
 
-    this.log('CODEBASE_SWEEP_STARTED', `Analyzing codebase for ${this.team.name}`);
+    await this.log('CODEBASE_SWEEP_STARTED', `Analyzing codebase for ${this.team.name}`);
 
     // Perform codebase sweep
     await this.analyzeCodebase();
@@ -101,16 +110,16 @@ This will help with story estimation and implementation.`;
     const analysis = await this.chat(prompt);
 
     this.memoryState.context.codebaseNotes = analysis;
-    this.saveMemoryState();
+    await this.saveMemoryState();
 
-    this.log('CODEBASE_SWEEP_COMPLETED', 'Codebase analysis complete', {
+    await this.log('CODEBASE_SWEEP_COMPLETED', 'Codebase analysis complete', {
       summary: analysis.substring(0, 200),
     });
   }
 
   private async processStory(story: StoryRow): Promise<void> {
-    this.setCurrentTask(story.id, 'processing');
-    this.log('STORY_STARTED', `Processing story: ${story.title}`, { storyId: story.id });
+    await this.setCurrentTask(story.id, 'processing');
+    await this.log('STORY_STARTED', `Processing story: ${story.title}`, { storyId: story.id });
 
     // Implement all stories directly - the Scheduler handles routing to appropriate agents
     await this.implementStory(story);
@@ -118,7 +127,7 @@ This will help with story estimation and implementation.`;
 
   private async implementStory(story: StoryRow): Promise<void> {
     // Update assignment
-    updateStory(
+    await updateStory(
       this.db,
       story.id,
       {
@@ -127,7 +136,7 @@ This will help with story estimation and implementation.`;
       },
       this.storiesDir
     );
-    updateAgent(this.db, this.agentId, { currentStoryId: story.id });
+    await updateAgent(this.db, this.agentId, { currentStoryId: story.id });
 
     // Create feature branch
     const branchName = `feature/${story.id.toLowerCase()}-${story.title
@@ -135,7 +144,7 @@ This will help with story estimation and implementation.`;
       .replace(/[^a-z0-9]+/g, '-')
       .substring(0, 30)}`;
 
-    this.log('STORY_STARTED', `Implementing: ${story.title}`, { branchName });
+    await this.log('STORY_STARTED', `Implementing: ${story.title}`, { branchName });
 
     const prompt = `Implement this story:
 
@@ -160,14 +169,14 @@ ${story.acceptance_criteria ? JSON.parse(story.acceptance_criteria).join('\n- ')
 Let me know when you're ready to proceed or if you have questions.`;
 
     const response = await this.chat(prompt);
-    this.updateTaskProgress('Implementation started', []);
+    await this.updateTaskProgress('Implementation started', []);
 
     // Continue the conversation to complete implementation
     // In a real scenario, this would be an iterative process
-    this.log('STORY_PROGRESS_UPDATE', response.substring(0, 200), { storyId: story.id });
+    await this.log('STORY_PROGRESS_UPDATE', response.substring(0, 200), { storyId: story.id });
 
     // Mark for review when done (simplified)
-    updateStory(
+    await updateStory(
       this.db,
       story.id,
       {
@@ -177,7 +186,7 @@ Let me know when you're ready to proceed or if you have questions.`;
       this.storiesDir
     );
 
-    this.log('STORY_COMPLETED', `Implementation complete, ready for review`, {
+    await this.log('STORY_COMPLETED', `Implementation complete, ready for review`, {
       storyId: story.id,
       branchName,
     });
@@ -186,12 +195,16 @@ Let me know when you're ready to proceed or if you have questions.`;
   private async reviewStory(story: StoryRow): Promise<void> {
     if (story.assigned_agent_id === this.agentId) {
       // Self-review, move to QA
-      updateStory(this.db, story.id, { status: 'qa' }, this.storiesDir);
-      this.log('STORY_REVIEW_REQUESTED', 'Self-implemented, moving to QA', { storyId: story.id });
+      await updateStory(this.db, story.id, { status: 'qa' }, this.storiesDir);
+      await this.log('STORY_REVIEW_REQUESTED', 'Self-implemented, moving to QA', {
+        storyId: story.id,
+      });
       return;
     }
 
-    this.log('STORY_REVIEW_REQUESTED', `Reviewing story: ${story.title}`, { storyId: story.id });
+    await this.log('STORY_REVIEW_REQUESTED', `Reviewing story: ${story.title}`, {
+      storyId: story.id,
+    });
 
     const prompt = `Review the code for this story:
 
@@ -217,33 +230,35 @@ If issues found, describe them. If approved, confirm.`;
 
     if (hasIssues) {
       // Send back for fixes
-      updateStory(this.db, story.id, { status: 'in_progress' }, this.storiesDir);
-      this.log('STORY_PROGRESS_UPDATE', 'Review issues found, sent back for fixes', {
+      await updateStory(this.db, story.id, { status: 'in_progress' }, this.storiesDir);
+      await this.log('STORY_PROGRESS_UPDATE', 'Review issues found, sent back for fixes', {
         storyId: story.id,
         review: review.substring(0, 200),
       });
     } else {
       // Approve and move to QA
-      updateStory(this.db, story.id, { status: 'qa' }, this.storiesDir);
-      this.log('STORY_REVIEW_REQUESTED', 'Review passed, moving to QA', { storyId: story.id });
+      await updateStory(this.db, story.id, { status: 'qa' }, this.storiesDir);
+      await this.log('STORY_REVIEW_REQUESTED', 'Review passed, moving to QA', {
+        storyId: story.id,
+      });
     }
   }
 
   async escalateToTechLead(reason: string): Promise<void> {
-    const techLead = getTechLead(this.db);
+    const techLead = await getTechLead(this.db);
 
-    const escalation = createEscalation(this.db, {
+    const escalation = await createEscalation(this.db, {
       storyId: this.memoryState.currentTask?.storyId,
       fromAgentId: this.agentId,
       toAgentId: techLead?.id,
       reason,
     });
 
-    this.log('ESCALATION_CREATED', reason, {
+    await this.log('ESCALATION_CREATED', reason, {
       escalationId: escalation.id,
     });
 
-    this.updateStatus('blocked');
-    this.addBlocker(`Escalated to Tech Lead: ${reason}`);
+    await this.updateStatus('blocked');
+    await this.addBlocker(`Escalated to Tech Lead: ${reason}`);
   }
 }

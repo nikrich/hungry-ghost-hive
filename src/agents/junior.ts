@@ -17,14 +17,23 @@ export class JuniorAgent extends BaseAgent {
 
   constructor(context: JuniorContext) {
     super(context);
+  }
+
+  private async init(context: JuniorContext): Promise<void> {
     if (context.agentRow.team_id) {
-      this.team = getTeamById(this.db, context.agentRow.team_id) || null;
+      this.team = (await getTeamById(this.db, context.agentRow.team_id)) || null;
     }
     if (context.storyId) {
-      this.story = getStoryById(this.db, context.storyId) || null;
+      this.story = (await getStoryById(this.db, context.storyId)) || null;
     } else if (context.agentRow.current_story_id) {
-      this.story = getStoryById(this.db, context.agentRow.current_story_id) || null;
+      this.story = (await getStoryById(this.db, context.agentRow.current_story_id)) || null;
     }
+  }
+
+  static async create(context: JuniorContext): Promise<JuniorAgent> {
+    const agent = new JuniorAgent(context);
+    await agent.init(context);
+    return agent;
   }
 
   getSystemPrompt(): string {
@@ -71,12 +80,12 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
 
   async execute(): Promise<void> {
     if (!this.story) {
-      this.log('STORY_PROGRESS_UPDATE', 'No story assigned, waiting');
+      await this.log('STORY_PROGRESS_UPDATE', 'No story assigned, waiting');
       return;
     }
 
-    this.setCurrentTask(this.story.id, 'implementation');
-    this.log('STORY_STARTED', `Working on: ${this.story.title}`, { storyId: this.story.id });
+    await this.setCurrentTask(this.story.id, 'implementation');
+    await this.log('STORY_STARTED', `Working on: ${this.story.title}`, { storyId: this.story.id });
 
     try {
       await this.implementStory();
@@ -88,7 +97,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
           `Encountered error: ${err instanceof Error ? err.message : 'Unknown error'}`
         );
       } else {
-        this.log(
+        await this.log(
           'STORY_PROGRESS_UPDATE',
           `Error: ${err instanceof Error ? err.message : 'Unknown error'}`,
           {
@@ -111,7 +120,7 @@ ${this.memoryState.conversationSummary || 'Starting fresh.'}`;
         .substring(0, 30)}`;
 
     if (!this.story.branch_name) {
-      updateStory(this.db, this.story.id, { branchName }, this.storiesDir);
+      await updateStory(this.db, this.story.id, { branchName }, this.storiesDir);
     }
 
     const prompt = `I need to implement this simple story:
@@ -140,42 +149,42 @@ This is a simple task (complexity ${this.story.complexity_score || 1}-3).
 Please help me identify which files I need to read and modify.`;
 
     await this.chat(prompt);
-    this.updateTaskProgress('Analyzing task', []);
-    this.log('STORY_PROGRESS_UPDATE', 'Analyzing requirements', { storyId: this.story.id });
+    await this.updateTaskProgress('Analyzing task', []);
+    await this.log('STORY_PROGRESS_UPDATE', 'Analyzing requirements', { storyId: this.story.id });
 
     // Get guidance and implement
     const implementPrompt = `Based on the analysis, show me the exact code changes to make. Keep it simple and minimal.`;
     await this.chat(implementPrompt);
-    this.log('STORY_PROGRESS_UPDATE', 'Making code changes', { storyId: this.story.id });
+    await this.log('STORY_PROGRESS_UPDATE', 'Making code changes', { storyId: this.story.id });
 
     // Complete
-    updateStory(this.db, this.story.id, { status: 'review' }, this.storiesDir);
-    this.log('STORY_COMPLETED', 'Implementation complete, ready for review', {
+    await updateStory(this.db, this.story.id, { status: 'review' }, this.storiesDir);
+    await this.log('STORY_COMPLETED', 'Implementation complete, ready for review', {
       storyId: this.story.id,
       branchName,
     });
   }
 
   private async escalateToSenior(reason: string): Promise<void> {
-    const seniors = getAgentsByTeam(this.db, this.teamId!).filter(
+    const seniors = (await getAgentsByTeam(this.db, this.teamId!)).filter(
       a => a.type === 'senior' && a.status !== 'terminated'
     );
 
     const seniorId = seniors[0]?.id;
 
-    const escalation = createEscalation(this.db, {
+    const escalation = await createEscalation(this.db, {
       storyId: this.story?.id,
       fromAgentId: this.agentId,
       toAgentId: seniorId,
       reason,
     });
 
-    this.log('ESCALATION_CREATED', reason, {
+    await this.log('ESCALATION_CREATED', reason, {
       escalationId: escalation.id,
       toAgent: seniorId,
     });
 
-    this.updateStatus('blocked');
-    this.addBlocker(`Escalated to Senior: ${reason}`);
+    await this.updateStatus('blocked');
+    await this.addBlocker(`Escalated to Senior: ${reason}`);
   }
 }

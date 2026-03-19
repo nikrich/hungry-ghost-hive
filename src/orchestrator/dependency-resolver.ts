@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
+import type { DatabaseProvider } from '../db/provider.js';
 import {
   getBatchStoryDependencies,
   getStoryDependencies,
@@ -11,7 +11,10 @@ import {
  * Build a dependency graph for stories.
  * Returns a map of story ID to its direct dependencies.
  */
-export function buildDependencyGraph(db: Database, stories: StoryRow[]): Map<string, Set<string>> {
+export async function buildDependencyGraph(
+  db: DatabaseProvider,
+  stories: StoryRow[]
+): Promise<Map<string, Set<string>>> {
   const graph = new Map<string, Set<string>>();
   const storyIds = new Set(stories.map(s => s.id));
 
@@ -23,7 +26,7 @@ export function buildDependencyGraph(db: Database, stories: StoryRow[]): Map<str
   }
 
   // Fetch all dependencies in a single query to avoid N+1 pattern
-  const allDepsMap = getBatchStoryDependencies(db, Array.from(storyIds));
+  const allDepsMap = await getBatchStoryDependencies(db, Array.from(storyIds));
 
   // Add dependencies (only within the planned set; external deps handled by areDependenciesSatisfied)
   for (const [storyId, depIds] of allDepsMap) {
@@ -42,8 +45,11 @@ export function buildDependencyGraph(db: Database, stories: StoryRow[]): Map<str
  * Returns stories in order where dependencies come before dependents.
  * Returns null if circular dependency is detected.
  */
-export function topologicalSort(db: Database, stories: StoryRow[]): StoryRow[] | null {
-  const graph = buildDependencyGraph(db, stories);
+export async function topologicalSort(
+  db: DatabaseProvider,
+  stories: StoryRow[]
+): Promise<StoryRow[] | null> {
+  const graph = await buildDependencyGraph(db, stories);
   const storyMap = new Map(stories.map(s => [s.id, s]));
 
   // Kahn's algorithm for topological sort
@@ -95,8 +101,11 @@ export function topologicalSort(db: Database, stories: StoryRow[]): StoryRow[] |
  * Check if a story's dependencies are satisfied.
  * A dependency is satisfied only if it's merged (completed).
  */
-export function areDependenciesSatisfied(db: Database, storyId: string): boolean {
-  const dependencies = getStoryDependencies(db, storyId);
+export async function areDependenciesSatisfied(
+  db: DatabaseProvider,
+  storyId: string
+): Promise<boolean> {
+  const dependencies = await getStoryDependencies(db, storyId);
 
   for (const dep of dependencies) {
     // Check if dependency is in a terminal state (merged)

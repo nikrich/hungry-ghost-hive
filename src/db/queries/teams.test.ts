@@ -1,20 +1,21 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import type { Database } from 'sql.js';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { SqliteProvider } from '../provider.js';
 import { createTeam, deleteTeam, getAllTeams, getTeamById, getTeamByName } from './teams.js';
 import { createTestDatabase } from './test-helpers.js';
 
 describe('teams queries', () => {
-  let db: Database;
+  let db: SqliteProvider;
 
   beforeEach(async () => {
-    db = await createTestDatabase();
+    const rawDb = await createTestDatabase();
+    db = new SqliteProvider(rawDb);
   });
 
   describe('createTeam', () => {
-    it('should create a team with all fields', () => {
-      const team = createTeam(db, {
+    it('should create a team with all fields', async () => {
+      const team = await createTeam(db, {
         repoUrl: 'https://github.com/test/repo.git',
         repoPath: '/path/to/repo',
         name: 'Test Team',
@@ -27,14 +28,14 @@ describe('teams queries', () => {
       expect(team.created_at).toBeDefined();
     });
 
-    it('should generate unique IDs for each team', () => {
-      const team1 = createTeam(db, {
+    it('should generate unique IDs for each team', async () => {
+      const team1 = await createTeam(db, {
         repoUrl: 'https://github.com/test/repo1.git',
         repoPath: '/path/to/repo1',
         name: 'Team 1',
       });
 
-      const team2 = createTeam(db, {
+      const team2 = await createTeam(db, {
         repoUrl: 'https://github.com/test/repo2.git',
         repoPath: '/path/to/repo2',
         name: 'Team 2',
@@ -45,66 +46,66 @@ describe('teams queries', () => {
   });
 
   describe('getTeamById', () => {
-    it('should retrieve a team by ID', () => {
-      const created = createTeam(db, {
+    it('should retrieve a team by ID', async () => {
+      const created = await createTeam(db, {
         repoUrl: 'https://github.com/test/repo.git',
         repoPath: '/path/to/repo',
         name: 'Test Team',
       });
 
-      const retrieved = getTeamById(db, created.id);
+      const retrieved = await getTeamById(db, created.id);
 
       expect(retrieved).toBeDefined();
       expect(retrieved?.id).toBe(created.id);
       expect(retrieved?.name).toBe('Test Team');
     });
 
-    it('should return undefined for non-existent team', () => {
-      const result = getTeamById(db, 'non-existent-id');
+    it('should return undefined for non-existent team', async () => {
+      const result = await getTeamById(db, 'non-existent-id');
       expect(result).toBeUndefined();
     });
   });
 
   describe('getTeamByName', () => {
-    it('should retrieve a team by name', () => {
-      createTeam(db, {
+    it('should retrieve a team by name', async () => {
+      await createTeam(db, {
         repoUrl: 'https://github.com/test/repo.git',
         repoPath: '/path/to/repo',
         name: 'Unique Team',
       });
 
-      const retrieved = getTeamByName(db, 'Unique Team');
+      const retrieved = await getTeamByName(db, 'Unique Team');
 
       expect(retrieved).toBeDefined();
       expect(retrieved?.name).toBe('Unique Team');
     });
 
-    it('should return undefined for non-existent team name', () => {
-      const result = getTeamByName(db, 'Non Existent Team');
+    it('should return undefined for non-existent team name', async () => {
+      const result = await getTeamByName(db, 'Non Existent Team');
       expect(result).toBeUndefined();
     });
   });
 
   describe('getAllTeams', () => {
-    it('should return empty array when no teams exist', () => {
-      const teams = getAllTeams(db);
+    it('should return empty array when no teams exist', async () => {
+      const teams = await getAllTeams(db);
       expect(teams).toEqual([]);
     });
 
-    it('should return all teams ordered by created_at', () => {
-      const team1 = createTeam(db, {
+    it('should return all teams ordered by created_at', async () => {
+      const team1 = await createTeam(db, {
         repoUrl: 'https://github.com/test/repo1.git',
         repoPath: '/path/to/repo1',
         name: 'Team 1',
       });
 
-      const team2 = createTeam(db, {
+      const team2 = await createTeam(db, {
         repoUrl: 'https://github.com/test/repo2.git',
         repoPath: '/path/to/repo2',
         name: 'Team 2',
       });
 
-      const teams = getAllTeams(db);
+      const teams = await getAllTeams(db);
 
       expect(teams).toHaveLength(2);
       expect(teams[0].id).toBe(team1.id);
@@ -113,45 +114,45 @@ describe('teams queries', () => {
   });
 
   describe('deleteTeam', () => {
-    it('should delete a team', () => {
-      const team = createTeam(db, {
+    it('should delete a team', async () => {
+      const team = await createTeam(db, {
         repoUrl: 'https://github.com/test/repo.git',
         repoPath: '/path/to/repo',
         name: 'Team to Delete',
       });
 
-      deleteTeam(db, team.id);
+      await deleteTeam(db, team.id);
 
-      const retrieved = getTeamById(db, team.id);
+      const retrieved = await getTeamById(db, team.id);
       expect(retrieved).toBeUndefined();
     });
 
-    it('should not throw when deleting non-existent team', () => {
-      expect(() => deleteTeam(db, 'non-existent-id')).not.toThrow();
+    it('should not throw when deleting non-existent team', async () => {
+      await expect(deleteTeam(db, 'non-existent-id')).resolves.not.toThrow();
     });
   });
 
   describe('edge cases', () => {
-    it('should handle special characters in team name', () => {
-      const team = createTeam(db, {
+    it('should handle special characters in team name', async () => {
+      const team = await createTeam(db, {
         repoUrl: 'https://github.com/test/repo.git',
         repoPath: '/path/to/repo',
         name: 'Team with \'quotes\' and "double quotes"',
       });
 
-      const retrieved = getTeamById(db, team.id);
+      const retrieved = await getTeamById(db, team.id);
       expect(retrieved?.name).toBe('Team with \'quotes\' and "double quotes"');
     });
 
-    it('should handle very long team names', () => {
+    it('should handle very long team names', async () => {
       const longName = 'A'.repeat(500);
-      const team = createTeam(db, {
+      const team = await createTeam(db, {
         repoUrl: 'https://github.com/test/repo.git',
         repoPath: '/path/to/repo',
         name: longName,
       });
 
-      const retrieved = getTeamById(db, team.id);
+      const retrieved = await getTeamById(db, team.id);
       expect(retrieved?.name).toBe(longName);
     });
   });

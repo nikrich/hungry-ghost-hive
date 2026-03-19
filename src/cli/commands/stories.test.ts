@@ -34,8 +34,10 @@ vi.mock('../../integrations/jira/stories.js', () => ({
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withHiveContext: vi.fn(callback => callback({ db: { db: {} }, paths: { hiveDir: '/tmp' } })),
-  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {} } })),
+  withHiveContext: vi.fn(callback =>
+    callback({ db: { db: {}, provider: {} }, paths: { hiveDir: '/tmp' } })
+  ),
+  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {}, provider: {} } })),
 }));
 
 import { storiesCommand } from './stories.js';

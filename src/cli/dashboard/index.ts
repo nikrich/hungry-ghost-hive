@@ -3,8 +3,8 @@
 import blessed from 'blessed';
 import { appendFileSync, existsSync, renameSync, statSync } from 'fs';
 import { join } from 'path';
-import type { Database } from 'sql.js';
 import { getReadOnlyDatabase, type ReadOnlyDatabaseClient } from '../../db/client.js';
+import type { DatabaseProvider } from '../../db/provider.js';
 import { getAllRequirements } from '../../db/queries/requirements.js';
 import { findHiveRoot, getHivePaths } from '../../utils/paths.js';
 import { getVersion } from '../../utils/version.js';
@@ -42,9 +42,9 @@ export interface DashboardOptions {
 /**
  * Check if godmode is active by looking for any non-completed requirement with godmode enabled.
  */
-export function isGodmodeActive(db: Database): boolean {
-  const requirements = getAllRequirements(db);
-  return requirements.some(req => req.godmode && req.status !== 'completed');
+export async function isGodmodeActive(db: DatabaseProvider): Promise<boolean> {
+  const requirements = await getAllRequirements(db);
+  return requirements.some(req => req.godmode && (req.status as string) !== 'completed');
 }
 
 export async function startDashboard(options: DashboardOptions = {}): Promise<void> {
@@ -55,7 +55,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   }
 
   const paths = getHivePaths(root);
-  const dbPath = join(paths.hiveDir, 'hive.db');
+  const dbPath = join(paths.hiveDir, 'hive.provider');
   debugLog(`Dashboard starting - root: ${root}, hiveDir: ${paths.hiveDir}`);
   let db: ReadOnlyDatabaseClient = await getReadOnlyDatabase(paths.hiveDir);
   let lastDbMtime = statSync(dbPath).mtimeMs;
@@ -95,12 +95,12 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   };
 
   // Create panels
-  const agentsPanel = createAgentsPanel(screen, db.db, pauseRefresh, resumeRefresh);
+  const agentsPanel = createAgentsPanel(screen, db.provider, pauseRefresh, resumeRefresh);
   const storiesPanel = createStoriesPanel(screen, db.db);
-  const pipelinePanel = createPipelinePanel(screen, db.db);
-  const activityPanel = createActivityPanel(screen, db.db);
-  const mergeQueuePanel = createMergeQueuePanel(screen, db.db);
-  const escalationsPanel = createEscalationsPanel(screen, db.db, pauseRefresh, resumeRefresh);
+  const pipelinePanel = createPipelinePanel(screen, db.provider);
+  const activityPanel = createActivityPanel(screen, db.provider);
+  const mergeQueuePanel = createMergeQueuePanel(screen, db.provider);
+  const escalationsPanel = createEscalationsPanel(screen, db.provider, pauseRefresh, resumeRefresh);
 
   // Footer
   blessed.box({
@@ -143,18 +143,18 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
       }
 
       // Update header with godmode indicator
-      const godmode = isGodmodeActive(db.db);
+      const godmode = await isGodmodeActive(db.provider);
       const godmodeLabel = godmode ? '  {yellow-fg}{bold}GODMODE ACTIVE{/bold}{/yellow-fg}' : '';
       header.setContent(
         ` {bold}HIVE ORCHESTRATOR{/bold} v${version}${godmodeLabel}                                    [R]efresh [Q]uit`
       );
 
-      await updateAgentsPanel(agentsPanel, db.db);
+      await updateAgentsPanel(agentsPanel, db.provider);
       await updateStoriesPanel(storiesPanel, db.db);
-      await updatePipelinePanel(pipelinePanel, db.db);
-      await updateActivityPanel(activityPanel, db.db);
-      await updateMergeQueuePanel(mergeQueuePanel, db.db);
-      await updateEscalationsPanel(escalationsPanel, db.db);
+      await updatePipelinePanel(pipelinePanel, db.provider);
+      await updateActivityPanel(activityPanel, db.provider);
+      await updateMergeQueuePanel(mergeQueuePanel, db.provider);
+      await updateEscalationsPanel(escalationsPanel, db.provider);
       screen.render();
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);

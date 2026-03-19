@@ -1,10 +1,10 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { nanoid } from 'nanoid';
-import type { Database } from 'sql.js';
 import { extractPRNumber } from '../../utils/github.js';
 import { normalizeStoryId } from '../../utils/story-id.js';
-import { queryAll, queryOne, run, type PullRequestRow, type StoryRow } from '../client.js';
+import { type PullRequestRow, type StoryRow } from '../client.js';
+import type { DatabaseProvider } from '../provider.js';
 
 export type { PullRequestRow };
 
@@ -33,7 +33,10 @@ export interface UpdatePullRequestInput {
   githubPrUrl?: string | null;
 }
 
-export function createPullRequest(db: Database, input: CreatePullRequestInput): PullRequestRow {
+export async function createPullRequest(
+  provider: DatabaseProvider,
+  input: CreatePullRequestInput
+): Promise<PullRequestRow> {
   const id = `pr-${nanoid(8)}`;
   const now = new Date().toISOString();
 
@@ -43,8 +46,7 @@ export function createPullRequest(db: Database, input: CreatePullRequestInput): 
     prNumber = extractPRNumber(input.githubPrUrl) || null;
   }
 
-  run(
-    db,
+  await provider.run(
     `
     INSERT INTO pull_requests (id, story_id, team_id, branch_name, github_pr_number, github_pr_url, submitted_by, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)
@@ -62,32 +64,43 @@ export function createPullRequest(db: Database, input: CreatePullRequestInput): 
     ]
   );
 
-  return getPullRequestById(db, id)!;
+  return (await getPullRequestById(provider, id))!;
 }
 
-export function getPullRequestById(db: Database, id: string): PullRequestRow | undefined {
-  return queryOne<PullRequestRow>(db, 'SELECT * FROM pull_requests WHERE id = ?', [id]);
+export async function getPullRequestById(
+  provider: DatabaseProvider,
+  id: string
+): Promise<PullRequestRow | undefined> {
+  return await provider.queryOne<PullRequestRow>('SELECT * FROM pull_requests WHERE id = ?', [id]);
 }
 
-export function getPullRequestByStory(db: Database, storyId: string): PullRequestRow | undefined {
-  return queryOne<PullRequestRow>(db, 'SELECT * FROM pull_requests WHERE story_id = ?', [storyId]);
-}
-
-export function getPullRequestByGithubNumber(
-  db: Database,
-  prNumber: number
-): PullRequestRow | undefined {
-  return queryOne<PullRequestRow>(db, 'SELECT * FROM pull_requests WHERE github_pr_number = ?', [
-    prNumber,
+export async function getPullRequestByStory(
+  provider: DatabaseProvider,
+  storyId: string
+): Promise<PullRequestRow | undefined> {
+  return await provider.queryOne<PullRequestRow>('SELECT * FROM pull_requests WHERE story_id = ?', [
+    storyId,
   ]);
+}
+
+export async function getPullRequestByGithubNumber(
+  provider: DatabaseProvider,
+  prNumber: number
+): Promise<PullRequestRow | undefined> {
+  return await provider.queryOne<PullRequestRow>(
+    'SELECT * FROM pull_requests WHERE github_pr_number = ?',
+    [prNumber]
+  );
 }
 
 // Merge Queue functions
 
-export function getMergeQueue(db: Database, teamId?: string): PullRequestRow[] {
+export async function getMergeQueue(
+  provider: DatabaseProvider,
+  teamId?: string
+): Promise<PullRequestRow[]> {
   if (teamId) {
-    return queryAll<PullRequestRow>(
-      db,
+    return await provider.queryAll<PullRequestRow>(
       `
       SELECT * FROM pull_requests
       WHERE team_id = ? AND status IN ('queued', 'reviewing')
@@ -96,27 +109,27 @@ export function getMergeQueue(db: Database, teamId?: string): PullRequestRow[] {
       [teamId]
     );
   }
-  return queryAll<PullRequestRow>(
-    db,
-    `
+  return await provider.queryAll<PullRequestRow>(`
     SELECT * FROM pull_requests
     WHERE status IN ('queued', 'reviewing')
     ORDER BY created_at ASC
-  `
-  );
+  `);
 }
 
-export function getNextInQueue(db: Database, teamId?: string): PullRequestRow | undefined {
+export async function getNextInQueue(
+  provider: DatabaseProvider,
+  teamId?: string
+): Promise<PullRequestRow | undefined> {
   // Get the prioritized queue and return the first PR with status = 'queued'
-  const queue = getPrioritizedMergeQueue(db, teamId);
+  const queue = await getPrioritizedMergeQueue(provider, teamId);
   return queue.find(pr => pr.status === 'queued');
 }
 
-export function getQueuePosition(db: Database, prId: string): number {
-  const pr = getPullRequestById(db, prId);
+export async function getQueuePosition(provider: DatabaseProvider, prId: string): Promise<number> {
+  const pr = await getPullRequestById(provider, prId);
   if (!pr || !['queued', 'reviewing'].includes(pr.status)) return -1;
 
-  const queue = getPrioritizedMergeQueue(db, pr.team_id || undefined);
+  const queue = await getPrioritizedMergeQueue(provider, pr.team_id || undefined);
   return queue.findIndex(p => p.id === prId) + 1;
 }
 
@@ -124,9 +137,11 @@ export function getQueuePosition(db: Database, prId: string): number {
  * Check if a story's dependencies are satisfied (ready for QA review)
  * A dependency is satisfied if the story is merged or in active development
  */
-function areDependenciesSatisfied(db: Database, storyId: string): boolean {
-  const dependencies = queryAll<StoryRow>(
-    db,
+async function areDependenciesSatisfied(
+  provider: DatabaseProvider,
+  storyId: string
+): Promise<boolean> {
+  const dependencies = await provider.queryAll<StoryRow>(
     `
     SELECT s.* FROM stories s
     JOIN story_dependencies sd ON s.id = sd.depends_on_story_id
@@ -149,29 +164,34 @@ function areDependenciesSatisfied(db: Database, storyId: string): boolean {
 }
 
 // Priority scoring for merge queue
-export function getPrioritizedMergeQueue(db: Database, teamId?: string): PullRequestRow[] {
-  const baseQueue = getMergeQueue(db, teamId);
+export async function getPrioritizedMergeQueue(
+  provider: DatabaseProvider,
+  teamId?: string
+): Promise<PullRequestRow[]> {
+  const baseQueue = await getMergeQueue(provider, teamId);
 
   // Score by dependency satisfaction first, then by age
-  const scored = baseQueue.map(pr => {
-    // Get the story for this PR to check dependencies
-    let dependenciesSatisfied = true;
-    if (pr.story_id) {
-      dependenciesSatisfied = areDependenciesSatisfied(db, pr.story_id);
-    }
+  const scored = await Promise.all(
+    baseQueue.map(async pr => {
+      // Get the story for this PR to check dependencies
+      let dependenciesSatisfied = true;
+      if (pr.story_id) {
+        dependenciesSatisfied = await areDependenciesSatisfied(provider, pr.story_id);
+      }
 
-    // Scoring: dependencies satisfied = higher priority (larger score)
-    // Within each tier, older PRs get higher priority
-    const dependencyScore = dependenciesSatisfied ? 1 : 0;
-    const createdTime = new Date(pr.created_at).getTime();
-    const ageScore = -createdTime;
+      // Scoring: dependencies satisfied = higher priority (larger score)
+      // Within each tier, older PRs get higher priority
+      const dependencyScore = dependenciesSatisfied ? 1 : 0;
+      const createdTime = new Date(pr.created_at).getTime();
+      const ageScore = -createdTime;
 
-    // Combined score: (dependencyScore * large_multiplier) + ageScore
-    // This ensures dependency satisfaction is the primary sort key
-    const score = dependencyScore * 1e15 + ageScore;
+      // Combined score: (dependencyScore * large_multiplier) + ageScore
+      // This ensures dependency satisfaction is the primary sort key
+      const score = dependencyScore * 1e15 + ageScore;
 
-    return { pr, score, dependenciesSatisfied };
-  });
+      return { pr, score, dependenciesSatisfied };
+    })
+  );
 
   // Sort by score (descending) = dependencies satisfied first, then older first
   scored.sort((a, b) => b.score - a.score);
@@ -179,9 +199,11 @@ export function getPrioritizedMergeQueue(db: Database, teamId?: string): PullReq
   return scored.map(item => item.pr);
 }
 
-export function getPullRequestsByStatus(db: Database, status: PullRequestStatus): PullRequestRow[] {
-  return queryAll<PullRequestRow>(
-    db,
+export async function getPullRequestsByStatus(
+  provider: DatabaseProvider,
+  status: PullRequestStatus
+): Promise<PullRequestRow[]> {
+  return await provider.queryAll<PullRequestRow>(
     `
     SELECT * FROM pull_requests
     WHERE status = ?
@@ -191,20 +213,21 @@ export function getPullRequestsByStatus(db: Database, status: PullRequestStatus)
   );
 }
 
-export function getApprovedPullRequests(db: Database): PullRequestRow[] {
-  return queryAll<PullRequestRow>(
-    db,
-    `
+export async function getApprovedPullRequests(
+  provider: DatabaseProvider
+): Promise<PullRequestRow[]> {
+  return await provider.queryAll<PullRequestRow>(`
     SELECT * FROM pull_requests
     WHERE status = 'approved'
     ORDER BY created_at ASC
-  `
-  );
+  `);
 }
 
-export function getOpenPullRequestsByStory(db: Database, storyId: string): PullRequestRow[] {
-  return queryAll<PullRequestRow>(
-    db,
+export async function getOpenPullRequestsByStory(
+  provider: DatabaseProvider,
+  storyId: string
+): Promise<PullRequestRow[]> {
+  return await provider.queryAll<PullRequestRow>(
     `
     SELECT * FROM pull_requests
     WHERE story_id = ? COLLATE NOCASE AND status IN ('queued', 'reviewing')
@@ -214,13 +237,17 @@ export function getOpenPullRequestsByStory(db: Database, storyId: string): PullR
   );
 }
 
-export function getAllPullRequests(db: Database): PullRequestRow[] {
-  return queryAll<PullRequestRow>(db, 'SELECT * FROM pull_requests ORDER BY created_at DESC');
+export async function getAllPullRequests(provider: DatabaseProvider): Promise<PullRequestRow[]> {
+  return await provider.queryAll<PullRequestRow>(
+    'SELECT * FROM pull_requests ORDER BY created_at DESC'
+  );
 }
 
-export function getPullRequestsByTeam(db: Database, teamId: string): PullRequestRow[] {
-  return queryAll<PullRequestRow>(
-    db,
+export async function getPullRequestsByTeam(
+  provider: DatabaseProvider,
+  teamId: string
+): Promise<PullRequestRow[]> {
+  return await provider.queryAll<PullRequestRow>(
     `
     SELECT * FROM pull_requests
     WHERE team_id = ?
@@ -230,11 +257,11 @@ export function getPullRequestsByTeam(db: Database, teamId: string): PullRequest
   );
 }
 
-export function updatePullRequest(
-  db: Database,
+export async function updatePullRequest(
+  provider: DatabaseProvider,
   id: string,
   input: UpdatePullRequestInput
-): PullRequestRow | undefined {
+): Promise<PullRequestRow | undefined> {
   const updates: string[] = ['updated_at = ?'];
   const values: (string | number | null)[] = [new Date().toISOString()];
 
@@ -264,25 +291,27 @@ export function updatePullRequest(
   }
 
   if (updates.length === 1) {
-    return getPullRequestById(db, id);
+    return await getPullRequestById(provider, id);
   }
 
   values.push(id);
-  run(db, `UPDATE pull_requests SET ${updates.join(', ')} WHERE id = ?`, values);
-  return getPullRequestById(db, id);
+  await provider.run(`UPDATE pull_requests SET ${updates.join(', ')} WHERE id = ?`, values);
+  return await getPullRequestById(provider, id);
 }
 
-export function deletePullRequest(db: Database, id: string): void {
-  run(db, 'DELETE FROM pull_requests WHERE id = ?', [id]);
+export async function deletePullRequest(provider: DatabaseProvider, id: string): Promise<void> {
+  await provider.run('DELETE FROM pull_requests WHERE id = ?', [id]);
 }
 
 /**
  * Check if an agent is actively reviewing a PR
  * Returns true if the agent has a PR with status 'reviewing'
  */
-export function isAgentReviewingPR(db: Database, agentId: string): boolean {
-  const result = queryOne<{ count: number }>(
-    db,
+export async function isAgentReviewingPR(
+  provider: DatabaseProvider,
+  agentId: string
+): Promise<boolean> {
+  const result = await provider.queryOne<{ count: number }>(
     `
     SELECT COUNT(*) as count FROM pull_requests
     WHERE reviewed_by = ? AND status = 'reviewing'
@@ -297,20 +326,20 @@ export function isAgentReviewingPR(db: Database, agentId: string): boolean {
  * This is an idempotent operation - it only updates PRs with NULL github_pr_number
  * @returns Number of PRs updated
  */
-export function backfillGithubPrNumbers(db: Database): number {
-  const prsToBackfill = queryAll<PullRequestRow>(
-    db,
-    `
+export async function backfillGithubPrNumbers(provider: DatabaseProvider): Promise<number> {
+  const prsToBackfill = await provider.queryAll<PullRequestRow>(`
     SELECT * FROM pull_requests
     WHERE github_pr_number IS NULL AND github_pr_url IS NOT NULL
-  `
-  );
+  `);
 
   let updated = 0;
   for (const pr of prsToBackfill) {
     const prNumber = extractPRNumber(pr.github_pr_url!);
     if (prNumber) {
-      run(db, 'UPDATE pull_requests SET github_pr_number = ? WHERE id = ?', [prNumber, pr.id]);
+      await provider.run('UPDATE pull_requests SET github_pr_number = ? WHERE id = ?', [
+        prNumber,
+        pr.id,
+      ]);
       updated++;
     }
   }

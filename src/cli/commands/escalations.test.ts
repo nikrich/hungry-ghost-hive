@@ -16,8 +16,8 @@ vi.mock('../../db/queries/logs.js', () => ({
 }));
 
 vi.mock('../../utils/with-hive-context.js', () => ({
-  withHiveContext: vi.fn(callback => callback({ db: { db: {} } })),
-  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {} } })),
+  withHiveContext: vi.fn(callback => callback({ db: { db: {}, provider: {} } })),
+  withReadOnlyHiveContext: vi.fn(callback => callback({ db: { db: {}, provider: {} } })),
 }));
 
 import { escalationsCommand } from './escalations.js';
