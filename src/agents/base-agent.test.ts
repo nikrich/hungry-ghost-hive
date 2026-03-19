@@ -69,6 +69,19 @@ CREATE TABLE IF NOT EXISTS agent_logs (
     metadata TEXT,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS token_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL,
+    story_id TEXT,
+    requirement_id TEXT,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    model TEXT,
+    session_id TEXT,
+    recorded_at TIMESTAMP NOT NULL
+);
 `;
 
   beforeEach(async () => {
@@ -252,6 +265,15 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       expect(agentAny.totalTokens).toBe(150); // 100 input + 50 output
     });
 
+    it('should track input and output tokens separately', async () => {
+      const agent = new TestAgent(context);
+      const agentAny = agent as any;
+      await agentAny.chat('Test message');
+
+      expect(agentAny.inputTokens).toBe(100);
+      expect(agentAny.outputTokens).toBe(50);
+    });
+
     it('should accumulate tokens across multiple chat calls', async () => {
       const agent = new TestAgent(context);
       const agentAny = agent as any;
@@ -342,6 +364,156 @@ CREATE TABLE IF NOT EXISTS agent_logs (
       expect(agentAny.messages[0].role).toBe('system');
       expect(agentAny.messages[1].role).toBe('user');
       expect(agentAny.messages[1].content).toContain('Previous context');
+    });
+  });
+
+  describe('Token Usage Persistence', () => {
+    it('should persist token usage to database when run completes', async () => {
+      // Insert agent with model and session so they appear in the DB record
+      db.run(`UPDATE agents SET model = ?, tmux_session = ? WHERE id = ?`, [
+        agentRow.model,
+        agentRow.tmux_session,
+        agentRow.id,
+      ]);
+
+      const agent = new TestAgent(context);
+      await agent.run();
+
+      const rows = queryAll<{
+        agent_id: string;
+        input_tokens: number;
+        output_tokens: number;
+        total_tokens: number;
+        model: string | null;
+        session_id: string | null;
+      }>(db, 'SELECT * FROM token_usage WHERE agent_id = ?', [agentRow.id]);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].input_tokens).toBe(100);
+      expect(rows[0].output_tokens).toBe(50);
+      expect(rows[0].total_tokens).toBe(150);
+      expect(rows[0].model).toBe('test-model');
+      expect(rows[0].session_id).toBe('test-session');
+    });
+
+    it('should persist token usage with story_id when task is set', async () => {
+      class TaskAgent extends BaseAgent {
+        getSystemPrompt(): string {
+          return 'Task agent prompt';
+        }
+
+        async execute(): Promise<void> {
+          await this.setCurrentTask('STORY-XYZ', 'implementation');
+          await this.chat('Working on story');
+        }
+      }
+
+      const agent = new TaskAgent(context);
+      await agent.run();
+
+      const rows = queryAll<{ story_id: string | null }>(
+        db,
+        'SELECT story_id FROM token_usage WHERE agent_id = ?',
+        [agentRow.id]
+      );
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].story_id).toBe('STORY-XYZ');
+    });
+
+    it('should persist token usage at checkpoint', async () => {
+      provider.complete = vi
+        .fn()
+        .mockResolvedValueOnce({
+          content: 'Response',
+          usage: { inputTokens: 6000, outputTokens: 5000 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Checkpoint summary',
+          usage: { inputTokens: 100, outputTokens: 100 },
+        });
+
+      const agent = new TestAgent(context);
+      const agentAny = agent as any;
+      await agentAny.chat('Test message');
+
+      const rows = queryAll<{ input_tokens: number; output_tokens: number; total_tokens: number }>(
+        db,
+        'SELECT input_tokens, output_tokens, total_tokens FROM token_usage WHERE agent_id = ?',
+        [agentRow.id]
+      );
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].input_tokens).toBe(6000);
+      expect(rows[0].output_tokens).toBe(5000);
+      expect(rows[0].total_tokens).toBe(11000);
+    });
+
+    it('should reset token counters after checkpoint persistence', async () => {
+      provider.complete = vi
+        .fn()
+        .mockResolvedValueOnce({
+          content: 'Response',
+          usage: { inputTokens: 6000, outputTokens: 5000 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Summary',
+          usage: { inputTokens: 100, outputTokens: 100 },
+        });
+
+      const agent = new TestAgent(context);
+      const agentAny = agent as any;
+      await agentAny.chat('Test message');
+
+      expect(agentAny.totalTokens).toBe(0);
+      expect(agentAny.inputTokens).toBe(0);
+      expect(agentAny.outputTokens).toBe(0);
+    });
+
+    it('should not persist token usage when zero tokens used', async () => {
+      class NoOpAgent extends BaseAgent {
+        getSystemPrompt(): string {
+          return 'No-op agent';
+        }
+
+        async execute(): Promise<void> {
+          // Does nothing, no chat calls
+        }
+      }
+
+      const agent = new NoOpAgent(context);
+      await agent.run();
+
+      const rows = queryAll<{ id: number }>(db, 'SELECT id FROM token_usage WHERE agent_id = ?', [
+        agentRow.id,
+      ]);
+
+      expect(rows).toHaveLength(0);
+    });
+
+    it('should persist token usage even when agent fails', async () => {
+      class FailingAgent extends BaseAgent {
+        getSystemPrompt(): string {
+          return 'Failing agent';
+        }
+
+        async execute(): Promise<void> {
+          await this.chat('Before failure');
+          throw new Error('Intentional failure');
+        }
+      }
+
+      const agent = new FailingAgent(context);
+      await expect(agent.run()).rejects.toThrow('Intentional failure');
+
+      const rows = queryAll<{ total_tokens: number }>(
+        db,
+        'SELECT total_tokens FROM token_usage WHERE agent_id = ?',
+        [agentRow.id]
+      );
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].total_tokens).toBe(150);
     });
   });
 

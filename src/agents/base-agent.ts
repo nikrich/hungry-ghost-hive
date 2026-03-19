@@ -9,6 +9,7 @@ import {
 } from '../db/queries/agents.js';
 import { updateAgentHeartbeat } from '../db/queries/heartbeat.js';
 import { createLog, type EventType } from '../db/queries/logs.js';
+import { recordTokenUsage } from '../db/queries/token-usage.js';
 import type { LLMProvider, Message } from '../llm/provider.js';
 import { findHiveRoot, getHivePaths } from '../utils/paths.js';
 
@@ -57,6 +58,10 @@ export abstract class BaseAgent {
   protected messages: Message[] = [];
   protected memoryState: MemoryState;
   protected totalTokens = 0;
+  protected inputTokens = 0;
+  protected outputTokens = 0;
+  private readonly model: string | null;
+  private readonly sessionId: string | null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
   constructor(context: AgentContext) {
@@ -67,6 +72,8 @@ export abstract class BaseAgent {
     this.teamId = context.agentRow.team_id;
     this.workDir = context.workDir;
     this.config = context.config;
+    this.model = context.agentRow.model ?? null;
+    this.sessionId = context.agentRow.tmux_session ?? null;
 
     const hiveRoot = findHiveRoot(context.workDir);
     this.storiesDir = hiveRoot ? getHivePaths(hiveRoot).storiesDir : undefined;
@@ -162,6 +169,8 @@ export abstract class BaseAgent {
         timeoutMs: this.config.llmTimeoutMs,
       });
 
+      this.inputTokens += result.usage.inputTokens;
+      this.outputTokens += result.usage.outputTokens;
       this.totalTokens += result.usage.inputTokens + result.usage.outputTokens;
       this.messages.push({ role: 'assistant', content: result.content });
 
@@ -205,6 +214,8 @@ Keep it under 500 words.`;
       totalTokens: this.totalTokens,
     });
 
+    await this.persistTokenUsage();
+
     // Reset messages but keep context
     this.messages = [
       { role: 'system', content: this.getSystemPrompt() },
@@ -214,6 +225,26 @@ Keep it under 500 words.`;
       },
     ];
     this.totalTokens = 0;
+    this.inputTokens = 0;
+    this.outputTokens = 0;
+  }
+
+  private async persistTokenUsage(): Promise<void> {
+    if (this.totalTokens === 0) return;
+    try {
+      await recordTokenUsage(this.db, {
+        agentId: this.agentId,
+        storyId: this.memoryState.currentTask?.storyId ?? null,
+        inputTokens: this.inputTokens,
+        outputTokens: this.outputTokens,
+        totalTokens: this.totalTokens,
+        model: this.model,
+        sessionId: this.sessionId,
+      });
+    } catch (err) {
+      // Token persistence failure should not crash the agent
+      console.error(`Failed to persist token usage for ${this.agentId}:`, err);
+    }
   }
 
   protected async addDecision(decision: string): Promise<void> {
@@ -259,7 +290,9 @@ Keep it under 500 words.`;
 
     try {
       await this.execute();
+      await this.persistTokenUsage();
     } catch (err) {
+      await this.persistTokenUsage();
       await this.updateStatus('blocked');
       await this.log(
         'AGENT_TERMINATED',
