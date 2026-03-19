@@ -484,11 +484,9 @@ CREATE TABLE IF NOT EXISTS token_usage (
       const agent = new NoOpAgent(context);
       await agent.run();
 
-      const rows = queryAll<{ id: number }>(
-        db,
-        'SELECT id FROM token_usage WHERE agent_id = ?',
-        [agentRow.id]
-      );
+      const rows = queryAll<{ id: number }>(db, 'SELECT id FROM token_usage WHERE agent_id = ?', [
+        agentRow.id,
+      ]);
 
       expect(rows).toHaveLength(0);
     });
