@@ -3,7 +3,6 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { nanoid } from 'nanoid';
-import { queryAll, queryOne, run } from '../../db/client.js';
 import { getTechLeadSessionName } from '../../utils/instance.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 
@@ -32,13 +31,11 @@ msgCommand
         const id = `msg-${nanoid(8)}`;
         const fromSession = options.from || getTechLeadSessionName(paths.hiveDir);
 
-        run(
-          db.db,
-          `
-        INSERT INTO messages (id, from_session, to_session, subject, body, status, created_at)
-        VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))
-      `,
-          [id, fromSession, toSession, options.subject || null, message]
+        const now = new Date().toISOString();
+        await db.provider.run(
+          `INSERT INTO messages (id, from_session, to_session, subject, body, status, created_at)
+           VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+          [id, fromSession, toSession, options.subject || null, message, now]
         );
         db.save();
 
@@ -66,7 +63,7 @@ msgCommand
       }
       query += ` ORDER BY created_at DESC`;
 
-      const messages = queryAll<MessageRow>(db.db, query, [targetSession]);
+      const messages = await db.provider.queryAll<MessageRow>(query, [targetSession]);
 
       if (messages.length === 0) {
         console.log(chalk.gray(`No ${options.all ? '' : 'pending '}messages for ${targetSession}`));
@@ -104,7 +101,9 @@ msgCommand
   .description('Read a specific message')
   .action(async (msgId: string) => {
     await withHiveContext(async ({ db }) => {
-      const msg = queryOne<MessageRow>(db.db, 'SELECT * FROM messages WHERE id = ?', [msgId]);
+      const msg = await db.provider.queryOne<MessageRow>('SELECT * FROM messages WHERE id = ?', [
+        msgId,
+      ]);
 
       if (!msg) {
         console.error(chalk.red(`Message not found: ${msgId}`));
@@ -113,7 +112,7 @@ msgCommand
 
       // Mark as read
       if (msg.status === 'pending') {
-        run(db.db, `UPDATE messages SET status = 'read' WHERE id = ?`, [msgId]);
+        await db.provider.run(`UPDATE messages SET status = 'read' WHERE id = ?`, [msgId]);
         db.save();
       }
 
@@ -140,21 +139,19 @@ msgCommand
   .description('Reply to a message')
   .action(async (msgId: string, response: string) => {
     await withHiveContext(async ({ db }) => {
-      const msg = queryOne<MessageRow>(db.db, 'SELECT * FROM messages WHERE id = ?', [msgId]);
+      const msg = await db.provider.queryOne<MessageRow>('SELECT * FROM messages WHERE id = ?', [
+        msgId,
+      ]);
 
       if (!msg) {
         console.error(chalk.red(`Message not found: ${msgId}`));
         process.exit(1);
       }
 
-      run(
-        db.db,
-        `
-        UPDATE messages
-        SET reply = ?, status = 'replied', replied_at = datetime('now')
-        WHERE id = ?
-      `,
-        [response, msgId]
+      const now = new Date().toISOString();
+      await db.provider.run(
+        `UPDATE messages SET reply = ?, status = 'replied', replied_at = ? WHERE id = ?`,
+        [response, now, msgId]
       );
       db.save();
 
@@ -169,13 +166,8 @@ msgCommand
     await withReadOnlyHiveContext(async ({ db, paths }) => {
       const fromSession = session || getTechLeadSessionName(paths.hiveDir);
 
-      const messages = queryAll<MessageRow>(
-        db.db,
-        `
-        SELECT * FROM messages
-        WHERE from_session = ?
-        ORDER BY created_at DESC
-      `,
+      const messages = await db.provider.queryAll<MessageRow>(
+        `SELECT * FROM messages WHERE from_session = ? ORDER BY created_at DESC`,
         [fromSession]
       );
 

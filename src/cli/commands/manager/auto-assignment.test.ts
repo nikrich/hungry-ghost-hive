@@ -3,12 +3,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { autoAssignPlannedStories } from './auto-assignment.js';
 
-vi.mock('../../../db/client.js', () => ({
-  queryAll: vi.fn(),
-}));
-
-import { queryAll } from '../../../db/client.js';
-
 describe('autoAssignPlannedStories', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -28,15 +22,16 @@ describe('autoAssignPlannedStories', () => {
       preventedDuplicates: 0,
     });
     const save = vi.fn();
-    const mockDb = { db: {} as never, save };
+    const mockProvider = {
+      queryAll: vi.fn().mockResolvedValue([{ count: options?.assignableUnassigned ?? 0 }]),
+    };
+    const mockDb = { db: {} as never, provider: mockProvider, save };
     const scheduler = { checkScaling, checkMergeQueue, assignStories } as never;
 
     let callCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const withDb = vi.fn(async (fn: (db: typeof mockDb, scheduler: any) => unknown) => {
       callCount += 1;
-      vi.mocked(queryAll).mockReturnValueOnce([
-        { count: options?.assignableUnassigned ?? 0 },
-      ] as never);
       return fn(mockDb, scheduler);
     });
 
@@ -46,6 +41,7 @@ describe('autoAssignPlannedStories', () => {
       counters: {
         plannedAutoAssigned: 0,
       },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
 
     return {
