@@ -55,10 +55,13 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   }
 
   const paths = getHivePaths(root);
-  const dbPath = join(paths.hiveDir, 'hive.provider');
-  debugLog(`Dashboard starting - root: ${root}, hiveDir: ${paths.hiveDir}`);
+  const dbPath = join(paths.hiveDir, 'hive.db');
+  const isDistributed = !existsSync(dbPath);
+  debugLog(
+    `Dashboard starting - root: ${root}, hiveDir: ${paths.hiveDir}, distributed: ${isDistributed}`
+  );
   let db: ReadOnlyDatabaseClient = await getReadOnlyDatabase(paths.hiveDir);
-  let lastDbMtime = statSync(dbPath).mtimeMs;
+  let lastDbMtime = isDistributed ? 0 : statSync(dbPath).mtimeMs;
   const refreshInterval = options.refreshInterval || 5000;
   const version = getVersion();
 
@@ -126,13 +129,21 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   const refresh = async () => {
     if (refreshPaused) return;
     try {
-      // Check if database file has been modified
-      const currentMtime = statSync(dbPath).mtimeMs;
-      if (currentMtime !== lastDbMtime) {
-        debugLog(`Database changed - reloading from ${paths.hiveDir}`);
-        lastDbMtime = currentMtime;
+      // In distributed (Postgres) mode, always refresh since there's no local file.
+      // In SQLite mode, only reload when the file has been modified.
+      const shouldReload = isDistributed
+        ? true
+        : (() => {
+            const currentMtime = statSync(dbPath).mtimeMs;
+            if (currentMtime !== lastDbMtime) {
+              lastDbMtime = currentMtime;
+              return true;
+            }
+            return false;
+          })();
 
-        // Get new database connection first, then close old one
+      if (shouldReload) {
+        debugLog(`Database changed - reloading from ${paths.hiveDir}`);
         const newDb = await getReadOnlyDatabase(paths.hiveDir);
         try {
           db.db.close();

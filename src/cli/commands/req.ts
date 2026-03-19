@@ -392,7 +392,7 @@ Use the Hive database to:
 3. Set up story dependencies
 4. Log your progress using agent_logs
 
-The SQLite database is at .hive/hive.provider
+The SQLite database is at .hive/hive.db
 
 **IMPORTANT:** Work directly in the team repositories under \`repos/\`. Each team's codebase is a git submodule you can explore, modify, and commit to. Use \`gh\` CLI to interact with GitHub PRs and issues.
 
