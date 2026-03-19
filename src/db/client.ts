@@ -582,6 +582,15 @@ const MIGRATIONS: MigrationDefinition[] = [
       db.run('ALTER TABLE stories ADD COLUMN markdown_path TEXT');
     },
   },
+  {
+    name: '016-token-usage-tracking.sql',
+    up: db => {
+      if (!hasTable(db, 'token_usage')) {
+        const sql = loadMigration('016-token-usage-tracking.sql');
+        db.exec(sql);
+      }
+    },
+  },
 ];
 
 function runMigrations(db: SqlJsDatabase): void {
@@ -882,6 +891,19 @@ export interface EscalationRow {
   resolution: string | null;
   created_at: string;
   resolved_at: string | null;
+}
+
+export interface TokenUsageRow {
+  id: number;
+  agent_id: string;
+  story_id: string | null;
+  requirement_id: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  model: string | null;
+  session_id: string | null;
+  recorded_at: string;
 }
 
 export interface PullRequestRow {

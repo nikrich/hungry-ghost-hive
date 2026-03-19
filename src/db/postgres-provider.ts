@@ -24,6 +24,7 @@ const WORKSPACE_SCOPED_TABLES = new Set([
   'pull_requests',
   'messages',
   'integration_sync',
+  'token_usage',
 ]);
 
 /**
