@@ -115,6 +115,7 @@ describe('context-files module', () => {
 
     const mockConfig: HiveConfig = {
       version: '1.0',
+      distributed: false,
       models: {
         tech_lead: {
           provider: 'anthropic',

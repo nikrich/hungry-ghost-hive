@@ -1,6 +1,6 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 
 export const HIVE_DIR_NAME = '.hive';
@@ -14,6 +14,7 @@ export interface HivePaths {
   hiveDir: string;
   dbPath: string;
   configPath: string;
+  workspaceIdPath: string;
   agentsDir: string;
   logsDir: string;
   reposDir: string;
@@ -42,6 +43,7 @@ export function getHivePaths(rootDir: string): HivePaths {
     hiveDir,
     dbPath: join(hiveDir, 'hive.db'),
     configPath: join(hiveDir, 'hive.config.yaml'),
+    workspaceIdPath: join(hiveDir, 'workspace.id'),
     agentsDir: join(hiveDir, AGENTS_DIR_NAME),
     logsDir: join(hiveDir, LOGS_DIR_NAME),
     reposDir: join(rootDir, REPOS_DIR_NAME),
@@ -51,4 +53,15 @@ export function getHivePaths(rootDir: string): HivePaths {
 
 export function isHiveWorkspace(dir: string): boolean {
   return existsSync(join(dir, HIVE_DIR_NAME));
+}
+
+/**
+ * Read the workspace ID from .hive/workspace.id.
+ * Returns null if the file does not exist (non-distributed mode).
+ */
+export function getWorkspaceId(paths: HivePaths): string | null {
+  if (!existsSync(paths.workspaceIdPath)) {
+    return null;
+  }
+  return readFileSync(paths.workspaceIdPath, 'utf-8').trim();
 }
