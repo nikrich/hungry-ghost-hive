@@ -57,7 +57,9 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<vo
   const paths = getHivePaths(root);
   const dbPath = join(paths.hiveDir, 'hive.db');
   const isDistributed = !existsSync(dbPath);
-  debugLog(`Dashboard starting - root: ${root}, hiveDir: ${paths.hiveDir}, distributed: ${isDistributed}`);
+  debugLog(
+    `Dashboard starting - root: ${root}, hiveDir: ${paths.hiveDir}, distributed: ${isDistributed}`
+  );
   let db: ReadOnlyDatabaseClient = await getReadOnlyDatabase(paths.hiveDir);
   let lastDbMtime = isDistributed ? 0 : statSync(dbPath).mtimeMs;
   const refreshInterval = options.refreshInterval || 5000;
