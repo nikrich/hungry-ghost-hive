@@ -11,6 +11,7 @@ import {
   type DatabaseProvider,
   type WritableDatabaseProvider,
 } from './provider.js';
+export { createPostgresProvider, PostgresProvider } from './postgres-provider.js';
 export { ReadOnlySqliteProvider, SqliteProvider } from './provider.js';
 export type { DatabaseProvider, QueryResult, WritableDatabaseProvider } from './provider.js';
 
