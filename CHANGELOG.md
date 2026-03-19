@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.49.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.48.0...hungry-ghost-hive-v0.49.0) (2026-03-19)
+
+
+### Features
+
+* add --distributed flag to hive init with .env support ([#565](https://github.com/nikrich/hungry-ghost-hive/issues/565)) ([b6e6487](https://github.com/nikrich/hungry-ghost-hive/commit/b6e6487f3abdaab9dd424b206957d8e00280b9a4))
+* add DatabaseProvider abstraction interface for multi-backend support ([#560](https://github.com/nikrich/hungry-ghost-hive/issues/560)) ([5f90f9f](https://github.com/nikrich/hungry-ghost-hive/commit/5f90f9f4bf55dfc2d7a979ae0e14a6284e104adc))
+* add integration tests for distributed Postgres mode ([#567](https://github.com/nikrich/hungry-ghost-hive/issues/567)) ([faeda5c](https://github.com/nikrich/hungry-ghost-hive/commit/faeda5c256a6dcd3cccc1ffaa3e783c1c62eb238))
+* implement PostgresProvider with workspace_id filtering ([#562](https://github.com/nikrich/hungry-ghost-hive/issues/562)) ([55cbda6](https://github.com/nikrich/hungry-ghost-hive/commit/55cbda6221380a7e1eb9f52b89ea9aed5c6c6102))
+* update all query modules to use DatabaseProvider abstraction ([#564](https://github.com/nikrich/hungry-ghost-hive/issues/564)) ([5e69db0](https://github.com/nikrich/hungry-ghost-hive/commit/5e69db0ba14d8d0c38413b5addebdb7a9c14662d))
+
+
+### Bug Fixes
+
+* resolve dashboard crash after provider merge ([#569](https://github.com/nikrich/hungry-ghost-hive/issues/569)) ([963770a](https://github.com/nikrich/hungry-ghost-hive/commit/963770a6c4242c85e1861661fb5b5d5432431fb5))
+
 ## [0.48.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.47.4...hungry-ghost-hive-v0.48.0) (2026-03-17)
 
 
