@@ -143,8 +143,7 @@ const GEMINI_TOKEN_COUNT =
   /token\s+count[:\s]+input\s*=\s*([0-9,]+)[,\s]+output\s*=\s*([0-9,]+)[,\s]+total\s*=\s*([0-9,]+)/i;
 const GEMINI_TOKENS_TOTAL =
   /tokens[:\s]+([0-9,]+)\s+total\s*\(\s*([0-9,]+)\s+input[,\s]+([0-9,]+)\s+output\s*\)/i;
-const GEMINI_USAGE =
-  /usage[:\s]+([0-9,]+)\s+input\s+tokens[,\s]+([0-9,]+)\s+output\s+tokens/i;
+const GEMINI_USAGE = /usage[:\s]+([0-9,]+)\s+input\s+tokens[,\s]+([0-9,]+)\s+output\s+tokens/i;
 
 function parseGeminiTokens(output: string): ParsedTokenUsage | null {
   const countMatch = output.match(GEMINI_TOKEN_COUNT);
