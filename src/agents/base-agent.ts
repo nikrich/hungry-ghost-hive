@@ -16,6 +16,9 @@ import { findHiveRoot, getHivePaths } from '../utils/paths.js';
 /** Interval in ms between agent heartbeats */
 const HEARTBEAT_INTERVAL_MS = 10000;
 
+/** Interval in ms between periodic token usage captures */
+const PERIODIC_TOKEN_CAPTURE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
 export interface MemoryState {
   conversationSummary: string;
   currentTask?: {
@@ -63,6 +66,9 @@ export abstract class BaseAgent {
   private readonly model: string | null;
   private readonly sessionId: string | null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private periodicTokenCaptureInterval: NodeJS.Timeout | null = null;
+  private lastPersistedInputTokens = 0;
+  private lastPersistedOutputTokens = 0;
 
   constructor(context: AgentContext) {
     this.db = context.db;
@@ -105,6 +111,9 @@ export abstract class BaseAgent {
 
     // Start heartbeat mechanism for faster failure detection
     this.startHeartbeat();
+
+    // Start periodic token capture to avoid losing usage data on long-running sessions
+    this.startPeriodicTokenCapture();
   }
 
   abstract getSystemPrompt(): string;
@@ -132,6 +141,19 @@ export abstract class BaseAgent {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
+    }
+  }
+
+  private startPeriodicTokenCapture(): void {
+    this.periodicTokenCaptureInterval = setInterval(() => {
+      void this.persistTokenUsage();
+    }, PERIODIC_TOKEN_CAPTURE_INTERVAL_MS);
+  }
+
+  private stopPeriodicTokenCapture(): void {
+    if (this.periodicTokenCaptureInterval) {
+      clearInterval(this.periodicTokenCaptureInterval);
+      this.periodicTokenCaptureInterval = null;
     }
   }
 
@@ -227,20 +249,27 @@ Keep it under 500 words.`;
     this.totalTokens = 0;
     this.inputTokens = 0;
     this.outputTokens = 0;
+    this.lastPersistedInputTokens = 0;
+    this.lastPersistedOutputTokens = 0;
   }
 
   private async persistTokenUsage(): Promise<void> {
-    if (this.totalTokens === 0) return;
+    const deltaInput = this.inputTokens - this.lastPersistedInputTokens;
+    const deltaOutput = this.outputTokens - this.lastPersistedOutputTokens;
+    const deltaTotal = deltaInput + deltaOutput;
+    if (deltaTotal === 0) return;
     try {
       await recordTokenUsage(this.db, {
         agentId: this.agentId,
         storyId: this.memoryState.currentTask?.storyId ?? null,
-        inputTokens: this.inputTokens,
-        outputTokens: this.outputTokens,
-        totalTokens: this.totalTokens,
+        inputTokens: deltaInput,
+        outputTokens: deltaOutput,
+        totalTokens: deltaTotal,
         model: this.model,
         sessionId: this.sessionId,
       });
+      this.lastPersistedInputTokens = this.inputTokens;
+      this.lastPersistedOutputTokens = this.outputTokens;
     } catch (err) {
       // Token persistence failure should not crash the agent
       console.error(`Failed to persist token usage for ${this.agentId}:`, err);
@@ -303,8 +332,9 @@ Keep it under 500 words.`;
       );
       throw err;
     } finally {
-      // Stop heartbeat when agent completes or fails
+      // Stop heartbeat and periodic token capture when agent completes or fails
       this.stopHeartbeat();
+      this.stopPeriodicTokenCapture();
     }
   }
 

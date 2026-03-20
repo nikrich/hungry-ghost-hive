@@ -611,6 +611,102 @@ CREATE TABLE IF NOT EXISTS token_usage (
     });
   });
 
+  describe('Periodic Token Capture', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should persist tokens periodically during long-running sessions', async () => {
+      const agent = new TestAgent(context);
+      const agentAny = agent as any;
+
+      // Accumulate tokens via chat
+      await agentAny.chat('Message 1');
+
+      // Advance past the 5-minute periodic capture interval
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1);
+
+      const rows = queryAll<{ total_tokens: number }>(
+        db,
+        'SELECT total_tokens FROM token_usage WHERE agent_id = ?',
+        [agentRow.id]
+      );
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].total_tokens).toBe(150); // 100 input + 50 output
+    });
+
+    it('should not double-count tokens between periodic captures and final persist', async () => {
+      const agent = new TestAgent(context);
+      const agentAny = agent as any;
+
+      // Accumulate tokens via first chat
+      await agentAny.chat('Message 1');
+
+      // Trigger periodic capture
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1);
+
+      // Accumulate more tokens via second chat
+      await agentAny.chat('Message 2');
+
+      // Trigger final persist (as run() would do)
+      await agentAny.persistTokenUsage();
+
+      const rows = queryAll<{ total_tokens: number }>(
+        db,
+        'SELECT total_tokens FROM token_usage WHERE agent_id = ?',
+        [agentRow.id]
+      );
+
+      // Two rows: 150 from periodic capture, 150 from final persist
+      expect(rows).toHaveLength(2);
+      const totalPersisted = rows.reduce((sum, r) => sum + r.total_tokens, 0);
+      expect(totalPersisted).toBe(300); // No double-counting
+    });
+
+    it('should skip periodic persist when no new tokens since last capture', async () => {
+      const agent = new TestAgent(context);
+      const agentAny = agent as any;
+
+      await agentAny.chat('Message 1');
+
+      // Trigger first periodic capture
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1);
+
+      // Trigger second periodic capture without any new chat
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      const rows = queryAll<{ id: number }>(db, 'SELECT id FROM token_usage WHERE agent_id = ?', [
+        agentRow.id,
+      ]);
+
+      // Only 1 row — second capture was a no-op
+      expect(rows).toHaveLength(1);
+    });
+
+    it('should stop periodic capture when agent completes', async () => {
+      const agent = new TestAgent(context);
+      await agent.run();
+
+      const agentAny = agent as any;
+      expect(agentAny.periodicTokenCaptureInterval).toBeNull();
+    });
+
+    it('should stop periodic capture when agent fails', async () => {
+      provider.complete = vi.fn().mockRejectedValue(new Error('Test error'));
+      const agent = new TestAgent(context);
+
+      await expect(agent.run()).rejects.toThrow('Test error');
+
+      const agentAny = agent as any;
+      expect(agentAny.periodicTokenCaptureInterval).toBeNull();
+    });
+  });
+
   describe('Heartbeat Mechanism', () => {
     it('should send initial heartbeat on construction', () => {
       // Create agent to trigger heartbeat
