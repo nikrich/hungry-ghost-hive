@@ -102,7 +102,7 @@ async function createValidDbBuffer(
 
   if (opts.withData) {
     db.run(
-      "INSERT INTO teams VALUES ('t1', 'https://example.com', '/tmp/repo', 'Test Team', datetime('now'))"
+      `INSERT INTO teams VALUES ('t1', 'https://example.com', '/tmp/repo', 'Test Team', '${new Date().toISOString()}')`
     );
   }
 
