@@ -92,6 +92,7 @@ import {
   recoverUnassignedQAFailedStories,
 } from './stuck-story-processor.js';
 import { restartStaleTechLead } from './tech-lead-lifecycle.js';
+import { parseAndPersistTokenUsage } from './token-capture.js';
 import type { ManagerCheckContext } from './types.js';
 import {
   MANAGER_NUDGE_END_MARKER,
@@ -1113,6 +1114,15 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
             completionAssessment.confidence >= DONE_INFERENCE_CONFIDENCE_THRESHOLD;
 
           if (aiSaysDone) {
+            // Capture token usage when done-detection confirms completion
+            if (agent) {
+              const tokenResult = await parseAndPersistTokenUsage(output, ctx, agent.id, storyId);
+              verboseLogCtx(
+                ctx,
+                `Agent ${session.name}: done-detection token_capture captured=${tokenResult.captured} persisted=${tokenResult.persisted}`
+              );
+            }
+
             if (!agent) {
               verboseLogCtx(
                 ctx,
