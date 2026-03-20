@@ -92,7 +92,10 @@ import {
   recoverUnassignedQAFailedStories,
 } from './stuck-story-processor.js';
 import { restartStaleTechLead } from './tech-lead-lifecycle.js';
-import { parseAndPersistTokenUsage } from './token-capture.js';
+import {
+  parseAndPersistTokenUsage,
+  parseAndPersistTokenUsageIfChanged,
+} from './token-capture.js';
 import type { ManagerCheckContext } from './types.js';
 import {
   MANAGER_NUDGE_END_MARKER,
@@ -1003,6 +1006,18 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
     verboseLogCtx(
       ctx,
       `Agent ${session.name}: pane tail="${summarizeOutputForVerbose(output) || '(empty)'}"`
+    );
+
+    // Periodic token capture on every manager cycle; dedup prevents duplicate DB inserts
+    const periodicTokenResult = await parseAndPersistTokenUsageIfChanged(
+      output,
+      ctx,
+      agent.id,
+      agent.current_story_id
+    );
+    verboseLogCtx(
+      ctx,
+      `Agent ${session.name}: periodic_token_capture captured=${periodicTokenResult.captured} persisted=${periodicTokenResult.persisted} changed=${periodicTokenResult.changed}`
     );
 
     await enforceBypassMode(session.name, output, agentCliTool, safetyMode);

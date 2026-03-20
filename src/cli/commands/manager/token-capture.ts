@@ -22,6 +22,25 @@ export interface TokenCaptureResult {
   persisted: boolean;
 }
 
+export interface TokenCaptureCycleResult extends TokenCaptureResult {
+  /** True if token counts changed since the last captured cycle for this agent */
+  changed: boolean;
+}
+
+interface LastTokenSnapshot {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+/** In-memory deduplication map: agentId → last recorded token counts */
+const lastTokensByAgent = new Map<string, LastTokenSnapshot>();
+
+/** Reset deduplication state (exported for use in tests) */
+export function clearTokenDeduplicationState(): void {
+  lastTokensByAgent.clear();
+}
+
 /**
  * Capture tmux pane output, parse token usage, and persist to the database.
  * Uses ctx.withDb for safe database access following the manager lock pattern.
@@ -82,5 +101,63 @@ export async function parseAndPersistTokenUsage(
     return { captured: true, tokens, persisted: true };
   } catch {
     return { captured: false, tokens: null, persisted: false };
+  }
+}
+
+/**
+ * Parse token usage from already-captured pane output and persist only if the
+ * token counts have changed since the last manager cycle (deduplication).
+ * Use this for periodic captures in the manager monitoring loop.
+ */
+export async function parseAndPersistTokenUsageIfChanged(
+  output: string,
+  ctx: ManagerCheckContext,
+  agentId: string,
+  storyId?: string | null
+): Promise<TokenCaptureCycleResult> {
+  try {
+    const tokens = parseTokenUsage(output);
+    if (!tokens) {
+      return { captured: true, tokens: null, persisted: false, changed: false };
+    }
+
+    const last = lastTokensByAgent.get(agentId);
+    if (
+      last &&
+      last.inputTokens === tokens.inputTokens &&
+      last.outputTokens === tokens.outputTokens &&
+      last.totalTokens === tokens.totalTokens
+    ) {
+      return { captured: true, tokens, persisted: false, changed: false };
+    }
+
+    await ctx.withDb(async db => {
+      await recordTokenUsage(db.provider, {
+        agentId,
+        storyId: storyId ?? null,
+        inputTokens: tokens.inputTokens,
+        outputTokens: tokens.outputTokens,
+        totalTokens: tokens.totalTokens,
+      });
+
+      await createLog(db.provider, {
+        agentId,
+        storyId: storyId ?? undefined,
+        eventType: 'STORY_PROGRESS_UPDATE',
+        message: `Periodic token capture: input=${tokens.inputTokens}, output=${tokens.outputTokens}, total=${tokens.totalTokens}${tokens.cost !== undefined ? `, cost=$${tokens.cost}` : ''}`,
+      });
+
+      db.save();
+    });
+
+    lastTokensByAgent.set(agentId, {
+      inputTokens: tokens.inputTokens,
+      outputTokens: tokens.outputTokens,
+      totalTokens: tokens.totalTokens,
+    });
+
+    return { captured: true, tokens, persisted: true, changed: true };
+  } catch {
+    return { captured: false, tokens: null, persisted: false, changed: false };
   }
 }
