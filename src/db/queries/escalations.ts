@@ -135,14 +135,15 @@ export async function getRecentEscalationsForAgent(
   agentId: string,
   minutesBack: number = 30
 ): Promise<EscalationRow[]> {
+  const cutoff = new Date(Date.now() - minutesBack * 60 * 1000).toISOString();
   return await provider.queryAll<EscalationRow>(
     `
     SELECT * FROM escalations
     WHERE from_agent_id = ?
-    AND created_at > datetime('now', ?)
+    AND created_at > ?
     ORDER BY created_at DESC
   `,
-    [agentId, `-${minutesBack} minutes`]
+    [agentId, cutoff]
   );
 }
 
