@@ -574,7 +574,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     const terminatedAgentId = 'agent-terminated-1';
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [terminatedAgentId, 'intermediate', team.id, 'terminated']
     );
 
@@ -616,7 +616,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     const activeAgentId = 'agent-active-1';
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [activeAgentId, 'intermediate', team.id, 'working']
     );
 
@@ -657,7 +657,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     const idleAgentId = 'agent-idle-1';
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [idleAgentId, 'intermediate', team.id, 'idle']
     );
 
@@ -693,7 +693,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     const workingAgentId = 'agent-working-mismatch-1';
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [workingAgentId, 'intermediate', team.id, 'working', 'STORY-OTHER']
     );
 
@@ -734,7 +734,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     });
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [blockedAgentId, 'intermediate', team.id, 'blocked', story.id]
     );
     await updateStory(db, story.id, {
@@ -764,7 +764,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     const idleAgentId = 'agent-idle-review-1';
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [idleAgentId, 'intermediate', team.id, 'idle']
     );
 
@@ -852,7 +852,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
     const terminatedAgentId = 'agent-terminated-2';
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       [terminatedAgentId, 'intermediate', team.id, 'terminated']
     );
 
@@ -900,7 +900,7 @@ describe('Scheduler Orphaned Story Recovery', () => {
       const terminatedAgentId = 'agent-md-terminated';
       db.run(
         `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
         [terminatedAgentId, 'intermediate', team.id, 'terminated']
       );
 
@@ -1891,7 +1891,7 @@ describe('Scheduler Agent Reassignment for Working Agents with NULL currentStory
     // Create a working agent with no current story (effectively idle)
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       ['senior-orphan-1', 'senior', team.id, 'working']
     );
 
@@ -1918,7 +1918,7 @@ describe('Scheduler Agent Reassignment for Working Agents with NULL currentStory
     // Create a working agent with a current story
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       ['senior-busy-1', 'senior', team.id, 'working', story.id]
     );
 
@@ -2043,7 +2043,7 @@ describe('Scheduler checkScaling', () => {
 
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       ['senior-busy-1', 'senior', team.id, 'working', 'STORY-OLD']
     );
 
@@ -2061,7 +2061,7 @@ describe('Scheduler checkScaling', () => {
         expect(index).toBe(2);
         db.run(
           `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+           VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
           ['senior-spawned-2', 'senior', team.id, 'idle']
         );
         return {
@@ -2104,7 +2104,7 @@ describe('Scheduler checkScaling', () => {
     for (const index of [2, 3, 4, 5]) {
       db.run(
         `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
         [
           `senior-gap-${index}`,
           'senior',
@@ -2130,7 +2130,7 @@ describe('Scheduler checkScaling', () => {
         expect(index).toBe(6);
         db.run(
           `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+           VALUES (?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
           ['senior-gap-6', 'senior', team.id, `${gapSessionPrefix}-6`, 'idle']
         );
         return {
@@ -2161,7 +2161,7 @@ describe('Scheduler checkScaling', () => {
 
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       ['senior-single-1', 'senior', team.id, 'idle']
     );
 
@@ -2218,7 +2218,7 @@ describe('Scheduler checkScaling', () => {
     const sessionName = 'hive-senior-handoff-team';
     db.db.run(
       `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       ['senior-handoff-1', 'senior', team.id, sessionName, 'idle']
     );
 
@@ -2257,7 +2257,7 @@ describe('Scheduler checkScaling', () => {
 
     db.db.run(
       `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       ['senior-guard-1', 'senior', team.id, expectedSession, 'working', 'STORY-ACTIVE']
     );
 
@@ -2395,7 +2395,7 @@ describe('Scheduler Markdown File Writing', () => {
     // Create an idle senior agent
     db.db.run(
       `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       ['senior-md-1', 'senior', team.id, 'idle']
     );
 
