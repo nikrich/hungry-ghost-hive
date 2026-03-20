@@ -149,10 +149,10 @@ myStoriesCommand
       await db.provider.run(
         `
         UPDATE stories
-        SET assigned_agent_id = ?, status = 'in_progress', updated_at = datetime('now')
+        SET assigned_agent_id = ?, status = 'in_progress', updated_at = ?
         WHERE id = ?
       `,
-        [agent.id, storyId]
+        [agent.id, new Date().toISOString(), storyId]
       );
       db.save();
 
@@ -174,10 +174,10 @@ myStoriesCommand
       await db.provider.run(
         `
         UPDATE stories
-        SET status = 'review', updated_at = datetime('now')
+        SET status = 'review', updated_at = ?
         WHERE id = ?
       `,
-        [storyId]
+        [new Date().toISOString(), storyId]
       );
       db.save();
 
