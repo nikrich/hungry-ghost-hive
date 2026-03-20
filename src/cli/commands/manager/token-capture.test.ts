@@ -121,7 +121,7 @@ describe('token-capture', () => {
       expect(mockCreateLog).toHaveBeenCalledWith(ctx._mockDb.provider, {
         agentId: 'agent-1',
         storyId: 'story-1',
-        eventType: 'TOKEN_USAGE_CAPTURED',
+        eventType: 'STORY_PROGRESS_UPDATE',
         message: expect.stringContaining('input=10000'),
       });
     });
@@ -150,7 +150,7 @@ describe('token-capture', () => {
       mockCaptureTmuxPane.mockResolvedValue('Total tokens: 15,000');
       mockRecordTokenUsage.mockRejectedValue(new Error('DB write failed'));
       const ctx = createMockCtx();
-      ctx.withDb = vi.fn(async () => {
+      ctx.withDb = vi.fn(async (_fn: any): Promise<any> => {
         throw new Error('DB write failed');
       });
 

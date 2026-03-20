@@ -72,7 +72,7 @@ export async function parseAndPersistTokenUsage(
       await createLog(db.provider, {
         agentId,
         storyId: storyId ?? undefined,
-        eventType: 'TOKEN_USAGE_CAPTURED',
+        eventType: 'STORY_PROGRESS_UPDATE',
         message: `Captured token usage: input=${tokens.inputTokens}, output=${tokens.outputTokens}, total=${tokens.totalTokens}${tokens.cost !== undefined ? `, cost=$${tokens.cost}` : ''}`,
       });
 
