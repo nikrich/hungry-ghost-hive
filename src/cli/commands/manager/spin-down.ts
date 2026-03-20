@@ -6,6 +6,7 @@ import { getAgentById, updateAgent } from '../../../db/queries/agents.js';
 import { createLog } from '../../../db/queries/logs.js';
 import { updateStoryAssignment } from '../../../db/queries/stories.js';
 import { killTmuxSession, sendToTmuxSession } from '../../../tmux/manager.js';
+import { captureAndPersistTokenUsage } from './token-capture.js';
 import type { ManagerCheckContext } from './types.js';
 import { AGENT_SPINDOWN_DELAY_MS, IDLE_SPINDOWN_DELAY_MS } from './types.js';
 
@@ -130,10 +131,22 @@ export async function spinDownMergedAgents(ctx: ManagerCheckContext): Promise<vo
     return result;
   });
 
-  // Phase 2: Tmux operations (no lock)
+  // Phase 2: Capture tokens and tmux operations (no lock)
   const spindownActions = actions.filter(a => a.type === 'spindown');
   for (const action of spindownActions) {
     if (action.sessionName) {
+      // Capture token usage before killing the session
+      const result = await captureAndPersistTokenUsage(
+        action.sessionName,
+        ctx,
+        action.agentId,
+        action.storyId || undefined
+      );
+      verboseLog(
+        ctx,
+        `spinDownMergedAgents: token_capture agent=${action.agentId} captured=${result.captured} persisted=${result.persisted}`
+      );
+
       const msg = action.storyId
         ? `# Congratulations! Your story ${action.storyId} has been merged.\n# Your work is complete. Spinning down...`
         : `# No active stories assigned. Spinning down...`;
@@ -204,10 +217,17 @@ export async function spinDownIdleAgents(ctx: ManagerCheckContext): Promise<void
 
   if (workingAgents.length === 0) return;
 
-  // Phase 2: Tmux operations (no lock)
+  // Phase 2: Capture tokens and tmux operations (no lock)
   for (const agent of workingAgents) {
     const agentSession = ctx.hiveSessions.find(s => s.name === agent.tmux_session);
     if (agentSession) {
+      // Capture token usage before killing the session
+      const result = await captureAndPersistTokenUsage(agentSession.name, ctx, agent.id);
+      verboseLog(
+        ctx,
+        `spinDownIdleAgents: token_capture agent=${agent.id} captured=${result.captured} persisted=${result.persisted}`
+      );
+
       await sendToTmuxSession(
         agentSession.name,
         `# All work complete. No stories in pipeline. Spinning down...`
