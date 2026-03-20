@@ -1,7 +1,12 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { captureAndPersistTokenUsage, parseAndPersistTokenUsage } from './token-capture.js';
+import {
+  captureAndPersistTokenUsage,
+  clearTokenDeduplicationState,
+  parseAndPersistTokenUsage,
+  parseAndPersistTokenUsageIfChanged,
+} from './token-capture.js';
 
 const { mockCaptureTmuxPane } = vi.hoisted(() => ({
   mockCaptureTmuxPane: vi.fn(),
@@ -63,6 +68,7 @@ describe('token-capture', () => {
     mockCaptureTmuxPane.mockReset();
     mockRecordTokenUsage.mockReset();
     mockCreateLog.mockReset();
+    clearTokenDeduplicationState();
   });
 
   describe('captureAndPersistTokenUsage', () => {
@@ -225,6 +231,149 @@ describe('token-capture', () => {
         ctx._mockDb.provider,
         expect.objectContaining({
           message: expect.stringContaining('cost=$0.01'),
+        })
+      );
+    });
+  });
+
+  describe('parseAndPersistTokenUsageIfChanged', () => {
+    it('should persist and return changed=true on first capture', async () => {
+      mockRecordTokenUsage.mockResolvedValue({ id: 1 });
+      mockCreateLog.mockResolvedValue(undefined);
+      const ctx = createMockCtx();
+
+      const result = await parseAndPersistTokenUsageIfChanged(
+        'Total input tokens: 1,000\nTotal output tokens: 500\nTotal tokens: 1,500',
+        ctx as any,
+        'agent-dedup-1',
+        'story-1'
+      );
+
+      expect(result.captured).toBe(true);
+      expect(result.persisted).toBe(true);
+      expect(result.changed).toBe(true);
+      expect(result.tokens).toMatchObject({
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      });
+      expect(mockRecordTokenUsage).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not persist and return changed=false when token counts are unchanged', async () => {
+      mockRecordTokenUsage.mockResolvedValue({ id: 1 });
+      mockCreateLog.mockResolvedValue(undefined);
+      const ctx = createMockCtx();
+      const output = 'Total input tokens: 2,000\nTotal output tokens: 1,000\nTotal tokens: 3,000';
+
+      // First call — persists
+      await parseAndPersistTokenUsageIfChanged(output, ctx as any, 'agent-dedup-2');
+
+      mockRecordTokenUsage.mockReset();
+      mockCreateLog.mockReset();
+
+      // Second call with same counts — should skip
+      const result = await parseAndPersistTokenUsageIfChanged(output, ctx as any, 'agent-dedup-2');
+
+      expect(result.persisted).toBe(false);
+      expect(result.changed).toBe(false);
+      expect(result.captured).toBe(true);
+      expect(mockRecordTokenUsage).not.toHaveBeenCalled();
+    });
+
+    it('should persist again when token counts change', async () => {
+      mockRecordTokenUsage.mockResolvedValue({ id: 1 });
+      mockCreateLog.mockResolvedValue(undefined);
+      const ctx = createMockCtx();
+
+      await parseAndPersistTokenUsageIfChanged(
+        'Total input tokens: 1,000\nTotal output tokens: 500\nTotal tokens: 1,500',
+        ctx as any,
+        'agent-dedup-3'
+      );
+
+      mockRecordTokenUsage.mockReset();
+      mockCreateLog.mockReset();
+
+      // Different token counts
+      const result = await parseAndPersistTokenUsageIfChanged(
+        'Total input tokens: 2,000\nTotal output tokens: 1,000\nTotal tokens: 3,000',
+        ctx as any,
+        'agent-dedup-3'
+      );
+
+      expect(result.persisted).toBe(true);
+      expect(result.changed).toBe(true);
+      expect(mockRecordTokenUsage).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return captured=true tokens=null when output has no token data', async () => {
+      const ctx = createMockCtx();
+
+      const result = await parseAndPersistTokenUsageIfChanged(
+        'No token information here',
+        ctx as any,
+        'agent-dedup-4'
+      );
+
+      expect(result.captured).toBe(true);
+      expect(result.tokens).toBeNull();
+      expect(result.persisted).toBe(false);
+      expect(result.changed).toBe(false);
+      expect(mockRecordTokenUsage).not.toHaveBeenCalled();
+    });
+
+    it('should track dedup state independently per agent', async () => {
+      mockRecordTokenUsage.mockResolvedValue({ id: 1 });
+      mockCreateLog.mockResolvedValue(undefined);
+      const ctx = createMockCtx();
+      const output = 'Total input tokens: 1,000\nTotal output tokens: 500\nTotal tokens: 1,500';
+
+      await parseAndPersistTokenUsageIfChanged(output, ctx as any, 'agent-A');
+      await parseAndPersistTokenUsageIfChanged(output, ctx as any, 'agent-B');
+
+      // Both agents have same counts but are tracked separately — both should have persisted once
+      expect(mockRecordTokenUsage).toHaveBeenCalledTimes(2);
+
+      mockRecordTokenUsage.mockReset();
+
+      // Second call for each — should not persist (already recorded)
+      await parseAndPersistTokenUsageIfChanged(output, ctx as any, 'agent-A');
+      await parseAndPersistTokenUsageIfChanged(output, ctx as any, 'agent-B');
+
+      expect(mockRecordTokenUsage).not.toHaveBeenCalled();
+    });
+
+    it('should handle db write failure gracefully', async () => {
+      const ctx = createMockCtx();
+      ctx.withDb = vi.fn(async (_fn: any): Promise<any> => {
+        throw new Error('DB write failed');
+      });
+
+      const result = await parseAndPersistTokenUsageIfChanged(
+        'Total tokens: 5,000',
+        ctx as any,
+        'agent-dedup-5'
+      );
+
+      expect(result).toEqual({ captured: false, tokens: null, persisted: false, changed: false });
+    });
+
+    it('should use "Periodic token capture" in log message', async () => {
+      mockRecordTokenUsage.mockResolvedValue({ id: 1 });
+      mockCreateLog.mockResolvedValue(undefined);
+      const ctx = createMockCtx();
+
+      await parseAndPersistTokenUsageIfChanged(
+        'Total input tokens: 100\nTotal output tokens: 50\nTotal tokens: 150',
+        ctx as any,
+        'agent-dedup-6'
+      );
+
+      expect(mockCreateLog).toHaveBeenCalledWith(
+        ctx._mockDb.provider,
+        expect.objectContaining({
+          message: expect.stringContaining('Periodic token capture'),
         })
       );
     });
