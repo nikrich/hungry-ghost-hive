@@ -13,12 +13,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SqliteProvider } from '../../../db/provider.js';
+import { createTestDatabase } from '../../../db/queries/test-helpers.js';
 import {
   getTokensByAgent,
   getTokensByStory,
   getTotalTokens,
 } from '../../../db/queries/token-usage.js';
-import { createTestDatabase } from '../../../db/queries/test-helpers.js';
 import {
   captureAndPersistTokenUsage,
   clearTokenDeduplicationState,
@@ -100,7 +100,12 @@ describe('token usage tracking — end-to-end', () => {
         'Total cost: $1.23',
       ].join('\n');
 
-      const result = await parseAndPersistTokenUsage(claudeOutput, ctx as any, 'agent-e2e', 'story-1');
+      const result = await parseAndPersistTokenUsage(
+        claudeOutput,
+        ctx as any,
+        'agent-e2e',
+        'story-1'
+      );
 
       expect(result.captured).toBe(true);
       expect(result.persisted).toBe(true);
@@ -338,8 +343,7 @@ describe('token usage tracking — end-to-end', () => {
   describe('parseAndPersistTokenUsageIfChanged — deduplication with real DB', () => {
     it('should write to DB on first capture and verify record exists', async () => {
       const ctx = createE2ECtx(provider);
-      const output =
-        'Total input tokens: 5,000\nTotal output tokens: 2,500\nTotal tokens: 7,500';
+      const output = 'Total input tokens: 5,000\nTotal output tokens: 2,500\nTotal tokens: 7,500';
 
       const result = await parseAndPersistTokenUsageIfChanged(
         output,
@@ -359,8 +363,7 @@ describe('token usage tracking — end-to-end', () => {
 
     it('should skip DB write on second call with identical counts', async () => {
       const ctx = createE2ECtx(provider);
-      const output =
-        'Total input tokens: 5,000\nTotal output tokens: 2,500\nTotal tokens: 7,500';
+      const output = 'Total input tokens: 5,000\nTotal output tokens: 2,500\nTotal tokens: 7,500';
 
       await parseAndPersistTokenUsageIfChanged(output, ctx as any, 'agent-e2e');
 
@@ -406,8 +409,7 @@ describe('token usage tracking — end-to-end', () => {
       );
 
       const ctx = createE2ECtx(provider);
-      const output =
-        'Total input tokens: 1,000\nTotal output tokens: 500\nTotal tokens: 1,500';
+      const output = 'Total input tokens: 1,000\nTotal output tokens: 500\nTotal tokens: 1,500';
 
       // First capture for both agents
       await parseAndPersistTokenUsageIfChanged(output, ctx as any, 'agent-e2e');
