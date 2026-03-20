@@ -92,10 +92,7 @@ import {
   recoverUnassignedQAFailedStories,
 } from './stuck-story-processor.js';
 import { restartStaleTechLead } from './tech-lead-lifecycle.js';
-import {
-  parseAndPersistTokenUsage,
-  parseAndPersistTokenUsageIfChanged,
-} from './token-capture.js';
+import { parseAndPersistTokenUsage, parseAndPersistTokenUsageIfChanged } from './token-capture.js';
 import type { ManagerCheckContext } from './types.js';
 import {
   MANAGER_NUDGE_END_MARKER,

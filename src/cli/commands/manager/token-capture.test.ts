@@ -252,7 +252,11 @@ describe('token-capture', () => {
       expect(result.captured).toBe(true);
       expect(result.persisted).toBe(true);
       expect(result.changed).toBe(true);
-      expect(result.tokens).toMatchObject({ inputTokens: 1000, outputTokens: 500, totalTokens: 1500 });
+      expect(result.tokens).toMatchObject({
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      });
       expect(mockRecordTokenUsage).toHaveBeenCalledTimes(1);
     });
 
