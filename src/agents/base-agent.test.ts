@@ -680,11 +680,9 @@ CREATE TABLE IF NOT EXISTS token_usage (
       // Trigger second periodic capture without any new chat
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
 
-      const rows = queryAll<{ id: number }>(
-        db,
-        'SELECT id FROM token_usage WHERE agent_id = ?',
-        [agentRow.id]
-      );
+      const rows = queryAll<{ id: number }>(db, 'SELECT id FROM token_usage WHERE agent_id = ?', [
+        agentRow.id,
+      ]);
 
       // Only 1 row — second capture was a no-op
       expect(rows).toHaveLength(1);
