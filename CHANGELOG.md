@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.51.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.50.1...hungry-ghost-hive-v0.51.0) (2026-03-20)
+
+
+### Features
+
+* add hive tokens CLI command for viewing token usage statistics ([#579](https://github.com/nikrich/hungry-ghost-hive/issues/579)) ([531737b](https://github.com/nikrich/hungry-ghost-hive/commit/531737b6a674e4f9caba39fded3e2c243ad13932))
+* add periodic token capture during long-running agent sessions ([#582](https://github.com/nikrich/hungry-ghost-hive/issues/582)) ([f65a7b5](https://github.com/nikrich/hungry-ghost-hive/commit/f65a7b5e176dc6c9d3478c3c4fd5e4ee22f43eaa))
+* add periodic token capture in manager monitoring loop ([#585](https://github.com/nikrich/hungry-ghost-hive/issues/585)) ([b3276eb](https://github.com/nikrich/hungry-ghost-hive/commit/b3276eb86c21681cca370aa6b1733d97b6cab73b))
+* add token usage parser for CLI agent tmux output ([#581](https://github.com/nikrich/hungry-ghost-hive/issues/581)) ([a6ef8ed](https://github.com/nikrich/hungry-ghost-hive/commit/a6ef8ed738515d0a40b059e1809d8386ea6065dc))
+* add token_usage database table, migration, and query module ([#576](https://github.com/nikrich/hungry-ghost-hive/issues/576)) ([567f0a6](https://github.com/nikrich/hungry-ghost-hive/commit/567f0a6b330b88db0c342c6526e950217520602f))
+* capture and persist token usage from agent CLI sessions ([#578](https://github.com/nikrich/hungry-ghost-hive/issues/578)) ([2476253](https://github.com/nikrich/hungry-ghost-hive/commit/2476253576425e089275ce3a4791669c2a827f17))
+* integrate token capture into manager spin-down and done-detection ([#583](https://github.com/nikrich/hungry-ghost-hive/issues/583)) ([0533b26](https://github.com/nikrich/hungry-ghost-hive/commit/0533b26967ce45e65c16e6fa4321e8664c8e9ec0))
+
+
+### Bug Fixes
+
+* replace datetime() SQLite calls with cross-database compatible JS timestamps ([#588](https://github.com/nikrich/hungry-ghost-hive/issues/588)) ([243c7bd](https://github.com/nikrich/hungry-ghost-hive/commit/243c7bd61691f4d36d965ae6ecdc010fc0d77f1b))
+
 ## [0.50.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.50.0...hungry-ghost-hive-v0.50.1) (2026-03-19)
 
 
