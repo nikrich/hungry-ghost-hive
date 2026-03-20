@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { SqliteProvider } from '../provider.js';
+import { createTestDatabase } from './test-helpers.js';
 import {
   getTokensByAgent,
   getTokensByRequirement,
@@ -9,7 +10,6 @@ import {
   getTotalTokens,
   recordTokenUsage,
 } from './token-usage.js';
-import { createTestDatabase } from './test-helpers.js';
 
 async function createTokenUsageTestDatabase() {
   const rawDb = await createTestDatabase();
