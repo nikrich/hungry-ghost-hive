@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import { nanoid } from 'nanoid';
 import { getAgentById, getAllAgents, type AgentRow } from '../../db/queries/agents.js';
-import { sendMessageWithConfirmation, isTmuxSessionRunning } from '../../tmux/manager.js';
+import { isTmuxSessionRunning, sendMessageWithConfirmation } from '../../tmux/manager.js';
 import { getTechLeadSessionName } from '../../utils/instance.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 

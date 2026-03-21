@@ -46,9 +46,7 @@ describe('message command', () => {
     });
 
     it('should have description', () => {
-      expect(messageCommand.description()).toBe(
-        'Send messages directly to agent tmux sessions'
-      );
+      expect(messageCommand.description()).toBe('Send messages directly to agent tmux sessions');
     });
 
     it('should have --agent required option', () => {
