@@ -19,6 +19,7 @@ import {
   initCommand,
   jiraCommand,
   managerCommand,
+  messageCommand,
   msgCommand,
   myStoriesCommand,
   nukeCommand,
@@ -85,6 +86,7 @@ program.addCommand(nukeCommand);
 program.addCommand(cleanupCommand);
 
 // Communication
+program.addCommand(messageCommand);
 program.addCommand(msgCommand);
 
 // Agent workflow
