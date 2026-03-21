@@ -95,7 +95,7 @@ async function handleSendMessage(text: string, agentId: string, from?: string): 
   });
 }
 
-async function handleNewAgent(from?: string): Promise<void> {
+async function handleNewAgent(_from?: string): Promise<void> {
   await withHiveContext(async ({ db, paths, root }) => {
     const config = loadConfig(paths.hiveDir);
     const modelConfig = config.models.senior;
