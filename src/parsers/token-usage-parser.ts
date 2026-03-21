@@ -1,11 +1,16 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 /**
- * Token Usage Parser for CLI Agent Tmux Output
+ * Token Usage Parser for CLI Agent Sessions
  *
  * Parses token usage information from CLI tool output captured from tmux panes.
  * Supports Claude Code, Codex, and Gemini output formats.
+ * Also reads token usage directly from Claude Code's JSONL conversation logs.
  */
+
+import { readFileSync, readdirSync } from 'fs';
+import { homedir } from 'os';
+import { join, resolve } from 'path';
 
 export interface ParsedTokenUsage {
   inputTokens: number;
@@ -190,4 +195,97 @@ export function parseTokenUsage(output: string): ParsedTokenUsage | null {
 
   // Try each parser in order - Claude Code is most common
   return parseClaudeTokens(output) ?? parseCodexTokens(output) ?? parseGeminiTokens(output);
+}
+
+// --- JSONL-based token reading (Claude Code session logs) ---
+
+/**
+ * Convert an absolute directory path to the Claude Code project directory name.
+ * Claude Code escapes paths by replacing '/' with '-'.
+ */
+export function pathToClaudeProjectDir(absolutePath: string): string {
+  return absolutePath.replace(/\//g, '-');
+}
+
+/**
+ * Parse token usage from a Claude Code JSONL session file.
+ * Sums up usage across all assistant messages in the conversation,
+ * including cache_creation_input_tokens and cache_read_input_tokens
+ * which make up the bulk of real input token usage.
+ */
+export function parseTokenUsageFromJsonl(filePath: string): ParsedTokenUsage | null {
+  try {
+    const content = readFileSync(filePath, 'utf-8');
+    const lines = content.trim().split('\n');
+
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cacheCreationTokens = 0;
+    let cacheReadTokens = 0;
+
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        const usage = entry?.message?.usage;
+        if (usage) {
+          inputTokens += usage.input_tokens || 0;
+          outputTokens += usage.output_tokens || 0;
+          cacheCreationTokens += usage.cache_creation_input_tokens || 0;
+          cacheReadTokens += usage.cache_read_input_tokens || 0;
+        }
+      } catch {
+        // Skip malformed lines
+      }
+    }
+
+    // Total input includes direct input + cache creation + cache read tokens
+    const totalInput = inputTokens + cacheCreationTokens + cacheReadTokens;
+    const totalTokens = totalInput + outputTokens;
+    if (totalTokens === 0) return null;
+
+    return { inputTokens: totalInput, outputTokens, totalTokens };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get token usage for a Claude Code agent by its working directory.
+ * Sums usage across all JSONL session files for the agent.
+ */
+export function getTokenUsageForAgent(workDir: string): ParsedTokenUsage | null {
+  const sessionFiles = findAllSessionFiles(workDir);
+  if (sessionFiles.length === 0) return null;
+
+  let totalInput = 0;
+  let totalOutput = 0;
+
+  for (const file of sessionFiles) {
+    const usage = parseTokenUsageFromJsonl(file);
+    if (usage) {
+      totalInput += usage.inputTokens;
+      totalOutput += usage.outputTokens;
+    }
+  }
+
+  const totalTokens = totalInput + totalOutput;
+  if (totalTokens === 0) return null;
+
+  return { inputTokens: totalInput, outputTokens: totalOutput, totalTokens };
+}
+
+/**
+ * Find all JSONL session files for a given working directory.
+ */
+function findAllSessionFiles(workDir: string): string[] {
+  const projectDir = pathToClaudeProjectDir(resolve(workDir));
+  const claudeProjectsDir = join(homedir(), '.claude', 'projects', projectDir);
+
+  try {
+    return readdirSync(claudeProjectsDir)
+      .filter(f => f.endsWith('.jsonl'))
+      .map(f => join(claudeProjectsDir, f));
+  } catch {
+    return [];
+  }
 }

@@ -7,9 +7,14 @@
  * Used by spin-down, done-detection, and agent-monitoring flows.
  */
 
+import { resolve } from 'path';
 import { createLog } from '../../../db/queries/logs.js';
 import { recordTokenUsage } from '../../../db/queries/token-usage.js';
-import { parseTokenUsage, type ParsedTokenUsage } from '../../../parsers/token-usage-parser.js';
+import {
+  getTokenUsageForAgent,
+  parseTokenUsage,
+  type ParsedTokenUsage,
+} from '../../../parsers/token-usage-parser.js';
 import { captureTmuxPane } from '../../../tmux/manager.js';
 import type { ManagerCheckContext } from './types.js';
 
@@ -107,16 +112,25 @@ export async function parseAndPersistTokenUsage(
 /**
  * Parse token usage from already-captured pane output and persist only if the
  * token counts have changed since the last manager cycle (deduplication).
+ * Falls back to reading Claude Code JSONL session logs if text parsing finds nothing.
  * Use this for periodic captures in the manager monitoring loop.
  */
 export async function parseAndPersistTokenUsageIfChanged(
   output: string,
   ctx: ManagerCheckContext,
   agentId: string,
-  storyId?: string | null
+  storyId?: string | null,
+  worktreePath?: string | null
 ): Promise<TokenCaptureCycleResult> {
   try {
-    const tokens = parseTokenUsage(output);
+    let tokens = parseTokenUsage(output);
+
+    // Fall back to JSONL session logs if text parsing found nothing
+    if (!tokens) {
+      const absoluteWorkDir = worktreePath ? resolve(ctx.root, worktreePath) : ctx.root;
+      tokens = getTokenUsageForAgent(absoluteWorkDir);
+    }
+
     if (!tokens) {
       return { captured: true, tokens: null, persisted: false, changed: false };
     }
