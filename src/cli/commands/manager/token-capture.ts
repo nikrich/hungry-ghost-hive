@@ -63,7 +63,8 @@ export async function captureAndPersistTokenUsage(
     }
 
     return await parseAndPersistTokenUsage(output, ctx, agentId, storyId);
-  } catch {
+  } catch (err) {
+    console.error(`[token-capture] captureAndPersistTokenUsage failed for agent=${agentId}:`, err);
     return { captured: false, tokens: null, persisted: false };
   }
 }
@@ -104,7 +105,8 @@ export async function parseAndPersistTokenUsage(
     });
 
     return { captured: true, tokens, persisted: true };
-  } catch {
+  } catch (err) {
+    console.error(`[token-capture] parseAndPersistTokenUsage failed for agent=${agentId}:`, err);
     return { captured: false, tokens: null, persisted: false };
   }
 }
@@ -171,7 +173,11 @@ export async function parseAndPersistTokenUsageIfChanged(
     });
 
     return { captured: true, tokens, persisted: true, changed: true };
-  } catch {
+  } catch (err) {
+    console.error(
+      `[token-capture] parseAndPersistTokenUsageIfChanged failed for agent=${agentId}:`,
+      err
+    );
     return { captured: false, tokens: null, persisted: false, changed: false };
   }
 }
