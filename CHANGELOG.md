@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.51.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.51.0...hungry-ghost-hive-v0.51.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* replace datetime() in test files with portable CURRENT_TIMESTAMP ([#589](https://github.com/nikrich/hungry-ghost-hive/issues/589)) ([d62e084](https://github.com/nikrich/hungry-ghost-hive/commit/d62e0840e9dc291f7129ddd713c1d56799a2456d))
+
 ## [0.51.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.50.1...hungry-ghost-hive-v0.51.0) (2026-03-20)
 
 
