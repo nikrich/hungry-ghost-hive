@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.52.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.51.1...hungry-ghost-hive-v0.52.0) (2026-03-21)
+
+
+### Features
+
+* add --new flag to spawn interactive chat agent ([#593](https://github.com/nikrich/hungry-ghost-hive/issues/593)) ([452792a](https://github.com/nikrich/hungry-ghost-hive/commit/452792a657e40f6ca0fdaa2b61b21fee90fdc8cd))
+* add hive message --agent command for direct agent messaging ([#591](https://github.com/nikrich/hungry-ghost-hive/issues/591)) ([7b9a466](https://github.com/nikrich/hungry-ghost-hive/commit/7b9a46669d6296da60a9cce3e13acd4e4be001ae))
+
+
+### Bug Fixes
+
+* accurate token usage via JSONL session log reading ([#594](https://github.com/nikrich/hungry-ghost-hive/issues/594)) ([7994710](https://github.com/nikrich/hungry-ghost-hive/commit/7994710c7f85a4a3c100195d791cb1fe829c65ea))
+
 ## [0.51.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.51.0...hungry-ghost-hive-v0.51.1) (2026-03-20)
 
 
