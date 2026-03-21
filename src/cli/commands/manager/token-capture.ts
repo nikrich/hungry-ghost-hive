@@ -174,7 +174,10 @@ export async function parseAndPersistTokenUsageIfChanged(
 
     return { captured: true, tokens, persisted: true, changed: true };
   } catch (err) {
-    console.error(`[token-capture] parseAndPersistTokenUsageIfChanged failed for agent=${agentId}:`, err);
+    console.error(
+      `[token-capture] parseAndPersistTokenUsageIfChanged failed for agent=${agentId}:`,
+      err
+    );
     return { captured: false, tokens: null, persisted: false, changed: false };
   }
 }
