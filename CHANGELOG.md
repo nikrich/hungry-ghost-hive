@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.52.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.52.0...hungry-ghost-hive-v0.52.1) (2026-03-21)
+
+
+### Bug Fixes
+
+* log errors in token capture instead of silently swallowing ([#595](https://github.com/nikrich/hungry-ghost-hive/issues/595)) ([6eb4e89](https://github.com/nikrich/hungry-ghost-hive/commit/6eb4e89782a7d0615005fe86ba8fbda6ef85d2f2))
+* resolve JSONL session logs from worktree owner's home directory ([#598](https://github.com/nikrich/hungry-ghost-hive/issues/598)) ([ce2b913](https://github.com/nikrich/hungry-ghost-hive/commit/ce2b9135076c00de556a64a34e99c7a6e09893f9))
+
 ## [0.52.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.51.1...hungry-ghost-hive-v0.52.0) (2026-03-21)
 
 
