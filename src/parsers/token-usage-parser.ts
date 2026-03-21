@@ -8,8 +8,9 @@
  * Also reads token usage directly from Claude Code's JSONL conversation logs.
  */
 
-import { readFileSync, readdirSync } from 'fs';
-import { homedir } from 'os';
+import { execSync } from 'child_process';
+import { readFileSync, readdirSync, statSync } from 'fs';
+import { homedir, userInfo } from 'os';
 import { join, resolve } from 'path';
 
 export interface ParsedTokenUsage {
@@ -275,11 +276,42 @@ export function getTokenUsageForAgent(workDir: string): ParsedTokenUsage | null 
 }
 
 /**
+ * Resolve the home directory for the OS user that owns a given path.
+ * Falls back to the current process's homedir() if detection fails.
+ */
+function resolveHomeDirForPath(dirPath: string): string {
+  try {
+    const stat = statSync(dirPath);
+    const currentUid = userInfo().uid;
+
+    // If the directory is owned by the current user, just use homedir()
+    if (stat.uid === currentUid) {
+      return homedir();
+    }
+
+    // Look up the owning user's home directory via getent (POSIX)
+    const passwd = execSync(`getent passwd ${stat.uid}`, { encoding: 'utf-8' }).trim();
+    const fields = passwd.split(':');
+    if (fields.length >= 6 && fields[5]) {
+      return fields[5];
+    }
+  } catch {
+    // Fall through to default
+  }
+
+  return homedir();
+}
+
+/**
  * Find all JSONL session files for a given working directory.
+ * Resolves the Claude config directory from the user that owns the workDir,
+ * so the manager can read JSONL logs even when running as a different user.
  */
 function findAllSessionFiles(workDir: string): string[] {
-  const projectDir = pathToClaudeProjectDir(resolve(workDir));
-  const claudeProjectsDir = join(homedir(), '.claude', 'projects', projectDir);
+  const resolvedWorkDir = resolve(workDir);
+  const projectDir = pathToClaudeProjectDir(resolvedWorkDir);
+  const home = resolveHomeDirForPath(resolvedWorkDir);
+  const claudeProjectsDir = join(home, '.claude', 'projects', projectDir);
 
   try {
     return readdirSync(claudeProjectsDir)
