@@ -1010,7 +1010,8 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
       output,
       ctx,
       agent.id,
-      agent.current_story_id
+      agent.current_story_id,
+      agent.worktree_path
     );
     verboseLogCtx(
       ctx,
