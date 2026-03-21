@@ -7,6 +7,7 @@
  * Used by spin-down, done-detection, and agent-monitoring flows.
  */
 
+import { resolve } from 'path';
 import { createLog } from '../../../db/queries/logs.js';
 import { recordTokenUsage } from '../../../db/queries/token-usage.js';
 import {
@@ -15,7 +16,6 @@ import {
   type ParsedTokenUsage,
 } from '../../../parsers/token-usage-parser.js';
 import { captureTmuxPane } from '../../../tmux/manager.js';
-import { resolve } from 'path';
 import type { ManagerCheckContext } from './types.js';
 
 /** Large capture to get the full session summary with token info */
