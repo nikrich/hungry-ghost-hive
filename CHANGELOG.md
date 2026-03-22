@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.52.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.52.1...hungry-ghost-hive-v0.52.2) (2026-03-22)
+
+
+### Bug Fixes
+
+* correct workspace_id param ordering in PostgresProvider WHERE injection ([#606](https://github.com/nikrich/hungry-ghost-hive/issues/606)) ([f80b3bd](https://github.com/nikrich/hungry-ghost-hive/commit/f80b3bd22f1772d000ed280add350fad1dacaed5)), closes [#600](https://github.com/nikrich/hungry-ghost-hive/issues/600)
+* handle Date object timestamps in hive status and agents commands ([#604](https://github.com/nikrich/hungry-ghost-hive/issues/604)) ([1af237e](https://github.com/nikrich/hungry-ghost-hive/commit/1af237ec31c1846efe3973102de8d096605386e8))
+* handle Date objects for created_at in hive msg inbox (Postgres mode) ([#605](https://github.com/nikrich/hungry-ghost-hive/issues/605)) ([43a3c32](https://github.com/nikrich/hungry-ghost-hive/commit/43a3c32a4a425b696c01da7837cf474101fff9e5))
+* resolve token usage display issues in distributed mode ([#608](https://github.com/nikrich/hungry-ghost-hive/issues/608)) ([2ead26a](https://github.com/nikrich/hungry-ghost-hive/commit/2ead26a7610206d573afb477b2fda3830e4648bb)), closes [#603](https://github.com/nikrich/hungry-ghost-hive/issues/603)
+
 ## [0.52.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.52.0...hungry-ghost-hive-v0.52.1) (2026-03-21)
 
 
