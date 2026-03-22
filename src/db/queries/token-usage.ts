@@ -136,12 +136,18 @@ export async function getTotalTokens(
     params
   );
 
-  return (
-    result || {
-      total_input_tokens: 0,
-      total_output_tokens: 0,
-      total_tokens: 0,
-      record_count: 0,
-    }
-  );
+  // Postgres SUM/COUNT return bigint, which node-postgres converts to strings.
+  // Coerce to numbers for consistent behavior across SQLite and Postgres.
+  const raw = result || {
+    total_input_tokens: 0,
+    total_output_tokens: 0,
+    total_tokens: 0,
+    record_count: 0,
+  };
+  return {
+    total_input_tokens: Number(raw.total_input_tokens),
+    total_output_tokens: Number(raw.total_output_tokens),
+    total_tokens: Number(raw.total_tokens),
+    record_count: Number(raw.record_count),
+  };
 }
