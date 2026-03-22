@@ -878,7 +878,7 @@ export interface AgentLogRow {
   status: string | null;
   message: string | null;
   metadata: string | null;
-  timestamp: string;
+  timestamp: string | Date;
 }
 
 export interface EscalationRow {

@@ -147,7 +147,9 @@ async function showOverallStatus(db: DatabaseProvider, json?: boolean): Promise<
   if (recentLogs.length > 0) {
     console.log(chalk.bold('Recent Activity:'));
     for (const log of recentLogs) {
-      const time = log.timestamp.substring(11, 19);
+      const ts =
+        log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp);
+      const time = ts.substring(11, 19);
       console.log(chalk.gray(`  ${time} | ${log.agent_id.padEnd(15)} | ${log.event_type}`));
     }
     console.log();
@@ -326,7 +328,9 @@ async function showStoryStatus(
   if (logs.length > 0) {
     console.log(chalk.bold('Recent Activity:'));
     for (const log of logs) {
-      const time = log.timestamp.substring(11, 19);
+      const ts =
+        log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp);
+      const time = ts.substring(11, 19);
       const msg = log.message ? `: ${log.message.substring(0, 40)}` : '';
       console.log(chalk.gray(`  ${time} | ${log.agent_id.padEnd(15)} | ${log.event_type}${msg}`));
     }
