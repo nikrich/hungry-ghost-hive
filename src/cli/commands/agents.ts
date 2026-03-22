@@ -86,7 +86,9 @@ agentsCommand
       console.log(chalk.bold(`\nLogs for ${agentId}:\n`));
 
       for (const log of logs) {
-        const time = log.timestamp.substring(0, 19).replace('T', ' ');
+        const tsStr =
+          log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp);
+        const time = tsStr.substring(0, 19).replace('T', ' ');
         const storyInfo = log.story_id ? chalk.cyan(` [${log.story_id}]`) : '';
         const message = log.message ? `: ${log.message}` : '';
 
@@ -137,7 +139,9 @@ agentsCommand
       if (logs.length > 0) {
         console.log(chalk.bold('\nRecent Activity:'));
         for (const log of logs) {
-          const time = log.timestamp.substring(11, 19);
+          const tsStr =
+            log.timestamp instanceof Date ? log.timestamp.toISOString() : String(log.timestamp);
+          const time = tsStr.substring(11, 19);
           const message = log.message ? `: ${log.message.substring(0, 50)}` : '';
           console.log(chalk.gray(`  ${time} | ${log.event_type}${message}`));
         }
