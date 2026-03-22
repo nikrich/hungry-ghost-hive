@@ -157,7 +157,7 @@ function needsWorkspaceScope(sql: string): boolean {
  * Transforms: INSERT INTO table (col1, col2) VALUES (?, ?)
  * Into:       INSERT INTO table (col1, col2, workspace_id) VALUES ($1, $2, $3)
  */
-function injectInsertWorkspaceId(
+export function injectInsertWorkspaceId(
   sql: string,
   workspaceId: string,
   params: unknown[]
@@ -187,7 +187,7 @@ function injectInsertWorkspaceId(
  * When the query uses JOINs, qualifies workspace_id with the primary table alias
  * to avoid ambiguous column references.
  */
-function injectWhereWorkspaceId(
+export function injectWhereWorkspaceId(
   sql: string,
   workspaceId: string,
   params: unknown[]
@@ -236,9 +236,18 @@ function injectWhereWorkspaceId(
 
     const whereBody = after.substring(0, trailingPos);
     const trailing = after.substring(trailingPos);
+
+    // Count ? placeholders before the injection point (before + whereBody) to
+    // splice workspace_id into the correct position in the params array.
+    // Appending to the end is wrong when trailing clauses (LIMIT, OFFSET) have
+    // their own positional params.
+    const questionsBefore = ((before + whereBody).match(/\?/g) || []).length;
+    const newParams = [...params];
+    newParams.splice(questionsBefore, 0, workspaceId);
+
     return {
       sql: `${before}${whereBody} AND ${wsCol} = ?${trailing}`,
-      params: [...params, workspaceId],
+      params: newParams,
     };
   }
 
