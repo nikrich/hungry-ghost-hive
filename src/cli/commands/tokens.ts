@@ -69,7 +69,7 @@ tokensCommand
       console.log(chalk.gray('─'.repeat(90)));
 
       for (const row of rows) {
-        const time = row.recorded_at.substring(0, 19).replace('T', ' ');
+        const time = new Date(row.recorded_at).toISOString().substring(0, 19).replace('T', ' ');
         const story = (row.story_id || '-').padEnd(20);
         const model = (row.model || '-').padEnd(15);
         console.log(
@@ -119,7 +119,7 @@ tokensCommand
       console.log(chalk.gray('─'.repeat(95)));
 
       for (const row of rows) {
-        const time = row.recorded_at.substring(0, 19).replace('T', ' ');
+        const time = new Date(row.recorded_at).toISOString().substring(0, 19).replace('T', ' ');
         const agent = row.agent_id.padEnd(25);
         const model = (row.model || '-').padEnd(15);
         console.log(
