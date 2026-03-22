@@ -82,5 +82,35 @@ describe('msg command', () => {
       const allOpt = inboxCmd?.options.find(opt => opt.long === '--all');
       expect(allOpt).toBeDefined();
     });
+
+    it('should not crash when created_at is a Date object (Postgres mode)', async () => {
+      const { withReadOnlyHiveContext } = await import('../../utils/with-hive-context.js');
+      const mockMsg = {
+        id: 'msg-test1',
+        from_session: 'sender',
+        to_session: 'receiver',
+        subject: 'test',
+        body: 'hello',
+        reply: null,
+        status: 'pending' as const,
+        created_at: new Date('2024-01-15T10:30:00.000Z'),
+        replied_at: null,
+      };
+      vi.mocked(withReadOnlyHiveContext).mockImplementationOnce(async callback => {
+        await callback({
+          db: {
+            db: {},
+            provider: { queryAll: vi.fn().mockResolvedValue([mockMsg]) },
+            save: vi.fn(),
+          },
+          paths: { hiveDir: '/tmp/test-hive' },
+        } as Parameters<typeof callback>[0]);
+      });
+
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const inboxCmd = msgCommand.commands.find(cmd => cmd.name() === 'inbox')!;
+      await expect(inboxCmd.parseAsync(['receiver'], { from: 'user' })).resolves.not.toThrow();
+      consoleSpy.mockRestore();
+    });
   });
 });

@@ -14,8 +14,13 @@ interface MessageRow {
   body: string;
   reply: string | null;
   status: 'pending' | 'read' | 'replied';
-  created_at: string;
-  replied_at: string | null;
+  created_at: string | Date;
+  replied_at: string | Date | null;
+}
+
+function toISOString(value: string | Date | null): string {
+  if (value === null) return '';
+  return value instanceof Date ? value.toISOString() : value;
 }
 
 export const msgCommand = new Command('msg').description('Inter-agent messaging');
@@ -79,7 +84,7 @@ msgCommand
             : msg.status === 'replied'
               ? chalk.green('✓')
               : chalk.gray('○');
-        const time = msg.created_at.substring(0, 16).replace('T', ' ');
+        const time = toISOString(msg.created_at).substring(0, 16).replace('T', ' ');
 
         console.log(`${statusIcon} ${chalk.cyan(msg.id)} from ${chalk.bold(msg.from_session)}`);
         console.log(`  ${chalk.gray(time)} ${msg.subject || ''}`);
@@ -120,7 +125,7 @@ msgCommand
       console.log(`From:    ${chalk.cyan(msg.from_session)}`);
       console.log(`To:      ${msg.to_session}`);
       console.log(`Subject: ${msg.subject || '(none)'}`);
-      console.log(`Time:    ${msg.created_at}`);
+      console.log(`Time:    ${toISOString(msg.created_at)}`);
       console.log(`Status:  ${msg.status}`);
       console.log(chalk.gray('─'.repeat(50)));
       console.log(msg.body);
