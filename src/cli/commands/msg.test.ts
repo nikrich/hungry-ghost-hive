@@ -104,7 +104,7 @@ describe('msg command', () => {
             save: vi.fn(),
           },
           paths: { hiveDir: '/tmp/test-hive' },
-        } as Parameters<typeof callback>[0]);
+        } as unknown as Parameters<typeof callback>[0]);
       });
 
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
