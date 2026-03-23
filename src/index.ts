@@ -12,6 +12,7 @@ import {
   approvalsCommand,
   assignCommand,
   authCommand,
+  btwCommand,
   cleanupCommand,
   clusterCommand,
   configCommand,
@@ -88,6 +89,7 @@ program.addCommand(cleanupCommand);
 // Communication
 program.addCommand(messageCommand);
 program.addCommand(msgCommand);
+program.addCommand(btwCommand);
 
 // Agent workflow
 program.addCommand(myStoriesCommand);
