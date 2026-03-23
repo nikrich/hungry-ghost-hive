@@ -10,12 +10,7 @@ import { updateRequirement } from '../../../db/queries/requirements.js';
 import { getStoriesByStatus, updateStory } from '../../../db/queries/stories.js';
 import { isTmuxSessionRunning } from '../../../tmux/manager.js';
 import { getTechLeadSessionName } from '../../../utils/instance.js';
-import {
-  createManagerNudgeEnvelope,
-  sendToTmuxSession,
-  submitManagerNudgeWithVerification,
-  type CLITool,
-} from './agent-monitoring.js';
+import { sendBtwToTmuxSession, type CLITool } from './agent-monitoring.js';
 import type { ManagerCheckContext, PlanningHandoffTracking } from './types.js';
 import { PROACTIVE_HANDOFF_RETRY_DELAY_MS } from './types.js';
 
@@ -105,34 +100,9 @@ async function nudgeTechLeadForStalledHandoff(
 # Please move stories from estimated -> planned and run:
 # hive assign`;
 
-  const nudge = createManagerNudgeEnvelope(nudgeMessage);
-  await sendToTmuxSession(techLeadInfo.sessionName, nudge.text);
-  console.log(
-    chalk.gray(
-      `  Nudge ${nudge.nudgeId}: double-checking Enter delivery after nudge (verification loop enabled)`
-    )
-  );
-  const submitResult = await submitManagerNudgeWithVerification(
-    techLeadInfo.sessionName,
-    nudge.nudgeId
-  );
-  ctx.counters.nudgeEnterPresses =
-    (ctx.counters.nudgeEnterPresses ?? 0) + submitResult.enterPresses;
-  ctx.counters.nudgeEnterRetries = (ctx.counters.nudgeEnterRetries ?? 0) + submitResult.retryEnters;
-  if (!submitResult.confirmed) {
-    ctx.counters.nudgeSubmitUnconfirmed = (ctx.counters.nudgeSubmitUnconfirmed ?? 0) + 1;
-    console.log(
-      chalk.yellow(
-        `  Nudge ${nudge.nudgeId}: unable to confirm Enter delivery after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
-      )
-    );
-  } else {
-    console.log(
-      chalk.gray(
-        `  Nudge ${nudge.nudgeId}: Enter delivery confirmed after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
-      )
-    );
-  }
+  // Use /btw to deliver nudge non-interruptively
+  await sendBtwToTmuxSession(techLeadInfo.sessionName, nudgeMessage);
+  console.log(chalk.gray(`  Handoff nudge delivered via /btw to ${techLeadInfo.sessionName}`));
   verboseLog(
     ctx,
     `handoff: nudged tech-lead session=${techLeadInfo.sessionName} requirement=${requirementLabel} estimated=${estimatedCount}`

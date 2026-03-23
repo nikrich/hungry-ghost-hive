@@ -11,8 +11,8 @@ import {
   autoApprovePermission,
   captureTmuxPane,
   forceBypassMode,
+  sendBtwToTmuxSession,
   sendEnterToTmuxSession,
-  sendMessageWithConfirmation,
   sendToTmuxSession,
 } from '../../../tmux/manager.js';
 import {
@@ -400,27 +400,9 @@ export async function nudgeAgent(
   agentCliTool?: CLITool
 ): Promise<void> {
   if (customMessage) {
-    const nudge = createManagerNudgeEnvelope(customMessage);
-    await sendToTmuxSession(sessionName, nudge.text);
-    console.log(
-      chalk.gray(
-        `  Nudge ${nudge.nudgeId}: double-checking Enter delivery after nudge (verification loop enabled)`
-      )
-    );
-    const submitResult = await submitManagerNudgeWithVerification(sessionName, nudge.nudgeId);
-    if (submitResult.confirmed) {
-      console.log(
-        chalk.gray(
-          `  Nudge ${nudge.nudgeId}: Enter delivery confirmed after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
-        )
-      );
-    } else {
-      console.log(
-        chalk.yellow(
-          `  Nudge ${nudge.nudgeId}: unable to confirm Enter delivery after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
-        )
-      );
-    }
+    // Use /btw for non-interrupting nudge delivery
+    await sendBtwToTmuxSession(sessionName, customMessage);
+    console.log(chalk.gray(`  Nudge delivered via /btw to ${sessionName}`));
     return;
   }
 
@@ -458,27 +440,9 @@ hive status`;
     nudge = `# Manager detected: ${reason}\n${nudge}`;
   }
 
-  const envelope = createManagerNudgeEnvelope(nudge);
-  await sendToTmuxSession(sessionName, envelope.text);
-  console.log(
-    chalk.gray(
-      `  Nudge ${envelope.nudgeId}: double-checking Enter delivery after nudge (verification loop enabled)`
-    )
-  );
-  const submitResult = await submitManagerNudgeWithVerification(sessionName, envelope.nudgeId);
-  if (submitResult.confirmed) {
-    console.log(
-      chalk.gray(
-        `  Nudge ${envelope.nudgeId}: Enter delivery confirmed after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
-      )
-    );
-  } else {
-    console.log(
-      chalk.yellow(
-        `  Nudge ${envelope.nudgeId}: unable to confirm Enter delivery after ${submitResult.checks} check(s), ${submitResult.enterPresses} Enter keypress(es)`
-      )
-    );
-  }
+  // Use /btw for non-interrupting nudge delivery
+  await sendBtwToTmuxSession(sessionName, nudge);
+  console.log(chalk.gray(`  Nudge delivered via /btw to ${sessionName}`));
 }
 
 export async function forwardMessages(
@@ -492,15 +456,8 @@ export async function forwardMessages(
 # ${msg.body}
 # Reply with: # ${commands.msgReply(msg.id, 'your response', sessionName)}`;
 
-    // Send with delivery confirmation - wait for message to appear in session output before proceeding
-    const delivered = await sendMessageWithConfirmation(sessionName, notification);
-
-    if (!delivered) {
-      console.warn(
-        `Failed to confirm delivery of message ${msg.id} to ${sessionName} after retries`
-      );
-      // Continue to next message even if delivery not confirmed to avoid blocking the manager
-    }
+    // Use /btw to deliver inter-agent messages non-interruptively
+    await sendBtwToTmuxSession(sessionName, notification);
 
     // Small delay between messages to allow recipient time to read
     await new Promise(resolve => setTimeout(resolve, MESSAGE_FORWARD_DELAY_MS));
@@ -511,6 +468,7 @@ export {
   AgentState,
   buildAutoRecoveryReminder,
   captureTmuxPane,
+  sendBtwToTmuxSession,
   sendEnterToTmuxSession,
   sendToTmuxSession,
 };
