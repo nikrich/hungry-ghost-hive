@@ -298,6 +298,29 @@ export async function sendToTmuxSession(
   await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
 }
 
+/**
+ * Sends a message to a tmux session using the /btw slash command.
+ * This is non-interrupting: it does NOT clear existing input first.
+ * The /btw command injects context into the conversation without
+ * interrupting whatever the agent is currently doing.
+ * @param sessionName - The tmux session name
+ * @param message - The message to send via /btw
+ */
+export async function sendBtwToTmuxSession(sessionName: string, message: string): Promise<void> {
+  const btwText = `/btw ${message}`;
+  const isMultiLine = btwText.includes('\n');
+
+  if (isMultiLine) {
+    const bufferName = `hive-btw-${Date.now()}`;
+    await execa('tmux', ['set-buffer', '-b', bufferName, btwText]);
+    await execa('tmux', ['paste-buffer', '-b', bufferName, '-t', sessionName, '-d']);
+  } else {
+    await execa('tmux', ['send-keys', '-t', sessionName, '-l', '--', btwText]);
+  }
+
+  await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);
+}
+
 export async function sendEnterToTmuxSession(sessionName: string): Promise<void> {
   // C-m is equivalent to Enter/Return
   await execa('tmux', ['send-keys', '-t', sessionName, 'C-m']);

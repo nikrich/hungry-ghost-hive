@@ -50,6 +50,7 @@ vi.mock('../../../tmux/manager.js', () => ({
   sendMessageWithConfirmation: vi.fn(),
   getHiveSessions: vi.fn(),
   sendToTmuxSession: vi.fn(),
+  sendBtwToTmuxSession: vi.fn(),
   sendEnterToTmuxSession: vi.fn(),
   captureTmuxPane: vi.fn(),
   isManagerRunning: vi.fn(),
@@ -160,7 +161,7 @@ import { getPullRequestsByStatus, updatePullRequest } from '../../../db/queries/
 import { updateStory } from '../../../db/queries/stories.js';
 import { getAllTeams } from '../../../db/queries/teams.js';
 import { getPullRequestComments, getPullRequestReviews } from '../../../git/github.js';
-import { sendToTmuxSession } from '../../../tmux/manager.js';
+import { sendBtwToTmuxSession } from '../../../tmux/manager.js';
 import { agentStates } from './agent-monitoring.js';
 import { autoRejectCommentOnlyReviews } from './index.js';
 
@@ -512,7 +513,7 @@ describe('autoRejectCommentOnlyReviews', () => {
     await autoRejectCommentOnlyReviews(ctx);
 
     // Phase 4: Should notify the developer
-    expect(sendToTmuxSession).toHaveBeenCalledWith(
+    expect(sendBtwToTmuxSession).toHaveBeenCalledWith(
       'hive-senior-test',
       expect.stringContaining('PR AUTO-REJECTED')
     );
