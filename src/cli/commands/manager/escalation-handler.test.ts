@@ -7,6 +7,7 @@ import {
   buildHumanApprovalReason,
   buildInterruptionRecoveryPrompt,
   buildRateLimitRecoveryPrompt,
+  extractQuestionContent,
   handleEscalationAndNudge,
 } from './escalation-handler.js';
 
@@ -33,6 +34,55 @@ vi.mock('../../../tmux/manager.js', () => ({
   isManagerRunning: vi.fn(),
   stopManager: vi.fn(),
 }));
+
+describe('extractQuestionContent', () => {
+  it('extracts lines above the interactive prompt as the question body', () => {
+    const output = [
+      'Some previous output',
+      '',
+      'Should I delete the existing migration files?',
+      'This will remove all local schema changes.',
+      '› Yes / No',
+    ].join('\n');
+
+    expect(extractQuestionContent(output)).toBe(
+      'Should I delete the existing migration files? This will remove all local schema changes.'
+    );
+  });
+
+  it('falls back to prompt line text when no lines precede the prompt', () => {
+    const output = '› Do you want to continue?';
+    expect(extractQuestionContent(output)).toBe('Do you want to continue?');
+  });
+
+  it('falls back to prompt line when preceding lines are empty', () => {
+    const output = '\n\n\n› Proceed with deployment?';
+    expect(extractQuestionContent(output)).toBe('Proceed with deployment?');
+  });
+
+  it('returns null when no interactive prompt line is found', () => {
+    const output = 'Agent is working on the task...';
+    expect(extractQuestionContent(output)).toBeNull();
+  });
+
+  it('strips the › prefix from the prompt line fallback', () => {
+    const output = '›  What branch should I use?';
+    expect(extractQuestionContent(output)).toBe('What branch should I use?');
+  });
+
+  it('handles > prefix as well as ›', () => {
+    const output = '> Run git push now?';
+    expect(extractQuestionContent(output)).toBe('Run git push now?');
+  });
+
+  it('stops collecting question lines at the first empty line above the prompt', () => {
+    const output = ['Old unrelated output', '', 'Question: should I proceed?', '› Yes / No'].join(
+      '\n'
+    );
+
+    expect(extractQuestionContent(output)).toBe('Question: should I proceed?');
+  });
+});
 
 describe('buildHumanApprovalReason', () => {
   it('should include option-2 guidance for codex permission menus', () => {
@@ -82,6 +132,40 @@ $ git restore --worktree
     );
 
     expect(reason).toContain('Approval required (gemini)');
+    expect(reason).toContain('Action: Answer the question in the agent session');
+  });
+
+  it('extracts actual question text from terminal output for ASKING_QUESTION state', () => {
+    const output = [
+      'Some working output',
+      '',
+      'Should I overwrite the existing config file?',
+      '› Yes / No',
+    ].join('\n');
+
+    const reason = buildHumanApprovalReason(
+      'hive-junior-team-1',
+      'Asking a question - needs response',
+      AgentState.ASKING_QUESTION,
+      'claude',
+      output
+    );
+
+    expect(reason).toContain('Should I overwrite the existing config file?');
+    expect(reason).not.toContain('Asking a question - needs response');
+    expect(reason).toContain('Action: Answer the question in the agent session');
+  });
+
+  it('falls back to generic waitingReason when question extraction fails for ASKING_QUESTION', () => {
+    const reason = buildHumanApprovalReason(
+      'hive-junior-team-1',
+      'Asking a question - needs response',
+      AgentState.ASKING_QUESTION,
+      'claude',
+      'No interactive prompt here'
+    );
+
+    expect(reason).toContain('Asking a question - needs response');
     expect(reason).toContain('Action: Answer the question in the agent session');
   });
 
