@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.54.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.53.0...hungry-ghost-hive-v0.54.0) (2026-03-23)
+
+
+### Features
+
+* add /btw-based non-interrupting nudges for manager-to-agent messages ([#612](https://github.com/nikrich/hungry-ghost-hive/issues/612)) ([b844a9a](https://github.com/nikrich/hungry-ghost-hive/commit/b844a9a99940897b5b9ca492f78fa582e90c6879))
+* add fast message poll to reduce web UI response latency ([#615](https://github.com/nikrich/hungry-ghost-hive/issues/615)) ([abb3ca1](https://github.com/nikrich/hungry-ghost-hive/commit/abb3ca15152ca6c6799c8f6462b491bc70e52f66))
+
 ## [0.53.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.52.2...hungry-ghost-hive-v0.53.0) (2026-03-23)
 
 
