@@ -212,6 +212,7 @@ describe('context-files module', () => {
       manager: {
         fast_poll_interval: 15000,
         slow_poll_interval: 60000,
+        message_poll_interval: 5000,
         stuck_threshold_ms: 120000,
         nudge_cooldown_ms: 300000,
         max_stuck_nudges_per_story: 1,

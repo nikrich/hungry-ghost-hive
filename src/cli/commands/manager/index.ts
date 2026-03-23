@@ -344,7 +344,12 @@ managerCommand
       const slowInterval = config.cluster.enabled
         ? Math.min(config.manager.slow_poll_interval, config.cluster.sync_interval_ms)
         : config.manager.slow_poll_interval;
-      console.log(chalk.cyan(`Manager started (polling every ${slowInterval / 1000}s)`));
+      const messagePollInterval = config.manager.message_poll_interval;
+      console.log(
+        chalk.cyan(
+          `Manager started (polling every ${slowInterval / 1000}s, messages every ${messagePollInterval / 1000}s)`
+        )
+      );
       console.log(chalk.gray('Press Ctrl+C to stop\n'));
 
       await runCheck();
@@ -353,6 +358,12 @@ managerCommand
         setInterval(() => {
           void runCheck();
         }, slowInterval);
+
+        // Fast message-forwarding loop — only queries the messages table and
+        // forwards pending messages via tmux. Does not run the full manager cycle.
+        setInterval(() => {
+          void forwardPendingMessages(verbose);
+        }, messagePollInterval);
       } else if (releaseLock) {
         await releaseLock();
         if (clusterRuntime) {
@@ -952,6 +963,65 @@ async function resolveOrphanedSessionEscalations(ctx: ManagerCheckContext): Prom
     );
   }
   verboseLogCtx(ctx, `resolveOrphanedSessionEscalations: resolved=${resolvedCount}`);
+}
+
+/**
+ * Lightweight fast-path that only forwards pending messages to agents.
+ * Called on the message_poll_interval (default 5s) independently of the full
+ * manager check cycle. Does NOT perform state detection, escalation handling,
+ * PR checks, or any other heavy operations.
+ */
+export async function forwardPendingMessages(verbose: boolean): Promise<void> {
+  try {
+    await withHiveContext(async ctx => {
+      const { db, paths } = ctx;
+      const allPendingMessages = await getAllPendingMessages(db.provider);
+      if (allPendingMessages.length === 0) return;
+
+      const sessions = await getHiveSessions(paths.hiveDir);
+      const managerSession = getManagerSession(paths.hiveDir);
+
+      const allAgents = await getAllAgents(db.provider);
+      const agentsBySessionName = new Map<string, AgentRow>();
+      for (const agent of allAgents) {
+        agentsBySessionName.set(`hive-${agent.id}`, agent);
+        if (agent.tmux_session) {
+          agentsBySessionName.set(agent.tmux_session, agent);
+        }
+      }
+
+      const messagesBySession = new Map<string, MessageRow[]>();
+      for (const msg of allPendingMessages) {
+        if (!messagesBySession.has(msg.to_session)) {
+          messagesBySession.set(msg.to_session, []);
+        }
+        messagesBySession.get(msg.to_session)!.push(msg);
+      }
+
+      const toMarkRead: string[] = [];
+      for (const session of sessions) {
+        if (session.name === managerSession) continue;
+        const agent = agentsBySessionName.get(session.name);
+        if (!agent) continue;
+
+        const unread = messagesBySession.get(session.name) ?? [];
+        if (unread.length === 0) continue;
+
+        const agentCliTool = (agent.cli_tool ?? 'claude') as CLITool;
+        verboseLog(verbose, `fast-forward: ${session.name} forwarding ${unread.length} message(s)`);
+        await forwardMessages(session.name, unread, agentCliTool);
+        toMarkRead.push(...unread.map(msg => msg.id));
+      }
+
+      if (toMarkRead.length > 0) {
+        await markMessagesRead(db.provider, toMarkRead);
+        db.save();
+        verboseLog(verbose, `fast-forward: marked ${toMarkRead.length} message(s) as read`);
+      }
+    });
+  } catch (err) {
+    console.error(chalk.red('Message forwarding error:'), err);
+  }
 }
 
 async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {

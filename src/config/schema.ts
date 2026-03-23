@@ -231,6 +231,7 @@ const ManagerCompletionClassifierConfigSchema = z.object({
 const ManagerConfigSchema = z.object({
   fast_poll_interval: z.number().int().positive().default(15000),
   slow_poll_interval: z.number().int().positive().default(60000),
+  message_poll_interval: z.number().int().positive().default(5000),
   stuck_threshold_ms: z.number().int().positive().default(120000),
   nudge_cooldown_ms: z.number().int().positive().default(300000),
   // Maximum number of stuck nudges to send per stalled story/session window.
@@ -548,6 +549,8 @@ manager:
   fast_poll_interval: 15000
   # Standard poll interval for regular checks (ms)
   slow_poll_interval: 60000
+  # Fast poll interval for message forwarding only (ms)
+  message_poll_interval: 5000
   # Time to consider agent stuck if state hasn't changed (ms)
   stuck_threshold_ms: 120000
   # Cooldown period before nudging the same agent again (ms)
