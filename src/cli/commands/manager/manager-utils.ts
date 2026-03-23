@@ -2,11 +2,7 @@
 
 import chalk from 'chalk';
 import type { HiveConfig } from '../../../config/schema.js';
-import { sendToTmuxSession } from '../../../tmux/manager.js';
-import {
-  createManagerNudgeEnvelope,
-  submitManagerNudgeWithVerification,
-} from './agent-monitoring.js';
+import { sendBtwToTmuxSession } from '../../../tmux/manager.js';
 import type { ManagerCheckContext } from './types.js';
 
 const DEFAULT_SCREEN_STATIC_INACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
@@ -30,43 +26,14 @@ export function formatDuration(ms: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
-async function submitManagerNudge(
-  ctx: ManagerCheckContext,
-  sessionName: string,
-  nudgeId: string
-): Promise<void> {
-  console.log(
-    chalk.gray(
-      `  Nudge ${nudgeId}: double-checking Enter delivery after nudge (verification loop enabled)`
-    )
-  );
-  const result = await submitManagerNudgeWithVerification(sessionName, nudgeId);
-  ctx.counters.nudgeEnterPresses = (ctx.counters.nudgeEnterPresses ?? 0) + result.enterPresses;
-  ctx.counters.nudgeEnterRetries = (ctx.counters.nudgeEnterRetries ?? 0) + result.retryEnters;
-  if (!result.confirmed) {
-    ctx.counters.nudgeSubmitUnconfirmed = (ctx.counters.nudgeSubmitUnconfirmed ?? 0) + 1;
-    console.log(
-      chalk.yellow(
-        `  Nudge ${nudgeId}: unable to confirm Enter delivery after ${result.checks} check(s), ${result.enterPresses} Enter keypress(es)`
-      )
-    );
-    return;
-  }
-  console.log(
-    chalk.gray(
-      `  Nudge ${nudgeId}: Enter delivery confirmed after ${result.checks} check(s), ${result.enterPresses} Enter keypress(es)`
-    )
-  );
-}
-
 export async function sendManagerNudge(
-  ctx: ManagerCheckContext,
+  _ctx: ManagerCheckContext,
   sessionName: string,
   message: string
 ): Promise<void> {
-  const envelope = createManagerNudgeEnvelope(message);
-  await sendToTmuxSession(sessionName, envelope.text);
-  await submitManagerNudge(ctx, sessionName, envelope.nudgeId);
+  // Use /btw for non-interrupting nudge delivery
+  await sendBtwToTmuxSession(sessionName, message);
+  console.log(chalk.gray(`  Nudge delivered via /btw to ${sessionName}`));
 }
 
 export function getScreenStaticInactivityThresholdMs(config?: HiveConfig): number {
