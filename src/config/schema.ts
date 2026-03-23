@@ -250,6 +250,8 @@ const ManagerConfigSchema = z.object({
   auditor_interval_ms: z.number().int().positive().default(300000),
   // Whether auditor agent is enabled (false falls back to nudge behavior)
   auditor_enabled: z.boolean().default(true),
+  // Fast message poll interval for web UI interactions (ms, default 10s)
+  message_poll_interval_ms: z.number().int().positive().default(10000),
 });
 
 // Merge queue configuration
@@ -573,6 +575,8 @@ manager:
   auditor_interval_ms: 300000
   # Whether auditor agent is enabled (false falls back to nudge behavior)
   auditor_enabled: true
+  # Fast message poll interval for web UI interactions (ms, default 10s)
+  message_poll_interval_ms: 10000
 
 # Merge queue configuration
 merge_queue:

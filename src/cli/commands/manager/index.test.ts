@@ -1,13 +1,17 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DatabaseProvider } from '../../../db/provider.js';
+import type { DatabaseProvider, WritableDatabaseProvider } from '../../../db/provider.js';
+import { getAllAgents } from '../../../db/queries/agents.js';
+import { getAllPendingMessages, markMessagesRead } from '../../../db/queries/messages.js';
 import { getApprovedPullRequests, updatePullRequest } from '../../../db/queries/pull-requests.js';
 
 // Mock the functions we're testing with
 vi.mock('../../../db/queries/pull-requests.js');
 vi.mock('../../../db/queries/stories.js');
 vi.mock('../../../db/queries/logs.js');
+vi.mock('../../../db/queries/agents.js');
+vi.mock('../../../db/queries/messages.js');
 vi.mock('../../../tmux/manager.js', () => ({
   sendMessageWithConfirmation: vi.fn(),
   getHiveSessions: vi.fn(),
@@ -18,11 +22,26 @@ vi.mock('../../../tmux/manager.js', () => ({
   stopManager: vi.fn(),
   killTmuxSession: vi.fn(),
 }));
-vi.mock('../../../utils/cli-commands.js', () => ({
-  getAvailableCommands: vi.fn(() => ({
-    msgReply: (id: string, msg: string, session: string) =>
-      `hive msg reply ${id} "${msg}" --to ${session}`,
-  })),
+vi.mock('../../../utils/cli-commands.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../utils/cli-commands.js')>();
+  return {
+    ...actual,
+    getAvailableCommands: vi.fn(() => ({
+      msgReply: (id: string, msg: string, session: string) =>
+        `hive msg reply ${id} "${msg}" --to ${session}`,
+    })),
+  };
+});
+vi.mock('./agent-monitoring.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('./agent-monitoring.js')>();
+  return {
+    ...actual,
+    forwardMessages: vi.fn(),
+  };
+});
+vi.mock('../../../utils/with-hive-context.js', () => ({
+  withHiveContext: vi.fn(),
+  withHiveRoot: vi.fn(),
 }));
 
 describe('Auto-merge PRs', () => {
@@ -263,5 +282,115 @@ describe('Stuck reminder deferral', () => {
     });
 
     expect(result).toBe(false);
+  });
+});
+
+describe('runFastMessageCheck', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function mockDbContext(save = vi.fn()) {
+    const provider = {} as WritableDatabaseProvider;
+    return {
+      db: {
+        provider,
+        save,
+        close: vi.fn(),
+        runMigrations: vi.fn(),
+        db: {} as never,
+      },
+      root: '/test',
+      paths: {} as never,
+    };
+  }
+
+  it('does nothing when there are no pending messages', async () => {
+    const { withHiveContext } = await import('../../../utils/with-hive-context.js');
+    const { forwardMessages } = await import('./agent-monitoring.js');
+
+    vi.mocked(withHiveContext).mockImplementation(async fn => fn(mockDbContext()));
+    vi.mocked(getAllPendingMessages).mockResolvedValue([]);
+
+    const { runFastMessageCheck } = await import('./index.js');
+    await runFastMessageCheck();
+
+    expect(forwardMessages).not.toHaveBeenCalled();
+    expect(markMessagesRead).not.toHaveBeenCalled();
+  });
+
+  it('forwards pending messages to target sessions', async () => {
+    const { withHiveContext } = await import('../../../utils/with-hive-context.js');
+    const { forwardMessages } = await import('./agent-monitoring.js');
+
+    const mockSave = vi.fn();
+    vi.mocked(withHiveContext).mockImplementation(async fn => fn(mockDbContext(mockSave)));
+
+    const pendingMessages = [
+      {
+        id: 'msg-1',
+        to_session: 'hive-agent-abc',
+        from_session: 'tech-lead',
+        subject: 'Test',
+        body: 'Hello',
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        read_at: null,
+      },
+    ];
+    vi.mocked(getAllPendingMessages).mockResolvedValue(pendingMessages as never);
+    vi.mocked(getAllAgents).mockResolvedValue([
+      { id: 'agent-abc', tmux_session: null, cli_tool: 'claude' } as never,
+    ]);
+    vi.mocked(forwardMessages).mockResolvedValue(undefined);
+
+    const { runFastMessageCheck } = await import('./index.js');
+    await runFastMessageCheck();
+
+    expect(forwardMessages).toHaveBeenCalledWith('hive-agent-abc', pendingMessages, 'claude');
+    expect(markMessagesRead).toHaveBeenCalledWith(expect.anything(), ['msg-1']);
+    expect(mockSave).toHaveBeenCalled();
+  });
+
+  it('uses claude as default cli_tool when agent not found', async () => {
+    const { withHiveContext } = await import('../../../utils/with-hive-context.js');
+    const { forwardMessages } = await import('./agent-monitoring.js');
+
+    vi.mocked(withHiveContext).mockImplementation(async fn => fn(mockDbContext()));
+
+    const pendingMessages = [
+      {
+        id: 'msg-2',
+        to_session: 'unknown-session',
+        from_session: 'user',
+        subject: null,
+        body: 'Hi',
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        read_at: null,
+      },
+    ];
+    vi.mocked(getAllPendingMessages).mockResolvedValue(pendingMessages as never);
+    vi.mocked(getAllAgents).mockResolvedValue([]);
+    vi.mocked(forwardMessages).mockResolvedValue(undefined);
+
+    const { runFastMessageCheck } = await import('./index.js');
+    await runFastMessageCheck();
+
+    expect(forwardMessages).toHaveBeenCalledWith('unknown-session', pendingMessages, 'claude');
+  });
+
+  it('does not trigger full agent scan (scanAgentSessions not called)', async () => {
+    const { withHiveContext } = await import('../../../utils/with-hive-context.js');
+    const { getHiveSessions } = await import('../../../tmux/manager.js');
+
+    vi.mocked(withHiveContext).mockImplementation(async fn => fn(mockDbContext()));
+    vi.mocked(getAllPendingMessages).mockResolvedValue([]);
+
+    const { runFastMessageCheck } = await import('./index.js');
+    await runFastMessageCheck();
+
+    // Full scan would call getHiveSessions — verify it is not called
+    expect(getHiveSessions).not.toHaveBeenCalled();
   });
 });

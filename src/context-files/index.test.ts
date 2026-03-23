@@ -228,6 +228,7 @@ describe('context-files module', () => {
         tech_lead_max_age_hours: 6,
         auditor_interval_ms: 300000,
         auditor_enabled: true,
+        message_poll_interval_ms: 10000,
       },
       logging: { level: 'info', retention_days: 30 },
       cluster: {

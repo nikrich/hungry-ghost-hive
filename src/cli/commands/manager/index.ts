@@ -353,6 +353,13 @@ managerCommand
         setInterval(() => {
           void runCheck();
         }, slowInterval);
+
+        // Fast message-check path: forward pending messages without full agent scan
+        const messagePollInterval = config.manager.message_poll_interval_ms;
+        console.log(chalk.gray(`  Fast message polling every ${messagePollInterval / 1000}s`));
+        setInterval(() => {
+          void runFastMessageCheck(verbose);
+        }, messagePollInterval);
       } else if (releaseLock) {
         await releaseLock();
         if (clusterRuntime) {
@@ -517,6 +524,58 @@ managerCommand
       console.log(chalk.green(`Nudged ${session}`));
     });
   });
+
+export async function runFastMessageCheck(verbose = false): Promise<void> {
+  verboseLog(verbose, 'fastMessageCheck: start');
+  try {
+    await withHiveContext(async ({ db }) => {
+      const allPendingMessages = await getAllPendingMessages(db.provider);
+      if (allPendingMessages.length === 0) {
+        verboseLog(verbose, 'fastMessageCheck: no pending messages');
+        return;
+      }
+
+      verboseLog(verbose, `fastMessageCheck: ${allPendingMessages.length} pending message(s)`);
+
+      const messagesBySession = new Map<string, typeof allPendingMessages>();
+      for (const msg of allPendingMessages) {
+        if (!messagesBySession.has(msg.to_session)) {
+          messagesBySession.set(msg.to_session, []);
+        }
+        messagesBySession.get(msg.to_session)!.push(msg);
+      }
+
+      const allAgents = await getAllAgents(db.provider);
+      const agentBySession = new Map<string, AgentRow>();
+      for (const agent of allAgents) {
+        agentBySession.set(`hive-${agent.id}`, agent);
+        if (agent.tmux_session) {
+          agentBySession.set(agent.tmux_session, agent);
+        }
+      }
+
+      const forwardedIds: string[] = [];
+      for (const [sessionName, messages] of messagesBySession) {
+        const agent = agentBySession.get(sessionName);
+        const cliTool: CLITool = (agent?.cli_tool as CLITool) || 'claude';
+        verboseLog(
+          verbose,
+          `fastMessageCheck: forwarding ${messages.length} message(s) to ${sessionName}`
+        );
+        await forwardMessages(sessionName, messages, cliTool);
+        forwardedIds.push(...messages.map(m => m.id));
+      }
+
+      if (forwardedIds.length > 0) {
+        markMessagesRead(db.provider, forwardedIds);
+        db.save();
+        verboseLog(verbose, `fastMessageCheck: marked ${forwardedIds.length} message(s) as read`);
+      }
+    });
+  } catch (err) {
+    verboseLog(verbose, `fastMessageCheck: error ${String(err)}`);
+  }
+}
 
 async function managerCheck(
   root: string,
