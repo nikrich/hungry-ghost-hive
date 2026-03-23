@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.52.2...hungry-ghost-hive-v0.53.0) (2026-03-23)
+
+
+### Features
+
+* extract actual question content into escalation reason ([#610](https://github.com/nikrich/hungry-ghost-hive/issues/610)) ([afeb881](https://github.com/nikrich/hungry-ghost-hive/commit/afeb881ec1287b9243de4a64258534aa0ce2770e))
+
 ## [0.52.2](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.52.1...hungry-ghost-hive-v0.52.2) (2026-03-22)
 
 
