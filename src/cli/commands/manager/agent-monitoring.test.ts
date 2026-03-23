@@ -8,8 +8,8 @@ vi.mock('../../../tmux/manager.js', () => ({
   autoApprovePermission: vi.fn(),
   captureTmuxPane: vi.fn(),
   forceBypassMode: vi.fn(),
+  sendBtwToTmuxSession: vi.fn().mockResolvedValue(undefined),
   sendEnterToTmuxSession: vi.fn(),
-  sendMessageWithConfirmation: vi.fn().mockResolvedValue(true),
   sendToTmuxSession: vi.fn(),
 }));
 

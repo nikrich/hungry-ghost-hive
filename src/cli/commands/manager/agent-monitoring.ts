@@ -487,15 +487,8 @@ export async function forwardBtwMessages(
 # ${msg.body}
 # Reply with: # ${commands.msgReply(msg.id, 'your response', sessionName)}`;
 
-    const confirmed = await sendMessageWithConfirmation(sessionName, notification);
-
-    if (!confirmed) {
-      console.warn(
-        `Failed to confirm delivery of BTW message ${msg.id} to ${sessionName} after retries`
-      );
-    } else {
-      delivered.push(msg.id);
-    }
+    await sendBtwToTmuxSession(sessionName, notification);
+    delivered.push(msg.id);
 
     // Small delay between messages to allow recipient time to read
     await new Promise(resolve => setTimeout(resolve, MESSAGE_FORWARD_DELAY_MS));
