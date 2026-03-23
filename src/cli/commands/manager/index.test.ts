@@ -12,16 +12,20 @@ vi.mock('../../../db/queries/stories.js');
 vi.mock('../../../db/queries/logs.js');
 vi.mock('../../../db/queries/agents.js');
 vi.mock('../../../db/queries/messages.js');
-vi.mock('../../../tmux/manager.js', () => ({
-  sendMessageWithConfirmation: vi.fn(),
-  getHiveSessions: vi.fn(),
-  sendToTmuxSession: vi.fn(),
-  sendEnterToTmuxSession: vi.fn(),
-  captureTmuxPane: vi.fn(),
-  isManagerRunning: vi.fn(),
-  stopManager: vi.fn(),
-  killTmuxSession: vi.fn(),
-}));
+vi.mock('../../../tmux/manager.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../tmux/manager.js')>();
+  return {
+    ...actual,
+    sendMessageWithConfirmation: vi.fn(),
+    getHiveSessions: vi.fn(),
+    sendToTmuxSession: vi.fn(),
+    sendEnterToTmuxSession: vi.fn(),
+    captureTmuxPane: vi.fn(),
+    isManagerRunning: vi.fn(),
+    stopManager: vi.fn(),
+    killTmuxSession: vi.fn(),
+  };
+});
 vi.mock('../../../utils/cli-commands.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../../utils/cli-commands.js')>();
   return {
