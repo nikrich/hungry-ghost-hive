@@ -231,6 +231,7 @@ const ManagerCompletionClassifierConfigSchema = z.object({
 const ManagerConfigSchema = z.object({
   fast_poll_interval: z.number().int().positive().default(15000),
   slow_poll_interval: z.number().int().positive().default(60000),
+  message_poll_interval: z.number().int().positive().default(5000),
   stuck_threshold_ms: z.number().int().positive().default(120000),
   nudge_cooldown_ms: z.number().int().positive().default(300000),
   // Maximum number of stuck nudges to send per stalled story/session window.
@@ -250,8 +251,6 @@ const ManagerConfigSchema = z.object({
   auditor_interval_ms: z.number().int().positive().default(300000),
   // Whether auditor agent is enabled (false falls back to nudge behavior)
   auditor_enabled: z.boolean().default(true),
-  // Fast message poll interval for web UI interactions (ms, default 10s)
-  message_poll_interval_ms: z.number().int().positive().default(10000),
 });
 
 // Merge queue configuration
@@ -550,6 +549,8 @@ manager:
   fast_poll_interval: 15000
   # Standard poll interval for regular checks (ms)
   slow_poll_interval: 60000
+  # Fast poll interval for message forwarding only (ms)
+  message_poll_interval: 5000
   # Time to consider agent stuck if state hasn't changed (ms)
   stuck_threshold_ms: 120000
   # Cooldown period before nudging the same agent again (ms)
@@ -575,8 +576,6 @@ manager:
   auditor_interval_ms: 300000
   # Whether auditor agent is enabled (false falls back to nudge behavior)
   auditor_enabled: true
-  # Fast message poll interval for web UI interactions (ms, default 10s)
-  message_poll_interval_ms: 10000
 
 # Merge queue configuration
 merge_queue:
