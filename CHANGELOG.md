@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.55.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.54.0...hungry-ghost-hive-v0.55.0) (2026-03-23)
+
+
+### Features
+
+* add /btw command for non-interrupting manager nudges ([#613](https://github.com/nikrich/hungry-ghost-hive/issues/613)) ([edc691e](https://github.com/nikrich/hungry-ghost-hive/commit/edc691ece7632986cbec68d83394c7fb13cb7538))
+
 ## [0.54.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.53.0...hungry-ghost-hive-v0.54.0) (2026-03-23)
 
 
