@@ -33,9 +33,49 @@ const rateLimitRecoveryAttempts = new Map<string, number>();
 const INTERRUPTION_PROMPT_PATTERN =
   /conversation interrupted|tell the model what to do differently|hit [`'"]?\/feedback[`'"]? to report the issue/i;
 const INTERRUPTION_WINDOW_LINES = 80;
+const QUESTION_EXTRACTION_WINDOW_LINES = 40;
+const INTERACTIVE_PROMPT_LINE_PATTERN = /^\s*(?:›|>)\s+\S.+$/m;
 
 function getRecentPaneOutput(output: string, lineCount: number): string {
   return output.split('\n').slice(-lineCount).join('\n');
+}
+
+export function extractQuestionContent(output: string): string | null {
+  const recentOutput = getRecentPaneOutput(output, QUESTION_EXTRACTION_WINDOW_LINES);
+  const lines = recentOutput.split('\n');
+
+  // Find the last interactive prompt line index
+  let promptLineIndex = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (INTERACTIVE_PROMPT_LINE_PATTERN.test(lines[i])) {
+      promptLineIndex = i;
+      break;
+    }
+  }
+
+  // Extract the prompt line text (strip leading › or > and whitespace)
+  const promptLine =
+    promptLineIndex >= 0 ? lines[promptLineIndex].replace(/^\s*(?:›|>)\s*/, '').trim() : null;
+
+  // Collect non-empty lines before the prompt as the question body
+  if (promptLineIndex > 0) {
+    const questionLines: string[] = [];
+    for (let i = promptLineIndex - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (line.length === 0) break;
+      questionLines.unshift(line);
+    }
+    if (questionLines.length > 0) {
+      return questionLines.join(' ');
+    }
+  }
+
+  // Fall back to the prompt line content itself
+  if (promptLine && promptLine.length > 0) {
+    return promptLine;
+  }
+
+  return null;
 }
 
 function isInterruptionPrompt(output: string): boolean {
@@ -101,7 +141,14 @@ export function buildHumanApprovalReason(
   output: string
 ): string {
   const actionHint = getActionHintForBlockedState(state, cliTool, output);
-  return `Approval required (${cliTool}) in ${sessionName}: ${waitingReason || 'Unknown question'}. Action: ${actionHint}`;
+  let reason = waitingReason || 'Unknown question';
+  if (state === AgentState.ASKING_QUESTION) {
+    const extracted = extractQuestionContent(output);
+    if (extracted) {
+      reason = extracted;
+    }
+  }
+  return `Approval required (${cliTool}) in ${sessionName}: ${reason}. Action: ${actionHint}`;
 }
 
 export function buildInterruptionRecoveryPrompt(
