@@ -139,6 +139,7 @@ export async function createTestDatabase(): Promise<SqlJsDatabase> {
       body TEXT NOT NULL,
       reply TEXT,
       status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'read', 'replied')),
+      priority TEXT DEFAULT 'normal' CHECK (priority IN ('normal', 'low')),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       replied_at TIMESTAMP
     );

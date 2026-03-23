@@ -10,6 +10,7 @@ export interface MessageRow {
   body: string;
   reply: string | null;
   status: 'pending' | 'read' | 'replied';
+  priority: 'normal' | 'low';
   created_at: string;
   replied_at: string | null;
 }
@@ -59,7 +60,15 @@ export async function getMessageById(
 export async function getAllPendingMessages(provider: DatabaseProvider): Promise<MessageRow[]> {
   return await provider.queryAll<MessageRow>(`
     SELECT * FROM messages
-    WHERE status = 'pending'
+    WHERE status = 'pending' AND (priority = 'normal' OR priority IS NULL)
+    ORDER BY created_at ASC
+  `);
+}
+
+export async function getAllPendingBtwMessages(provider: DatabaseProvider): Promise<MessageRow[]> {
+  return await provider.queryAll<MessageRow>(`
+    SELECT * FROM messages
+    WHERE status = 'pending' AND priority = 'low'
     ORDER BY created_at ASC
   `);
 }
