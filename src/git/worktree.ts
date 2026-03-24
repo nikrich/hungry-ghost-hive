@@ -1,7 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import { execSync } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, rmSync } from 'fs';
 
 export interface RemoveWorktreeResult {
   success: boolean;
@@ -45,9 +45,24 @@ export function removeWorktree(
     });
     return { success: true, fullWorktreePath };
   } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    // If git doesn't recognize it as a worktree but the directory exists,
+    // fall back to removing the directory directly (common after interrupted operations)
+    if (errorMsg.includes('not a working tree') && existsSync(fullWorktreePath)) {
+      try {
+        rmSync(fullWorktreePath, { recursive: true, force: true });
+        return { success: true, fullWorktreePath };
+      } catch (rmErr) {
+        return {
+          success: false,
+          error: `git worktree failed and rm fallback also failed: ${rmErr instanceof Error ? rmErr.message : 'Unknown error'}`,
+          fullWorktreePath,
+        };
+      }
+    }
     return {
       success: false,
-      error: err instanceof Error ? err.message : 'Unknown error',
+      error: errorMsg,
       fullWorktreePath,
     };
   }
