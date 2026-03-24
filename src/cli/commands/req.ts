@@ -11,7 +11,15 @@ import { loadConfig } from '../../config/loader.js';
 import { registry } from '../../connectors/registry.js';
 import { createAgent, getTechLead, updateAgent } from '../../db/queries/agents.js';
 import { createLog } from '../../db/queries/logs.js';
-import { createRequirement, updateRequirement } from '../../db/queries/requirements.js';
+import {
+  createRequirement,
+  getAllRequirements,
+  getRequirementById,
+  getRequirementsByStatus,
+  updateRequirement,
+  type RequirementStatus,
+} from '../../db/queries/requirements.js';
+import { getStoriesByRequirement } from '../../db/queries/stories.js';
 import { getAllTeams } from '../../db/queries/teams.js';
 import {
   isTmuxAvailable,
@@ -20,7 +28,8 @@ import {
   spawnTmuxSession,
 } from '../../tmux/manager.js';
 import { getTechLeadSessionName } from '../../utils/instance.js';
-import { withHiveContext } from '../../utils/with-hive-context.js';
+import { statusColor } from '../../utils/logger.js';
+import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 import { startDashboard } from '../dashboard/index.js';
 
 export const reqCommand = new Command('req')
@@ -316,6 +325,101 @@ export const reqCommand = new Command('req')
       });
     }
   );
+
+reqCommand
+  .command('list')
+  .description('List all requirements')
+  .option('--status <status>', 'Filter by status')
+  .option('--json', 'Output as JSON')
+  .action(async (options: { status?: string; json?: boolean }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
+      let requirements;
+      if (options.status) {
+        requirements = await getRequirementsByStatus(
+          db.provider,
+          options.status as RequirementStatus
+        );
+      } else {
+        requirements = await getAllRequirements(db.provider);
+      }
+
+      if (options.json) {
+        console.log(JSON.stringify(requirements, null, 2));
+        return;
+      }
+
+      if (requirements.length === 0) {
+        console.log(chalk.yellow('No requirements found.'));
+        return;
+      }
+
+      console.log(chalk.bold('\nRequirements:\n'));
+      console.log(
+        chalk.gray(
+          `${'ID'.padEnd(18)} ${'Title'.padEnd(40)} ${'Status'.padEnd(15)} ${'Godmode'.padEnd(9)} ${'Created'}`
+        )
+      );
+      console.log(chalk.gray('─'.repeat(100)));
+
+      for (const req of requirements) {
+        const title = req.title.length > 37 ? req.title.substring(0, 37) + '...' : req.title;
+        const godmode = req.godmode ? chalk.yellow('yes') : 'no';
+        const created = req.created_at.substring(0, 10);
+
+        console.log(
+          `${chalk.cyan(req.id.padEnd(18))} ${title.padEnd(40)} ${statusColor(req.status).padEnd(15)} ${godmode.padEnd(9)} ${created}`
+        );
+      }
+      console.log();
+    });
+  });
+
+reqCommand
+  .command('show <id>')
+  .description('Show requirement details')
+  .option('--json', 'Output as JSON')
+  .action(async (id: string, options: { json?: boolean }) => {
+    await withReadOnlyHiveContext(async ({ db }) => {
+      const req = await getRequirementById(db.provider, id);
+      if (!req) {
+        console.error(chalk.red(`Requirement not found: ${id}`));
+        process.exit(1);
+      }
+
+      const stories = await getStoriesByRequirement(db.provider, id);
+
+      if (options.json) {
+        console.log(JSON.stringify({ requirement: req, stories }, null, 2));
+        return;
+      }
+
+      console.log(chalk.bold(`\nRequirement: ${req.id}\n`));
+      console.log(chalk.bold('Title:'), req.title);
+      console.log(chalk.bold('Status:'), statusColor(req.status));
+      console.log(chalk.bold('Godmode:'), req.godmode ? chalk.yellow('yes') : 'no');
+      console.log(chalk.bold('Target Branch:'), req.target_branch);
+      if (req.feature_branch) {
+        console.log(chalk.bold('Feature Branch:'), req.feature_branch);
+      }
+
+      console.log(chalk.bold('\nDescription:'));
+      console.log(chalk.gray(req.description));
+
+      console.log(chalk.bold('\nDetails:'));
+      console.log(chalk.gray(`  Submitted By: ${req.submitted_by}`));
+      console.log(chalk.gray(`  Created:      ${req.created_at}`));
+
+      if (stories.length > 0) {
+        console.log(chalk.bold('\nStories:'));
+        for (const story of stories) {
+          console.log(
+            `  ${chalk.cyan(story.id)} - ${story.title.substring(0, 50)} - ${statusColor(story.status)}`
+          );
+        }
+      }
+      console.log();
+    });
+  });
 
 async function promptTargetBranch(): Promise<string> {
   const rl = readline.createInterface({
