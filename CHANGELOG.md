@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.56.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.55.0...hungry-ghost-hive-v0.56.0) (2026-03-24)
+
+
+### Features
+
+* add fast message-forwarding loop to reduce latency to 5s ([#620](https://github.com/nikrich/hungry-ghost-hive/issues/620)) ([893d2dd](https://github.com/nikrich/hungry-ghost-hive/commit/893d2dd06c1d31cd4f87548652dab7f44954257c))
+* add req list and req show CLI subcommands ([#623](https://github.com/nikrich/hungry-ghost-hive/issues/623)) ([55664e6](https://github.com/nikrich/hungry-ghost-hive/commit/55664e6129269bcc6f3ee6f9335d7f968c14128a))
+
+
+### Bug Fixes
+
+* resolve FK constraint and worktree errors in nuke agents command ([#625](https://github.com/nikrich/hungry-ghost-hive/issues/625)) ([4b8fb0d](https://github.com/nikrich/hungry-ghost-hive/commit/4b8fb0d2dee20bbc29e28255c16b8962af28f2dc))
+
 ## [0.55.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.54.0...hungry-ghost-hive-v0.55.0) (2026-03-23)
 
 
