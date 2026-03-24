@@ -27,6 +27,7 @@ import { isAgentReviewingPR } from '../db/queries/pull-requests.js';
 import { getRequirementById, type RequirementRow } from '../db/queries/requirements.js';
 import {
   getPlannedStories,
+  getStoriesByStatus,
   getStoriesDependingOn,
   getStoryById,
   updateStory,
@@ -212,6 +213,18 @@ export class Scheduler {
     let assigned = 0;
     let preventedDuplicates = 0;
 
+    // Enforce max parallel stories limit to protect against resource exhaustion
+    const maxParallel = this.config.scaling.max_parallel_stories;
+    const inProgressStories = await getStoriesByStatus(this.provider, 'in_progress');
+    const inProgressCount = inProgressStories.length;
+    if (inProgressCount >= maxParallel) {
+      logger.info(
+        `Skipping assignment: ${inProgressCount} stories already in progress (max: ${maxParallel})`
+      );
+      return { assigned, errors, preventedDuplicates };
+    }
+    const availableSlots = maxParallel - inProgressCount;
+
     // Topological sort stories to respect dependencies
     const sortedStories = await topologicalSort(this.provider, plannedStories);
     if (sortedStories === null) {
@@ -319,6 +332,14 @@ export class Scheduler {
       const orderedStoriesToAssign = [...blockerStories, ...regularStories];
 
       for (const story of orderedStoriesToAssign) {
+        // Stop assigning if we've hit the parallel stories limit
+        if (assigned >= availableSlots) {
+          logger.info(
+            `Reached max parallel stories limit (${maxParallel}), deferring remaining assignments`
+          );
+          break;
+        }
+
         // Check if story is already assigned (prevent duplicate assignment)
         const currentStory = await getStoryById(this.provider, story.id);
         if (currentStory && currentStory.assigned_agent_id !== null) {

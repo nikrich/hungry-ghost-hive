@@ -183,6 +183,7 @@ describe('context-files module', () => {
       },
       scaling: {
         senior_capacity: 20,
+        max_parallel_stories: 10,
         junior_max_complexity: 3,
         intermediate_max_complexity: 5,
         refactor: {
