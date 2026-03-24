@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.57.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.56.0...hungry-ghost-hive-v0.57.0) (2026-03-24)
+
+
+### Features
+
+* add max_parallel_stories config to limit concurrent assignments ([#626](https://github.com/nikrich/hungry-ghost-hive/issues/626)) ([b77d960](https://github.com/nikrich/hungry-ghost-hive/commit/b77d960ea3f1dc09040b58dfc6f84daac75cfcf5))
+
 ## [0.56.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.55.0...hungry-ghost-hive-v0.56.0) (2026-03-24)
 
 
