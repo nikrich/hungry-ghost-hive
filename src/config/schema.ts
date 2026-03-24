@@ -83,6 +83,8 @@ const ModelsConfigSchema = z.object({
 const ScalingConfigSchema = z.object({
   // Story points threshold before hiring additional senior
   senior_capacity: z.number().int().positive().default(20),
+  // Maximum number of stories that can be in progress at the same time
+  max_parallel_stories: z.number().int().positive().default(10),
   // Complexity threshold for delegation to junior
   junior_max_complexity: z.number().int().min(1).max(13).default(3),
   // Complexity threshold for delegation to intermediate
@@ -488,6 +490,8 @@ models:
 scaling:
   # Story points threshold before hiring additional senior
   senior_capacity: 20
+  # Maximum stories in progress at the same time (protects against resource exhaustion)
+  max_parallel_stories: 10
   # Complexity threshold for delegation
   junior_max_complexity: 3
   intermediate_max_complexity: 5
