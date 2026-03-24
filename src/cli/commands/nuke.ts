@@ -1,6 +1,7 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
 import chalk from 'chalk';
+import { execSync } from 'child_process';
 import { Command } from 'commander';
 import { existsSync, unlinkSync } from 'fs';
 import { join, resolve } from 'path';
@@ -22,9 +23,12 @@ async function runDbDeletions(
   label: string
 ): Promise<boolean> {
   try {
+    // Disable FK constraints during nuke operations to avoid ordering issues
+    await dbRef.provider.run('PRAGMA foreign_keys = OFF');
     for (const sql of statements) {
       await dbRef.provider.run(sql);
     }
+    await dbRef.provider.run('PRAGMA foreign_keys = ON');
     dbRef.save();
     return true;
   } catch (error) {
@@ -113,6 +117,12 @@ async function removeAgentWorktrees(root: string, db: DatabaseClient): Promise<n
         );
       }
     }
+  }
+  // Prune stale worktree references that git may still track
+  try {
+    execSync('git worktree prune', { cwd: root, stdio: 'pipe', timeout: 10000 });
+  } catch {
+    // Best-effort: prune may fail if not in a git repo
   }
   if (removed > 0) {
     console.log(chalk.gray(`Removed ${removed} agent worktree(s).`));
@@ -215,6 +225,7 @@ export const nukeCommand = new Command('nuke')
               [
                 'UPDATE stories SET assigned_agent_id = NULL',
                 'DELETE FROM agent_logs',
+                'DELETE FROM token_usage',
                 'DELETE FROM escalations',
                 'DELETE FROM messages',
                 'DELETE FROM agents',
@@ -354,6 +365,7 @@ export const nukeCommand = new Command('nuke')
                 'DELETE FROM pull_requests',
                 'DELETE FROM escalations',
                 'DELETE FROM agent_logs',
+                'DELETE FROM token_usage',
                 'DELETE FROM messages',
                 'DELETE FROM story_dependencies',
                 'DELETE FROM stories',
