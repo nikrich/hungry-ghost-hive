@@ -1,6 +1,9 @@
 # Hive - AI Agent Orchestrator
 
 [![CI](https://img.shields.io/github/actions/workflow/status/nikrich/hungry-ghost-hive/ci.yml?branch=main&style=flat-square)](https://github.com/nikrich/hungry-ghost-hive/actions/workflows/ci.yml)
+[![PR Title Check](https://img.shields.io/github/actions/workflow/status/nikrich/hungry-ghost-hive/pr-title-check.yml?branch=main&style=flat-square&label=pr+title+check)](https://github.com/nikrich/hungry-ghost-hive/actions/workflows/pr-title-check.yml)
+[![Publish](https://img.shields.io/github/actions/workflow/status/nikrich/hungry-ghost-hive/publish.yml?branch=main&style=flat-square&label=publish)](https://github.com/nikrich/hungry-ghost-hive/actions/workflows/publish.yml)
+[![Release Please](https://img.shields.io/github/actions/workflow/status/nikrich/hungry-ghost-hive/release-please.yml?branch=main&style=flat-square&label=release+please)](https://github.com/nikrich/hungry-ghost-hive/actions/workflows/release-please.yml)
 [![npm](https://img.shields.io/npm/v/hungry-ghost-hive?style=flat-square)](https://www.npmjs.com/package/hungry-ghost-hive)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=flat-square)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-Restricted-blue?style=flat-square)](LICENSE)
