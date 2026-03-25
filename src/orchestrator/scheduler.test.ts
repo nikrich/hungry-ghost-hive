@@ -2061,14 +2061,15 @@ describe('Scheduler checkScaling', () => {
         const index = args[3] as number | undefined;
         expect(index).toBe(2);
         db.run(
-          `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-          ['senior-spawned-2', 'senior', team.id, 'idle']
+          `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          ['senior-spawned-2', 'senior', team.id, 'hive-test-senior-2', 'idle']
         );
         return {
           id: 'senior-spawned-2',
           type: 'senior',
           team_id: team.id,
+          tmux_session: 'hive-test-senior-2',
           status: 'idle',
           current_story_id: null,
         };
@@ -2161,9 +2162,9 @@ describe('Scheduler checkScaling', () => {
     });
 
     db.db.run(
-      `INSERT INTO agents (id, type, team_id, status, current_story_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      ['senior-single-1', 'senior', team.id, 'idle']
+      `INSERT INTO agents (id, type, team_id, tmux_session, status, current_story_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      ['senior-single-1', 'senior', team.id, 'hive-test-senior-single-1', 'idle']
     );
 
     const story1 = await createStory(db, {
@@ -2393,11 +2394,11 @@ describe('Scheduler Markdown File Writing', () => {
       repoPath: 'test',
     });
 
-    // Create an idle senior agent
+    // Create an idle senior agent (must include tmux_session to be eligible for assignment)
     db.db.run(
-      `INSERT INTO agents (id, type, team_id, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      ['senior-md-1', 'senior', team.id, 'idle']
+      `INSERT INTO agents (id, type, team_id, tmux_session, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      ['senior-md-1', 'senior', team.id, 'hive-test-senior-md-1', 'idle']
     );
 
     const story = await createStory(db, {
