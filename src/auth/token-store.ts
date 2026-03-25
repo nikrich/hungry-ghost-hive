@@ -144,6 +144,9 @@ export class TokenStore {
         return await lock.lock(filePath, options);
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
+        if ((lastError as NodeJS.ErrnoException).code === 'ECOMPROMISED') {
+          throw lastError;
+        }
         if (attempt < LOCK_MAX_RETRIES) {
           const delay = LOCK_BASE_DELAY_MS * Math.pow(2, attempt);
           await new Promise(resolve => setTimeout(resolve, delay));
