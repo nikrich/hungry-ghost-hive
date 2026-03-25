@@ -13,6 +13,7 @@ export interface LockOptions {
     minTimeout?: number; // Min wait between retries (ms), default 100
     maxTimeout?: number; // Max wait between retries (ms), default 1000
   };
+  onCompromised?: (err: Error) => void; // Custom handler for ECOMPROMISED errors
 }
 
 /**
@@ -41,6 +42,12 @@ export async function acquireLock(
     writeFileSync(lockFile, '');
   }
 
+  const onCompromised =
+    options?.onCompromised ??
+    ((err: Error) => {
+      console.warn(`[hive-manager] Lock compromised: ${err.message}`);
+    });
+
   const opts = {
     stale: options?.stale || 60000, // 60s default
     retries: {
@@ -48,6 +55,7 @@ export async function acquireLock(
       minTimeout: options?.retries?.minTimeout ?? 100,
       maxTimeout: options?.retries?.maxTimeout ?? 1000,
     },
+    onCompromised,
   };
 
   try {
