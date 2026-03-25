@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.57.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.57.0...hungry-ghost-hive-v0.57.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* enforce max_parallel_stories in checkScaling to prevent agent over-provisioning ([#628](https://github.com/nikrich/hungry-ghost-hive/issues/628)) ([bdbc342](https://github.com/nikrich/hungry-ghost-hive/commit/bdbc34208c38050df37989919ed565d41c6639be))
+
 ## [0.57.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.56.0...hungry-ghost-hive-v0.57.0) (2026-03-24)
 
 
