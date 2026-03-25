@@ -110,6 +110,19 @@ export {
   shouldTreatUnknownAsStuckWaiting,
 } from './stuck-story-helpers.js';
 
+/**
+ * Creates an uncaughtException handler that logs the error and releases the manager lock.
+ * Exported for testing purposes.
+ */
+export function createUncaughtExceptionHandler(
+  cleanup: () => Promise<void>
+): (err: Error) => Promise<void> {
+  return async (err: Error) => {
+    console.error(chalk.red('Uncaught exception in manager:'), err);
+    await cleanup();
+  };
+}
+
 const DONE_INFERENCE_CONFIDENCE_THRESHOLD = 0.82;
 const SCREEN_STATIC_AI_RECHECK_MS = 5 * 60 * 1000;
 interface ScreenStaticStatus {
@@ -302,6 +315,7 @@ managerCommand
 
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
+    process.on('uncaughtException', createUncaughtExceptionHandler(cleanup));
 
     if (config.cluster.enabled) {
       clusterRuntime = new ClusterRuntime(config.cluster, { hiveDir: paths.hiveDir });

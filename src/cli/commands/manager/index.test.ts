@@ -242,6 +242,40 @@ describe('Unknown-state stuck heuristic', () => {
   });
 });
 
+describe('uncaughtException safety net', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('logs the error and calls cleanup on uncaught exception', async () => {
+    const { createUncaughtExceptionHandler } = await import('./index.js');
+
+    const cleanup = vi.fn().mockResolvedValue(undefined);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const handler = createUncaughtExceptionHandler(cleanup);
+    const err = new Error('boom');
+    await handler(err);
+
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.any(String), err);
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('calls cleanup even when the error message is empty', async () => {
+    const { createUncaughtExceptionHandler } = await import('./index.js');
+
+    const cleanup = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const handler = createUncaughtExceptionHandler(cleanup);
+    await handler(new Error());
+
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+});
+
 describe('Stuck reminder deferral', () => {
   beforeEach(() => {
     vi.clearAllMocks();
