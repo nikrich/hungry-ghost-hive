@@ -214,7 +214,7 @@ export class Scheduler {
     let preventedDuplicates = 0;
 
     // Enforce max parallel stories limit to protect against resource exhaustion
-    const maxParallel = this.config.scaling.max_parallel_stories;
+    const maxParallel = this.config.scaling.max_parallel_stories ?? 10;
     const inProgressStories = await getStoriesByStatus(this.provider, 'in_progress');
     const inProgressCount = inProgressStories.length;
     if (inProgressCount >= maxParallel) {
@@ -638,8 +638,20 @@ export class Scheduler {
   /**
    * Check if scaling is needed based on workload
    * Only spawns agents when there is assignable work (stories with satisfied dependencies)
+   * Respects max_parallel_stories to avoid over-provisioning
    */
   async checkScaling(): Promise<void> {
+    // Check how many slots are available before scaling
+    const maxParallel = this.config.scaling.max_parallel_stories ?? 10;
+    const inProgressStories = await getStoriesByStatus(this.provider, 'in_progress');
+    const availableSlots = Math.max(0, maxParallel - inProgressStories.length);
+    if (availableSlots === 0) {
+      logger.info(
+        `Skipping scaling: ${inProgressStories.length} stories already in progress (max: ${maxParallel})`
+      );
+      return;
+    }
+
     const teams = await getAllTeams(this.provider);
 
     for (const team of teams) {
@@ -657,8 +669,11 @@ export class Scheduler {
         }
       }
 
-      // Count story points only from assignable work
-      const assignableStoryPoints = assignableStories.reduce(
+      // Cap assignable stories to available parallel slots
+      const cappedStories = assignableStories.slice(0, availableSlots);
+
+      // Count story points only from capped assignable work
+      const assignableStoryPoints = cappedStories.reduce(
         (sum, story) => sum + getCapacityPoints(story),
         0
       );
@@ -667,7 +682,7 @@ export class Scheduler {
         a => a.type === 'senior' && a.status !== 'terminated'
       );
 
-      // Calculate needed seniors based on assignable work only
+      // Calculate needed seniors based on capped assignable work only
       const seniorCapacity = this.config.scaling.senior_capacity;
       const neededSeniors = Math.ceil(assignableStoryPoints / seniorCapacity);
       const currentSeniors = seniors.length;

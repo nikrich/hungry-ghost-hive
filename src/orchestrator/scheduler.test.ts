@@ -47,6 +47,7 @@ const mockConfig = {
     junior_max_complexity: 3,
     intermediate_max_complexity: 5,
     senior_capacity: 50,
+    max_parallel_stories: 10,
   },
   models: {
     tech_lead: {
