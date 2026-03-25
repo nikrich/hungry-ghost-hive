@@ -16,6 +16,7 @@ import {
 import type { DatabaseProvider } from '../db/provider.js';
 import {
   createAgent,
+  deleteAgent,
   getAgentById,
   getAgentsByTeam,
   updateAgent,
@@ -286,7 +287,11 @@ export class Scheduler {
       let nextSeniorIndex = maxSeniorIndex + 1;
 
       const getOrSpawnSenior = async (): Promise<AgentRow | undefined> => {
-        const idleSenior = agents.find(a => a.type === 'senior' && a.status === 'idle');
+        // Only consider seniors that have a live tmux session — agents
+        // without one are zombies left over from a failed spawn.
+        const idleSenior = agents.find(
+          a => a.type === 'senior' && a.status === 'idle' && a.tmux_session
+        );
         if (idleSenior) return idleSenior;
 
         try {
@@ -370,7 +375,9 @@ export class Scheduler {
           targetAgent = await getOrSpawnSenior();
         } else if (complexity <= this.config.scaling.junior_max_complexity) {
           // Assign to Junior with least workload
-          const juniors = agents.filter(a => a.type === 'junior' && a.status === 'idle');
+          const juniors = agents.filter(
+            a => a.type === 'junior' && a.status === 'idle' && a.tmux_session
+          );
           targetAgent =
             juniors.length > 0
               ? await selectAgentWithLeastWorkload(this.provider, juniors)
@@ -382,7 +389,7 @@ export class Scheduler {
             } catch (_error) {
               // Fall back to Intermediate or Senior
               const intermediates = agents.filter(
-                a => a.type === 'intermediate' && a.status === 'idle'
+                a => a.type === 'intermediate' && a.status === 'idle' && a.tmux_session
               );
               targetAgent =
                 intermediates.length > 0
@@ -393,7 +400,7 @@ export class Scheduler {
         } else if (complexity <= this.config.scaling.intermediate_max_complexity) {
           // Assign to Intermediate with least workload
           const intermediates = agents.filter(
-            a => a.type === 'intermediate' && a.status === 'idle'
+            a => a.type === 'intermediate' && a.status === 'idle' && a.tmux_session
           );
           targetAgent =
             intermediates.length > 0
@@ -490,7 +497,16 @@ export class Scheduler {
 
   private async sendAssignmentHandoff(agent: AgentRow, story: StoryRow): Promise<void> {
     const sessionName = agent.tmux_session;
-    if (!sessionName) return;
+    if (!sessionName) {
+      await createLog(this.provider, {
+        agentId: agent.id,
+        storyId: story.id,
+        eventType: 'AGENT_SPAWN_FAILED',
+        status: 'error',
+        message: `Cannot send assignment handoff: agent ${agent.id} has no tmux session`,
+      });
+      return;
+    }
 
     let sessionRunning = false;
     try {
@@ -498,7 +514,16 @@ export class Scheduler {
     } catch {
       sessionRunning = false;
     }
-    if (!sessionRunning) return;
+    if (!sessionRunning) {
+      await createLog(this.provider, {
+        agentId: agent.id,
+        storyId: story.id,
+        eventType: 'AGENT_SPAWN_FAILED',
+        status: 'error',
+        message: `Cannot send assignment handoff: tmux session ${sessionName} is not running for agent ${agent.id}`,
+      });
+      return;
+    }
 
     const handoffMessage = [
       `Use session ${sessionName} for all hive commands.`,
@@ -1062,114 +1087,142 @@ export class Scheduler {
       model: runtimeModel,
     });
 
-    // Determine the target branch for this team's stories
-    const targetBranch = await this.getTargetBranchForTeam(teamId);
+    // Wrap post-creation steps so we can clean up the agent record on failure.
+    // Without this, a failure after createAgent() leaves a zombie agent
+    // (status='idle', no tmux_session) that assignStories() picks up and
+    // assigns work to — but no tmux session exists to do the work.
+    let worktreePath: string | undefined;
+    try {
+      // Determine the target branch for this team's stories
+      const targetBranch = await this.getTargetBranchForTeam(teamId);
 
-    // Create git worktree for this agent from the correct base branch
-    const worktreePath = await this.createWorktree(agent.id, teamId, repoPath, targetBranch);
-    const workDir = `${this.config.rootDir}/${worktreePath}`;
+      // Create git worktree for this agent from the correct base branch
+      worktreePath = await this.createWorktree(agent.id, teamId, repoPath, targetBranch);
+      const workDir = `${this.config.rootDir}/${worktreePath}`;
 
-    if (!(await isTmuxSessionRunning(sessionName))) {
-      // Build the initial prompt for this agent type
-      const team = await getTeamById(this.provider, teamId);
-      const includeProgressUpdates = this.shouldIncludeProgressUpdates();
-      const hiveDir = join(this.config.rootDir, '.hive');
-      const techLeadSession = getTechLeadSessionName(hiveDir);
-      const chromeEnabled =
-        this.config.hiveConfig?.agents?.chrome_enabled === true && cliTool === 'claude';
-      let prompt: string;
+      if (!(await isTmuxSessionRunning(sessionName))) {
+        // Build the initial prompt for this agent type
+        const team = await getTeamById(this.provider, teamId);
+        const includeProgressUpdates = this.shouldIncludeProgressUpdates();
+        const hiveDir = join(this.config.rootDir, '.hive');
+        const techLeadSession = getTechLeadSessionName(hiveDir);
+        const chromeEnabled =
+          this.config.hiveConfig?.agents?.chrome_enabled === true && cliTool === 'claude';
+        let prompt: string;
 
-      if (type === 'senior') {
-        const stories = await this.getTeamStories(teamId);
-        prompt = generateSeniorPrompt(
-          teamName,
-          team?.repo_url || '',
-          worktreePath,
-          stories,
-          targetBranch,
-          { includeProgressUpdates, techLeadSession, chromeEnabled },
-          sessionName
+        if (type === 'senior') {
+          const stories = await this.getTeamStories(teamId);
+          prompt = generateSeniorPrompt(
+            teamName,
+            team?.repo_url || '',
+            worktreePath,
+            stories,
+            targetBranch,
+            { includeProgressUpdates, techLeadSession, chromeEnabled },
+            sessionName
+          );
+        } else if (type === 'intermediate') {
+          prompt = generateIntermediatePrompt(
+            teamName,
+            team?.repo_url || '',
+            worktreePath,
+            sessionName,
+            targetBranch,
+            { includeProgressUpdates, techLeadSession, chromeEnabled }
+          );
+        } else if (type === 'junior') {
+          prompt = generateJuniorPrompt(
+            teamName,
+            team?.repo_url || '',
+            worktreePath,
+            sessionName,
+            targetBranch,
+            { includeProgressUpdates, techLeadSession, chromeEnabled }
+          );
+        } else if (type === 'feature_test' && featureTestContext) {
+          prompt = generateFeatureTestPrompt(
+            teamName,
+            team?.repo_url || '',
+            worktreePath,
+            sessionName,
+            featureTestContext.featureBranch,
+            featureTestContext.requirementId,
+            featureTestContext.e2eTestsPath,
+            { includeProgressUpdates, techLeadSession, chromeEnabled }
+          );
+        } else if (type === 'auditor') {
+          prompt = generateAuditorPrompt(sessionName, worktreePath, team?.repo_url || '', {
+            techLeadSession,
+            chromeEnabled,
+          });
+        } else {
+          prompt = generateQAPrompt(
+            teamName,
+            team?.repo_url || '',
+            worktreePath,
+            sessionName,
+            targetBranch,
+            { chromeEnabled }
+          );
+        }
+
+        // Build CLI command using the configured runtime
+        const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(
+          runtimeModel,
+          safetyMode,
+          {
+            chrome: chromeEnabled,
+          }
         );
-      } else if (type === 'intermediate') {
-        prompt = generateIntermediatePrompt(
-          teamName,
-          team?.repo_url || '',
-          worktreePath,
+
+        // Pass the prompt as initialPrompt so it's included as a CLI positional
+        // argument via $(cat ...). This delivers the full multi-line prompt
+        // reliably without tmux send-keys newline issues.
+        await spawnTmuxSession({
           sessionName,
-          targetBranch,
-          { includeProgressUpdates, techLeadSession, chromeEnabled }
-        );
-      } else if (type === 'junior') {
-        prompt = generateJuniorPrompt(
-          teamName,
-          team?.repo_url || '',
-          worktreePath,
-          sessionName,
-          targetBranch,
-          { includeProgressUpdates, techLeadSession, chromeEnabled }
-        );
-      } else if (type === 'feature_test' && featureTestContext) {
-        prompt = generateFeatureTestPrompt(
-          teamName,
-          team?.repo_url || '',
-          worktreePath,
-          sessionName,
-          featureTestContext.featureBranch,
-          featureTestContext.requirementId,
-          featureTestContext.e2eTestsPath,
-          { includeProgressUpdates, techLeadSession, chromeEnabled }
-        );
-      } else if (type === 'auditor') {
-        prompt = generateAuditorPrompt(sessionName, worktreePath, team?.repo_url || '', {
-          techLeadSession,
-          chromeEnabled,
+          workDir,
+          commandArgs,
+          initialPrompt: prompt,
         });
-      } else {
-        prompt = generateQAPrompt(
-          teamName,
-          team?.repo_url || '',
-          worktreePath,
-          sessionName,
-          targetBranch,
-          { chromeEnabled }
-        );
+
+        // Auto-start manager when spawning agents
+        await this.ensureManagerRunning();
       }
 
-      // Build CLI command using the configured runtime
-      const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(
-        runtimeModel,
-        safetyMode,
-        {
-          chrome: chromeEnabled,
-        }
-      );
-
-      // Pass the prompt as initialPrompt so it's included as a CLI positional
-      // argument via $(cat ...). This delivers the full multi-line prompt
-      // reliably without tmux send-keys newline issues.
-      await spawnTmuxSession({
-        sessionName,
-        workDir,
-        commandArgs,
-        initialPrompt: prompt,
+      // Capture the updated row so callers get tmux_session in-memory
+      const updatedAgent = await updateAgent(this.provider, agent.id, {
+        tmuxSession: sessionName,
+        status: 'idle',
+        worktreePath,
       });
 
-      // Auto-start manager when spawning agents
-      await this.ensureManagerRunning();
+      // Save database immediately so spawned agent can see itself when querying
+      if (this.saveFn) {
+        this.saveFn();
+      }
+
+      return updatedAgent!;
+    } catch (err) {
+      // Clean up the orphaned agent record to prevent zombie agents
+      logger.error(
+        `spawnAgent failed after DB insert for ${agent.id}, cleaning up: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+      try {
+        await deleteAgent(this.provider, agent.id);
+        if (worktreePath) {
+          await removeWorktree(this.config.rootDir, worktreePath);
+        }
+      } catch (cleanupErr) {
+        logger.error(
+          `Failed to clean up orphaned agent ${agent.id}: ${
+            cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+          }`
+        );
+      }
+      throw err;
     }
-
-    await updateAgent(this.provider, agent.id, {
-      tmuxSession: sessionName,
-      status: 'idle',
-      worktreePath,
-    });
-
-    // Save database immediately so spawned agent can see itself when querying
-    if (this.saveFn) {
-      this.saveFn();
-    }
-
-    return agent;
   }
 
   /**
