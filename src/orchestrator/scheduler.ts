@@ -290,7 +290,7 @@ export class Scheduler {
         // Only consider seniors that have a live tmux session — agents
         // without one are zombies left over from a failed spawn.
         const idleSenior = agents.find(
-          a => a.type === 'senior' && a.status === 'idle' && a.tmux_session,
+          a => a.type === 'senior' && a.status === 'idle' && a.tmux_session
         );
         if (idleSenior) return idleSenior;
 
@@ -375,7 +375,9 @@ export class Scheduler {
           targetAgent = await getOrSpawnSenior();
         } else if (complexity <= this.config.scaling.junior_max_complexity) {
           // Assign to Junior with least workload
-          const juniors = agents.filter(a => a.type === 'junior' && a.status === 'idle' && a.tmux_session);
+          const juniors = agents.filter(
+            a => a.type === 'junior' && a.status === 'idle' && a.tmux_session
+          );
           targetAgent =
             juniors.length > 0
               ? await selectAgentWithLeastWorkload(this.provider, juniors)
@@ -387,7 +389,7 @@ export class Scheduler {
             } catch (_error) {
               // Fall back to Intermediate or Senior
               const intermediates = agents.filter(
-                a => a.type === 'intermediate' && a.status === 'idle' && a.tmux_session,
+                a => a.type === 'intermediate' && a.status === 'idle' && a.tmux_session
               );
               targetAgent =
                 intermediates.length > 0
@@ -398,7 +400,7 @@ export class Scheduler {
         } else if (complexity <= this.config.scaling.intermediate_max_complexity) {
           // Assign to Intermediate with least workload
           const intermediates = agents.filter(
-            a => a.type === 'intermediate' && a.status === 'idle' && a.tmux_session,
+            a => a.type === 'intermediate' && a.status === 'idle' && a.tmux_session
           );
           targetAgent =
             intermediates.length > 0
