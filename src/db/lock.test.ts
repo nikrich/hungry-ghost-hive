@@ -97,13 +97,6 @@ describe('Database Lock', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const release = await acquireLock(lockPath);
 
-    // Simulate the onCompromised callback by extracting it from the lock options
-    // The default handler should log and not throw
-    const err = new Error('Lock was compromised');
-    // Trigger the default handler directly — it was passed to lockfile.lock()
-    // We verify the default behavior by calling acquireLock and checking the warn spy
-    // Since we can't easily trigger ECOMPROMISED in a unit test, we verify the handler
-    // is properly set by checking the lock acquires successfully
     expect(release).toBeTypeOf('function');
 
     await release();
