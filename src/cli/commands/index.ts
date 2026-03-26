@@ -6,7 +6,6 @@ export { approachCommand } from './approach.js';
 export { approvalsCommand } from './approvals.js';
 export { assignCommand } from './assign.js';
 export { authCommand } from './auth.js';
-export { btwCommand } from './btw.js';
 export { cleanupCommand } from './cleanup.js';
 export { clusterCommand } from './cluster.js';
 export { configCommand } from './config.js';

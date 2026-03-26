@@ -1,17 +1,8 @@
 // Licensed under the Hungry Ghost Hive License. See LICENSE.
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { AgentState } from '../../../state-detectors/types.js';
-import { detectAgentState, forwardBtwMessages } from './agent-monitoring.js';
-
-vi.mock('../../../tmux/manager.js', () => ({
-  autoApprovePermission: vi.fn(),
-  captureTmuxPane: vi.fn(),
-  forceBypassMode: vi.fn(),
-  sendBtwToTmuxSession: vi.fn().mockResolvedValue(undefined),
-  sendEnterToTmuxSession: vi.fn(),
-  sendToTmuxSession: vi.fn(),
-}));
+import { detectAgentState } from './agent-monitoring.js';
 
 const INTERRUPTION_BANNER = `■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit \`/feedback\` to report the issue.`;
 const RATE_LIMIT_BANNER =
@@ -146,55 +137,5 @@ describe('detectAgentState interruption fallback', () => {
     expect(result.state).toBe(AgentState.ASKING_QUESTION);
     expect(result.isWaiting).toBe(true);
     expect(result.needsHuman).toBe(true);
-  });
-});
-
-describe('forwardBtwMessages', () => {
-  const makeBtwMsg = (id: string) => ({
-    id,
-    from_session: 'manager',
-    to_session: 'agent-session',
-    subject: null,
-    body: 'Hey, just btw...',
-    reply: null,
-    status: 'pending' as const,
-    priority: 'low' as const,
-    created_at: new Date().toISOString(),
-    replied_at: null,
-  });
-
-  it('delivers BTW messages when agent is IDLE_AT_PROMPT', async () => {
-    const msgs = [makeBtwMsg('btw-1'), makeBtwMsg('btw-2')];
-    const delivered = await forwardBtwMessages('agent-session', msgs, AgentState.IDLE_AT_PROMPT);
-    expect(delivered).toEqual(['btw-1', 'btw-2']);
-  });
-
-  it('delivers BTW messages when agent is WORK_COMPLETE', async () => {
-    const msgs = [makeBtwMsg('btw-3')];
-    const delivered = await forwardBtwMessages('agent-session', msgs, AgentState.WORK_COMPLETE);
-    expect(delivered).toEqual(['btw-3']);
-  });
-
-  it('does not deliver BTW messages when agent is THINKING', async () => {
-    const msgs = [makeBtwMsg('btw-4')];
-    const delivered = await forwardBtwMessages('agent-session', msgs, AgentState.THINKING);
-    expect(delivered).toEqual([]);
-  });
-
-  it('does not deliver BTW messages when agent is TOOL_RUNNING', async () => {
-    const msgs = [makeBtwMsg('btw-5')];
-    const delivered = await forwardBtwMessages('agent-session', msgs, AgentState.TOOL_RUNNING);
-    expect(delivered).toEqual([]);
-  });
-
-  it('does not deliver BTW messages when agent is ASKING_QUESTION', async () => {
-    const msgs = [makeBtwMsg('btw-6')];
-    const delivered = await forwardBtwMessages('agent-session', msgs, AgentState.ASKING_QUESTION);
-    expect(delivered).toEqual([]);
-  });
-
-  it('returns empty array when no messages to deliver', async () => {
-    const delivered = await forwardBtwMessages('agent-session', [], AgentState.IDLE_AT_PROMPT);
-    expect(delivered).toEqual([]);
   });
 });

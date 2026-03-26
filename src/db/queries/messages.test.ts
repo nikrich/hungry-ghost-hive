@@ -3,7 +3,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { SqliteProvider } from '../provider.js';
 import {
-  getAllPendingBtwMessages,
   getAllPendingMessages,
   getMessageById,
   getUnreadMessages,
@@ -26,16 +25,15 @@ describe('messages queries', () => {
     toSession: string,
     body: string,
     status: 'pending' | 'read' | 'replied' = 'pending',
-    subject?: string | null,
-    priority: 'normal' | 'low' = 'normal'
+    subject?: string | null
   ): void {
     const now = new Date().toISOString();
     db.db.run(
       `
-      INSERT INTO messages (id, from_session, to_session, subject, body, status, priority, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO messages (id, from_session, to_session, subject, body, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
-      [id, fromSession, toSession, subject || null, body, status, priority, now]
+      [id, fromSession, toSession, subject || null, body, status, now]
     );
   }
 
@@ -182,52 +180,6 @@ describe('messages queries', () => {
 
       expect(pending[0].id).toBe('msg1');
       expect(pending[1].id).toBe('msg2');
-    });
-  });
-
-  describe('getAllPendingBtwMessages', () => {
-    it('should return only low-priority pending messages', async () => {
-      createMessage('msg1', 'session-a', 'session-b', 'Normal message', 'pending', null, 'normal');
-      createMessage('msg2', 'session-a', 'session-b', 'BTW message', 'pending', null, 'low');
-      createMessage('msg3', 'session-a', 'session-c', 'Another BTW', 'pending', null, 'low');
-
-      const btw = await getAllPendingBtwMessages(db);
-
-      expect(btw).toHaveLength(2);
-      expect(btw.map(m => m.id)).toContain('msg2');
-      expect(btw.map(m => m.id)).toContain('msg3');
-      expect(btw.map(m => m.id)).not.toContain('msg1');
-    });
-
-    it('should not return read or replied low-priority messages', async () => {
-      createMessage('msg1', 'session-a', 'session-b', 'BTW pending', 'pending', null, 'low');
-      createMessage('msg2', 'session-a', 'session-b', 'BTW read', 'read', null, 'low');
-      createMessage('msg3', 'session-a', 'session-b', 'BTW replied', 'replied', null, 'low');
-
-      const btw = await getAllPendingBtwMessages(db);
-
-      expect(btw).toHaveLength(1);
-      expect(btw[0].id).toBe('msg1');
-    });
-
-    it('should return empty array when no BTW messages', async () => {
-      createMessage('msg1', 'session-a', 'session-b', 'Normal message', 'pending', null, 'normal');
-
-      const btw = await getAllPendingBtwMessages(db);
-
-      expect(btw).toEqual([]);
-    });
-  });
-
-  describe('getAllPendingMessages excludes BTW messages', () => {
-    it('should not return low-priority messages', async () => {
-      createMessage('msg1', 'session-a', 'session-b', 'Normal', 'pending', null, 'normal');
-      createMessage('msg2', 'session-a', 'session-b', 'BTW', 'pending', null, 'low');
-
-      const pending = await getAllPendingMessages(db);
-
-      expect(pending.map(m => m.id)).toContain('msg1');
-      expect(pending.map(m => m.id)).not.toContain('msg2');
     });
   });
 
