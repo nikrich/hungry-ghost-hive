@@ -47,6 +47,7 @@ export type EventType =
   | 'PR_APPROVED'
   | 'PR_MERGED'
   | 'PR_REJECTED'
+  | 'PR_REVIEW_TIMEOUT'
   | 'PR_CLOSED'
   | 'PR_MERGE_FAILED'
   | 'PR_MERGE_SKIPPED'

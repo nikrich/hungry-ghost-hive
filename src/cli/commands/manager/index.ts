@@ -73,6 +73,7 @@ import {
   autoRejectCommentOnlyReviews,
   handleRejectedPRs,
   notifyQAOfQueuedPRs,
+  requeueStaleReviewingPRs,
 } from './qa-review-handler.js';
 import { spinDownIdleAgents, spinDownMergedAgents } from './spin-down.js';
 import { findStaleSessionEscalations } from './stale-escalations.js';
@@ -704,6 +705,8 @@ async function managerCheck(
   await notifyQAOfQueuedPRs(ctx);
   verboseLogCtx(ctx, 'Step: auto-reject comment-only reviews');
   await autoRejectCommentOnlyReviews(ctx);
+  verboseLogCtx(ctx, 'Step: requeue stale reviewing PRs');
+  await requeueStaleReviewingPRs(ctx);
   verboseLogCtx(ctx, 'Step: handle rejected PRs');
   await handleRejectedPRs(ctx);
   verboseLogCtx(ctx, 'Step: recover unassigned qa_failed stories');

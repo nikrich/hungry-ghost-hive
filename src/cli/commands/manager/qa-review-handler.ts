@@ -2,7 +2,7 @@
 
 import chalk from 'chalk';
 import { syncStatusForStory } from '../../../connectors/project-management/operations.js';
-import { createLog } from '../../../db/queries/logs.js';
+import { createLog, getLogsByEventType } from '../../../db/queries/logs.js';
 import {
   getMergeQueue,
   getPullRequestsByStatus,
@@ -303,6 +303,114 @@ export async function autoRejectCommentOnlyReviews(ctx: ManagerCheckContext): Pr
       }
     }
   }
+}
+
+/**
+ * Requeue PRs stuck in 'reviewing' status when the assigned QA agent is idle
+ * and the reviewing timeout has elapsed.
+ *
+ * After 3 timeouts for the same PR (counted via PR_REVIEW_TIMEOUT logs),
+ * auto-reject the PR instead of requeuing to prevent infinite loops.
+ */
+export async function requeueStaleReviewingPRs(ctx: ManagerCheckContext): Promise<void> {
+  const timeoutMs = ctx.config.merge_queue.reviewing_timeout_ms;
+  const maxTimeoutsBeforeReject = 3;
+
+  await ctx.withDb(async db => {
+    const reviewingPRs = await getPullRequestsByStatus(db.provider, 'reviewing');
+    verboseLogCtx(ctx, `requeueStaleReviewingPRs: reviewing=${reviewingPRs.length}`);
+    if (reviewingPRs.length === 0) return;
+
+    const now = Date.now();
+
+    for (const pr of reviewingPRs) {
+      if (!pr.reviewed_by) continue;
+
+      // Check if the PR has exceeded the reviewing timeout
+      const updatedAt = new Date(pr.updated_at).getTime();
+      const elapsed = now - updatedAt;
+      if (elapsed < timeoutMs) {
+        verboseLogCtx(
+          ctx,
+          `requeueStaleReviewingPRs: pr=${pr.id} not timed out (${elapsed}ms < ${timeoutMs}ms)`
+        );
+        continue;
+      }
+
+      // Check if the assigned QA agent is idle
+      const qaAgent = ctx.agentsBySessionName.get(pr.reviewed_by);
+      if (!qaAgent) continue;
+
+      const qaState = agentStates.get(pr.reviewed_by);
+      const isIdle = qaAgent.status === 'idle' || qaState?.lastState === AgentState.IDLE_AT_PROMPT;
+      if (!isIdle) {
+        verboseLogCtx(
+          ctx,
+          `requeueStaleReviewingPRs: pr=${pr.id} QA agent ${pr.reviewed_by} is not idle, skipping`
+        );
+        continue;
+      }
+
+      // Count previous timeouts for this PR
+      const timeoutLogs = await getLogsByEventType(db.provider, 'PR_REVIEW_TIMEOUT', 100);
+      const prTimeoutCount = timeoutLogs.filter(log => {
+        if (!log.metadata) return false;
+        try {
+          const meta = JSON.parse(log.metadata);
+          return meta.pr_id === pr.id;
+        } catch {
+          return false;
+        }
+      }).length;
+
+      if (prTimeoutCount >= maxTimeoutsBeforeReject) {
+        // Auto-reject after too many timeouts
+        await db.provider.withTransaction(async () => {
+          await updatePullRequest(db.provider, pr.id, {
+            status: 'rejected',
+            reviewNotes: `Auto-rejected: PR review timed out ${prTimeoutCount + 1} times without QA completing review`,
+          });
+          if (pr.story_id) {
+            await updateStory(db.provider, pr.story_id, { status: 'qa_failed' });
+          }
+          await createLog(db.provider, {
+            agentId: 'manager',
+            eventType: 'PR_REVIEW_TIMEOUT',
+            message: `Auto-rejected PR ${pr.id} after ${prTimeoutCount + 1} review timeouts`,
+            storyId: pr.story_id || undefined,
+            metadata: { pr_id: pr.id, timeout_count: prTimeoutCount + 1, action: 'rejected' },
+          });
+        });
+        db.save();
+        console.log(
+          chalk.yellow(
+            `  Auto-rejected PR ${pr.id} (story: ${pr.story_id || '-'}): review timed out ${prTimeoutCount + 1} times`
+          )
+        );
+      } else {
+        // Requeue the PR
+        await db.provider.withTransaction(async () => {
+          await updatePullRequest(db.provider, pr.id, {
+            status: 'queued',
+            reviewedBy: null,
+          });
+          await createLog(db.provider, {
+            agentId: 'manager',
+            eventType: 'PR_REVIEW_TIMEOUT',
+            message: `Requeued PR ${pr.id}: QA agent ${pr.reviewed_by} idle after ${Math.round(elapsed / 1000)}s reviewing timeout`,
+            storyId: pr.story_id || undefined,
+            metadata: { pr_id: pr.id, timeout_count: prTimeoutCount + 1, action: 'requeued' },
+          });
+        });
+        db.save();
+        console.log(
+          chalk.yellow(
+            `  Requeued PR ${pr.id} (story: ${pr.story_id || '-'}): QA agent idle past reviewing timeout`
+          )
+        );
+      }
+    }
+  });
 }
 
 export async function handleRejectedPRs(ctx: ManagerCheckContext): Promise<void> {
