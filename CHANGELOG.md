@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.58.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.58.0...hungry-ghost-hive-v0.58.1) (2026-03-26)
+
+
+### Bug Fixes
+
+* propagate parent workspace MCP server config to spawned agents ([#645](https://github.com/nikrich/hungry-ghost-hive/issues/645)) ([34bbdaf](https://github.com/nikrich/hungry-ghost-hive/commit/34bbdaf8070187f8407b21fc9edec16b18f7e398)), closes [#643](https://github.com/nikrich/hungry-ghost-hive/issues/643)
+* requeue PRs stuck in REVIEWING status when QA agent goes idle ([#644](https://github.com/nikrich/hungry-ghost-hive/issues/644)) ([f72a00e](https://github.com/nikrich/hungry-ghost-hive/commit/f72a00e8ecf84ceae6e6cfb195dbbfb956f9ddf0))
+
 ## [0.58.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.57.1...hungry-ghost-hive-v0.58.0) (2026-03-26)
 
 
