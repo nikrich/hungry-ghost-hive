@@ -29,7 +29,6 @@ vi.mock('../../../tmux/manager.js', () => ({
   getHiveSessions: vi.fn(),
   sendMessageWithConfirmation: vi.fn(),
   sendToTmuxSession: vi.fn(),
-  sendBtwToTmuxSession: vi.fn(),
   autoApprovePermission: vi.fn(),
   forceBypassMode: vi.fn(),
   isManagerRunning: vi.fn(),
