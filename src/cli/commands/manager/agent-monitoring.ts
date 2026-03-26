@@ -464,39 +464,6 @@ export async function forwardMessages(
   }
 }
 
-/**
- * Forward low-priority BTW messages only when the agent is at a natural breakpoint
- * (IDLE_AT_PROMPT or WORK_COMPLETE). Returns the IDs of messages that were delivered.
- */
-export async function forwardBtwMessages(
-  sessionName: string,
-  messages: MessageRow[],
-  currentState: AgentState,
-  cliTool: CLITool = 'claude'
-): Promise<string[]> {
-  const idleStates: AgentState[] = [AgentState.IDLE_AT_PROMPT, AgentState.WORK_COMPLETE];
-  if (!idleStates.includes(currentState)) {
-    return [];
-  }
-
-  const commands = getAvailableCommands(cliTool);
-  const delivered: string[] = [];
-
-  for (const msg of messages) {
-    const notification = `# [BTW] Non-urgent message from ${msg.from_session}
-# ${msg.body}
-# Reply with: # ${commands.msgReply(msg.id, 'your response', sessionName)}`;
-
-    await sendBtwToTmuxSession(sessionName, notification);
-    delivered.push(msg.id);
-
-    // Small delay between messages to allow recipient time to read
-    await new Promise(resolve => setTimeout(resolve, MESSAGE_FORWARD_DELAY_MS));
-  }
-
-  return delivered;
-}
-
 export {
   AgentState,
   buildAutoRecoveryReminder,

@@ -13,7 +13,6 @@ import { getAgentById, getAllAgents, type AgentRow } from '../../../db/queries/a
 import { getPendingEscalations, updateEscalation } from '../../../db/queries/escalations.js';
 import { createLog } from '../../../db/queries/logs.js';
 import {
-  getAllPendingBtwMessages,
   getAllPendingMessages,
   markMessagesRead,
   type MessageRow,
@@ -40,7 +39,6 @@ import {
   agentStates,
   detectAgentState,
   enforceBypassMode,
-  forwardBtwMessages,
   forwardMessages,
   getAgentSafetyMode,
   handlePermissionPrompt,
@@ -1042,11 +1040,8 @@ export async function forwardPendingMessages(verbose: boolean): Promise<void> {
 
 async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
   // Phase 1: Batch fetch pending messages (brief lock)
-  const [allPendingMessages, allPendingBtwMessages] = await ctx.withDb(async db =>
-    Promise.all([getAllPendingMessages(db.provider), getAllPendingBtwMessages(db.provider)])
-  );
+  const allPendingMessages = await ctx.withDb(async db => getAllPendingMessages(db.provider));
   const messagesBySessionName = new Map<string, MessageRow[]>();
-  const btwMessagesBySessionName = new Map<string, MessageRow[]>();
   const activeSessionNames = new Set<string>();
   const maxStuckNudgesPerStory = getMaxStuckNudgesPerStory(ctx.config);
 
@@ -1055,13 +1050,6 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
       messagesBySessionName.set(msg.to_session, []);
     }
     messagesBySessionName.get(msg.to_session)!.push(msg);
-  }
-
-  for (const msg of allPendingBtwMessages) {
-    if (!btwMessagesBySessionName.has(msg.to_session)) {
-      btwMessagesBySessionName.set(msg.to_session, []);
-    }
-    btwMessagesBySessionName.get(msg.to_session)!.push(msg);
   }
 
   // Phase 2: Per-session processing (tmux/AI outside lock, DB writes under brief locks)
@@ -1147,29 +1135,6 @@ async function scanAgentSessions(ctx: ManagerCheckContext): Promise<void> {
         tracked.storyStuckNudgeCount = 0;
       }
       clearHumanIntervention(session.name);
-    }
-
-    // Forward BTW (non-interrupting) messages only when agent is at a natural breakpoint
-    const pendingBtw = btwMessagesBySessionName.get(session.name) || [];
-    if (pendingBtw.length > 0) {
-      verboseLogCtx(
-        ctx,
-        `Agent ${session.name}: ${pendingBtw.length} BTW message(s) queued, state=${stateResult.state}`
-      );
-      const deliveredBtwIds = await forwardBtwMessages(
-        session.name,
-        pendingBtw,
-        stateResult.state,
-        agentCliTool
-      );
-      if (deliveredBtwIds.length > 0) {
-        verboseLogCtx(
-          ctx,
-          `Agent ${session.name}: delivered ${deliveredBtwIds.length} BTW message(s)`
-        );
-        ctx.counters.messagesForwarded += deliveredBtwIds.length;
-        ctx.messagesToMarkRead.push(...deliveredBtwIds);
-      }
     }
 
     const handled = await handlePermissionPrompt(ctx, session.name, stateResult, safetyMode);
