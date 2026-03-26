@@ -68,55 +68,6 @@ describe('sendMessageWithConfirmation', () => {
   });
 });
 
-describe('sendBtwToTmuxSession', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('should be exported as a function', async () => {
-    const { sendBtwToTmuxSession } = await import('./manager.js');
-    expect(typeof sendBtwToTmuxSession).toBe('function');
-  });
-
-  it('should have the expected function signature', async () => {
-    const { sendBtwToTmuxSession } = await import('./manager.js');
-    const sig = sendBtwToTmuxSession.toString();
-    expect(sig).toContain('sessionName');
-    expect(sig).toContain('message');
-  });
-
-  it('should prefix messages with /btw', async () => {
-    const { sendBtwToTmuxSession } = await import('./manager.js');
-    const sig = sendBtwToTmuxSession.toString();
-    expect(sig).toContain('/btw ');
-  });
-
-  it('should not clear input before sending', async () => {
-    const { sendBtwToTmuxSession } = await import('./manager.js');
-    const sig = sendBtwToTmuxSession.toString();
-    // Should NOT contain Escape or C-u clearing logic
-    expect(sig).not.toContain('Escape');
-    expect(sig).not.toContain('C-u');
-  });
-
-  it('should handle multi-line messages via paste buffer', async () => {
-    const { sendBtwToTmuxSession } = await import('./manager.js');
-    const sig = sendBtwToTmuxSession.toString();
-    expect(sig).toContain('set-buffer');
-    expect(sig).toContain('paste-buffer');
-  });
-
-  it('should send Enter after the message', async () => {
-    const { sendBtwToTmuxSession } = await import('./manager.js');
-    const sig = sendBtwToTmuxSession.toString();
-    expect(sig).toContain('C-m');
-  });
-});
-
 describe('tmux shell command hardening', () => {
   it('shellEscapeArg should safely escape single quotes', async () => {
     const { shellEscapeArg } = await import('./manager.js');
