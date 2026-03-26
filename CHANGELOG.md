@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.58.0](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.57.1...hungry-ghost-hive-v0.58.0) (2026-03-26)
+
+
+### Features
+
+* add hive stories update command and --status flag on create ([#640](https://github.com/nikrich/hungry-ghost-hive/issues/640)) ([6a2ccc5](https://github.com/nikrich/hungry-ghost-hive/commit/6a2ccc5a97d4542e733a463f39c178b977d66e7c)), closes [#636](https://github.com/nikrich/hungry-ghost-hive/issues/636)
+* add uncaughtException safety net in manager entrypoint ([c69b3d6](https://github.com/nikrich/hungry-ghost-hive/commit/c69b3d60da03e6dc0f8deea717bd4f3a955eaea4))
+
+
+### Bug Fixes
+
+* add onCompromised callback to acquireLock to prevent ECOMPROMISED crashes ([#633](https://github.com/nikrich/hungry-ghost-hive/issues/633)) ([0d9347e](https://github.com/nikrich/hungry-ghost-hive/commit/0d9347e5e646009dd0b321a8ae83f00cdf9d3ea8))
+* handle ECOMPROMISED lock error in token-store to prevent manager crash ([#639](https://github.com/nikrich/hungry-ghost-hive/issues/639)) ([73cd4e6](https://github.com/nikrich/hungry-ghost-hive/commit/73cd4e6c5eedd583889cb3fee554b3455cb94fff)), closes [#631](https://github.com/nikrich/hungry-ghost-hive/issues/631)
+* prevent zombie agents from failed spawnAgent() calls ([#630](https://github.com/nikrich/hungry-ghost-hive/issues/630)) ([860dd3c](https://github.com/nikrich/hungry-ghost-hive/commit/860dd3c985a934911fd7022f564fb828974e56a9))
+* throw immediately on ECOMPROMISED in TokenStore lock acquisition ([#634](https://github.com/nikrich/hungry-ghost-hive/issues/634)) ([b9f95a2](https://github.com/nikrich/hungry-ghost-hive/commit/b9f95a2b7a2e31691d16d0cc4b6811801033aad7))
+
 ## [0.57.1](https://github.com/nikrich/hungry-ghost-hive/compare/hungry-ghost-hive-v0.57.0...hungry-ghost-hive-v0.57.1) (2026-03-25)
 
 
