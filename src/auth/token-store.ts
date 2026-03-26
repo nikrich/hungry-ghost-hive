@@ -141,7 +141,12 @@ export class TokenStore {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt <= LOCK_MAX_RETRIES; attempt++) {
       try {
-        return await lock.lock(filePath, options);
+        return await lock.lock(filePath, {
+          ...options,
+          onCompromised: (err: Error) => {
+            console.warn(`[token-store] Lock compromised on ${filePath}: ${err.message}`);
+          },
+        });
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         if ((lastError as NodeJS.ErrnoException).code === 'ECOMPROMISED') {

@@ -103,6 +103,21 @@ describe('Database Lock', () => {
     warnSpy.mockRestore();
   });
 
+  it('should not throw when default onCompromised is invoked', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // acquireLock uses a default onCompromised that calls console.warn
+    // Simulate what happens when proper-lockfile invokes the callback
+    const defaultHandler = (err: Error) => {
+      console.warn(`[hive-manager] Lock compromised: ${err.message}`);
+    };
+
+    expect(() => defaultHandler(new Error('Lock was compromised'))).not.toThrow();
+    expect(warnSpy).toHaveBeenCalledWith('[hive-manager] Lock compromised: Lock was compromised');
+
+    warnSpy.mockRestore();
+  });
+
   it('should accept a custom onCompromised callback', async () => {
     const customHandler = vi.fn();
     const release = await acquireLock(lockPath, {

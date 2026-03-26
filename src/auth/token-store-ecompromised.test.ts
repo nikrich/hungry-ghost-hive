@@ -51,6 +51,30 @@ describe('TokenStore acquireLockWithRetry', () => {
       expect(mockLockFn).toHaveBeenCalledTimes(1);
     });
 
+    it('should pass onCompromised callback that does not throw', async () => {
+      const tempDir = createTempDir();
+      const envPath = join(tempDir, '.env');
+      writeFileSync(envPath, 'ANTHROPIC_API_KEY=sk-ant-test123\n', 'utf-8');
+
+      const releaseFn = vi.fn().mockResolvedValue(undefined);
+      mockLockFn.mockImplementation((_path: string, opts: Record<string, unknown>) => {
+        // Capture and validate the onCompromised option
+        expect(opts).toHaveProperty('onCompromised');
+        expect(typeof opts.onCompromised).toBe('function');
+
+        // Invoke onCompromised — should not throw
+        const onCompromised = opts.onCompromised as (err: Error) => void;
+        expect(() => onCompromised(new Error('Lock was compromised'))).not.toThrow();
+
+        return Promise.resolve(releaseFn);
+      });
+
+      const store = new TokenStore(envPath);
+      await store.loadFromEnv(envPath);
+
+      expect(mockLockFn).toHaveBeenCalledTimes(1);
+    });
+
     it('should retry on non-ECOMPROMISED lock errors', async () => {
       const tempDir = createTempDir();
       const envPath = join(tempDir, '.env');
