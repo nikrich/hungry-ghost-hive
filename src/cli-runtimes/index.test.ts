@@ -83,6 +83,77 @@ describe('CLI Runtime Builders', () => {
       const builder = new ClaudeRuntimeBuilder();
       expect(builder.getModelFlag()).toBe('--model');
     });
+
+    it('should include --mcp-config flag in spawn command when mcpConfig is provided', () => {
+      const builder = new ClaudeRuntimeBuilder();
+      const mcpConfig = JSON.stringify({ myServer: { command: 'node', args: ['server.js'] } });
+      const command = builder.buildSpawnCommand('claude-sonnet-4-20250514', 'unsafe', {
+        mcpConfig,
+      });
+
+      expect(command).toEqual([
+        'claude',
+        '--dangerously-skip-permissions',
+        '--model',
+        'claude-sonnet-4-20250514',
+        '--mcp-config',
+        mcpConfig,
+      ]);
+    });
+
+    it('should include --mcp-config flag in resume command when mcpConfig is provided', () => {
+      const builder = new ClaudeRuntimeBuilder();
+      const mcpConfig = JSON.stringify({ myServer: { command: 'node', args: ['server.js'] } });
+      const command = builder.buildResumeCommand(
+        'claude-sonnet-4-20250514',
+        'session-123',
+        'unsafe',
+        { mcpConfig }
+      );
+
+      expect(command).toEqual([
+        'claude',
+        '--dangerously-skip-permissions',
+        '--model',
+        'claude-sonnet-4-20250514',
+        '--resume',
+        'session-123',
+        '--mcp-config',
+        mcpConfig,
+      ]);
+    });
+
+    it('should not include --mcp-config flag when mcpConfig is not provided', () => {
+      const builder = new ClaudeRuntimeBuilder();
+      const command = builder.buildSpawnCommand('claude-sonnet-4-20250514', 'unsafe', {});
+
+      expect(command).toEqual([
+        'claude',
+        '--dangerously-skip-permissions',
+        '--model',
+        'claude-sonnet-4-20250514',
+      ]);
+      expect(command).not.toContain('--mcp-config');
+    });
+
+    it('should include both chrome and mcp-config flags when both are provided', () => {
+      const builder = new ClaudeRuntimeBuilder();
+      const mcpConfig = JSON.stringify({ server: { command: 'cmd' } });
+      const command = builder.buildSpawnCommand('claude-sonnet-4-20250514', 'unsafe', {
+        chrome: true,
+        mcpConfig,
+      });
+
+      expect(command).toEqual([
+        'claude',
+        '--dangerously-skip-permissions',
+        '--model',
+        'claude-sonnet-4-20250514',
+        '--chrome',
+        '--mcp-config',
+        mcpConfig,
+      ]);
+    });
   });
 
   describe('CodexRuntimeBuilder', () => {

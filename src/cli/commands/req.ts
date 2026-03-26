@@ -29,6 +29,7 @@ import {
 } from '../../tmux/manager.js';
 import { getTechLeadSessionName } from '../../utils/instance.js';
 import { statusColor } from '../../utils/logger.js';
+import { getParentMcpConfig } from '../../utils/mcp-config.js';
 import { withHiveContext, withReadOnlyHiveContext } from '../../utils/with-hive-context.js';
 import { startDashboard } from '../dashboard/index.js';
 
@@ -256,10 +257,11 @@ export const reqCommand = new Command('req')
               // Build CLI command using the configured runtime for Tech Lead
               const chromeEnabled =
                 config.agents?.chrome_enabled === true && techLeadCliTool === 'claude';
+              const mcpConfig = getParentMcpConfig(root);
               const commandArgs = getCliRuntimeBuilder(techLeadCliTool).buildSpawnCommand(
                 techLeadModel,
                 techLeadSafetyMode,
-                { chrome: chromeEnabled }
+                { chrome: chromeEnabled, ...(mcpConfig ? { mcpConfig } : {}) }
               );
 
               // Pass the prompt as initialPrompt so it's included as a CLI positional

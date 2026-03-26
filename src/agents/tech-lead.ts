@@ -21,6 +21,7 @@ import { getAllTeams, type TeamRow } from '../db/queries/teams.js';
 import { NotFoundError } from '../errors/index.js';
 import { generateTechLeadJiraInstructions } from '../orchestrator/prompt-templates.js';
 import { generateSessionName, spawnTmuxSession } from '../tmux/manager.js';
+import { getParentMcpConfig } from '../utils/mcp-config.js';
 import { findHiveRoot, getHivePaths } from '../utils/paths.js';
 import { BaseAgent, type AgentContext } from './base-agent.js';
 
@@ -303,9 +304,11 @@ Respond in JSON format:
 
           // Build spawn command using CLI runtime builder (spawn fresh session, will be resumed later)
           const chromeEnabled = config.agents?.chrome_enabled === true && cliTool === 'claude';
+          const mcpConfig = getParentMcpConfig(hiveRoot);
           const runtimeBuilder = getCliRuntimeBuilder(cliTool);
           const commandArgs = runtimeBuilder.buildSpawnCommand(model, safetyMode, {
             chrome: chromeEnabled,
+            ...(mcpConfig ? { mcpConfig } : {}),
           });
 
           await spawnTmuxSession({

@@ -5,6 +5,7 @@ export type RuntimeSafetyMode = 'safe' | 'unsafe';
 
 export interface RuntimeOptions {
   chrome?: boolean;
+  mcpConfig?: string;
 }
 
 export interface CliRuntimeBuilder {
