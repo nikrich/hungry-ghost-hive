@@ -260,6 +260,8 @@ const MergeQueueConfigSchema = z.object({
   // Maximum age in hours for PRs to be synced into the queue
   // PRs older than this are considered stale and skipped during sync
   max_age_hours: z.number().positive().default(1), // 1 hour default
+  // Timeout in ms before a PR stuck in 'reviewing' with an idle QA agent is requeued
+  reviewing_timeout_ms: z.number().int().positive().default(10 * 60 * 1000), // 10 minutes
 });
 
 // Logging configuration
@@ -586,6 +588,8 @@ merge_queue:
   # Maximum age in hours for PRs to be synced (default: 1)
   # PRs older than this are considered stale and skipped
   max_age_hours: 1
+  # Timeout in ms before a PR stuck in reviewing with idle QA is requeued (default: 10 min)
+  reviewing_timeout_ms: 600000
 
 # Logging
 logging:

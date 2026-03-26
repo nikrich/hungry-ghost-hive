@@ -248,6 +248,7 @@ describe('context-files module', () => {
       },
       merge_queue: {
         max_age_hours: 1,
+        reviewing_timeout_ms: 600000,
       },
     };
 
