@@ -15,6 +15,7 @@ import {
   spawnTmuxSession,
 } from '../../tmux/manager.js';
 import { buildInstanceSessionName, getTechLeadSessionName } from '../../utils/instance.js';
+import { getParentMcpConfig } from '../../utils/mcp-config.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const messageCommand = new Command('message').description(
@@ -170,10 +171,12 @@ async function handleNewAgent(_from?: string): Promise<void> {
     const prompt = buildChatAgentPrompt(sessionName, requirementContext);
 
     // Build CLI command
+    const mcpConfig = getParentMcpConfig(root);
     const runtimeBuilder = getCliRuntimeBuilder(cliTool);
     const commandArgs = runtimeBuilder.buildSpawnCommand(
       modelConfig.model,
-      modelConfig.safety_mode || 'unsafe'
+      modelConfig.safety_mode || 'unsafe',
+      { ...(mcpConfig ? { mcpConfig } : {}) }
     );
 
     // Spawn tmux session

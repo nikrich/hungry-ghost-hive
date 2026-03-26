@@ -14,6 +14,7 @@ import { createLog } from '../../db/queries/logs.js';
 import { getTeamById } from '../../db/queries/teams.js';
 import { isTmuxAvailable, isTmuxSessionRunning, spawnTmuxSession } from '../../tmux/manager.js';
 import { requireAgent } from '../../utils/cli-helpers.js';
+import { getParentMcpConfig } from '../../utils/mcp-config.js';
 import { withHiveContext } from '../../utils/with-hive-context.js';
 
 export const resumeCommand = new Command('resume')
@@ -91,9 +92,11 @@ export const resumeCommand = new Command('resume')
 
           // Build resume command using CLI runtime builder
           const chromeEnabled = config.agents?.chrome_enabled === true && cliTool === 'claude';
+          const mcpConfig = getParentMcpConfig(root);
           const runtimeBuilder = getCliRuntimeBuilder(cliTool);
           const commandArgs = runtimeBuilder.buildResumeCommand(model, sessionName, safetyMode, {
             chrome: chromeEnabled,
+            ...(mcpConfig ? { mcpConfig } : {}),
           });
 
           // Spawn new session

@@ -15,6 +15,9 @@ export class ClaudeRuntimeBuilder implements CliRuntimeBuilder {
     if (options?.chrome) {
       args.push('--chrome');
     }
+    if (options?.mcpConfig) {
+      args.push('--mcp-config', options.mcpConfig);
+    }
     return args;
   }
 
@@ -30,6 +33,9 @@ export class ClaudeRuntimeBuilder implements CliRuntimeBuilder {
         : ['claude', '--dangerously-skip-permissions', '--model', model, '--resume', sessionId];
     if (options?.chrome) {
       args.push('--chrome');
+    }
+    if (options?.mcpConfig) {
+      args.push('--mcp-config', options.mcpConfig);
     }
     return args;
   }

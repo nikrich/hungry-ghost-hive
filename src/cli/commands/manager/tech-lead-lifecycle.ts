@@ -16,6 +16,7 @@ import {
 } from '../../../tmux/manager.js';
 import type { CLITool } from '../../../utils/cli-commands.js';
 import { getTechLeadSessionName } from '../../../utils/instance.js';
+import { getParentMcpConfig } from '../../../utils/mcp-config.js';
 import { findHiveRoot as findHiveRootFromDir, getHivePaths } from '../../../utils/paths.js';
 import { generateTechLeadPrompt } from '../req.js';
 import { detectAgentState } from './agent-monitoring.js';
@@ -132,9 +133,11 @@ export async function restartStaleTechLead(ctx: ManagerCheckContext): Promise<vo
     const model = resolveRuntimeModelForCli(agentConfig.model, cliTool);
 
     const chromeEnabled = config.agents?.chrome_enabled === true && cliTool === 'claude';
+    const mcpConfig = getParentMcpConfig(hiveRoot);
     const runtimeBuilder = getCliRuntimeBuilder(cliTool);
     const commandArgs = runtimeBuilder.buildSpawnCommand(model, safetyMode, {
       chrome: chromeEnabled,
+      ...(mcpConfig ? { mcpConfig } : {}),
     });
 
     // Look up active requirement and teams to provide context to the restarted tech lead

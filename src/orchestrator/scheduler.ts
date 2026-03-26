@@ -49,6 +49,7 @@ import {
 } from '../tmux/manager.js';
 import { getTechLeadSessionName } from '../utils/instance.js';
 import * as logger from '../utils/logger.js';
+import { getParentMcpConfig } from '../utils/mcp-config.js';
 import { getHivePaths } from '../utils/paths.js';
 import { selectAgentWithLeastWorkload } from './agent-selector.js';
 import { getCapacityPoints, selectStoriesForCapacity } from './capacity-planner.js';
@@ -1167,11 +1168,13 @@ export class Scheduler {
         }
 
         // Build CLI command using the configured runtime
+        const mcpConfig = getParentMcpConfig(this.config.rootDir);
         const commandArgs = getCliRuntimeBuilder(cliTool).buildSpawnCommand(
           runtimeModel,
           safetyMode,
           {
             chrome: chromeEnabled,
+            ...(mcpConfig ? { mcpConfig } : {}),
           }
         );
 
