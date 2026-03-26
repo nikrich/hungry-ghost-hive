@@ -342,8 +342,7 @@ export async function requeueStaleReviewingPRs(ctx: ManagerCheckContext): Promis
       if (!qaAgent) continue;
 
       const qaState = agentStates.get(pr.reviewed_by);
-      const isIdle =
-        qaAgent.status === 'idle' || qaState?.lastState === AgentState.IDLE_AT_PROMPT;
+      const isIdle = qaAgent.status === 'idle' || qaState?.lastState === AgentState.IDLE_AT_PROMPT;
       if (!isIdle) {
         verboseLogCtx(
           ctx,

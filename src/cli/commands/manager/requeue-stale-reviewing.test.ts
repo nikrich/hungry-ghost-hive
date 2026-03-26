@@ -330,9 +330,36 @@ describe('requeueStaleReviewingPRs', () => {
 
     // Simulate 3 previous timeout logs for this PR
     vi.mocked(getLogsByEventType).mockResolvedValue([
-      { id: 1, agent_id: 'manager', story_id: 'STORY-001', event_type: 'PR_REVIEW_TIMEOUT', status: null, message: '', metadata: JSON.stringify({ pr_id: 'pr-test-1', action: 'requeued' }), timestamp: new Date().toISOString() },
-      { id: 2, agent_id: 'manager', story_id: 'STORY-001', event_type: 'PR_REVIEW_TIMEOUT', status: null, message: '', metadata: JSON.stringify({ pr_id: 'pr-test-1', action: 'requeued' }), timestamp: new Date().toISOString() },
-      { id: 3, agent_id: 'manager', story_id: 'STORY-001', event_type: 'PR_REVIEW_TIMEOUT', status: null, message: '', metadata: JSON.stringify({ pr_id: 'pr-test-1', action: 'requeued' }), timestamp: new Date().toISOString() },
+      {
+        id: 1,
+        agent_id: 'manager',
+        story_id: 'STORY-001',
+        event_type: 'PR_REVIEW_TIMEOUT',
+        status: null,
+        message: '',
+        metadata: JSON.stringify({ pr_id: 'pr-test-1', action: 'requeued' }),
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: 2,
+        agent_id: 'manager',
+        story_id: 'STORY-001',
+        event_type: 'PR_REVIEW_TIMEOUT',
+        status: null,
+        message: '',
+        metadata: JSON.stringify({ pr_id: 'pr-test-1', action: 'requeued' }),
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: 3,
+        agent_id: 'manager',
+        story_id: 'STORY-001',
+        event_type: 'PR_REVIEW_TIMEOUT',
+        status: null,
+        message: '',
+        metadata: JSON.stringify({ pr_id: 'pr-test-1', action: 'requeued' }),
+        timestamp: new Date().toISOString(),
+      },
     ] as any);
 
     const ctx = makeMockCtx({
