@@ -29,6 +29,11 @@ vi.mock('../../db/queries/stories.js', () => ({
   updateStory: vi.fn(),
 }));
 
+vi.mock('../../connectors/project-management/operations.js', () => ({
+  syncStatusForStory: vi.fn(),
+  syncStoryToProvider: vi.fn(),
+}));
+
 vi.mock('../../integrations/jira/stories.js', () => ({
   syncStoryToJira: vi.fn(),
 }));
@@ -72,6 +77,12 @@ describe('stories command', () => {
       const showCmd = storiesCommand.commands.find(cmd => cmd.name() === 'show');
       expect(showCmd).toBeDefined();
       expect(showCmd?.description()).toContain('Show');
+    });
+
+    it('should have update subcommand', () => {
+      const updateCmd = storiesCommand.commands.find(cmd => cmd.name() === 'update');
+      expect(updateCmd).toBeDefined();
+      expect(updateCmd?.description()).toContain('Update');
     });
   });
 
@@ -134,6 +145,12 @@ describe('stories command', () => {
       expect(criteriaOpt).toBeDefined();
     });
 
+    it('should have --status option', () => {
+      const createCmd = storiesCommand.commands.find(cmd => cmd.name() === 'create');
+      const statusOpt = createCmd?.options.find(opt => opt.long === '--status');
+      expect(statusOpt).toBeDefined();
+    });
+
     it('should have --json option', () => {
       const createCmd = storiesCommand.commands.find(cmd => cmd.name() === 'create');
       const jsonOpt = createCmd?.options.find(opt => opt.long === '--json');
@@ -147,6 +164,56 @@ describe('stories command', () => {
       expect(showCmd).toBeDefined();
       // The command has an argument <story-id>
       expect(showCmd?.usage()).toContain('story-id');
+    });
+  });
+
+  describe('update subcommand', () => {
+    it('should accept story-id argument', () => {
+      const updateCmd = storiesCommand.commands.find(cmd => cmd.name() === 'update');
+      expect(updateCmd).toBeDefined();
+      expect(updateCmd?.usage()).toContain('story-id');
+    });
+
+    it('should have --status option', () => {
+      const updateCmd = storiesCommand.commands.find(cmd => cmd.name() === 'update');
+      const statusOpt = updateCmd?.options.find(opt => opt.long === '--status');
+      expect(statusOpt).toBeDefined();
+    });
+
+    it('should have --title option', () => {
+      const updateCmd = storiesCommand.commands.find(cmd => cmd.name() === 'update');
+      const titleOpt = updateCmd?.options.find(opt => opt.long === '--title');
+      expect(titleOpt).toBeDefined();
+    });
+
+    it('should have --description option', () => {
+      const updateCmd = storiesCommand.commands.find(cmd => cmd.name() === 'update');
+      const descOpt = updateCmd?.options.find(opt => opt.long === '--description');
+      expect(descOpt).toBeDefined();
+    });
+
+    it('should have --points option', () => {
+      const updateCmd = storiesCommand.commands.find(cmd => cmd.name() === 'update');
+      const pointsOpt = updateCmd?.options.find(opt => opt.long === '--points');
+      expect(pointsOpt).toBeDefined();
+    });
+
+    it('should have --complexity option', () => {
+      const updateCmd = storiesCommand.commands.find(cmd => cmd.name() === 'update');
+      const complexityOpt = updateCmd?.options.find(opt => opt.long === '--complexity');
+      expect(complexityOpt).toBeDefined();
+    });
+
+    it('should have --team option', () => {
+      const updateCmd = storiesCommand.commands.find(cmd => cmd.name() === 'update');
+      const teamOpt = updateCmd?.options.find(opt => opt.long === '--team');
+      expect(teamOpt).toBeDefined();
+    });
+
+    it('should have --json option', () => {
+      const updateCmd = storiesCommand.commands.find(cmd => cmd.name() === 'update');
+      const jsonOpt = updateCmd?.options.find(opt => opt.long === '--json');
+      expect(jsonOpt).toBeDefined();
     });
   });
 });

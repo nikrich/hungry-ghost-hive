@@ -2,7 +2,10 @@
 
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { syncStoryToProvider } from '../../connectors/project-management/operations.js';
+import {
+  syncStatusForStory,
+  syncStoryToProvider,
+} from '../../connectors/project-management/operations.js';
 import {
   createStory,
   getAllStories,
@@ -74,6 +77,7 @@ storiesCommand
   .option('--team <teamId>', 'Team ID')
   .option('-p, --points <points>', 'Story points', parseInt)
   .option('-c, --complexity <complexity>', 'Complexity score', parseInt)
+  .option('-s, --status <status>', 'Initial status')
   .option('--criteria <criteria...>', 'Acceptance criteria (space-separated)')
   .option('--json', 'Output as JSON')
   .action(
@@ -84,6 +88,7 @@ storiesCommand
       team?: string;
       points?: number;
       complexity?: number;
+      status?: string;
       criteria?: string[];
       json?: boolean;
     }) => {
@@ -101,15 +106,39 @@ storiesCommand
           paths.storiesDir
         );
 
+        // Validate status if provided
+        const validStatuses: StoryStatus[] = [
+          'draft',
+          'estimated',
+          'planned',
+          'in_progress',
+          'review',
+          'qa',
+          'qa_failed',
+          'pr_submitted',
+          'merged',
+        ];
+        if (options.status && !validStatuses.includes(options.status as StoryStatus)) {
+          console.error(
+            chalk.red(`Invalid status: ${options.status}. Valid: ${validStatuses.join(', ')}`)
+          );
+          process.exitCode = 1;
+          return;
+        }
+
         // Update with optional fields
-        if (options.points !== undefined || options.complexity !== undefined) {
+        if (
+          options.points !== undefined ||
+          options.complexity !== undefined ||
+          options.status !== undefined
+        ) {
           await updateStory(
             db.provider,
             story.id,
             {
               storyPoints: options.points ?? null,
               complexityScore: options.complexity ?? null,
-              status: 'estimated',
+              status: (options.status as StoryStatus) || 'estimated',
             },
             paths.storiesDir
           );
@@ -199,3 +228,90 @@ storiesCommand
       console.log();
     });
   });
+
+storiesCommand
+  .command('update <story-id>')
+  .description('Update a story')
+  .option('-s, --status <status>', 'Story status')
+  .option('-t, --title <title>', 'Story title')
+  .option('-d, --description <description>', 'Story description')
+  .option('-p, --points <points>', 'Story points', parseInt)
+  .option('-c, --complexity <complexity>', 'Complexity score', parseInt)
+  .option('--team <teamId>', 'Team ID')
+  .option('--json', 'Output as JSON')
+  .action(
+    async (
+      storyId: string,
+      options: {
+        status?: string;
+        title?: string;
+        description?: string;
+        points?: number;
+        complexity?: number;
+        team?: string;
+        json?: boolean;
+      }
+    ) => {
+      await withHiveContext(async ({ root, paths, db }) => {
+        const story = await requireStory(db.provider, storyId);
+
+        // Validate status if provided
+        const validStatuses: StoryStatus[] = [
+          'draft',
+          'estimated',
+          'planned',
+          'in_progress',
+          'review',
+          'qa',
+          'qa_failed',
+          'pr_submitted',
+          'merged',
+        ];
+        if (options.status && !validStatuses.includes(options.status as StoryStatus)) {
+          console.error(
+            chalk.red(`Invalid status: ${options.status}. Valid: ${validStatuses.join(', ')}`)
+          );
+          process.exitCode = 1;
+          return;
+        }
+
+        const input: Parameters<typeof updateStory>[2] = {};
+        if (options.status !== undefined) input.status = options.status as StoryStatus;
+        if (options.title !== undefined) input.title = options.title;
+        if (options.description !== undefined) input.description = options.description;
+        if (options.points !== undefined) input.storyPoints = options.points;
+        if (options.complexity !== undefined) input.complexityScore = options.complexity;
+        if (options.team !== undefined) input.teamId = options.team;
+
+        const updated = await updateStory(db.provider, story.id, input, paths.storiesDir);
+
+        // Sync status change to PM provider if status was changed
+        if (options.status && options.status !== story.status) {
+          try {
+            await syncStatusForStory(root, db.provider, story.id, options.status);
+          } catch (err) {
+            console.warn(
+              chalk.yellow(
+                `Warning: PM sync failed: ${err instanceof Error ? err.message : String(err)}`
+              )
+            );
+          }
+        }
+
+        if (options.json) {
+          console.log(JSON.stringify(updated, null, 2));
+          return;
+        }
+
+        console.log(chalk.green(`\nStory updated: ${chalk.bold(story.id)}`));
+        if (options.title) console.log(chalk.gray(`  Title:      ${options.title}`));
+        if (options.status) console.log(chalk.gray(`  Status:     ${options.status}`));
+        if (options.points !== undefined)
+          console.log(chalk.gray(`  Points:     ${options.points}`));
+        if (options.complexity !== undefined)
+          console.log(chalk.gray(`  Complexity: ${options.complexity}`));
+        if (options.team) console.log(chalk.gray(`  Team:       ${options.team}`));
+        console.log();
+      });
+    }
+  );
