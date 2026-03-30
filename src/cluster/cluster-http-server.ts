@@ -91,13 +91,18 @@ export class ClusterHttpServer {
 
   private async handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
+      const method = req.method || 'GET';
+      const path = req.url?.split('?')[0] || '/';
+
+      if (method === 'GET' && path === '/healthz') {
+        sendJson(res, 200, { status: 'ok', timestamp: Date.now() });
+        return;
+      }
+
       if (!this.authorize(req)) {
         sendJson(res, 401, { error: 'Unauthorized' });
         return;
       }
-
-      const method = req.method || 'GET';
-      const path = req.url?.split('?')[0] || '/';
 
       if (method === 'GET' && path === '/cluster/v1/status') {
         sendJson(res, 200, this.handlers.getStatus());
